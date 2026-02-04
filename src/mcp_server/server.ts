@@ -2798,17 +2798,17 @@ function processFigmaNodeResponse(result: unknown): any {
   const resultObj = result as Record<string, unknown>;
   if ("id" in resultObj && typeof resultObj.id === "string") {
     // It appears to be a node response, log the details
-    console.info(
+    logger.info(
       `Processed Figma node: ${resultObj.name || "Unknown"} (ID: ${resultObj.id
       })`
     );
 
     if ("x" in resultObj && "y" in resultObj) {
-      console.debug(`Node position: (${resultObj.x}, ${resultObj.y})`);
+      logger.debug(`Node position: (${resultObj.x}, ${resultObj.y})`);
     }
 
     if ("width" in resultObj && "height" in resultObj) {
-      console.debug(`Node dimensions: ${resultObj.width}×${resultObj.height}`);
+      logger.debug(`Node dimensions: ${resultObj.width}×${resultObj.height}`);
     }
   }
 
@@ -3281,17 +3281,18 @@ server.tool(
     type: z.enum(["TEXT", "PAINT", "EFFECT", "GRID"]).describe("Type of style to create"),
     name: z.string().describe("Name of the style"),
     description: z.string().optional().describe("Description of the style"),
-    properties: z.object({
-      fontName: z.object({ family: z.string(), style: z.string() }).optional(),
-      fontSize: z.number().optional(),
-      paints: z.array(z.any()).optional(),
-      effects: z.array(z.any()).optional(),
-      layoutGrids: z.array(z.any()).optional(),
-      // Add more properties as needed for comprehensive style creation
-    }).optional().describe("Properties for the style")
+    propertiesJson: z.string().optional().describe("JSON string containing style properties: {fontName?: {family, style}, fontSize?: number, paints?: [{type, color?, opacity?, visible?}], effects?: [{type, visible?, color?, offset?, radius?, spread?}], layoutGrids?: [{pattern, sectionSize?, visible?, color?}]}")
   },
-  async ({ type, name, description, properties }: any) => {
+  async ({ type, name, description, propertiesJson }: any) => {
     try {
+      let properties;
+      if (propertiesJson) {
+        try {
+          properties = JSON.parse(propertiesJson);
+        } catch (e) {
+          return { content: [{ type: "text", text: `Error parsing propertiesJson: ${e instanceof Error ? e.message : String(e)}` }] };
+        }
+      }
       const result = await sendCommandToFigma("create_style", { type, name, description, properties });
       return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
     } catch (error) {

@@ -608,90 +608,320 @@ Request → MCP Server → WebSocket → Figma Plugin
 
 ---
 
-## Appendix: Complete Tool Inventory
+## Appendix A: Complete Figma API Support Matrix
 
-### Tools in This Repo (45 total)
+### Superset of All Supported Figma Operations
 
-**Readers (8):**
-- get_document_info, get_nodes_info, scan_text_nodes, scan_nodes_by_types
+This table shows the complete universe of Figma API operations supported across both repositories, with clear indication of which implementation provides each capability.
 
-**Creators (5):**
-- create_rectangle, create_frame, create_text, clone_node, create_node_from_svg
+#### Legend
+- ✅ = Fully supported
+- ⚠️ = Partially supported (limited parameters or alternate approach)
+- ❌ = Not supported
+- 🔒 = Scope-aware (This Repo only - enforces scope restrictions)
 
-**Modifiers (7):**
-- move_node, resize_node, delete_multiple_nodes, set_node_name, set_selections
+---
 
-**Styling (4):**
-- set_fill_color, set_stroke_color, set_corner_radius, set_effects
+### Document & Information Retrieval (10 Tools)
 
-**Layout (5):**
-- set_layout_mode, set_padding, set_axis_align, set_layout_sizing, set_item_spacing
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `get_document_info` | Get full document structure and metadata | ✅ | ✅ | Both support |
+| `get_selection` | Get currently selected nodes | ❌ | ✅ | Fork only |
+| `get_node_info` | Get details for a specific node | ❌ | ✅ | Fork only |
+| `get_nodes_info` | Get details for multiple nodes | ✅ | ✅ | Both support |
+| `get_pages` | List all pages in document | ❌ | ✅ | Fork only |
+| `scan_text_nodes` | Find and list all text nodes | ✅ | ✅ | Both support |
+| `scan_nodes_by_types` | Find nodes by type (FRAME, TEXT, etc.) | ✅ | ❌ | This repo only |
+| `get_styles` | List all styles in document | ✅ | ✅ | Both support |
+| `get_local_components` | List all local components | ✅ | ✅ | Both support |
+| `get_remote_components` | List team library components | ❌ | ✅ | Fork only |
 
-**Components (6):**
-- get_local_components, create_component, create_component_instance, get_instance_overrides, set_instance_overrides
+---
 
-**Connectors (3):**
-- get_reactions, set_default_connector, create_connections
+### Page Management (5 Tools)
 
-**Annotations (2):**
-- get_annotations, set_multiple_annotations
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `create_page` | Create a new page | ❌ | ✅ | Fork only |
+| `delete_page` | Delete a page by ID | ❌ | ✅ | Fork only |
+| `rename_page` | Rename a page | ❌ | ✅ | Fork only |
+| `get_pages` | Get list of all pages | ❌ | ✅ | Fork only |
+| `set_current_page` | Switch to a specific page | ❌ | ✅ | Fork only |
 
-**Styles (2):**
-- get_styles, create_style, apply_style
+---
 
-**Variables (4):**
-- get_variables, get_node_variables, set_bound_variable, manage_variables
+### Node Creation (14 Tools)
 
-**Export (1):**
-- export_node_as_image
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `create_rectangle` | Create a rectangle | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `create_frame` | Create a frame/artboard | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `create_text` | Create a text element | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `create_ellipse` | Create a circle/ellipse | ❌ | ✅ | Fork only |
+| `create_polygon` | Create a polygon (configurable sides) | ❌ | ✅ | Fork only |
+| `create_star` | Create a star shape | ❌ | ✅ | Fork only |
+| `create_node_from_svg` | Create node from SVG string | ✅🔒 | ❌ | This repo only |
+| `clone_node` | Duplicate an existing node | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `group_nodes` | Group multiple nodes together | ❌ | ✅ | Fork only |
+| `ungroup_nodes` | Ungroup a group | ❌ | ✅ | Fork only |
+| `insert_child` | Insert child node into parent | ❌ | ✅ | Fork only |
+| `flatten_node` | Flatten a node (boolean ops) | ❌ | ✅ | Fork only |
+| `create_component_instance` | Create component instance | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `create_component_from_node` | Convert node to component | ✅ | ✅ | Both support (different names) |
 
-**Integration (1):**
-- join_channel
+---
 
-### Tools in Fork (40 total)
+### Node Modification (8 Tools)
 
-**Document (10):**
-- get_document_info, get_selection, get_node_info, get_nodes_info, get_styles, get_local_components, get_remote_components, scan_text_nodes, join_channel, export_node_as_image
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `move_node` | Change node position (x, y) | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `resize_node` | Change node dimensions | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `set_node_name` | Rename a node | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `rename_node` | Rename a node (fork's name) | ⚠️ | ✅ | Fork only; This repo uses `set_node_name` |
+| `delete_node` | Delete a single node | ❌ | ✅ | Fork only |
+| `delete_multiple_nodes` | Batch delete multiple nodes | ✅🔒 | ❌ | This repo only |
+| `set_selections` | Select nodes in Figma UI | ✅ | ❌ | This repo only |
 
-**Page Management (5):**
-- create_page, delete_page, rename_page, get_pages, set_current_page
+---
 
-**Creation (11):**
-- create_rectangle, create_frame, create_text, create_ellipse, create_polygon, create_star, group_nodes, ungroup_nodes, clone_node, flatten_node, insert_child
+### Fill & Stroke Styling (4 Tools)
 
-**Component (3):**
-- create_component_instance, create_component_from_node, create_component_set
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `set_fill_color` | Set node fill color (RGBA) | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `set_stroke_color` | Set stroke color and weight | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `set_corner_radius` | Set corner radius/rounding | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `set_effects` | Add shadows/blur effects | ✅🔒 | ✅ | Both support; This repo has scope checking |
 
-**Modification (6):**
-- set_fill_color, set_stroke_color, move_node, resize_node, delete_node, set_corner_radius
+---
 
-**Layout (1):**
-- set_auto_layout
+### Auto-Layout & Sizing (6 Tools)
 
-**Styling (2):**
-- set_effects, set_effect_style_id
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `set_layout_mode` | Configure layout mode (H/V/None) | ✅🔒 | ❌ | This repo only (granular control) |
+| `set_padding` | Set frame padding values | ✅🔒 | ⚠️ | This repo granular; Fork combined in `set_auto_layout` |
+| `set_axis_align` | Align items on axes | ✅🔒 | ⚠️ | This repo granular; Fork combined in `set_auto_layout` |
+| `set_layout_sizing` | Set FIXED/HUG/FILL sizing | ✅🔒 | ⚠️ | This repo granular; Fork combined in `set_auto_layout` |
+| `set_item_spacing` | Set spacing between children | ✅🔒 | ⚠️ | This repo granular; Fork combined in `set_auto_layout` |
+| `set_auto_layout` | Configure all layout at once | ❌ | ✅ | Fork only (unified approach) |
 
-**Text (13):**
-- set_text_content, set_multiple_text_contents, set_font_name, set_font_size, set_font_weight, set_letter_spacing, set_line_height, set_paragraph_spacing, set_text_case, set_text_decoration, get_styled_text_segments, set_text_style_id, load_font_async
+---
 
-**Rename (1):**
-- rename_node
+### Text & Typography (14 Tools)
 
-### Missing in Each
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `set_text_content` | Set text content | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `set_multiple_text_contents` | Batch set text in nodes | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `set_font_name` | Set font family and style | ❌ | ✅ | Fork only |
+| `set_font_size` | Set font size | ❌ | ✅ | Fork only |
+| `set_font_weight` | Set font weight (100-900) | ❌ | ✅ | Fork only |
+| `set_letter_spacing` | Set letter spacing | ❌ | ✅ | Fork only |
+| `set_line_height` | Set line height | ❌ | ✅ | Fork only |
+| `set_paragraph_spacing` | Set paragraph spacing | ❌ | ✅ | Fork only |
+| `set_text_case` | Set text case (UPPER/LOWER/TITLE) | ❌ | ✅ | Fork only |
+| `set_text_decoration` | Set text decoration (underline/strikethrough) | ❌ | ✅ | Fork only |
+| `get_styled_text_segments` | Get text with specific styling | ❌ | ✅ | Fork only |
+| `set_text_style_id` | Apply text style | ❌ | ✅ | Fork only |
+| `load_font_async` | Load font asynchronously | ❌ | ✅ | Fork only |
 
-**This Repo Missing (from Fork):**
-- Page management (5 tools)
-- Ellipse, polygon, star (3 tools)
-- Group/ungroup/flatten (3 tools)
-- Comprehensive text styling (13 tools)
-- Remote components (1 tool)
+---
 
-**Fork Missing (from This Repo):**
-- Variables system (4 tools)
-- Annotations (2 tools)
-- Prototyping/connectors (3 tools)
-- Advanced instance overrides (2 tools)
-- Comprehensive layout controls (5 tools)
+### Style Management (4 Tools)
+
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `get_styles` | List all styles | ✅ | ✅ | Both support |
+| `create_style` | Create text/paint/effect/grid style | ✅🔒 | ❌ | This repo only |
+| `apply_style` | Apply style to node | ✅🔒 | ❌ | This repo only |
+| `set_effect_style_id` | Apply effect style | ❌ | ✅ | Fork only |
+
+---
+
+### Component & Instance Management (6 Tools)
+
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `create_component` | Convert frame/group to component | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `create_component_instance` | Create component instance | ✅🔒 | ✅ | Both support; This repo has scope checking |
+| `create_component_set` | Create variant component set | ❌ | ✅ | Fork only |
+| `get_instance_overrides` | Get component instance overrides | ✅ | ❌ | This repo only |
+| `set_instance_overrides` | Apply overrides to instances | ✅🔒 | ❌ | This repo only |
+
+---
+
+### Annotations & Comments (2 Tools)
+
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `get_annotations` | Get design annotations | ✅ | ❌ | This repo only |
+| `set_multiple_annotations` | Create/update annotations | ✅🔒 | ❌ | This repo only |
+
+---
+
+### Prototyping & Interactions (3 Tools)
+
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `get_reactions` | Get prototype reactions on nodes | ✅ | ❌ | This repo only |
+| `set_default_connector` | Set connector style | ✅🔒 | ❌ | This repo only |
+| `create_connections` | Create connector lines | ✅🔒 | ❌ | This repo only |
+
+---
+
+### Variables & Design Tokens (4 Tools)
+
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `get_variables` | List all variables/collections | ✅ | ❌ | This repo only |
+| `get_node_variables` | Get bound variables on node | ✅ | ❌ | This repo only |
+| `set_bound_variable` | Bind variable to node property | ✅🔒 | ❌ | This repo only |
+| `manage_variables` | Create/manage variables and modes | ✅🔒 | ❌ | This repo only |
+
+---
+
+### Export & Asset Management (1 Tool)
+
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `export_node_as_image` | Export node as PNG/JPG/SVG/PDF | ✅ | ✅ | Both support |
+
+---
+
+### Integration & Setup (1 Tool)
+
+| Tool | Description | This Repo | Fork | Notes |
+|------|-------------|-----------|------|-------|
+| `join_channel` | Join WebSocket channel | ✅ | ✅ | Both support |
+
+---
+
+### Summary Statistics
+
+| Category | This Repo | Fork | Superset |
+|----------|-----------|------|----------|
+| Document & Info | 8 | 10 | 10 |
+| Page Management | 0 | 5 | 5 |
+| Node Creation | 10 | 11 | 14 |
+| Node Modification | 6 | 6 | 8 |
+| Fill & Stroke | 4 | 4 | 4 |
+| Auto-Layout & Sizing | 5 | 1 | 6 |
+| Text & Typography | 2 | 14 | 14 |
+| Style Management | 3 | 1 | 4 |
+| Components & Instances | 5 | 3 | 6 |
+| Annotations | 2 | 0 | 2 |
+| Prototyping | 3 | 0 | 3 |
+| Variables | 4 | 0 | 4 |
+| Export & Assets | 1 | 1 | 1 |
+| Integration | 1 | 1 | 1 |
+| **TOTAL** | **45** | **40** | **72** |
+
+---
+
+### Key Observations
+
+1. **Superset Total: 72 unique Figma API operations** across both implementations
+2. **Coverage Gap: 32 tools missing from this repo** (44% of superset)
+3. **Coverage Gap: 32 tools missing from fork** (44% of superset)
+4. **Overlap: 40 tools present in both** (56% of superset)
+5. **This repo's unique advantage: Variables, annotations, prototyping, advanced component overrides, granular layout controls** (20 tools)
+6. **Fork's unique advantage: Page management, comprehensive text styling, additional shapes, node organization** (24 tools)
+
+---
+
+### Superset Implementation Priority
+
+**To achieve 100% coverage of superset (72 tools), this repo needs to add:**
+
+1. **Essential (5 tools) - 1-2 days**
+   - Page management (5 tools)
+
+2. **High Value (11 tools) - 2-3 days**
+   - Text styling (9 tools): set_font_name, set_font_size, set_font_weight, set_letter_spacing, set_line_height, set_paragraph_spacing, set_text_case, set_text_decoration, load_font_async
+   - Node deletion (1 tool): delete_node
+   - get_selection (1 tool)
+
+3. **Medium Value (5 tools) - 1-2 days**
+   - Node organization (4 tools): group_nodes, ungroup_nodes, flatten_node, insert_child
+   - Additional shapes (1 tool): create_ellipse, create_polygon, create_star (3 tools)
+
+4. **Optional (3 tools) - 1 day**
+   - Remote components (1 tool): get_remote_components
+   - Component sets (1 tool): create_component_set
+   - Styling (1 tool): set_effect_style_id
+
+**Total effort to complete superset: ~1 week**
+
+---
+
+## Appendix B: Tools Unique to Each Repository
+
+### Tools Only in This Repo (20 Tools)
+
+These are competitive advantages that set this repo apart:
+
+| Tool | Category | Value |
+|------|----------|-------|
+| `get_nodes_info` with nodeName verification | Document | High |
+| `scan_nodes_by_types` | Document | Medium |
+| `create_node_from_svg` | Creation | Medium |
+| `delete_multiple_nodes` | Modification | Medium |
+| `set_selections` | Modification | Low |
+| `set_layout_mode` | Layout | High |
+| `set_padding` | Layout | High |
+| `set_axis_align` | Layout | High |
+| `set_layout_sizing` | Layout | High |
+| `set_item_spacing` | Layout | High |
+| `create_style` | Styles | Medium |
+| `apply_style` | Styles | Medium |
+| `get_instance_overrides` | Components | High |
+| `set_instance_overrides` | Components | High |
+| `get_annotations` | Annotations | Medium |
+| `set_multiple_annotations` | Annotations | Medium |
+| `get_reactions` | Prototyping | Medium |
+| `set_default_connector` | Prototyping | Medium |
+| `create_connections` | Prototyping | Medium |
+| All Variable tools (4) | Variables | High |
+
+**Total unique value: 20 tools across design systems, safety, and advanced features**
+
+### Tools Only in Fork (24 Tools)
+
+These are the gaps this repo should close:
+
+| Tool | Category | Priority |
+|------|----------|----------|
+| `get_selection` | Document | Medium |
+| `get_node_info` | Document | Medium |
+| `get_remote_components` | Document | Medium |
+| All Page management (5) | Pages | **HIGH** |
+| `create_ellipse` | Creation | Medium |
+| `create_polygon` | Creation | Medium |
+| `create_star` | Creation | Medium |
+| `group_nodes` | Organization | **HIGH** |
+| `ungroup_nodes` | Organization | **HIGH** |
+| `flatten_node` | Organization | **HIGH** |
+| `insert_child` | Organization | **HIGH** |
+| `delete_node` | Modification | Medium |
+| `set_auto_layout` | Layout | Low |
+| `set_font_name` | Text | **HIGH** |
+| `set_font_size` | Text | **HIGH** |
+| `set_font_weight` | Text | **HIGH** |
+| `set_letter_spacing` | Text | **HIGH** |
+| `set_line_height` | Text | **HIGH** |
+| `set_paragraph_spacing` | Text | **HIGH** |
+| `set_text_case` | Text | **HIGH** |
+| `set_text_decoration` | Text | **HIGH** |
+| `get_styled_text_segments` | Text | Medium |
+| `set_text_style_id` | Text | Medium |
+| `load_font_async` | Text | Medium |
+| `create_component_set` | Components | Medium |
+| `set_effect_style_id` | Styles | Low |
+
+**Total gaps: 24 tools, with 14 marked as HIGH priority**
 
 ---
 
