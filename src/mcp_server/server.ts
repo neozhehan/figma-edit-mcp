@@ -145,6 +145,37 @@ server.tool(
   }
 );
 
+// Page Info Tool
+server.tool(
+  "get_page_info",
+  "Get information about a specific page in Figma including its children",
+  {
+    pageId: z.string().optional().describe("ID of the page to inspect (default: current page)")
+  },
+  async ({ pageId }: any) => {
+    try {
+      const result = await sendCommandToFigma("get_page_info", { pageId });
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result)
+          }
+        ]
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Error getting page info: ${error instanceof Error ? error.message : String(error)}`
+          },
+        ],
+      };
+    }
+  }
+);
+
 /*
 // Selection Tool
 server.tool(
@@ -2550,6 +2581,7 @@ This detailed process ensures you correctly interpret the reaction data, prepare
 // Define command types and parameters
 type FigmaCommand =
   | "get_document_info"
+  | "get_page_info"
   | "get_nodes_info"
   | "create_rectangle"
   | "create_frame"
@@ -2595,6 +2627,7 @@ type FigmaCommand =
 
 type CommandParams = {
   get_document_info: Record<string, never>;
+  get_page_info: { pageId?: string };
   get_nodes_info: { nodeIds: string[] };
   create_rectangle: {
     x: number;

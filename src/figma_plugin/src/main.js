@@ -7,7 +7,7 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 
 // Import handlers
-import { getDocumentInfo, getSelection, getNodesInfo, readMyDesign } from '../handlers/nodeReaders.js';
+import { getDocumentInfo, getSelection, getNodesInfo, readMyDesign, getPageInfo } from '../handlers/nodeReaders.js';
 import { createRectangle, createFrame, createText, cloneNode } from '../handlers/nodeCreators.js';
 import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName } from '../handlers/nodeModifiers.js';
 import { setFillColor, setStrokeColor, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
@@ -385,6 +385,8 @@ async function handleCommand(command, params) {
 
         case "get_document_info":
             return await getDocumentInfo();
+        case "get_page_info":
+            return await getPageInfo(params);
         case "get_selection":
             return await getSelection();
         case "get_nodes_info":

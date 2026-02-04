@@ -10,29 +10,60 @@ import { filterFigmaNode } from '../utils/nodeUtils.js';
  * @returns {Promise<Object>} Document information including pages and children
  */
 export async function getDocumentInfo() {
-    await figma.currentPage.loadAsync();
+    await figma.loadAllPagesAsync();
     const page = figma.currentPage;
+
+    // Get all pages from document root
+    // Note: figma.root.children returns all pages
+    const allPages = figma.root.children.map((p) => ({
+        id: p.id,
+        name: p.name,
+        childCount: p.children.length,
+        isCurrent: p.id === page.id,
+    }));
+
     return {
-        name: page.name,
-        id: page.id,
-        type: page.type,
-        children: page.children.map((node) => ({
+        name: figma.root.name,
+        id: figma.root.id,
+        type: "DOCUMENT",
+        currentPageId: page.id,
+        currentPageName: page.name,
+        pages: allPages,
+        pageCount: allPages.length,
+    };
+}
+
+/**
+ * Gets the content of a specific page
+ * @param {Object} params - Parameters including pageId
+ * @returns {Promise<Object>} Page information including children
+ */
+export async function getPageInfo(params) {
+    const { pageId } = params || {};
+
+    let targetPage = figma.currentPage;
+
+    if (pageId && pageId !== figma.currentPage.id) {
+        // Find the requested page
+        targetPage = figma.root.children.find(p => p.id === pageId);
+        if (!targetPage) {
+            throw new Error(`Page with ID ${pageId} not found`);
+        }
+        await targetPage.loadAsync();
+    } else {
+        await figma.currentPage.loadAsync();
+    }
+
+    return {
+        id: targetPage.id,
+        name: targetPage.name,
+        type: "PAGE",
+        isCurrent: targetPage.id === figma.currentPage.id,
+        children: targetPage.children.map((node) => ({
             id: node.id,
             name: node.name,
             type: node.type,
         })),
-        currentPage: {
-            id: page.id,
-            name: page.name,
-            childCount: page.children.length,
-        },
-        pages: [
-            {
-                id: page.id,
-                name: page.name,
-                childCount: page.children.length,
-            },
-        ],
     };
 }
 
