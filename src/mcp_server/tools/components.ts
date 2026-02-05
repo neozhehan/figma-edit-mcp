@@ -8,14 +8,20 @@ import {
 import { normalizeNodeId } from "../utils.js";
 
 export function registerComponentTools(server: McpServer) {
-    // Get Local Components Tool
+    // Get Components Tool
     server.tool(
-        "get_local_components",
-        "Get all local components from the Figma document",
-        {},
-        async () => {
+        "get_components",
+        "Get components from the Figma document with filtering options",
+        {
+            filter: z.enum(["local", "remote"]).optional().describe("Filter components by origin: 'local' (created in this file) or 'remote' (library components). If omitted, returns all."),
+            scope: z.enum(["current_page", "document"]).optional().default("current_page").describe("Scope of the search: 'current_page' (default) or 'document' (entire file, slower)."),
+        },
+        async ({ filter, scope }: any) => {
             try {
-                const result = await sendCommandToFigma("get_local_components");
+                const result = await sendCommandToFigma("get_components", {
+                    filter,
+                    scope,
+                });
                 return {
                     content: [
                         {
@@ -29,14 +35,15 @@ export function registerComponentTools(server: McpServer) {
                     content: [
                         {
                             type: "text",
-                            text: `Error getting local components: ${error instanceof Error ? error.message : String(error)
-                                }`,
+                            text: `Error getting components: ${error instanceof Error ? error.message : String(error)}`,
                         },
                     ],
                 };
             }
         }
     );
+
+
 
     // Create Component Tool
     server.tool(

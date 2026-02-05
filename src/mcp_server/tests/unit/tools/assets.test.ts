@@ -1,12 +1,11 @@
-
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 
 // Define mocks
-jest.unstable_mockModule('../../../figma-client.js', () => ({
-    sendCommandToFigma: jest.fn(),
+mock.module('../../../figma-client.js', () => ({
+    sendCommandToFigma: mock(() => Promise.resolve({})),
 }));
 
-jest.unstable_mockModule('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+mock.module('@modelcontextprotocol/sdk/server/mcp.js', () => ({
     McpServer: class { },
 }));
 
@@ -21,11 +20,11 @@ describe("Asset Tools", () => {
     beforeEach(() => {
         registeredTools = {};
         mockServer = {
-            tool: jest.fn((name, description, schema, handler) => {
+            tool: mock((name, description, schema, handler) => {
                 registeredTools[name] = handler;
             })
         };
-        (sendCommandToFigma as jest.Mock).mockReset();
+        (sendCommandToFigma as any).mockClear();
     });
 
     it("should register asset tools", () => {
@@ -36,7 +35,7 @@ describe("Asset Tools", () => {
 
     it("export_node_as_image should call sendCommandToFigma with correct params", async () => {
         registerAssetTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({
+        (sendCommandToFigma as any).mockResolvedValue({
             imageData: "base64data",
             mimeType: "image/png"
         });

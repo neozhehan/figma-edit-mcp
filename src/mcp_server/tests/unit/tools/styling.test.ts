@@ -1,17 +1,16 @@
-
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 
 // Define mocks
-jest.unstable_mockModule('../../../figma-client.js', () => ({
-    sendCommandToFigma: jest.fn(),
+mock.module('../../../figma-client.js', () => ({
+    sendCommandToFigma: mock(() => Promise.resolve({})),
 }));
 
-jest.unstable_mockModule('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+mock.module('@modelcontextprotocol/sdk/server/mcp.js', () => ({
     McpServer: class { },
 }));
 
-jest.unstable_mockModule('../../../utils.js', () => ({
-    normalizeNodeId: jest.fn((id: string) => id),
+mock.module('../../../utils.js', () => ({
+    normalizeNodeId: mock((id) => id),
 }));
 
 // Import modules
@@ -25,11 +24,11 @@ describe("Styling Tools", () => {
     beforeEach(() => {
         registeredTools = {};
         mockServer = {
-            tool: jest.fn((name, description, schema, handler) => {
+            tool: mock((name, description, schema, handler) => {
                 registeredTools[name] = handler;
             })
         };
-        (sendCommandToFigma as jest.Mock).mockReset();
+        (sendCommandToFigma as any).mockClear();
     });
 
     it("should register styling tools", () => {
@@ -46,7 +45,7 @@ describe("Styling Tools", () => {
 
     it("set_fill_color should call sendCommandToFigma with correct params", async () => {
         registerStylingTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Test Node" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Test Node" });
 
         const params = { nodeId: "node-1", nodeName: "Test Node", r: 1, g: 0, b: 0 };
         const result = await registeredTools["set_fill_color"](params);
@@ -61,7 +60,7 @@ describe("Styling Tools", () => {
 
     it("set_stroke_color should call sendCommandToFigma with correct params", async () => {
         registerStylingTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Test Node" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Test Node" });
 
         const params = { nodeId: "node-1", nodeName: "Test Node", r: 0, g: 1, b: 0, weight: 2 };
         const result = await registeredTools["set_stroke_color"](params);
@@ -77,7 +76,7 @@ describe("Styling Tools", () => {
 
     it("set_corner_radius should call sendCommandToFigma with correct params", async () => {
         registerStylingTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Test Node" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Test Node" });
 
         const params = { nodeId: "node-1", nodeName: "Test Node", radius: 10 };
         const result = await registeredTools["set_corner_radius"](params);
@@ -93,7 +92,7 @@ describe("Styling Tools", () => {
 
     it("get_styles should call sendCommandToFigma", async () => {
         registerStylingTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue([{ id: "style-1", name: "My Style" }]);
+        (sendCommandToFigma as any).mockResolvedValue([{ id: "style-1", name: "My Style" }]);
 
         const result = await registeredTools["get_styles"]({});
 
@@ -103,7 +102,7 @@ describe("Styling Tools", () => {
 
     it("create_style should call sendCommandToFigma with correct params", async () => {
         registerStylingTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ id: "style-1", name: "New Style" });
+        (sendCommandToFigma as any).mockResolvedValue({ id: "style-1", name: "New Style" });
 
         const params = { type: "PAINT", name: "New Style", description: "Desc", propertiesJson: '{"paints":[]}' };
         const result = await registeredTools["create_style"](params);
@@ -119,7 +118,7 @@ describe("Styling Tools", () => {
 
     it("apply_style should call sendCommandToFigma with correct params", async () => {
         registerStylingTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ success: true });
+        (sendCommandToFigma as any).mockResolvedValue({ success: true });
 
         const params = { nodeId: "node-1", nodeName: "Node", styleId: "style-1", styleType: "FILL" };
         const result = await registeredTools["apply_style"](params);

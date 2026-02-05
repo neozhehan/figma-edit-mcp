@@ -15,7 +15,7 @@ import { setFillColor, setStrokeColor, setCornerRadius, setEffects } from '../ha
 import { setLayoutMode, setPadding, setAxisAlign, setLayoutSizing, setItemSpacing } from '../handlers/layoutHandlers.js';
 import {
     getStyles,
-    getLocalComponents,
+    getComponents,
     createComponentInstance,
     exportNodeAsImage,
     getInstanceOverrides,
@@ -404,8 +404,8 @@ async function handleCommand(command, params) {
             return await readMyDesign();
         case "get_styles":
             return await getStyles();
-        case "get_local_components":
-            return await getLocalComponents();
+        case "get_components":
+            return await getComponents(params);
         case "export_node_as_image":
             return await exportNodeAsImage(params);
         case "scan_text_nodes":

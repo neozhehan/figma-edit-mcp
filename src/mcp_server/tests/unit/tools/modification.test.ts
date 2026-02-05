@@ -1,17 +1,16 @@
-
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 
 // Define mocks
-jest.unstable_mockModule('../../../figma-client.js', () => ({
-    sendCommandToFigma: jest.fn(),
+mock.module('../../../figma-client.js', () => ({
+    sendCommandToFigma: mock(() => Promise.resolve({})),
 }));
 
-jest.unstable_mockModule('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+mock.module('@modelcontextprotocol/sdk/server/mcp.js', () => ({
     McpServer: class { },
 }));
 
-jest.unstable_mockModule('../../../utils.js', () => ({
-    normalizeNodeId: jest.fn((id: string) => id),
+mock.module('../../../utils.js', () => ({
+    normalizeNodeId: mock((id) => id),
 }));
 
 // Import modules
@@ -25,11 +24,11 @@ describe("Modification Tools", () => {
     beforeEach(() => {
         registeredTools = {};
         mockServer = {
-            tool: jest.fn((name, description, schema, handler) => {
+            tool: mock((name, description, schema, handler) => {
                 registeredTools[name] = handler;
             })
         };
-        (sendCommandToFigma as jest.Mock).mockReset();
+        (sendCommandToFigma as any).mockClear();
     });
 
     it("should register modification tools", () => {
@@ -45,7 +44,7 @@ describe("Modification Tools", () => {
 
     it("move_node should call sendCommandToFigma with correct params", async () => {
         registerModificationTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Test Node" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Test Node" });
 
         const params = { nodeId: "node-1", nodeName: "Test Node", x: 50, y: 50 };
         const result = await registeredTools["move_node"](params);
@@ -56,7 +55,7 @@ describe("Modification Tools", () => {
 
     it("resize_node should call sendCommandToFigma with correct params", async () => {
         registerModificationTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Test Node" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Test Node" });
 
         const params = { nodeId: "node-1", nodeName: "Test Node", width: 200, height: 100 };
         const result = await registeredTools["resize_node"](params);
@@ -67,7 +66,7 @@ describe("Modification Tools", () => {
 
     it("set_node_name should call sendCommandToFigma with correct params", async () => {
         registerModificationTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "New Name", oldName: "Old Name" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "New Name", oldName: "Old Name" });
 
         const params = { nodeId: "node-1", nodeName: "Old Name", name: "New Name" };
         const result = await registeredTools["set_node_name"](params);
@@ -78,7 +77,7 @@ describe("Modification Tools", () => {
 
     it("delete_multiple_nodes should call sendCommandToFigma with correct params", async () => {
         registerModificationTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ deletedCount: 2 });
+        (sendCommandToFigma as any).mockResolvedValue({ deletedCount: 2 });
 
         const params = { nodes: [{ nodeId: "1", nodeName: "A" }, { nodeId: "2", nodeName: "B" }] };
         const result = await registeredTools["delete_multiple_nodes"](params);
@@ -89,7 +88,7 @@ describe("Modification Tools", () => {
 
     it("clone_node should call sendCommandToFigma with correct params", async () => {
         registerModificationTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Cloned Node", id: "node-new" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Cloned Node", id: "node-new" });
 
         const params = { nodeId: "node-1", nodeName: "Test Node" };
         const result = await registeredTools["clone_node"](params);
@@ -100,7 +99,7 @@ describe("Modification Tools", () => {
 
     it("set_selections should call sendCommandToFigma with correct params", async () => {
         registerModificationTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ count: 1, selectedNodes: [{ id: "node-1", name: "Test Node" }] });
+        (sendCommandToFigma as any).mockResolvedValue({ count: 1, selectedNodes: [{ id: "node-1", name: "Test Node" }] });
 
         const params = { nodeIds: ["node-1"] };
         const result = await registeredTools["set_selections"](params);

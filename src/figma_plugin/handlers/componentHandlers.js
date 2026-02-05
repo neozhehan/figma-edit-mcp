@@ -45,25 +45,47 @@ export async function getStyles() {
 }
 
 /**
- * Gets all local components from the document
+ * Gets components from the document with optional filtering
+ * @param {Object} params - Parameters object
+ * @param {string} params.filter - 'local' or 'remote' (undefined = all)
+ * @param {string} params.scope - 'current_page' (default) or 'document'
  * @returns {Promise<Object>} Object containing component count and list
  */
-export async function getLocalComponents() {
-    await figma.loadAllPagesAsync();
+export async function getComponents(params) {
+    const { filter, scope = 'current_page' } = params || {};
+    // scope: 'current_page' (default) or 'document' (slow)
 
-    const components = figma.root.findAllWithCriteria({
+    let searchRoot = figma.currentPage;
+
+    if (scope === 'document') {
+        await figma.loadAllPagesAsync();
+        searchRoot = figma.root;
+    }
+
+    let components = searchRoot.findAllWithCriteria({
         types: ["COMPONENT"],
     });
 
+    if (filter === 'local') {
+        components = components.filter(c => !c.remote);
+    } else if (filter === 'remote') {
+        components = components.filter(c => c.remote);
+    }
+
     return {
         count: components.length,
+        scope: scope,
         components: components.map((component) => ({
             id: component.id,
             name: component.name,
-            key: "key" in component ? component.key : null,
+            key: component.key,
+            remote: component.remote,
+            pageId: component.parent?.type === 'PAGE' ? component.parent.id : 'nested',
         })),
     };
 }
+
+
 
 /**
  * Creates an instance of a component

@@ -1,12 +1,11 @@
-
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 
 // Define mocks
-jest.unstable_mockModule('../../../figma-client.js', () => ({
-    sendCommandToFigma: jest.fn(),
+mock.module('../../../figma-client.js', () => ({
+    sendCommandToFigma: mock(() => Promise.resolve({})),
 }));
 
-jest.unstable_mockModule('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+mock.module('@modelcontextprotocol/sdk/server/mcp.js', () => ({
     McpServer: class { },
 }));
 
@@ -21,12 +20,12 @@ describe("Annotation Tools", () => {
     beforeEach(() => {
         registeredTools = {};
         mockServer = {
-            tool: jest.fn((name, description, schema, handler) => {
+            tool: mock((name, description, schema, handler) => {
                 registeredTools[name] = handler;
             }),
-            prompt: jest.fn()
+            prompt: mock(() => { })
         };
-        (sendCommandToFigma as jest.Mock).mockReset();
+        (sendCommandToFigma as any).mockClear();
     });
 
     it("should register annotation tools", () => {
@@ -38,7 +37,7 @@ describe("Annotation Tools", () => {
 
     it("get_annotations should call sendCommandToFigma with correct params", async () => {
         registerAnnotationTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ categories: [] });
+        (sendCommandToFigma as any).mockResolvedValue({ categories: [] });
 
         const params = { nodeId: "node-1", includeCategories: true };
         const result = await registeredTools["get_annotations"](params);
@@ -49,7 +48,7 @@ describe("Annotation Tools", () => {
 
     it("set_multiple_annotations should call sendCommandToFigma with correct params", async () => {
         registerAnnotationTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({
+        (sendCommandToFigma as any).mockResolvedValue({
             success: true,
             annotationsApplied: 1,
             completedInChunks: 1

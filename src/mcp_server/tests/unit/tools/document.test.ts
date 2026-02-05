@@ -1,13 +1,12 @@
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 
-import { jest } from '@jest/globals';
-
-// Define mocks before imports
-jest.unstable_mockModule('../../../figma-client.js', () => ({
-    sendCommandToFigma: jest.fn(),
-    joinChannel: jest.fn()
+// Define mocks
+mock.module('../../../figma-client.js', () => ({
+    sendCommandToFigma: mock(() => Promise.resolve({})),
+    joinChannel: mock(() => Promise.resolve())
 }));
 
-jest.unstable_mockModule('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+mock.module('@modelcontextprotocol/sdk/server/mcp.js', () => ({
     McpServer: class { },
 }));
 
@@ -22,12 +21,12 @@ describe("Document Tools", () => {
     beforeEach(() => {
         registeredTools = {};
         mockServer = {
-            tool: jest.fn((name, description, schema, handler) => {
+            tool: mock((name, description, schema, handler) => {
                 registeredTools[name] = handler;
             }),
-            prompt: jest.fn()
+            prompt: mock(() => { })
         };
-        (sendCommandToFigma as jest.Mock).mockReset();
+        (sendCommandToFigma as any).mockClear();
     });
 
     it("should register document tools", () => {
@@ -40,7 +39,7 @@ describe("Document Tools", () => {
     it("get_document_info should call sendCommandToFigma and return result", async () => {
         // Setup
         const mockResult = { id: "doc-123", name: "My Doc" };
-        (sendCommandToFigma as jest.Mock).mockResolvedValue(mockResult);
+        (sendCommandToFigma as any).mockResolvedValue(mockResult);
 
         // Register to get the handler
         registerDocumentTools(mockServer as any);
@@ -56,7 +55,7 @@ describe("Document Tools", () => {
     it("get_page_info should call sendCommandToFigma with correct params", async () => {
         // Setup
         const mockResult = { id: "page-123", name: "My Page", children: [] };
-        (sendCommandToFigma as jest.Mock).mockResolvedValue(mockResult);
+        (sendCommandToFigma as any).mockResolvedValue(mockResult);
 
         // Register to get the handler
         registerDocumentTools(mockServer as any);

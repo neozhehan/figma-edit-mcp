@@ -1,12 +1,11 @@
-
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 
 // Define mocks before imports
-jest.unstable_mockModule('../../../figma-client.js', () => ({
-    sendCommandToFigma: jest.fn(),
+mock.module('../../../figma-client.js', () => ({
+    sendCommandToFigma: mock(() => Promise.resolve({})),
 }));
 
-jest.unstable_mockModule('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+mock.module('@modelcontextprotocol/sdk/server/mcp.js', () => ({
     McpServer: class { },
 }));
 
@@ -21,11 +20,11 @@ describe("Creation Tools", () => {
     beforeEach(() => {
         registeredTools = {};
         mockServer = {
-            tool: jest.fn((name, description, schema, handler) => {
+            tool: mock((name, description, schema, handler) => {
                 registeredTools[name] = handler;
             })
         };
-        (sendCommandToFigma as jest.Mock).mockReset();
+        (sendCommandToFigma as any).mockClear();
     });
 
     it("should register creation tools", () => {
@@ -37,7 +36,7 @@ describe("Creation Tools", () => {
     it("create_rectangle should call sendCommandToFigma with correct params", async () => {
         // Setup
         const mockResult = { id: "rect-1", name: "Rectangle" };
-        (sendCommandToFigma as jest.Mock).mockResolvedValue(mockResult);
+        (sendCommandToFigma as any).mockResolvedValue(mockResult);
 
         // Register
         registerCreationTools(mockServer as any);

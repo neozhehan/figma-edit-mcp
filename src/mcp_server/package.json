@@ -7,9 +7,7 @@
   "scripts": {
     "start": "node --loader ts-node/esm server.ts",
     "build": "tsc",
-    "dev": "node --loader ts-node/esm --watch server.ts",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:watch": "jest --watch"
+    "dev": "node --loader ts-node/esm --watch server.ts"
   },
   "keywords": [
     "figma",
@@ -24,12 +22,9 @@
     "zod": "3.22.4"
   },
   "devDependencies": {
-    "@types/jest": "^30.0.0",
     "@types/node": "^20.10.5",
     "@types/uuid": "^9.0.7",
     "@types/ws": "^8.5.10",
-    "jest": "^30.2.0",
-    "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
   }

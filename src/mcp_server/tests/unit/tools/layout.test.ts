@@ -1,17 +1,16 @@
-
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 
 // Define mocks
-jest.unstable_mockModule('../../../figma-client.js', () => ({
-    sendCommandToFigma: jest.fn(),
+mock.module('../../../figma-client.js', () => ({
+    sendCommandToFigma: mock(() => Promise.resolve({})),
 }));
 
-jest.unstable_mockModule('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+mock.module('@modelcontextprotocol/sdk/server/mcp.js', () => ({
     McpServer: class { },
 }));
 
-jest.unstable_mockModule('../../../utils.js', () => ({
-    normalizeNodeId: jest.fn((id: string) => id),
+mock.module('../../../utils.js', () => ({
+    normalizeNodeId: mock((id) => id),
 }));
 
 // Import modules
@@ -25,11 +24,11 @@ describe("Layout Tools", () => {
     beforeEach(() => {
         registeredTools = {};
         mockServer = {
-            tool: jest.fn((name, description, schema, handler) => {
+            tool: mock((name, description, schema, handler) => {
                 registeredTools[name] = handler;
             })
         };
-        (sendCommandToFigma as jest.Mock).mockReset();
+        (sendCommandToFigma as any).mockClear();
     });
 
     it("should register layout tools", () => {
@@ -44,7 +43,7 @@ describe("Layout Tools", () => {
 
     it("set_layout_mode should call sendCommandToFigma with correct params", async () => {
         registerLayoutTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Frame" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Frame" });
 
         const params = { nodeId: "node-1", nodeName: "Frame", layoutMode: "VERTICAL", layoutWrap: "WRAP" };
         const result = await registeredTools["set_layout_mode"](params);
@@ -55,7 +54,7 @@ describe("Layout Tools", () => {
 
     it("set_padding should call sendCommandToFigma with correct params", async () => {
         registerLayoutTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Frame" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Frame" });
 
         const params = { nodeId: "node-1", nodeName: "Frame", paddingTop: 10, paddingBottom: 10 };
         const result = await registeredTools["set_padding"](params);
@@ -70,7 +69,7 @@ describe("Layout Tools", () => {
 
     it("set_axis_align should call sendCommandToFigma with correct params", async () => {
         registerLayoutTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Frame" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Frame" });
 
         const params = { nodeId: "node-1", nodeName: "Frame", primaryAxisAlignItems: "CENTER" };
         const result = await registeredTools["set_axis_align"](params);
@@ -81,7 +80,7 @@ describe("Layout Tools", () => {
 
     it("set_layout_sizing should call sendCommandToFigma with correct params", async () => {
         registerLayoutTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Frame" });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Frame" });
 
         const params = { nodeId: "node-1", nodeName: "Frame", layoutSizingHorizontal: "FILL" };
         const result = await registeredTools["set_layout_sizing"](params);
@@ -92,7 +91,7 @@ describe("Layout Tools", () => {
 
     it("set_item_spacing should call sendCommandToFigma with correct params", async () => {
         registerLayoutTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ name: "Frame", itemSpacing: 20 });
+        (sendCommandToFigma as any).mockResolvedValue({ name: "Frame", itemSpacing: 20 });
 
         const params = { nodeId: "node-1", expectedName: "Frame", itemSpacing: 20 };
         const result = await registeredTools["set_item_spacing"](params);

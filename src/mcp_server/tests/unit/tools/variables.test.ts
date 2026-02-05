@@ -1,17 +1,16 @@
-
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 
 // Define mocks
-jest.unstable_mockModule('../../../figma-client.js', () => ({
-    sendCommandToFigma: jest.fn(),
+mock.module('../../../figma-client.js', () => ({
+    sendCommandToFigma: mock(() => Promise.resolve({})),
 }));
 
-jest.unstable_mockModule('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+mock.module('@modelcontextprotocol/sdk/server/mcp.js', () => ({
     McpServer: class { },
 }));
 
-jest.unstable_mockModule('../../../utils.js', () => ({
-    normalizeNodeId: jest.fn((id: string) => id),
+mock.module('../../../utils.js', () => ({
+    normalizeNodeId: mock((id) => id),
 }));
 
 // Import modules
@@ -25,11 +24,11 @@ describe("Variables Tools", () => {
     beforeEach(() => {
         registeredTools = {};
         mockServer = {
-            tool: jest.fn((name, description, schema, handler) => {
+            tool: mock((name, description, schema, handler) => {
                 registeredTools[name] = handler;
             })
         };
-        (sendCommandToFigma as jest.Mock).mockReset();
+        (sendCommandToFigma as any).mockClear();
     });
 
     it("should register variables tools", () => {
@@ -43,7 +42,7 @@ describe("Variables Tools", () => {
 
     it("get_variables should call sendCommandToFigma with correct params", async () => {
         registerVariablesTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue([]);
+        (sendCommandToFigma as any).mockResolvedValue([]);
 
         const params = { variableId: "var-1" };
         const result = await registeredTools["get_variables"](params);
@@ -54,7 +53,7 @@ describe("Variables Tools", () => {
 
     it("get_node_variables should call sendCommandToFigma with correct params", async () => {
         registerVariablesTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({});
+        (sendCommandToFigma as any).mockResolvedValue({});
 
         const params = { nodeId: "node-1" };
         const result = await registeredTools["get_node_variables"](params);
@@ -65,7 +64,7 @@ describe("Variables Tools", () => {
 
     it("set_bound_variable should call sendCommandToFigma with correct params", async () => {
         registerVariablesTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ success: true });
+        (sendCommandToFigma as any).mockResolvedValue({ success: true });
 
         const params = { nodeId: "node-1", nodeName: "Node", field: "fills", variableId: "var-1" };
         const result = await registeredTools["set_bound_variable"](params);
@@ -76,7 +75,7 @@ describe("Variables Tools", () => {
 
     it("manage_variables should call sendCommandToFigma with correct params", async () => {
         registerVariablesTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ id: "var-new" });
+        (sendCommandToFigma as any).mockResolvedValue({ id: "var-new" });
 
         const params = { action: "CREATE_VARIABLE", name: "New Var", collectionId: "col-1", type: "STRING", value: "Hello" };
         const result = await registeredTools["manage_variables"](params);

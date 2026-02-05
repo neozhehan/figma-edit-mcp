@@ -20,15 +20,16 @@ This plan outlines the steps required to implement the enhancements detailed in 
 ### 2. Rename & Enhance Component Getter
 **Goal**: Rename `get_local_components` to `get_components` and add filtering/scoping.
 
-*   [ ] **Server**: Update [src/mcp_server/tools/components.ts](src/mcp_server/tools/components.ts)
+*   [x] **Server**: Update [src/mcp_server/tools/components.ts](src/mcp_server/tools/components.ts)
     *   Add `get_components` tool definition (parameters: `filter`, `scope`).
-    *   Deprecate `get_local_components`.
-*   [ ] **Test**: Create/Update unit tests in `tests/unit/tools/components.test.ts`
-*   [ ] **Plugin**: Update [src/figma_plugin/handlers/componentHandlers.js](src/figma_plugin/handlers/componentHandlers.js)
+    *   Remove `get_local_components`.
+*   [x] **Test**: Create/Update unit tests in `tests/unit/tools/components.test.ts`
+*   [x] **Plugin**: Update [src/figma_plugin/handlers/componentHandlers.js](src/figma_plugin/handlers/componentHandlers.js)
     *   Implement `getComponents` with `scope` (default: 'current_page') and `filter` ('local'/'remote').
-*   [ ] **Plugin**: Update `src/figma_plugin/main.js`
+    *   Remove `getLocalComponents`.
+*   [x] **Plugin**: Update `src/figma_plugin/main.js`
     *   Add `get_components` to `handleCommand` switch.
-    *   Maintain `get_local_components` route for backward compatibility (optional, or mark as deprecated).
+    *   Remove `get_local_components` route.
 
 ### 3. Consolidate Connector Tools
 **Goal**: Merge `set_default_connector` into `create_connections`.

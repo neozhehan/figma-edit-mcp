@@ -1,12 +1,11 @@
-
-import { jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, mock } from "bun:test";
 
 // Define mocks
-jest.unstable_mockModule('../../../figma-client.js', () => ({
-    sendCommandToFigma: jest.fn(),
+mock.module('../../../figma-client.js', () => ({
+    sendCommandToFigma: mock(() => Promise.resolve({})),
 }));
 
-jest.unstable_mockModule('@modelcontextprotocol/sdk/server/mcp.js', () => ({
+mock.module('@modelcontextprotocol/sdk/server/mcp.js', () => ({
     McpServer: class { },
 }));
 
@@ -21,12 +20,12 @@ describe("Prototyping Tools", () => {
     beforeEach(() => {
         registeredTools = {};
         mockServer = {
-            tool: jest.fn((name, description, schema, handler) => {
+            tool: mock((name, description, schema, handler) => {
                 registeredTools[name] = handler;
             }),
-            prompt: jest.fn()
+            prompt: mock(() => { })
         };
-        (sendCommandToFigma as jest.Mock).mockReset();
+        (sendCommandToFigma as any).mockClear();
     });
 
     it("should register prototyping tools", () => {
@@ -39,7 +38,7 @@ describe("Prototyping Tools", () => {
 
     it("get_reactions should call sendCommandToFigma with correct params", async () => {
         registerPrototypingTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue([]);
+        (sendCommandToFigma as any).mockResolvedValue([]);
 
         const params = { nodeIds: ["node-1"] };
         const result = await registeredTools["get_reactions"](params);
@@ -51,7 +50,7 @@ describe("Prototyping Tools", () => {
 
     it("set_default_connector should call sendCommandToFigma with correct params", async () => {
         registerPrototypingTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ success: true });
+        (sendCommandToFigma as any).mockResolvedValue({ success: true });
 
         const params = { connectorId: "conn-1" };
         const result = await registeredTools["set_default_connector"](params);
@@ -62,7 +61,7 @@ describe("Prototyping Tools", () => {
 
     it("create_connections should call sendCommandToFigma with correct params", async () => {
         registerPrototypingTools(mockServer as any);
-        (sendCommandToFigma as jest.Mock).mockResolvedValue({ count: 1 });
+        (sendCommandToFigma as any).mockResolvedValue({ count: 1 });
 
         const params = {
             connections: [{ startNodeId: "1", startNodeName: "A", endNodeId: "2", endNodeName: "B" }]
