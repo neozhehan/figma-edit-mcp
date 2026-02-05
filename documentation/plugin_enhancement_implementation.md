@@ -63,14 +63,14 @@ This plan outlines the steps required to implement the enhancements detailed in 
 ### 5. Unified Auto-Layout
 **Goal**: Replace 5 layout tools with `set_auto_layout`.
 
-*   [ ] **Server**: Update [src/mcp_server/tools/layout.ts](src/mcp_server/tools/layout.ts)
+*   [x] **Server**: Update [src/mcp_server/tools/layout.ts](src/mcp_server/tools/layout.ts)
     *   Add `set_auto_layout` tool definition.
     *   Remove redundant `set_layout_mode`, `set_padding`, etc.
-*   [ ] **Test**: Create/Update unit tests in `tests/unit/tools/layout.test.ts`
-*   [ ] **Plugin**: Create/Update [src/figma_plugin/handlers/layoutHandlers.js](src/figma_plugin/handlers/layoutHandlers.js)
+*   [x] **Test**: Create/Update unit tests in `tests/unit/tools/layout.test.ts`
+*   [x] **Plugin**: Create/Update [src/figma_plugin/handlers/layoutHandlers.js](src/figma_plugin/handlers/layoutHandlers.js)
     *   Implement `setAutoLayout`.
     *   **Strict Handler**: Ensure missing parameters are treated as noops.
-*   [ ] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `src/figma_plugin/main.js`
     *   Add `set_auto_layout` to `handleCommand` switch.
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName` are implemented.
 

@@ -80,7 +80,7 @@ export async function getComponents(params) {
             name: component.name,
             key: component.key,
             remote: component.remote,
-            pageId: component.parent?.type === 'PAGE' ? component.parent.id : 'nested',
+            pageId: (component.parent && component.parent.type === 'PAGE') ? component.parent.id : 'nested',
         })),
     };
 }

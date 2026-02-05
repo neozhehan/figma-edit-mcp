@@ -20,7 +20,7 @@ async function build() {
         bundle: true,
         outfile: join(__dirname, 'dist/code.js'),
         format: 'iife',
-        target: ['es2020'],
+        target: ['es2018'],
         platform: 'browser',
         minify: false,
         sourcemap: false,

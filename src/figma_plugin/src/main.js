@@ -12,7 +12,7 @@ import { createRectangle, createFrame, createText, cloneNode } from '../handlers
 import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName } from '../handlers/nodeModifiers.js';
 import { setFillColor, setStrokeColor, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
 
-import { setLayoutMode, setPadding, setAxisAlign, setLayoutSizing, setItemSpacing } from '../handlers/layoutHandlers.js';
+import { setAutoLayout } from '../handlers/layoutHandlers.js';
 import {
     getStyles,
     getComponents,
@@ -219,31 +219,11 @@ async function handleCommand(command, params) {
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setCornerRadius(params);
-        case "set_layout_mode":
+        case "set_auto_layout":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setLayoutMode(params);
-        case "set_padding":
-            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setPadding(params);
-        case "set_axis_align":
-            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setAxisAlign(params);
-        case "set_layout_sizing":
-            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setLayoutSizing(params);
-        case "set_item_spacing":
-            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setItemSpacing(params);
+            return await setAutoLayout(params);
         case "set_bound_variable":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
