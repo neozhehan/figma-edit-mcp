@@ -8,7 +8,7 @@ import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js
 
 // Import handlers
 import { getDocumentInfo, getSelection, getNodesInfo, readMyDesign, getPageInfo } from '../handlers/nodeReaders.js';
-import { createRectangle, createFrame, createText, cloneNode } from '../handlers/nodeCreators.js';
+import { createRectangle, createFrame, createText, cloneNode, createEllipse, createPolygonStar } from '../handlers/nodeCreators.js';
 import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName } from '../handlers/nodeModifiers.js';
 import { setFillColor, setStrokeColor, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
 
@@ -266,6 +266,16 @@ async function handleCommand(command, params) {
             if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
             if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
             return await createText(params);
+        case "create_ellipse":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            return await createEllipse(params);
+        case "create_polygon_star":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            return await createPolygonStar(params);
         case "create_component_instance":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
 

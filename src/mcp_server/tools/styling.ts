@@ -26,14 +26,14 @@ export function registerStylingTools(server: McpServer) {
                 const result = await sendCommandToFigma("set_fill_color", {
                     nodeId,
                     nodeName,
-                    color: { r, g, b, a: a || 1 },
+                    color: { r, g, b, a: a ?? 1 },
                 });
                 const typedResult = result as { name: string };
                 return {
                     content: [
                         {
                             type: "text",
-                            text: `Set fill color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a || 1
+                            text: `Set fill color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a ?? 1
                                 })`,
                         },
                     ],
@@ -75,7 +75,7 @@ export function registerStylingTools(server: McpServer) {
                 const result = await sendCommandToFigma("set_stroke_color", {
                     nodeId,
                     nodeName,
-                    color: { r, g, b, a: a || 1 },
+                    color: { r, g, b, a: a ?? 1 },
                     weight: weight || 1,
                 });
                 const typedResult = result as { name: string };
@@ -83,7 +83,7 @@ export function registerStylingTools(server: McpServer) {
                     content: [
                         {
                             type: "text",
-                            text: `Set stroke color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a || 1
+                            text: `Set stroke color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a ?? 1
                                 }) with weight ${weight || 1}`,
                         },
                     ],

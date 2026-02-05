@@ -22,8 +22,14 @@ export function registerCreationTools(server: McpServer) {
                 .string()
                 .optional()
                 .describe("Name of the parent node to verify against"),
+            useAbsolutePosition: z
+                .boolean()
+                .optional()
+                .describe(
+                    "If true and parent is an auto-layout frame, forces absolute positioning to prevent layout shifts."
+                ),
         },
-        async ({ x, y, width, height, name, parentId, parentNodeName }: any) => {
+        async ({ x, y, width, height, name, parentId, parentNodeName, useAbsolutePosition }: any) => {
             try {
                 const result = await sendCommandToFigma("create_rectangle", {
                     x,
@@ -33,6 +39,7 @@ export function registerCreationTools(server: McpServer) {
                     name: name || "Rectangle",
                     parentId,
                     parentNodeName,
+                    useAbsolutePosition,
                 });
                 return {
                     content: [
@@ -256,6 +263,167 @@ export function registerCreationTools(server: McpServer) {
                             type: "text",
                             text: `Error creating node from SVG: ${error instanceof Error ? error.message : String(error)
                                 }`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
+
+    // Create Ellipse Tool
+    server.tool(
+        "create_ellipse",
+        "Create a new ellipse (circle, arc, donut) in Figma",
+        {
+            x: z.number().describe("X position"),
+            y: z.number().describe("Y position"),
+            width: z.number().describe("Width of the ellipse"),
+            height: z.number().describe("Height of the ellipse"),
+            arcData: z
+                .object({
+                    startingAngle: z.number().optional().describe("Arc start in radians (0 = right/x-axis, default: 0)"),
+                    endingAngle: z.number().optional().describe("Arc end in radians, clockwise (default: 2π for full ellipse)"),
+                    innerRadius: z.number().min(0).max(1).optional().describe("0.0–1.0, creates donut hole (default: 0)"),
+                })
+                .optional()
+                .describe("Optional arc data for creating arcs/donuts"),
+            name: z.string().optional().describe("Optional name for the ellipse"),
+            parentId: z
+                .string()
+                .optional()
+                .describe("Optional parent node ID to append the ellipse to"),
+            parentNodeName: z
+                .string()
+                .optional()
+                .describe("Name of the parent node to verify against"),
+            fillColor: z
+                .object({
+                    r: z.number().min(0).max(1).describe("Red component (0-1)"),
+                    g: z.number().min(0).max(1).describe("Green component (0-1)"),
+                    b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+                    a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
+                })
+                .optional()
+                .describe("Fill color in RGBA format"),
+            strokeColor: z
+                .object({
+                    r: z.number().min(0).max(1).describe("Red component (0-1)"),
+                    g: z.number().min(0).max(1).describe("Green component (0-1)"),
+                    b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+                    a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
+                })
+                .optional()
+                .describe("Stroke color in RGBA format"),
+            useAbsolutePosition: z
+                .boolean()
+                .optional()
+                .describe(
+                    "If true and parent is an auto-layout frame, forces absolute positioning to prevent layout shifts."
+                ),
+        },
+        async ({ x, y, width, height, arcData, name, parentId, parentNodeName, fillColor, strokeColor, useAbsolutePosition }: any) => {
+            try {
+                if (parentId) parentId = normalizeNodeId(parentId);
+                const result = await sendCommandToFigma("create_ellipse", {
+                    x,
+                    y,
+                    width,
+                    height,
+                    arcData,
+                    name,
+                    parentId,
+                    parentNodeName,
+                    fillColor,
+                    strokeColor,
+                    useAbsolutePosition,
+                });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error creating ellipse: ${error instanceof Error ? error.message : String(error)}`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
+
+    // Create Polygon/Star Tool
+    server.tool(
+        "create_polygon_star",
+        "Create a new polygon or star in Figma",
+        {
+            x: z.number().describe("X position"),
+            y: z.number().describe("Y position"),
+            width: z.number().describe("Width of the shape"),
+            height: z.number().describe("Height of the shape"),
+            pointCount: z.number().min(3).describe("Total vertex count (≥3). For stars, this is the number of points."),
+            innerRadius: z.number().min(0).max(1).optional().describe("0.0–1.0, star sharpness (default: 1.0 = polygon). If < 1.0, pointCount must be even."),
+            name: z.string().optional().describe("Optional name for the shape"),
+            parentId: z
+                .string()
+                .optional()
+                .describe("Optional parent node ID to append the shape to"),
+            parentNodeName: z
+                .string()
+                .optional()
+                .describe("Name of the parent node to verify against"),
+            fillColor: z
+                .object({
+                    r: z.number().min(0).max(1).describe("Red component (0-1)"),
+                    g: z.number().min(0).max(1).describe("Green component (0-1)"),
+                    b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+                    a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
+                })
+                .optional()
+                .describe("Fill color in RGBA format"),
+            strokeColor: z
+                .object({
+                    r: z.number().min(0).max(1).describe("Red component (0-1)"),
+                    g: z.number().min(0).max(1).describe("Green component (0-1)"),
+                    b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+                    a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
+                })
+                .optional()
+                .describe("Stroke color in RGBA format"),
+            useAbsolutePosition: z
+                .boolean()
+                .optional()
+                .describe(
+                    "If true and parent is an auto-layout frame, forces absolute positioning to prevent layout shifts."
+                ),
+        },
+        async ({ x, y, width, height, pointCount, innerRadius, name, parentId, parentNodeName, fillColor, strokeColor, useAbsolutePosition }: any) => {
+            try {
+                if (parentId) parentId = normalizeNodeId(parentId);
+                const result = await sendCommandToFigma("create_polygon_star", {
+                    x,
+                    y,
+                    width,
+                    height,
+                    pointCount,
+                    innerRadius,
+                    name,
+                    parentId,
+                    parentNodeName,
+                    fillColor,
+                    strokeColor,
+                    useAbsolutePosition,
+                });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error creating polygon/star: ${error instanceof Error ? error.message : String(error)}`,
                         },
                     ],
                 };

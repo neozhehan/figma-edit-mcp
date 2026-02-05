@@ -79,13 +79,13 @@ This plan outlines the steps required to implement the enhancements detailed in 
 ### 6. Shape Creation
 **Goal**: Add `create_ellipse` and `create_polygon_star`.
 
-*   [ ] **Server**: Update [src/mcp_server/tools/creation.ts](src/mcp_server/tools/creation.ts)
+*   [x] **Server**: Update [src/mcp_server/tools/creation.ts](src/mcp_server/tools/creation.ts)
     *   Display `create_ellipse` and `create_polygon_star` tools.
-*   [ ] **Test**: Create/Update unit tests in `tests/unit/tools/creation.test.ts`
-*   [ ] **Plugin**: Update [src/figma_plugin/handlers/nodeCreators.js](src/figma_plugin/handlers/nodeCreators.js)
+*   [x] **Test**: Create/Update unit tests in `tests/unit/tools/creation.test.ts`
+*   [x] **Plugin**: Update [src/figma_plugin/handlers/nodeCreators.js](src/figma_plugin/handlers/nodeCreators.js)
     *   Implement `createEllipse` (supports arcs/donuts).
     *   Implement `createPolygonStar` (unified polygon/star logic).
-*   [ ] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `src/figma_plugin/main.js`
     *   Register new commands in switch.
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess` (on parent), and `verifyParentName` are implemented.
 

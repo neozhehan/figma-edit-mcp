@@ -24,6 +24,7 @@ export async function createRectangle(params) {
         height = 100,
         name = "Rectangle",
         parentId,
+        useAbsolutePosition = false,
     } = params || {};
 
     const rect = figma.createRectangle();
@@ -44,6 +45,16 @@ export async function createRectangle(params) {
         parentNode.appendChild(rect);
     } else {
         figma.currentPage.appendChild(rect);
+    }
+
+    // Handle absolute positioning if requested and parent is auto-layout
+    if (useAbsolutePosition && parentId) {
+        const parent = rect.parent;
+        if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
+            rect.layoutPositioning = "ABSOLUTE";
+            rect.x = x;
+            rect.y = y;
+        }
     }
 
     return {
@@ -135,7 +146,7 @@ export async function createFrame(params) {
                 g: parseFloat(fillColor.g) || 0,
                 b: parseFloat(fillColor.b) || 0,
             },
-            opacity: parseFloat(fillColor.a) || 1,
+            opacity: parseFloat(fillColor.a) ?? 1,
         };
         frame.fills = [paintStyle];
     }
@@ -149,7 +160,7 @@ export async function createFrame(params) {
                 g: parseFloat(strokeColor.g) || 0,
                 b: parseFloat(strokeColor.b) || 0,
             },
-            opacity: parseFloat(strokeColor.a) || 1,
+            opacity: parseFloat(strokeColor.a) ?? 1,
         };
         frame.strokes = [strokeStyle];
     }
@@ -268,7 +279,7 @@ export async function createText(params) {
             g: parseFloat(fontColor.g) || 0,
             b: parseFloat(fontColor.b) || 0,
         },
-        opacity: parseFloat(fontColor.a) || 1,
+        opacity: parseFloat(fontColor.a) ?? 1,
     };
     textNode.fills = [paintStyle];
 
@@ -350,4 +361,151 @@ export async function cloneNode(params) {
         width: "width" in clone ? clone.width : undefined,
         height: "height" in clone ? clone.height : undefined,
     };
+}
+
+/**
+ * Creates a new ellipse node (circle, arc, donut)
+ * @param {Object} params - Parameters object
+ * @param {number} params.x - X position
+ * @param {number} params.y - Y position
+ * @param {number} params.width - Width of ellipse
+ * @param {number} params.height - Height of ellipse
+ * @param {Object} params.arcData - Optional arc properties (startingAngle, endingAngle, innerRadius)
+ * @param {string} params.name - Name of ellipse
+ * @param {string} params.parentId - Optional parent node ID
+ * @param {Object} params.fillColor - Optional fill color
+ * @param {Object} params.strokeColor - Optional stroke color
+ * @returns {Promise<Object>} Created ellipse info
+ */
+export async function createEllipse(params) {
+    const { x = 0, y = 0, width = 100, height = 100, arcData, name = "Ellipse", parentId, fillColor, strokeColor, useAbsolutePosition = false } = params || {};
+
+    let parent = figma.currentPage;
+    if (parentId) {
+        parent = await figma.getNodeByIdAsync(parentId);
+        if (!parent) {
+            throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+    }
+
+    const node = figma.createEllipse();
+    node.x = x;
+    node.y = y;
+    node.resize(width, height);
+
+    // Apply arc data if provided
+    if (arcData) {
+        node.arcData = {
+            startingAngle: arcData.startingAngle ?? 0,
+            endingAngle: arcData.endingAngle ?? Math.PI * 2,
+            innerRadius: arcData.innerRadius ?? 0
+        };
+    }
+
+    if (name) node.name = name;
+
+    if (fillColor) {
+        node.fills = [{
+            type: 'SOLID',
+            color: { r: fillColor.r, g: fillColor.g, b: fillColor.b },
+            opacity: fillColor.a ?? 1
+        }];
+    }
+
+    if (strokeColor) {
+        node.strokes = [{
+            type: 'SOLID',
+            color: { r: strokeColor.r, g: strokeColor.g, b: strokeColor.b },
+            opacity: strokeColor.a ?? 1
+        }];
+    }
+
+    parent.appendChild(node);
+
+    // Handle absolute positioning if requested and parent is auto-layout
+    if (useAbsolutePosition && parentId) {
+        if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
+            node.layoutPositioning = "ABSOLUTE";
+            node.x = x;
+            node.y = y;
+        }
+    }
+
+    return { id: node.id, name: node.name, type: node.type };
+}
+
+/**
+ * Creates a new polygon or star node
+ * @param {Object} params - Parameters object
+ * @param {number} params.x - X position
+ * @param {number} params.y - Y position
+ * @param {number} params.width - Width of shape
+ * @param {number} params.height - Height of shape
+ * @param {number} params.pointCount - Vertex count
+ * @param {number} params.innerRadius - Star sharpness (0-1)
+ * @param {string} params.name - Name of shape
+ * @param {string} params.parentId - Optional parent node ID
+ * @param {Object} params.fillColor - Optional fill color
+ * @param {Object} params.strokeColor - Optional stroke color
+ * @returns {Promise<Object>} Created shape info
+ */
+export async function createPolygonStar(params) {
+    const { x = 0, y = 0, width = 100, height = 100, pointCount, innerRadius = 1.0, name, parentId, fillColor, strokeColor, useAbsolutePosition = false } = params || {};
+
+    let parent = figma.currentPage;
+    if (parentId) {
+        parent = await figma.getNodeByIdAsync(parentId);
+        if (!parent) {
+            throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+    }
+
+    let node;
+    if (innerRadius === 1.0) {
+        // Regular polygon
+        node = figma.createPolygon();
+        node.pointCount = pointCount;
+    } else {
+        // Star shape - pointCount must be even
+        if (pointCount % 2 !== 0) {
+            throw new Error("Stars require even pointCount (equal inner/outer vertices)");
+        }
+        node = figma.createStar();
+        node.pointCount = pointCount / 2;  // Figma's pointCount = spike count
+        node.innerRadius = innerRadius;
+    }
+
+    node.x = x;
+    node.y = y;
+    node.resize(width, height);
+    if (name) node.name = name;
+
+    if (fillColor) {
+        node.fills = [{
+            type: 'SOLID',
+            color: { r: fillColor.r, g: fillColor.g, b: fillColor.b },
+            opacity: fillColor.a ?? 1
+        }];
+    }
+
+    if (strokeColor) {
+        node.strokes = [{
+            type: 'SOLID',
+            color: { r: strokeColor.r, g: strokeColor.g, b: strokeColor.b },
+            opacity: strokeColor.a ?? 1
+        }];
+    }
+
+    parent.appendChild(node);
+
+    // Handle absolute positioning if requested and parent is auto-layout
+    if (useAbsolutePosition && parentId) {
+        if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
+            node.layoutPositioning = "ABSOLUTE";
+            node.x = x;
+            node.y = y;
+        }
+    }
+
+    return { id: node.id, name: node.name, type: node.type };
 }

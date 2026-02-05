@@ -31,6 +31,8 @@ describe("Creation Tools", () => {
         registerCreationTools(mockServer as any);
         expect(mockServer.tool).toHaveBeenCalled();
         expect(registeredTools["create_rectangle"]).toBeDefined();
+        expect(registeredTools["create_ellipse"]).toBeDefined();
+        expect(registeredTools["create_polygon_star"]).toBeDefined();
     });
 
     it("create_rectangle should call sendCommandToFigma with correct params", async () => {
@@ -50,5 +52,69 @@ describe("Creation Tools", () => {
             x: 10, y: 20, width: 100, height: 100, name: "Test Rect"
         }));
         expect(result.content[0].text).toContain("Created rectangle");
+    });
+
+    it("create_ellipse should call sendCommandToFigma with correct params", async () => {
+        // Setup
+        const mockResult = { id: "ellipse-1", name: "Ellipse" };
+        (sendCommandToFigma as any).mockResolvedValue(mockResult);
+
+        // Register
+        registerCreationTools(mockServer as any);
+
+        // Execute
+        const params = {
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 100,
+            name: "Test Ellipse",
+            arcData: { startingAngle: 0, endingAngle: 3.14, innerRadius: 0.5 }
+        };
+        const result = await registeredTools["create_ellipse"](params);
+
+        // Verify
+        expect(sendCommandToFigma).toHaveBeenCalledWith("create_ellipse", expect.objectContaining({
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 100,
+            name: "Test Ellipse",
+            arcData: { startingAngle: 0, endingAngle: 3.14, innerRadius: 0.5 }
+        }));
+        expect(result.content[0].text).toContain(JSON.stringify(mockResult, null, 2));
+    });
+
+    it("create_polygon_star should call sendCommandToFigma with correct params", async () => {
+        // Setup
+        const mockResult = { id: "star-1", name: "Star" };
+        (sendCommandToFigma as any).mockResolvedValue(mockResult);
+
+        // Register
+        registerCreationTools(mockServer as any);
+
+        // Execute
+        const params = {
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 100,
+            name: "Test Star",
+            pointCount: 5,
+            innerRadius: 0.5
+        };
+        const result = await registeredTools["create_polygon_star"](params);
+
+        // Verify
+        expect(sendCommandToFigma).toHaveBeenCalledWith("create_polygon_star", expect.objectContaining({
+            x: 10,
+            y: 20,
+            width: 100,
+            height: 100,
+            name: "Test Star",
+            pointCount: 5,
+            innerRadius: 0.5
+        }));
+        expect(result.content[0].text).toContain(JSON.stringify(mockResult, null, 2));
     });
 });
