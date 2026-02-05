@@ -36,7 +36,7 @@ This plan outlines the steps required to implement the enhancements detailed in 
 
 *   [ ] **Server**: Update [src/mcp_server/tools/prototyping.ts](src/mcp_server/tools/prototyping.ts)
     *   Update `create_connections` schema to accept `connectorId`.
-    *   Deprecate `set_default_connector`.
+    *   Remove redundant `set_default_connector`.
 *   [ ] **Test**: Create/Update unit tests in `tests/unit/tools/prototyping.test.ts`
 *   [ ] **Plugin**: Update [src/figma_plugin/handlers/connectorHandlers.js](src/figma_plugin/handlers/connectorHandlers.js)
     *   Refactor `createConnections` to handle optional `connectorId` (set as default template).
@@ -51,7 +51,7 @@ This plan outlines the steps required to implement the enhancements detailed in 
 
 *   [x] **Server**: Update [src/mcp_server/tools/text.ts](src/mcp_server/tools/text.ts)
     *   Add `set_text_style` tool definition with all optional styling parameters.
-    *   Deprecate individual text tools (`set_font_size`, `set_font_weight`, etc.).
+    *   Remove redundant individual text tools (`set_font_size`, `set_font_weight`, etc.).
 *   [x] **Test**: Create/Update unit tests in `tests/unit/tools/text.test.ts`
 *   [x] **Plugin**: Create/Update [src/figma_plugin/handlers/textHandlers.js](src/figma_plugin/handlers/textHandlers.js)
     *   Implement `setTextStyle` with conditional font loading.
@@ -65,7 +65,7 @@ This plan outlines the steps required to implement the enhancements detailed in 
 
 *   [ ] **Server**: Update [src/mcp_server/tools/layout.ts](src/mcp_server/tools/layout.ts)
     *   Add `set_auto_layout` tool definition.
-    *   Deprecate `set_layout_mode`, `set_padding`, etc.
+    *   Remove redundant `set_layout_mode`, `set_padding`, etc.
 *   [ ] **Test**: Create/Update unit tests in `tests/unit/tools/layout.test.ts`
 *   [ ] **Plugin**: Create/Update [src/figma_plugin/handlers/layoutHandlers.js](src/figma_plugin/handlers/layoutHandlers.js)
     *   Implement `setAutoLayout`.
