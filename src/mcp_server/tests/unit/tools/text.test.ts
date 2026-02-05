@@ -91,4 +91,20 @@ describe("Text Tools", () => {
         }, 120000);
         expect(result.content[0].text).toContain("Starting text node scanning");
     });
+
+    it("set_text_style should call sendCommandToFigma with correct params", async () => {
+        registerTextTools(mockServer as any);
+        (sendCommandToFigma as jest.Mock).mockResolvedValue({ id: "123:456" });
+
+        const params = { nodeId: "123-456", fontSize: 24, fontFamily: "Inter", fontStyle: "Bold" };
+        const result = await registeredTools["set_text_style"](params);
+
+        expect(sendCommandToFigma).toHaveBeenCalledWith("set_text_style", expect.objectContaining({
+            nodeId: "123:456",
+            fontSize: 24,
+            fontFamily: "Inter",
+            fontStyle: "Bold"
+        }));
+        expect(result.content[0].text).toBeDefined();
+    });
 });

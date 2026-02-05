@@ -52,4 +52,21 @@ describe("Document Tools", () => {
         expect(sendCommandToFigma).toHaveBeenCalledWith("get_document_info");
         expect(JSON.parse(result.content[0].text)).toEqual(mockResult);
     });
+
+    it("get_page_info should call sendCommandToFigma with correct params", async () => {
+        // Setup
+        const mockResult = { id: "page-123", name: "My Page", children: [] };
+        (sendCommandToFigma as jest.Mock).mockResolvedValue(mockResult);
+
+        // Register to get the handler
+        registerDocumentTools(mockServer as any);
+
+        // Execute
+        const params = { pageId: "page-123" };
+        const result = await registeredTools["get_page_info"](params);
+
+        // Verify
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_page_info", params);
+        expect(JSON.parse(result.content[0].text)).toEqual(mockResult);
+    });
 });

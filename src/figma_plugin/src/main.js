@@ -26,7 +26,7 @@ import {
 } from '../handlers/componentHandlers.js';
 
 import { getReactions, setDefaultConnector, createConnections } from '../handlers/connectorHandlers.js';
-import { scanTextNodes, setMultipleTextContents } from '../handlers/textHandlers.js';
+import { scanTextNodes, setMultipleTextContents, setTextStyle } from '../handlers/textHandlers.js';
 import { getAnnotations, scanNodesByTypes, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
 import { getVariables, getNodeVariables, setBoundVariable, handleVariableRequest } from '../handlers/variableHandlers.js';
 import { createStyle, applyStyle } from '../handlers/styleHandlers.js';
@@ -318,6 +318,12 @@ async function handleCommand(command, params) {
                 if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
             }
             return await setMultipleTextContents(params);
+
+        case "set_text_style":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await setTextStyle(params);
 
         case "set_multiple_annotations":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);

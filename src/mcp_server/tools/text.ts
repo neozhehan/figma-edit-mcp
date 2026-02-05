@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { normalizeNodeId } from "../utils.js";
 import { sendCommandToFigma } from "../figma-client.js";
 
 export function registerTextTools(server: McpServer) {
@@ -109,6 +110,7 @@ export function registerTextTools(server: McpServer) {
         },
         async ({ nodeId, text }: any) => {
             try {
+                nodeId = normalizeNodeId(nodeId);
                 if (!text || text.length === 0) {
                     return {
                         content: [
@@ -131,7 +133,7 @@ export function registerTextTools(server: McpServer) {
                 // Use the plugin's set_multiple_text_contents function with chunking
                 const result = await sendCommandToFigma("set_multiple_text_contents", {
                     nodeId,
-                    text,
+                    text: text.map((item: any) => ({ ...item, nodeId: normalizeNodeId(item.nodeId) })),
                 });
 
                 // Cast the result to a specific type to work with it safely
@@ -188,6 +190,84 @@ export function registerTextTools(server: McpServer) {
                             type: "text",
                             text: `Error setting multiple text contents: ${error instanceof Error ? error.message : String(error)
                                 }`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
+
+    // Set Text Style Tool
+    server.tool(
+        "set_text_style",
+        "Set any combination of text styles on a node",
+        {
+            nodeId: z.string().describe("Target text node ID"),
+            nodeName: z.string().describe("Name of the node (for verification)"),
+            fontFamily: z.string().optional().describe('Font family (e.g., "Inter", "Roboto")'),
+            fontStyle: z.string().optional().describe('Font style including weight (e.g., "Regular", "Bold", "Light Italic")'),
+            fontSize: z.number().optional().describe("Font size in pixels"),
+            letterSpacing: z
+                .object({
+                    value: z.number(),
+                    unit: z.enum(["PIXELS", "PERCENT"]),
+                })
+                .optional()
+                .describe("Letter spacing"),
+            lineHeight: z
+                .union([
+                    z.object({
+                        value: z.number(),
+                        unit: z.enum(["PIXELS", "PERCENT"]),
+                    }),
+                    z.object({
+                        unit: z.literal("AUTO"),
+                    }),
+                ])
+                .optional()
+                .describe("Line height"),
+            paragraphSpacing: z.number().optional().describe("Space between paragraphs in pixels"),
+            textCase: z
+                .enum(["ORIGINAL", "UPPER", "LOWER", "TITLE"])
+                .optional()
+                .describe("Text casing"),
+            textDecoration: z
+                .enum(["NONE", "UNDERLINE", "STRIKETHROUGH"])
+                .optional()
+                .describe("Text decoration"),
+            textAlignHorizontal: z
+                .enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"])
+                .optional()
+                .describe("Horizontal text alignment"),
+            textAlignVertical: z
+                .enum(["TOP", "CENTER", "BOTTOM"])
+                .optional()
+                .describe("Vertical text alignment"),
+        },
+        async (params: any) => {
+            try {
+                const { nodeId, ...rest } = params;
+                const normalizedNodeId = normalizeNodeId(nodeId);
+
+                const result = await sendCommandToFigma("set_text_style", {
+                    nodeId: normalizedNodeId,
+                    ...rest,
+                });
+
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify(result, null, 2),
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error setting text style: ${error instanceof Error ? error.message : String(error)}`,
                         },
                     ],
                 };

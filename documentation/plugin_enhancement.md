@@ -979,7 +979,7 @@ export async function createConnections(params) {
 }
 ```
 
-**MCP server side** ([server.ts](../src/mcp_server/server.ts)):
+**MCP server side** ([src/mcp_server/tools/prototyping.ts](../src/mcp_server/tools/prototyping.ts)):
 
 Add `connectorId` and `connectorNodeName` parameters to the `create_connections` tool schema, then **deprecate** `set_default_connector` (can be removed in a future version).
 

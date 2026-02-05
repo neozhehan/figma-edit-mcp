@@ -106,6 +106,7 @@ export async function getNodesInfo(nodeIds) {
                 });
                 return {
                     nodeId: node.id,
+                    parentId: node.parent ? node.parent.id : null,
                     document: filterFigmaNode(response.document),
                 };
             })

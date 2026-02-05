@@ -126,8 +126,8 @@ export async function deleteMultipleNodes(params) {
     let successCount = 0;
     let failureCount = 0;
 
-    // Process nodes in chunks of 5 to avoid overwhelming Figma
-    const CHUNK_SIZE = 5;
+    // Process nodes in chunks of 50 to avoid overwhelming Figma
+    const CHUNK_SIZE = 50;
     const chunks = [];
 
     for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
@@ -252,7 +252,7 @@ export async function deleteMultipleNodes(params) {
         // Add a small delay between chunks
         if (chunkIndex < chunks.length - 1) {
             console.log("Pausing between chunks...");
-            await delay(1000);
+            await delay(20);
         }
     }
 
