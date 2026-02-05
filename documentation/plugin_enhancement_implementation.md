@@ -34,13 +34,13 @@ This plan outlines the steps required to implement the enhancements detailed in 
 ### 3. Consolidate Connector Tools
 **Goal**: Merge `set_default_connector` into `create_connections`.
 
-*   [ ] **Server**: Update [src/mcp_server/tools/prototyping.ts](src/mcp_server/tools/prototyping.ts)
+*   [x] **Server**: Update [src/mcp_server/tools/prototyping.ts](src/mcp_server/tools/prototyping.ts)
     *   Update `create_connections` schema to accept `connectorId`.
     *   Remove redundant `set_default_connector`.
-*   [ ] **Test**: Create/Update unit tests in `tests/unit/tools/prototyping.test.ts`
-*   [ ] **Plugin**: Update [src/figma_plugin/handlers/connectorHandlers.js](src/figma_plugin/handlers/connectorHandlers.js)
+*   [x] **Test**: Create/Update unit tests in `tests/unit/tools/prototyping.test.ts`
+*   [x] **Plugin**: Update [src/figma_plugin/handlers/connectorHandlers.js](src/figma_plugin/handlers/connectorHandlers.js)
     *   Refactor `createConnections` to handle optional `connectorId` (set as default template).
-*   [ ] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `src/figma_plugin/main.js`
     *   Update `create_connections` validation logic to check `connectorId`.
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName` are applied to `connectorId` (if provided).
 

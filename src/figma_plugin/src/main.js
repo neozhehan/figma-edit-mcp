@@ -25,7 +25,7 @@ import {
     createComponent
 } from '../handlers/componentHandlers.js';
 
-import { getReactions, setDefaultConnector, createConnections } from '../handlers/connectorHandlers.js';
+import { getReactions, createConnections } from '../handlers/connectorHandlers.js';
 import { scanTextNodes, setMultipleTextContents, setTextStyle } from '../handlers/textHandlers.js';
 import { getAnnotations, scanNodesByTypes, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
 import { getVariables, getNodeVariables, setBoundVariable, handleVariableRequest } from '../handlers/variableHandlers.js';
@@ -299,6 +299,13 @@ async function handleCommand(command, params) {
 
         case "create_connections":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+
+            // Validate connectorId if setting default
+            if (params && params.connectorId) {
+                if (!(await checkScopeAccess(params.connectorId))) throw new Error(`Operation denied: Connector node ${params.connectorId} outside editable scope`);
+            }
+
+            // Validate connections if creating lines
             if (params && params.connections && Array.isArray(params.connections)) {
                 for (const conn of params.connections) {
                     if (!(await checkScopeAccess(conn.startNodeId))) throw new Error(`Operation denied: Start node ${conn.startNodeId} outside editable scope`);
@@ -431,9 +438,7 @@ async function handleCommand(command, params) {
                 throw new Error(ERRORS.MISSING_NODE_IDS);
             }
             return await getReactions(params.nodeIds);
-        case "set_default_connector":
-            // Read-only / Local storage operation. Allowed.
-            return await setDefaultConnector(params);
+
         case "set_selections":
             return await setSelections(params);
         case "get_variables":

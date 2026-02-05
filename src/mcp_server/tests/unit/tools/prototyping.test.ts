@@ -32,7 +32,7 @@ describe("Prototyping Tools", () => {
         registerPrototypingTools(mockServer as any);
         expect(mockServer.tool).toHaveBeenCalled();
         expect(registeredTools["get_reactions"]).toBeDefined();
-        expect(registeredTools["set_default_connector"]).toBeDefined();
+        // expect(registeredTools["set_default_connector"]).toBeDefined(); // Removed
         expect(registeredTools["create_connections"]).toBeDefined();
     });
 
@@ -48,18 +48,9 @@ describe("Prototyping Tools", () => {
         expect(result.followUp.prompt).toBe("reaction_to_connector_strategy");
     });
 
-    it("set_default_connector should call sendCommandToFigma with correct params", async () => {
-        registerPrototypingTools(mockServer as any);
-        (sendCommandToFigma as any).mockResolvedValue({ success: true });
+    // it("set_default_connector should call sendCommandToFigma with correct params", async () => { ... }); // Removed
 
-        const params = { connectorId: "conn-1" };
-        const result = await registeredTools["set_default_connector"](params);
-
-        expect(sendCommandToFigma).toHaveBeenCalledWith("set_default_connector", params);
-        expect(result.content[0].text).toContain('"success":true');
-    });
-
-    it("create_connections should call sendCommandToFigma with correct params", async () => {
+    it("create_connections should call sendCommandToFigma with correct params (create lines)", async () => {
         registerPrototypingTools(mockServer as any);
         (sendCommandToFigma as any).mockResolvedValue({ count: 1 });
 
@@ -68,7 +59,19 @@ describe("Prototyping Tools", () => {
         };
         const result = await registeredTools["create_connections"](params);
 
-        expect(sendCommandToFigma).toHaveBeenCalledWith("create_connections", params);
+        expect(sendCommandToFigma).toHaveBeenCalledWith("create_connections", expect.objectContaining({ connections: params.connections }));
         expect(result.content[0].text).toContain("Created 1 connections");
+    });
+
+    it("create_connections should handle connectorId (set default)", async () => {
+        registerPrototypingTools(mockServer as any);
+        (sendCommandToFigma as any).mockResolvedValue({ success: true, message: "Default connector set" });
+
+        const params = { connectorId: "conn-1" };
+        const result = await registeredTools["create_connections"](params);
+
+        // It calls "create_connections" command with connectorId
+        expect(sendCommandToFigma).toHaveBeenCalledWith("create_connections", expect.objectContaining({ connectorId: "conn-1" }));
+        expect(result.content[0].text).toContain("Default connector status");
     });
 });

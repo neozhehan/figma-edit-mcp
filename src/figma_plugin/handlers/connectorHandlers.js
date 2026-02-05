@@ -171,7 +171,14 @@ export async function getReactions(nodeIds) {
  * @param {string} params.connectorId - Optional connector ID to set as default
  * @returns {Promise<Object>} Result with connector info
  */
-export async function setDefaultConnector(params) {
+/**
+ * Sets or retrieves the default connector
+ * Helper function, not directly exposed as a tool anymore (logic integrated into createConnections)
+ * @param {Object} params - Parameters object
+ * @param {string} params.connectorId - Optional connector ID to set as default
+ * @returns {Promise<Object>} Result with connector info
+ */
+async function activeSetDefaultConnector(params) {
     const { connectorId } = params || {};
 
     // If connectorId is provided, search and set by that ID (do not check existing storage)
@@ -248,8 +255,12 @@ export async function setDefaultConnector(params) {
                     autoSelected: true
                 };
             } else {
-                // If no connector is found in the current page, show a guide message
-                throw new Error('No connector found in the current page. Please create a connector in Figma first or specify a connector ID.');
+                // Return status indicating failure to find default connector (don't throw error if just checking)
+                return {
+                    success: false,
+                    message: "No default connector set and none found on current page.",
+                    exists: false
+                };
             }
         } catch (error) {
             // Error occurred while running findAllWithCriteria
@@ -257,6 +268,9 @@ export async function setDefaultConnector(params) {
         }
     }
 }
+
+// Export for backward compatibility if needed, but intended to be internal now
+export const setDefaultConnector = activeSetDefaultConnector;
 
 /**
  * Creates a cursor node for nested node connections
@@ -371,16 +385,43 @@ export async function createCursorNode(targetNodeId) {
 
 /**
  * Creates connections between nodes
+ * Also handles setting/checking default connector
  * @param {Object} params - Parameters object
- * @param {Array} params.connections - Array of connection objects
- * @returns {Promise<Object>} Result with created connections
+ * @param {Array} params.connections - Optional: Array of connection objects
+ * @param {string} params.connectorId - Optional: connector ID to set as default
+ * @param {boolean} params.checkDefault - Optional: if true, check default connector status
+ * @returns {Promise<Object>} Result with created connections or status
  */
 export async function createConnections(params) {
-    if (!params || !params.connections || !Array.isArray(params.connections)) {
-        throw new Error('Missing or invalid connections parameter');
+    if (!params) {
+        throw new Error('Missing params');
     }
 
-    const { connections } = params;
+    const { connections, connectorId, checkDefault } = params;
+
+    // 1. Handle Connector Management (Set or Check)
+    if (connectorId !== undefined || checkDefault) {
+        const result = await activeSetDefaultConnector({ connectorId });
+
+        // If we are only checking/setting and NOT creating connections, return the result immediately
+        if (!connections || connections.length === 0) {
+            return result;
+        }
+
+        // If setting failed and we wanted to create connections, we might fail unless defaults were found automatically
+        if (connectorId && !result.success) {
+            throw new Error(`Failed to set default connector: ${result.message}`);
+        }
+    }
+
+    // 2. Handle Connection Creation
+    if (!connections || !Array.isArray(connections) || connections.length === 0) {
+        // If we didn't do anything above, warn user
+        if (connectorId === undefined && !checkDefault) {
+            throw new Error('No connections provided and no connectorId specified.');
+        }
+        return { success: true, count: 0, message: "No connections specified." };
+    }
 
     // Command ID for progress tracking
     const commandId = generateCommandId();
@@ -397,16 +438,23 @@ export async function createConnections(params) {
     // Get default connector ID from client storage
     const defaultConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
     if (!defaultConnectorId) {
-        throw new Error('No default connector set. Please try one of the following options to create connections:\n1. Create a connector in FigJam and copy/paste it to your current page, then run the "set_default_connector" command.\n2. Select an existing connector on the current page, then run the "set_default_connector" command.');
+        // Try to find one automatically
+        const autoResult = await activeSetDefaultConnector();
+        if (!autoResult.success) {
+            throw new Error('No default connector set. Please create a connector in FigJam/Figma and copy it to the current page, then run "create_connections" with "connectorId".');
+        }
     }
 
-    // Get the default connector
-    const defaultConnector = await figma.getNodeByIdAsync(defaultConnectorId);
+    // Get the default connector logic again to be safe
+    // (activeSetDefaultConnector might have just set it, need to retrieve node object)
+    const currentDefaultId = await figma.clientStorage.getAsync('defaultConnectorId');
+    const defaultConnector = await figma.getNodeByIdAsync(currentDefaultId);
+
     if (!defaultConnector) {
-        throw new Error(`Default connector not found with ID: ${defaultConnectorId}`);
+        throw new Error(`Default connector node not found (ID: ${currentDefaultId})`);
     }
     if (defaultConnector.type !== 'CONNECTOR') {
-        throw new Error(`Node is not a connector: ${defaultConnectorId}`);
+        throw new Error(`Stored default node is not a connector: ${currentDefaultId}`);
     }
 
     // Results array for connection creation

@@ -45,49 +45,15 @@ export function registerPrototypingTools(server: McpServer) {
         }
     );
 
-    // Create Connectors Tool
+    // Connect Nodes Tool (Consolidated)
     server.tool(
-        "set_default_connector",
-        "Set a copied connector node as the default connector",
+        "create_connections",
+        "Create connections between nodes, or set/check the default connector template. Pass 'connectorId' to set a default. Pass 'connections' to create lines. Pass nothing to check current default.",
         {
             connectorId: z
                 .string()
                 .optional()
-                .describe("The ID of the connector node to set as default"),
-        },
-        async ({ connectorId }: any) => {
-            try {
-                const result = await sendCommandToFigma("set_default_connector", {
-                    connectorId,
-                });
-
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `Default connector set: ${JSON.stringify(result)}`,
-                        },
-                    ],
-                };
-            } catch (error) {
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `Error setting default connector: ${error instanceof Error ? error.message : String(error)
-                                }`,
-                        },
-                    ],
-                };
-            }
-        }
-    );
-
-    // Connect Nodes Tool
-    server.tool(
-        "create_connections",
-        "Create connections between nodes using the default connector style",
-        {
+                .describe("Optional: The ID of the connector node to set as default template"),
             connections: z
                 .array(
                     z.object({
@@ -101,41 +67,64 @@ export function registerPrototypingTools(server: McpServer) {
                             .describe("Optional text to display on the connector"),
                     })
                 )
-                .describe("Array of node connections to create"),
+                .optional()
+                .describe("Optional: Array of node connections to create"),
         },
-        async ({ connections }: any) => {
+        async ({ connectorId, connections }: any) => {
             try {
-                if (!connections || connections.length === 0) {
+                // If checking/setting default (connectorId provided OR no params)
+                if (connectorId !== undefined || !connections) {
+                    const result = await sendCommandToFigma("create_connections", {
+                        connectorId,
+                        checkDefault: !connectorId && !connections // Flag to indicate we just want to check
+                    });
+
+                    if (!connections) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: `Default connector status: ${JSON.stringify(result)}`,
+                                },
+                            ],
+                        };
+                    }
+                }
+
+                // If creating connections
+                if (connections && connections.length > 0) {
+                    const result = await sendCommandToFigma("create_connections", {
+                        connectorId, // Pass checking/setting intent too if present
+                        connections,
+                    });
+
                     return {
                         content: [
                             {
                                 type: "text",
-                                text: "No connections provided",
+                                text: `Created ${connections.length} connections: ${JSON.stringify(
+                                    result
+                                )}`,
                             },
                         ],
                     };
                 }
 
-                const result = await sendCommandToFigma("create_connections", {
-                    connections,
-                });
-
                 return {
                     content: [
                         {
                             type: "text",
-                            text: `Created ${connections.length} connections: ${JSON.stringify(
-                                result
-                            )}`,
+                            text: "No action performed. Provide 'connectorId' to set default, 'connections' to create lines, or no args to check default.",
                         },
                     ],
                 };
+
             } catch (error) {
                 return {
                     content: [
                         {
                             type: "text",
-                            text: `Error creating connections: ${error instanceof Error ? error.message : String(error)
+                            text: `Error in create_connections: ${error instanceof Error ? error.message : String(error)
                                 }`,
                         },
                     ],
@@ -178,10 +167,10 @@ You will receive JSON data from the \`get_reactions\` tool. This data contains a
 
 ### 1. Preparation & Context Gathering
    - **Action:** Call \`get_nodes_info\` on the relevant node(s) to get context about the nodes involved (names, types, etc.). This helps in generating meaningful connector labels later.
-   - **Action:** Call \`set_default_connector\` **without** the \`connectorId\` parameter.
-   - **Check Result:** Analyze the response from \`set_default_connector\`.
+   - **Action:** Call \`create_connections\` **without** any parameters (empty object).
+   - **Check Result:** Analyze the response to see if a default connector is set.
      - If it confirms a default connector is already set (e.g., "Default connector is already set"), proceed to Step 2.
-     - If it indicates no default connector is set (e.g., "No default connector set..."), you **cannot** proceed with \`create_connections\` yet. Inform the user they need to manually copy a connector from FigJam, paste it onto the current page, select it, and then you can run \`set_default_connector({ connectorId: "SELECTED_NODE_ID" })\` before attempting \`create_connections\`. **Do not proceed to Step 2 until a default connector is confirmed.**
+     - If it indicates no default connector is set, you **cannot** proceed with creating connections yet. Inform the user they need to manually copy a connector from FigJam, paste it onto the current page, select it, and then you can run \`create_connections({ connectorId: "SELECTED_NODE_ID" })\` before attempting to create the lines. **Do not proceed to Step 2 until a default connector is confirmed.**
 
 ### 2. Filter and Transform Reactions from \`get_reactions\` Output
    - **Iterate:** Go through the JSON array provided by \`get_reactions\`. For each node in the array:
@@ -197,10 +186,10 @@ You will receive JSON data from the \`get_reactions\` tool. This data contains a
 
 ### 3. Generate Connector Text Labels
    - **For each extracted connection:** Create a concise, descriptive text label string.
-   - **Combine Information:** Use the \`actionType\`, \`triggerType\`, and potentially the names of the source/destination nodes (obtained from Step 1's \`get_nodes_info\` or by calling \`get_nodes_info\` if necessary) to generate the label.
+   - **Combine Information:** Use the \`actionType\`, \`triggerType\`, and potentially the names of the source/destination nodes to generate the label.
    - **Example Labels:**
-     - If \`triggerType\` is "ON\_CLICK" and \`actionType\` is "NAVIGATE": "On click, navigate to [Destination Node Name]"
-     - If \`triggerType\` is "ON\_DRAG" and \`actionType\` is "OPEN\_OVERLAY": "On drag, open [Destination Node Name] overlay"
+     - "On click, navigate to [Destination Node Name]"
+     - "On drag, open [Destination Node Name] overlay"
    - **Keep it brief and informative.** Let this generated string be \`generatedText\`.
 
 ### 4. Prepare the \`connections\` Array for \`create_connections\`
