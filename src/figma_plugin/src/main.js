@@ -9,7 +9,7 @@ import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js
 // Import handlers
 import { getDocumentInfo, getSelection, getNodesInfo, readMyDesign, getPageInfo } from '../handlers/nodeReaders.js';
 import { createRectangle, createFrame, createText, cloneNode, createEllipse, createPolygonStar } from '../handlers/nodeCreators.js';
-import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName } from '../handlers/nodeModifiers.js';
+import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName, groupNodes, ungroupNodes, flattenNode, insertChild } from '../handlers/nodeModifiers.js';
 import { setFillColor, setStrokeColor, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
 
 import { setAutoLayout } from '../handlers/layoutHandlers.js';
@@ -234,6 +234,51 @@ async function handleCommand(command, params) {
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setNodeName(params);
+
+        case "group_nodes":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
+
+            // Explicitly validate all nodes share the same parent
+            if (params.nodes.length > 0) {
+                const firstNode = await figma.getNodeByIdAsync(params.nodes[0].nodeId);
+                if (!firstNode) throw new Error(`Node ${params.nodes[0].nodeId} not found`);
+                const parentId = firstNode.parent?.id;
+
+                for (const item of params.nodes) {
+                    if (!(await checkScopeAccess(item.nodeId))) throw new Error(`Operation denied: Node ${item.nodeId} outside editable scope`);
+                    if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+
+                    // Check parent consistency
+                    const node = await figma.getNodeByIdAsync(item.nodeId);
+                    if (node.parent?.id !== parentId) {
+                        throw new Error(`Invalid Grouping: All nodes must share the same parent. Node "${node.name}" is under a different parent than "${firstNode.name}". Use 'insert_child' to reparent them first.`);
+                    }
+                }
+            }
+            return await groupNodes(params);
+
+        case "ungroup_nodes":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await ungroupNodes(params);
+
+        case "flatten_node":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await flattenNode(params);
+
+        case "insert_child":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            // Validate parent
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            // Validate child
+            if (!(await checkScopeAccess(params ? params.childId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.childId : null, params ? params.childNodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await insertChild(params);
 
         case "move_node":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);

@@ -373,3 +373,120 @@ export async function setNodeName(params) {
         oldName: oldName,
     };
 }
+
+/**
+ * Groups nodes together
+ * @param {Object} params - Parameters object
+ * @param {Array<{nodeId: string, nodeName: string}>} params.nodes - Nodes to group
+ * @param {string} [params.name] - Optional name for the group
+ * @returns {Promise<Object>} Group info
+ */
+export async function groupNodes(params) {
+    const { nodes, name } = params;
+
+    if (!nodes || nodes.length < 2) {
+        throw new Error("At least 2 nodes are required to create a group");
+    }
+
+    // Collect all nodes
+    const resolvedNodes = [];
+    for (const { nodeId } of nodes) {
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (node) resolvedNodes.push(node);
+    }
+
+    if (resolvedNodes.length < 2) {
+        throw new Error("Could not resolve enough nodes to group");
+    }
+
+    // Verify all nodes have the same parent
+    const parent = resolvedNodes[0].parent;
+    if (!parent) {
+        throw new Error("Nodes must have a parent to be grouped");
+    }
+
+    for (const node of resolvedNodes) {
+        if (node.parent !== parent) {
+            throw new Error("All nodes must have the same parent to be grouped");
+        }
+    }
+
+    const group = figma.group(resolvedNodes, parent);
+    if (name) group.name = name;
+
+    return { id: group.id, name: group.name, childCount: group.children.length };
+}
+
+/**
+ * Ungroups a group
+ * @param {Object} params - Parameters object
+ * @param {string} params.nodeId - Group ID
+ * @returns {Promise<Object>} Ungroup info
+ */
+export async function ungroupNodes(params) {
+    const { nodeId } = params;
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+
+    if (node.type !== "GROUP") {
+        throw new Error(`Node is not a group (got ${node.type})`);
+    }
+
+    const parent = node.parent;
+    const children = [...node.children]; // Snapshot children before ungrouping
+    const childIds = children.map(c => ({ id: c.id, name: c.name }));
+
+    figma.ungroup(node);
+
+    return { ungroupedChildren: childIds, parentId: parent ? parent.id : null };
+}
+
+/**
+ * Flattens a node
+ * @param {Object} params - Parameters object
+ * @param {string} params.nodeId - Node ID
+ * @returns {Promise<Object>} Flattened node info
+ */
+export async function flattenNode(params) {
+    const { nodeId } = params;
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
+
+    // Note: flatten() is destructive and replaces the node
+    const flattened = figma.flatten([node]);
+
+    return { id: flattened.id, name: flattened.name, type: flattened.type };
+}
+
+/**
+ * Reparents a node (inserts child)
+ * @param {Object} params - Parameters object
+ * @param {string} params.parentId - New parent ID
+ * @param {string} params.childId - Child ID
+ * @param {number} [params.index] - Index to insert at
+ * @returns {Promise<Object>} Operation info
+ */
+export async function insertChild(params) {
+    const { parentId, childId, index } = params;
+
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) throw new Error(`Parent not found: ${parentId}`);
+
+    if (!('children' in parent)) {
+        throw new Error(`Parent node cannot have children (type: ${parent.type})`);
+    }
+
+    const child = await figma.getNodeByIdAsync(childId);
+    if (!child) throw new Error(`Child not found: ${childId}`);
+
+    // Perform reparenting
+    if (index !== undefined) {
+        parent.insertChild(index, child);
+    } else {
+        parent.appendChild(child);
+    }
+
+    return { childId: child.id, newParentId: parent.id, index: parent.children.indexOf(child) };
+}

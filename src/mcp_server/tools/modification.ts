@@ -249,4 +249,170 @@ export function registerModificationTools(server: McpServer) {
             }
         }
     );
+
+    // Group Nodes Tool
+    server.tool(
+        "group_nodes",
+        "Group multiple nodes into a group",
+        {
+            nodes: z
+                .array(
+                    z.object({
+                        nodeId: z.string().describe("The ID of the node to group"),
+                        nodeName: z.string().describe("Name of the node to modify"),
+                    })
+                )
+                .describe("Array of nodes to group"),
+            name: z.string().optional().describe("Name for the new group"),
+        },
+        async ({ nodes, name }: any) => {
+            try {
+                const result = await sendCommandToFigma("group_nodes", {
+                    nodes,
+                    name,
+                });
+                const typedResult = result as { id: string; name: string; childCount: number };
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Grouped ${typedResult.childCount} nodes into new group "${typedResult.name}" (ID: ${typedResult.id})`,
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error grouping nodes: ${error instanceof Error ? error.message : String(error)
+                                }`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
+
+    // Ungroup Nodes Tool
+    server.tool(
+        "ungroup_nodes",
+        "Ungroup a group node",
+        {
+            nodeId: z.string().describe("The ID of the group to ungroup"),
+            nodeName: z.string().describe("Name of the group to verify against"),
+        },
+        async ({ nodeId, nodeName }: any) => {
+            try {
+                const result = await sendCommandToFigma("ungroup_nodes", {
+                    nodeId,
+                    nodeName,
+                });
+                const typedResult = result as { ungroupedChildren: Array<{ id: string; name: string }>; parentId: string };
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Ungrouped node. Children: ${typedResult.ungroupedChildren
+                                .map((c) => `"${c.name}" (${c.id})`)
+                                .join(", ")}`,
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error ungrouping nodes: ${error instanceof Error ? error.message : String(error)
+                                }`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
+
+    // Flatten Node Tool
+    server.tool(
+        "flatten_node",
+        "Flatten node to vector",
+        {
+            nodeId: z.string().describe("The ID of the node to flatten"),
+            nodeName: z.string().describe("Name of the node to verify against"),
+        },
+        async ({ nodeId, nodeName }: any) => {
+            try {
+                const result = await sendCommandToFigma("flatten_node", {
+                    nodeId,
+                    nodeName,
+                });
+                const typedResult = result as { id: string; name: string; type: string };
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Flattened node to specific vector/shape (ID: ${typedResult.id})`,
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error flattening node: ${error instanceof Error ? error.message : String(error)
+                                }`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
+
+    // Insert Child Tool
+    server.tool(
+        "insert_child",
+        "Reparent a node to a new parent",
+        {
+            parentId: z.string().describe("ID of the new parent node"),
+            parentNodeName: z.string().describe("Name of the parent node to verify against"),
+            childId: z.string().describe("ID of the child node to reparent"),
+            childNodeName: z.string().describe("Name of the child node to verify against"),
+            index: z
+                .number()
+                .optional()
+                .describe("Position in parent's children array (default: append)"),
+        },
+        async ({ parentId, parentNodeName, childId, childNodeName, index }: any) => {
+            try {
+                const result = await sendCommandToFigma("insert_child", {
+                    parentId,
+                    parentNodeName,
+                    childId,
+                    childNodeName,
+                    index,
+                });
+                const typedResult = result as { childId: string; newParentId: string; index: number };
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Inserted child ${typedResult.childId} into parent ${typedResult.newParentId} at index ${typedResult.index}`,
+                        },
+                    ],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error inserting child: ${error instanceof Error ? error.message : String(error)
+                                }`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
 }

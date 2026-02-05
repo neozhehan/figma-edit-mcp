@@ -107,4 +107,57 @@ describe("Modification Tools", () => {
         expect(sendCommandToFigma).toHaveBeenCalledWith("set_selections", params);
         expect(result.content[0].text).toContain('Selected 1 nodes: "Test Node" (node-1)');
     });
+
+    it("group_nodes should call sendCommandToFigma with correct params", async () => {
+        registerModificationTools(mockServer as any);
+        (sendCommandToFigma as any).mockResolvedValue({ id: "group-1", name: "New Group", childCount: 2 });
+
+        const params = {
+            nodes: [{ nodeId: "1", nodeName: "A" }, { nodeId: "2", nodeName: "B" }],
+            name: "New Group"
+        };
+        const result = await registeredTools["group_nodes"](params);
+
+        expect(sendCommandToFigma).toHaveBeenCalledWith("group_nodes", params);
+        expect(result.content[0].text).toContain('Grouped 2 nodes into new group "New Group" (ID: group-1)');
+    });
+
+    it("ungroup_nodes should call sendCommandToFigma with correct params", async () => {
+        registerModificationTools(mockServer as any);
+        (sendCommandToFigma as any).mockResolvedValue({ ungroupedChildren: [{ id: "1", name: "A" }, { id: "2", name: "B" }], parentId: "parent-1" });
+
+        const params = { nodeId: "group-1", nodeName: "Group" };
+        const result = await registeredTools["ungroup_nodes"](params);
+
+        expect(sendCommandToFigma).toHaveBeenCalledWith("ungroup_nodes", params);
+        expect(result.content[0].text).toContain('Ungrouped node. Children: "A" (1), "B" (2)');
+    });
+
+    it("flatten_node should call sendCommandToFigma with correct params", async () => {
+        registerModificationTools(mockServer as any);
+        (sendCommandToFigma as any).mockResolvedValue({ id: "flat-1", name: "Vector", type: "VECTOR" });
+
+        const params = { nodeId: "node-1", nodeName: "Node" };
+        const result = await registeredTools["flatten_node"](params);
+
+        expect(sendCommandToFigma).toHaveBeenCalledWith("flatten_node", params);
+        expect(result.content[0].text).toContain('Flattened node to specific vector/shape (ID: flat-1)');
+    });
+
+    it("insert_child should call sendCommandToFigma with correct params", async () => {
+        registerModificationTools(mockServer as any);
+        (sendCommandToFigma as any).mockResolvedValue({ childId: "child-1", newParentId: "parent-1", index: 0 });
+
+        const params = {
+            parentId: "parent-1",
+            parentNodeName: "Parent",
+            childId: "child-1",
+            childNodeName: "Child",
+            index: 0
+        };
+        const result = await registeredTools["insert_child"](params);
+
+        expect(sendCommandToFigma).toHaveBeenCalledWith("insert_child", params);
+        expect(result.content[0].text).toContain('Inserted child child-1 into parent parent-1 at index 0');
+    });
 });

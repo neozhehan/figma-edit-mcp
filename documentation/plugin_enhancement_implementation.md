@@ -92,12 +92,12 @@ This plan outlines the steps required to implement the enhancements detailed in 
 ### 7. Node Organization
 **Goal**: Add grouping, ungrouping, flattening, reparenting.
 
-*   [ ] **Server**: Update [src/mcp_server/tools/modification.ts](src/mcp_server/tools/modification.ts)
+*   [x] **Server**: Update [src/mcp_server/tools/modification.ts](src/mcp_server/tools/modification.ts)
     *   Add `group_nodes`, `ungroup_nodes`, `flatten_node`, `insert_child`.
-*   [ ] **Test**: Create/Update unit tests in `tests/unit/tools/modification.test.ts`
-*   [ ] **Plugin**: Create [src/figma_plugin/handlers/nodeModifiers.js](src/figma_plugin/handlers/nodeModifiers.js)
+*   [x] **Test**: Create/Update unit tests in `tests/unit/tools/modification.test.ts`
+*   [x] **Plugin**: Create [src/figma_plugin/handlers/nodeModifiers.js](src/figma_plugin/handlers/nodeModifiers.js)
     *   Implement logic for all 4 tools.
-*   [ ] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `src/figma_plugin/main.js`
     *   Register commands.
     *   Add validation logic for `group_nodes` (ensure same parent).
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName`/`verifyParentName` are implemented for all inputs.
