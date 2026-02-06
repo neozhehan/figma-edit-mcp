@@ -234,6 +234,53 @@ export function registerComponentTools(server: McpServer) {
         }
     );
 
+    // Create Component Set Tool
+    server.tool(
+        "create_component_set",
+        "Transforms components into a component set (variants).",
+        {
+            components: z.array(z.object({
+                nodeId: z.string().describe("ID of the component"),
+                nodeName: z.string().describe("Current name (for verification)"),
+                propertyValues: z.array(z.string()).describe("Values corresponding to properties array")
+            })).describe("Array of component objects"),
+            properties: z.array(z.string()).describe("Array of property names (e.g. ['Size', 'State'])"),
+            componentSetName: z.string().optional().describe("Name for the component set"),
+            parentId: z.string().optional().describe("Parent frame to place the set in"),
+            parentNodeName: z.string().optional().describe("Name of parent node (required if parentId provided, for verification)"),
+        },
+        async ({ components, properties, componentSetName, parentId, parentNodeName }: any) => {
+            try {
+                // Normalize IDs
+                const normalizedComponents = components.map((c: any) => ({
+                    ...c,
+                    nodeId: normalizeNodeId(c.nodeId)
+                }));
+                const normalizedParentId = parentId ? normalizeNodeId(parentId) : undefined;
+
+                const result = await sendCommandToFigma("create_component_set", {
+                    components: normalizedComponents,
+                    properties,
+                    componentSetName,
+                    parentId: normalizedParentId,
+                    parentNodeName
+                });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error creating component set: ${error instanceof Error ? error.message : String(error)}`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
+
     // Instance Slot Filling Strategy Prompt
     server.prompt(
         "swap_overrides_instances",

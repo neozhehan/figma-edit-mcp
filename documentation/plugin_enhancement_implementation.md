@@ -105,12 +105,12 @@ This plan outlines the steps required to implement the enhancements detailed in 
 ### 8. Component Variants
 **Goal**: Add `create_component_set`.
 
-*   [ ] **Server**: Update [src/mcp_server/tools/components.ts](src/mcp_server/tools/components.ts)
+*   [x] **Server**: Update [src/mcp_server/tools/components.ts](src/mcp_server/tools/components.ts)
     *   Add `create_component_set` tool with `properties` and `componentSetName`.
-*   [ ] **Test**: Create/Update unit tests in `tests/unit/tools/components.test.ts`
-*   [ ] **Plugin**: Update [src/figma_plugin/handlers/componentHandlers.js](src/figma_plugin/handlers/componentHandlers.js)
+*   [x] **Test**: Create/Update unit tests in `tests/unit/tools/components.test.ts`
+*   [x] **Plugin**: Update [src/figma_plugin/handlers/componentHandlers.js](src/figma_plugin/handlers/componentHandlers.js)
     *   Implement `createComponentSet`.
     *   Add logic to auto-rename components based on `properties` and `propertyValues`.
-*   [ ] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `src/figma_plugin/main.js`
     *   Add validation for property array length matching.
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName` are applied to all input components and parent.

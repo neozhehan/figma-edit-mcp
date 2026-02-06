@@ -55,4 +55,24 @@ describe("Component Tools", () => {
         expect(sendCommandToFigma).toHaveBeenCalledWith("get_components", params);
         expect(JSON.parse(result.content[0].text)).toEqual(mockResult);
     });
+
+    it("create_component_set should call sendCommandToFigma with correct params", async () => {
+        const mockResult = { id: "set_123", name: "Button", type: "COMPONENT_SET" };
+        (sendCommandToFigma as any).mockResolvedValue(mockResult);
+
+        registerComponentTools(mockServer as any);
+
+        const params = {
+            components: [
+                { nodeId: "1:1", nodeName: "Btn 1", propertyValues: ["Small"] },
+                { nodeId: "1:2", nodeName: "Btn 2", propertyValues: ["Large"] }
+            ],
+            properties: ["Size"],
+            componentSetName: "Button"
+        };
+        const result = await registeredTools["create_component_set"](params);
+
+        expect(sendCommandToFigma).toHaveBeenCalledWith("create_component_set", params);
+        expect(JSON.parse(result.content[0].text)).toEqual(mockResult);
+    });
 });

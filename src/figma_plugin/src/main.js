@@ -22,7 +22,8 @@ import {
     getValidTargetInstances,
     getSourceInstanceData,
     setInstanceOverrides,
-    createComponent
+    createComponent,
+    createComponentSet
 } from '../handlers/componentHandlers.js';
 
 import { getReactions, createConnections } from '../handlers/connectorHandlers.js';
@@ -504,6 +505,34 @@ async function handleCommand(command, params) {
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await createComponent(params);
+
+        case "create_component_set":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+
+            // Validate properties match
+            const props = params.properties || [];
+            if (params.components) {
+                if (!Array.isArray(params.components)) throw new Error("components must be an array");
+
+                for (const comp of params.components) {
+                    // Check scope and name for each component
+                    if (!(await checkScopeAccess(comp.nodeId))) throw new Error(`Operation denied: Component ${comp.nodeId} outside editable scope`);
+                    if (!(await verifyNodeName(comp.nodeId, comp.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+
+                    // Check property count
+                    if (!comp.propertyValues || comp.propertyValues.length !== props.length) {
+                        throw new Error(`Property values count for component ${comp.nodeName} does not match properties count`);
+                    }
+                }
+            }
+
+            // Check parent scope if provided
+            if (params.parentId) {
+                if (!(await checkScopeAccess(params.parentId))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
+                if (!(await verifyParentName(params.parentId, params.parentNodeName))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            }
+
+            return await createComponentSet(params);
 
         case "create_node_from_svg":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);

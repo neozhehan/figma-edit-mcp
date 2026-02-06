@@ -610,3 +610,68 @@ export async function createComponent(params) {
         throw new Error(`Error creating component: ${error.message}`);
     }
 }
+
+/**
+ * Creates a component set (variants) from existing components
+ * @param {Object} params - Parameters object
+ * @param {Array} params.components - Array of component objects with propertyValues
+ * @param {Array} params.properties - Array of property names
+ * @param {string} params.componentSetName - Name for the component set
+ * @param {string} params.parentId - Parent node ID to place the set in
+ * @returns {Promise<Object>} Created component set info
+ */
+export async function createComponentSet(params) {
+    const { components, properties, componentSetName, parentId } = params;
+
+    // Validate inputs (basic validation done in main.js, but good to be safe)
+    if (!components || components.length === 0) {
+        throw new Error("Components array is empty");
+    }
+    if (!properties || properties.length === 0) {
+        throw new Error("Properties array is empty");
+    }
+
+    const figmaComponents = [];
+
+    // Process each component: Rename and Collect
+    for (const compData of components) {
+        const component = await figma.getNodeByIdAsync(compData.nodeId);
+        if (!component || component.type !== 'COMPONENT') {
+            throw new Error(`Node ${compData.nodeId} is not a valid component`);
+        }
+
+        // Construct variant name: "Prop1=Val1, Prop2=Val2"
+        if (compData.propertyValues.length !== properties.length) {
+            throw new Error(`Property values count mismatch for component ${component.name}`);
+        }
+
+        const nameParts = properties.map((prop, index) => `${prop}=${compData.propertyValues[index]}`);
+        component.name = nameParts.join(", ");
+
+        figmaComponents.push(component);
+    }
+
+    // Create ComponentSet
+    const componentSet = figma.combineAsVariants(figmaComponents, figma.currentPage);
+
+    // Rename ComponentSet
+    if (componentSetName) {
+        componentSet.name = componentSetName;
+    }
+
+    // Reparent if needed (combineAsVariants places it typically where the components were)
+    if (parentId) {
+        const parent = await figma.getNodeByIdAsync(parentId);
+        if (parent) {
+            parent.appendChild(componentSet);
+        }
+    }
+
+    return {
+        id: componentSet.id,
+        name: componentSet.name,
+        type: "COMPONENT_SET",
+        childCount: componentSet.children.length,
+        variantProperties: componentSet.variantGroupProperties
+    };
+}
