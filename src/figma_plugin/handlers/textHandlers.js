@@ -191,8 +191,7 @@ export async function scanTextNodes(params) {
                 }
             }
 
-            // Brief delay to allow UI updates and prevent freezing
-            await delay(5);
+
         }
 
         // Add results from this chunk
@@ -218,10 +217,7 @@ export async function scanTextNodes(params) {
             }
         );
 
-        // Small delay between chunks to prevent UI freezing
-        if (i + chunkSize < totalNodes) {
-            await delay(50);
-        }
+
     }
 
     // Send completed progress update
@@ -443,8 +439,8 @@ export async function setMultipleTextContents(params) {
     let successCount = 0;
     let failureCount = 0;
 
-    // Split text replacements into chunks of 5
-    const CHUNK_SIZE = 5;
+    // Split text replacements into chunks of 10
+    const CHUNK_SIZE = 10;
     const chunks = [];
 
     for (let i = 0; i < text.length; i += CHUNK_SIZE) {
@@ -604,7 +600,7 @@ export async function setMultipleTextContents(params) {
         // Add a small delay between chunks to avoid overloading Figma
         if (chunkIndex < chunks.length - 1) {
             console.log("Pausing between chunks to avoid overloading Figma...");
-            await delay(1000); // 1 second delay between chunks
+            await delay(20); // 20ms delay between chunks
         }
     }
 
@@ -639,5 +635,88 @@ export async function setMultipleTextContents(params) {
         results: results,
         completedInChunks: chunks.length,
         commandId,
+    };
+}
+
+/**
+ * Sets unified text style properties for a node
+ * @param {Object} params - Style parameters
+ * @returns {Promise<Object>} Result
+ */
+export async function setTextStyle(params) {
+    const { nodeId, fontFamily, fontStyle, fontSize,
+        letterSpacing, lineHeight, paragraphSpacing, textCase,
+        textDecoration, textAlignHorizontal, textAlignVertical } = params;
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+
+    if (!node) {
+        throw new Error(`Node with ID ${nodeId} not found`);
+    }
+
+    // Type check
+    if (node.type !== "TEXT") {
+        throw new Error(`Node is not a text node (got ${node.type})`);
+    }
+
+    // Optimization: Conditional Font Loading
+    if (fontFamily || fontStyle) {
+        // Handle mixed fonts by defaulting to Inter-Regular if we have to, 
+        // or prioritize the provided family/style.
+        // If current font is mixed, we can't easily adhere to "partial update" 
+        // without replacing everything, because we don't know the "base" font.
+
+        let currentFamily = "Inter";
+        let currentStyle = "Regular";
+
+        if (node.fontName !== figma.mixed) {
+            currentFamily = node.fontName.family;
+            currentStyle = node.fontName.style;
+        }
+
+        const targetFamily = fontFamily || currentFamily;
+        const targetStyle = fontStyle || (fontFamily && !fontStyle ? "Regular" : currentStyle);
+        // If changing family but not style, and current style might not exist in new family, default to Regular? 
+        // Or if current is mixed, we default to Regular.
+
+        // Load the new font
+        await figma.loadFontAsync({ family: targetFamily, style: targetStyle });
+        node.fontName = { family: targetFamily, style: targetStyle };
+
+    } else {
+        // Ensure current font is loaded before modifying other properties
+        if (node.fontName !== figma.mixed) {
+            await figma.loadFontAsync(node.fontName);
+        } else {
+            // If it is mixed, we technically need to load all used fonts.
+            // For now, if we are only changing e.g. alignment, it might work without loading?
+            // Actually Figma requires fonts loaded to change almost anything on TextNode.
+            // If mixed, it's hard. But let's try to proceed. 
+            // If it fails, the error will bubble up.
+            // Some properties like textAlign don't require font loading? 
+            // "You can only modify the properties of a TextNode ... if the font ... is currently loaded."
+
+            // Attempt to load all fonts used in the node (if possible) is complex.
+            // We will skip explicit loading for mixed usage and hope for the best 
+            // or let the user know they need to unify fonts first.
+        }
+    }
+
+    // Apply only provided properties
+    if (fontSize !== undefined) node.fontSize = fontSize;
+    if (letterSpacing !== undefined) node.letterSpacing = letterSpacing;
+    if (lineHeight !== undefined) node.lineHeight = lineHeight;
+    if (paragraphSpacing !== undefined) node.paragraphSpacing = paragraphSpacing;
+    if (textCase !== undefined) node.textCase = textCase;
+    if (textDecoration !== undefined) node.textDecoration = textDecoration;
+    if (textAlignHorizontal !== undefined) node.textAlignHorizontal = textAlignHorizontal;
+    if (textAlignVertical !== undefined) node.textAlignVertical = textAlignVertical;
+
+    return {
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        fontName: node.fontName !== figma.mixed ? node.fontName : "Mixed",
+        fontSize: node.fontSize !== figma.mixed ? node.fontSize : "Mixed"
     };
 }

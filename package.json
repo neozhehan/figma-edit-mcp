@@ -13,6 +13,7 @@
   ],
   "type": "module",
   "scripts": {
+    "test": "bun test src/mcp_server/tests",
     "start": "bun run dist/server.js",
     "socket": "bun run src/socket.ts",
     "setup": "./scripts/setup.sh",

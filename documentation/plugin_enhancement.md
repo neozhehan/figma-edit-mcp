@@ -42,9 +42,11 @@ The `pages` array only contains a single element (the current page), which:
 - Makes multi-page workflows impossible without a separate `get_pages` tool
 - Doesn't match user expectations of "document info" including all pages
 
-### Proposed Enhancement
+### Proposed Enhancements
 
-Modify `get_document_info` to return all pages using `figma.root.children`:
+#### 1A. Update `get_document_info` (Metadata Only)
+
+Modify `get_document_info` to return high-level document structure (all pages) but **remove** the `children` array to keep the payload light.
 
 ```javascript
 export async function getDocumentInfo() {
@@ -60,21 +62,53 @@ export async function getDocumentInfo() {
     }));
 
     return {
-        name: figma.root.name,  // Document name, not page name
+        name: figma.root.name,
         id: figma.root.id,
         type: "DOCUMENT",
-        currentPage: {
-            id: page.id,
-            name: page.name,
-            childCount: page.children.length,
-        },
-        children: page.children.map((node) => ({
+        currentPageId: page.id,
+        currentPageName: page.name,
+        pages: allPages,
+        pageCount: allPages.length,
+    };
+}
+```
+
+#### 1B. New Tool: `get_page_info` (Page Content)
+
+Add a dedicated tool to fetch the content (layer hierarchy) of a specific page.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `pageId` | string | ❌ | ID of the page to inspect (default: current page) |
+
+```javascript
+export async function getPageInfo(params) {
+    const { pageId } = params || {};
+    
+    let targetPage = figma.currentPage;
+    
+    if (pageId && pageId !== figma.currentPage.id) {
+        // Find the requested page
+        targetPage = figma.root.children.find(p => p.id === pageId);
+        if (!targetPage) {
+            throw new Error(`Page with ID ${pageId} not found`);
+        }
+        await targetPage.loadAsync();
+    } else {
+        await figma.currentPage.loadAsync();
+    }
+
+    return {
+        id: targetPage.id,
+        name: targetPage.name,
+        type: "PAGE",
+        isCurrent: targetPage.id === figma.currentPage.id,
+        children: targetPage.children.map((node) => ({
             id: node.id,
             name: node.name,
             type: node.type,
+            // Add other summary props as needed
         })),
-        pages: allPages,        // All pages in document
-        pageCount: allPages.length,
     };
 }
 ```
@@ -83,18 +117,16 @@ export async function getDocumentInfo() {
 
 | Aspect | Before | After |
 |--------|--------|-------|
-| Pages returned | 1 (current only) | All pages |
-| Multi-page discovery | ❌ | ✅ |
-| Document name | Page name | Actual document name |
-| Current page indicator | N/A | `isCurrent` flag |
-| Separate `get_pages` tool needed | Yes | No |
+| **Role Separation** | Mixed (Current page content + some metadata) | Clean (Doc Info = Metadata, Page Info = Content) |
+| **Payload Size** | Medium (Includes current page children) | Tiny (Metadata only) |
+| **Multi-page Access** | ❌ (Cannot see other page content) | ✅ (Can call `get_page_info` on any page ID) |
+| **Performance** | Fast (Current page only) | Fast (On-demand loading) |
 
 ### Impact on MCP Server
 
-No changes needed to the MCP server - the response schema is backward compatible:
-- `pages` array already exists (just contains more items)
-- `currentPage` object unchanged
-- `children` array unchanged
+- **Breaking Change**: `get_document_info` no longer returns `children`.
+- **New Tool**: `get_page_info` must be added to the server definition.
+
 
 <br>
 
@@ -160,6 +192,9 @@ set_text_style({
 
 ### Implementation Notes
 
+> [!IMPORTANT]
+> **Strict Handler Behavior**: This tool must rigorously treat missing parameters as "do not change" (noop). If a parameter is `undefined`, the corresponding property on the node MUST remain untouched.
+
 **main.js — Add to `handleCommand` switch:**
 
 ```javascript
@@ -185,10 +220,21 @@ export async function setTextStyle(params) {
         throw new Error(`Node is not a text node (got ${node.type})`);
     }
 
-    // Load font before modifying (required by Figma API)
-    if (fontFamily) {
-        await figma.loadFontAsync({ family: fontFamily, style: fontStyle });
-        node.fontName = { family: fontFamily, style: fontStyle };
+    // Optimization: Conditional Font Loading
+    // Only load and apply font if it's different from the current one
+    if (fontFamily || fontStyle) {
+        const currentFont = node.fontName; // { family, style }
+        const targetFamily = fontFamily || currentFont.family;
+        const targetStyle = fontStyle || currentFont.style;
+
+        if (targetFamily !== currentFont.family || targetStyle !== currentFont.style) {
+            await figma.loadFontAsync({ family: targetFamily, style: targetStyle });
+            node.fontName = { family: targetFamily, style: targetStyle };
+        }
+    } else {
+        // Ensure current font is loaded before modifying other properties
+        // (Safeguard for Figma API requirements)
+        await figma.loadFontAsync(node.fontName);
     }
 
     // Apply only provided properties
@@ -442,9 +488,23 @@ Add grouping, ungrouping, flattening, and reparenting capabilities.
 case "group_nodes":
     if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
     if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
-    for (const item of params.nodes) {
-        if (!(await checkScopeAccess(item.nodeId))) throw new Error(`Operation denied: Node ${item.nodeId} outside editable scope`);
-        if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+    
+    // Explicitly validate all nodes share the same parent
+    if (params.nodes.length > 0) {
+        const firstNode = await figma.getNodeByIdAsync(params.nodes[0].nodeId);
+        if (!firstNode) throw new Error(`Node ${params.nodes[0].nodeId} not found`);
+        const parentId = firstNode.parent?.id;
+
+        for (const item of params.nodes) {
+            if (!(await checkScopeAccess(item.nodeId))) throw new Error(`Operation denied: Node ${item.nodeId} outside editable scope`);
+            if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+            
+            // Check parent consistency
+            const node = await figma.getNodeByIdAsync(item.nodeId);
+            if (node.parent?.id !== parentId) {
+                throw new Error(`Invalid Grouping: All nodes must share the same parent. Node "${node.name}" is under a different parent than "${firstNode.name}". Use 'insert_child' to reparent them first.`);
+            }
+        }
     }
     return await groupNodes(params);
 
@@ -601,14 +661,21 @@ The current implementation:
 
 ### Proposed Enhancement
 
-Rename `get_local_components` to `get_components` and add optional filtering:
+Rename `get_local_components` to `get_components` and add optional filtering and scoping:
 
 ```javascript
 export async function getComponents(params) {
-    const { filter } = params || {};  // 'local', 'remote', or undefined (all)
-    await figma.loadAllPagesAsync();
+    const { filter, scope = 'current_page' } = params || {};
+    // scope: 'current_page' (default) or 'document' (slow)
 
-    let components = figma.root.findAllWithCriteria({
+    let searchRoot = figma.currentPage;
+
+    if (scope === 'document') {
+        await figma.loadAllPagesAsync();
+        searchRoot = figma.root;
+    }
+
+    let components = searchRoot.findAllWithCriteria({
         types: ["COMPONENT"],
     });
 
@@ -620,11 +687,13 @@ export async function getComponents(params) {
 
     return {
         count: components.length,
+        scope: scope,
         components: components.map((component) => ({
             id: component.id,
             name: component.name,
             key: component.key,
             remote: component.remote,
+            pageId: component.parent?.type === 'PAGE' ? component.parent.id : 'nested',
         })),
     };
 }
@@ -637,6 +706,7 @@ export async function getComponents(params) {
 | Distinguishes local vs library | ❌ | ✅ |
 | Accurate tool naming | ❌ (returns all) | ✅ |
 | Supports filtering | ❌ | ✅ |
+| Performance control | ❌ (Always loads all pages) | ✅ (Default: current page only) |
 | Eliminates need for `get_remote_components` | N/A | ✅ |
 
 ---
@@ -672,46 +742,49 @@ This enables designers to create components with multiple properties (size, stat
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `components` | array | ✅ | Array of `{ nodeId, nodeName }` objects for components to combine |
-| `name` | string | ❌ | Name for the component set |
+| `components` | array | ✅ | Array of component objects (see below) |
+| `properties` | array | ✅ | Array of property names (e.g. `["Size", "State"]`) |
+| `componentSetName` | string | ❌ | Name for the component set |
 | `parentId` | string | ❌ | Parent frame to place the set in |
 | `parentNodeName` | string | ❌ | Name of parent node (required if parentId provided, for verification) |
+
+**Component object structure:**
+| Property | Type | Required | Description |
+|----------|------|----------|-------------|
+| `nodeId` | string | ✅ | ID of the component |
+| `nodeName` | string | ✅ | Current name (for verification) |
+| `propertyValues`| array | ✅ | Values corresponding to `properties` array (e.g. `["Small", "Default"]`) |
 
 ### Usage Example
 
 ```javascript
-// First, create individual components with variant-style names
-const btn1 = create_component({ name: "Size=Small, State=Default", ... });
-const btn2 = create_component({ name: "Size=Small, State=Hover", ... });
-const btn3 = create_component({ name: "Size=Large, State=Default", ... });
-const btn4 = create_component({ name: "Size=Large, State=Hover", ... });
-
-// Then combine them into a component set (with name verification)
+// Combine components into a valid variant set
 create_component_set({
+    properties: ["Size", "State"],
     components: [
-        { nodeId: btn1.id, nodeName: "Size=Small, State=Default" },
-        { nodeId: btn2.id, nodeName: "Size=Small, State=Hover" },
-        { nodeId: btn3.id, nodeName: "Size=Large, State=Default" },
-        { nodeId: btn4.id, nodeName: "Size=Large, State=Hover" }
+        { 
+            nodeId: "1:1", 
+            nodeName: "Btn 1", 
+            propertyValues: ["Small", "Default"] 
+        },
+        { 
+            nodeId: "1:2", 
+            nodeName: "Btn 2", 
+            propertyValues: ["Small", "Hover"] 
+        }
     ],
-    name: "Button"
+    componentSetName: "Button"
 })
+// Result: 
+// - Component 1: renamed to "Size=Small, State=Default"
+// - Component 2: renamed to "Size=Small, State=Hover"
+// - Component Set: named "Button" with "Size" and "State" properties
 ```
 
 ### Key Behaviors
 
-- **Variant naming**: Components should use `Property=Value` naming (e.g., "Size=Large, State=Hover") for Figma to auto-detect variant properties
-- **Default variant**: The top-left-most component becomes the default variant (used when dragging from library)
-- **Cannot be empty**: A ComponentSet deletes itself if all children are removed
-- **Children must be components**: Only ComponentNodes can be direct children
-
-### Related Existing Tools
-
-| Tool | Purpose |
-|------|---------|
-| `create_component` | Create individual components (prerequisite) |
-| `get_components` | List existing components to combine |
-| `create_component_instance` | Create instances of components/variants |
+- **Auto-renaming**: The tool will rename each component node to `Prop1=Value1, Prop2=Value2` format BEFORE combining them.
+- **Validation**: `propertyValues.length` for every component MUST match `properties.length`.
 
 ### Implementation Notes
 
@@ -719,17 +792,20 @@ create_component_set({
 
 ```javascript
 case "create_component_set":
-    if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-    if (!params || !params.components || !Array.isArray(params.components)) throw new Error("Missing or Invalid components parameter");
-    // Validate all components
-    for (const item of params.components) {
-        if (!(await checkScopeAccess(item.nodeId))) throw new Error(`Operation denied: Component ${item.nodeId} outside editable scope`);
-        if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
-    }
-    // Validate parent if provided
-    if (params.parentId) {
-        if (!(await checkScopeAccess(params.parentId))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
-        if (!(await verifyParentName(params.parentId, params.parentNodeName))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+    // ... scope validation ...
+    const params = params || {};
+    const props = params.properties || [];
+    
+    // Validate property count match
+    if (params.components) {
+        for (const comp of params.components) {
+            if (!comp.propertyValues || !Array.isArray(comp.propertyValues)) {
+                throw new Error(`Component ${comp.nodeId} missing propertyValues array`);
+            }
+            if (comp.propertyValues.length !== props.length) {
+                throw new Error(`Component ${comp.nodeId} has ${comp.propertyValues.length} values, expected ${props.length} (to match properties argument)`);
+            }
+        }
     }
     return await createComponentSet(params);
 ```
@@ -738,25 +814,29 @@ case "create_component_set":
 
 ```javascript
 export async function createComponentSet(params) {
-    const { components, name, parentId } = params || {};
+    const { components, properties, componentSetName, parentId } = params || {};
 
     if (!components || components.length < 2) {
         throw new Error("At least 2 components required to create a component set");
     }
 
-    // Collect all component nodes (validation already done in handleCommand)
     const resolvedComponents = [];
-    for (const { nodeId } of components) {
-        const comp = await figma.getNodeByIdAsync(nodeId);
-
-        // Type check
-        if (comp.type !== "COMPONENT") {
-            throw new Error(`Node ${nodeId} is not a component (got ${comp.type})`);
+    
+    for (const item of components) {
+        const comp = await figma.getNodeByIdAsync(item.nodeId);
+        if (comp.type !== "COMPONENT") throw new Error(`Node ${item.nodeId} is not a component`);
+        
+        // Rename component to "Key=Value, Key=Value" format
+        const nameParts = [];
+        for (let i = 0; i < properties.length; i++) {
+            nameParts.push(`${properties[i]}=${item.propertyValues[i]}`);
         }
-
+        comp.name = nameParts.join(", ");
+        
         resolvedComponents.push(comp);
     }
 
+    // ... combine logic ...
     // Get parent (validation already done in handleCommand)
     let parent = figma.currentPage;
     if (parentId) {
@@ -766,8 +846,8 @@ export async function createComponentSet(params) {
     // Combine into variant set
     const componentSet = figma.combineAsVariants(resolvedComponents, parent);
 
-    if (name) {
-        componentSet.name = name;
+    if (componentSetName) {
+        componentSet.name = componentSetName;
     }
 
     return {
@@ -899,7 +979,7 @@ export async function createConnections(params) {
 }
 ```
 
-**MCP server side** ([server.ts](../src/mcp_server/server.ts)):
+**MCP server side** ([src/mcp_server/tools/prototyping.ts](../src/mcp_server/tools/prototyping.ts)):
 
 Add `connectorId` and `connectorNodeName` parameters to the `create_connections` tool schema, then **deprecate** `set_default_connector` (can be removed in a future version).
 
@@ -1040,6 +1120,9 @@ set_auto_layout({
 ```
 
 ### Implementation Notes
+
+> [!IMPORTANT]
+> **Strict Handler Behavior**: This tool must rigorously treat missing parameters as "do not change" (noop). If a parameter is `undefined`, the corresponding property on the node MUST remain untouched.
 
 **main.js — Add to `handleCommand` switch:**
 

@@ -7,26 +7,27 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 
 // Import handlers
-import { getDocumentInfo, getSelection, getNodesInfo, readMyDesign } from '../handlers/nodeReaders.js';
-import { createRectangle, createFrame, createText, cloneNode } from '../handlers/nodeCreators.js';
-import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName } from '../handlers/nodeModifiers.js';
+import { getDocumentInfo, getSelection, getNodesInfo, readMyDesign, getPageInfo } from '../handlers/nodeReaders.js';
+import { createRectangle, createFrame, createText, cloneNode, createEllipse, createPolygonStar } from '../handlers/nodeCreators.js';
+import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName, groupNodes, ungroupNodes, flattenNode, insertChild } from '../handlers/nodeModifiers.js';
 import { setFillColor, setStrokeColor, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
 
-import { setLayoutMode, setPadding, setAxisAlign, setLayoutSizing, setItemSpacing } from '../handlers/layoutHandlers.js';
+import { setAutoLayout } from '../handlers/layoutHandlers.js';
 import {
     getStyles,
-    getLocalComponents,
+    getComponents,
     createComponentInstance,
     exportNodeAsImage,
     getInstanceOverrides,
     getValidTargetInstances,
     getSourceInstanceData,
     setInstanceOverrides,
-    createComponent
+    createComponent,
+    createComponentSet
 } from '../handlers/componentHandlers.js';
 
-import { getReactions, setDefaultConnector, createConnections } from '../handlers/connectorHandlers.js';
-import { scanTextNodes, setMultipleTextContents } from '../handlers/textHandlers.js';
+import { getReactions, createConnections } from '../handlers/connectorHandlers.js';
+import { scanTextNodes, setMultipleTextContents, setTextStyle } from '../handlers/textHandlers.js';
 import { getAnnotations, scanNodesByTypes, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
 import { getVariables, getNodeVariables, setBoundVariable, handleVariableRequest } from '../handlers/variableHandlers.js';
 import { createStyle, applyStyle } from '../handlers/styleHandlers.js';
@@ -219,31 +220,11 @@ async function handleCommand(command, params) {
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setCornerRadius(params);
-        case "set_layout_mode":
+        case "set_auto_layout":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setLayoutMode(params);
-        case "set_padding":
-            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setPadding(params);
-        case "set_axis_align":
-            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setAxisAlign(params);
-        case "set_layout_sizing":
-            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setLayoutSizing(params);
-        case "set_item_spacing":
-            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setItemSpacing(params);
+            return await setAutoLayout(params);
         case "set_bound_variable":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
@@ -254,6 +235,51 @@ async function handleCommand(command, params) {
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setNodeName(params);
+
+        case "group_nodes":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
+
+            // Explicitly validate all nodes share the same parent
+            if (params.nodes.length > 0) {
+                const firstNode = await figma.getNodeByIdAsync(params.nodes[0].nodeId);
+                if (!firstNode) throw new Error(`Node ${params.nodes[0].nodeId} not found`);
+                const parentId = firstNode.parent?.id;
+
+                for (const item of params.nodes) {
+                    if (!(await checkScopeAccess(item.nodeId))) throw new Error(`Operation denied: Node ${item.nodeId} outside editable scope`);
+                    if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+
+                    // Check parent consistency
+                    const node = await figma.getNodeByIdAsync(item.nodeId);
+                    if (node.parent?.id !== parentId) {
+                        throw new Error(`Invalid Grouping: All nodes must share the same parent. Node "${node.name}" is under a different parent than "${firstNode.name}". Use 'insert_child' to reparent them first.`);
+                    }
+                }
+            }
+            return await groupNodes(params);
+
+        case "ungroup_nodes":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await ungroupNodes(params);
+
+        case "flatten_node":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await flattenNode(params);
+
+        case "insert_child":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            // Validate parent
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            // Validate child
+            if (!(await checkScopeAccess(params ? params.childId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.childId : null, params ? params.childNodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await insertChild(params);
 
         case "move_node":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
@@ -286,6 +312,16 @@ async function handleCommand(command, params) {
             if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
             if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
             return await createText(params);
+        case "create_ellipse":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            return await createEllipse(params);
+        case "create_polygon_star":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            return await createPolygonStar(params);
         case "create_component_instance":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
 
@@ -299,6 +335,13 @@ async function handleCommand(command, params) {
 
         case "create_connections":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+
+            // Validate connectorId if setting default
+            if (params && params.connectorId) {
+                if (!(await checkScopeAccess(params.connectorId))) throw new Error(`Operation denied: Connector node ${params.connectorId} outside editable scope`);
+            }
+
+            // Validate connections if creating lines
             if (params && params.connections && Array.isArray(params.connections)) {
                 for (const conn of params.connections) {
                     if (!(await checkScopeAccess(conn.startNodeId))) throw new Error(`Operation denied: Start node ${conn.startNodeId} outside editable scope`);
@@ -318,6 +361,12 @@ async function handleCommand(command, params) {
                 if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
             }
             return await setMultipleTextContents(params);
+
+        case "set_text_style":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await setTextStyle(params);
 
         case "set_multiple_annotations":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
@@ -385,6 +434,8 @@ async function handleCommand(command, params) {
 
         case "get_document_info":
             return await getDocumentInfo();
+        case "get_page_info":
+            return await getPageInfo(params);
         case "get_selection":
             return await getSelection();
         case "get_nodes_info":
@@ -396,8 +447,8 @@ async function handleCommand(command, params) {
             return await readMyDesign();
         case "get_styles":
             return await getStyles();
-        case "get_local_components":
-            return await getLocalComponents();
+        case "get_components":
+            return await getComponents(params);
         case "export_node_as_image":
             return await exportNodeAsImage(params);
         case "scan_text_nodes":
@@ -423,9 +474,7 @@ async function handleCommand(command, params) {
                 throw new Error(ERRORS.MISSING_NODE_IDS);
             }
             return await getReactions(params.nodeIds);
-        case "set_default_connector":
-            // Read-only / Local storage operation. Allowed.
-            return await setDefaultConnector(params);
+
         case "set_selections":
             return await setSelections(params);
         case "get_variables":
@@ -456,6 +505,34 @@ async function handleCommand(command, params) {
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(ERRORS.OUTSIDE_SCOPE);
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await createComponent(params);
+
+        case "create_component_set":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+
+            // Validate properties match
+            const props = params.properties || [];
+            if (params.components) {
+                if (!Array.isArray(params.components)) throw new Error("components must be an array");
+
+                for (const comp of params.components) {
+                    // Check scope and name for each component
+                    if (!(await checkScopeAccess(comp.nodeId))) throw new Error(`Operation denied: Component ${comp.nodeId} outside editable scope`);
+                    if (!(await verifyNodeName(comp.nodeId, comp.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+
+                    // Check property count
+                    if (!comp.propertyValues || comp.propertyValues.length !== props.length) {
+                        throw new Error(`Property values count for component ${comp.nodeName} does not match properties count`);
+                    }
+                }
+            }
+
+            // Check parent scope if provided
+            if (params.parentId) {
+                if (!(await checkScopeAccess(params.parentId))) throw new Error(ERRORS.PARENT_OUTSIDE_SCOPE);
+                if (!(await verifyParentName(params.parentId, params.parentNodeName))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            }
+
+            return await createComponentSet(params);
 
         case "create_node_from_svg":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);

@@ -35,7 +35,7 @@ export async function setFillColor(params) {
         r: parseFloat(r) || 0,
         g: parseFloat(g) || 0,
         b: parseFloat(b) || 0,
-        a: parseFloat(a) || 1,
+        a: a !== undefined ? parseFloat(a) : 1,
     };
 
     // Set fill
