@@ -68,4 +68,38 @@ describe("Document Tools", () => {
         expect(sendCommandToFigma).toHaveBeenCalledWith("get_page_info", params);
         expect(JSON.parse(result.content[0].text)).toEqual(mockResult);
     });
+
+    it("get_nodes_info should call sendCommandToFigma with optional nodeIds", async () => {
+        // Setup
+        const mockResult = [{ nodeId: "node-1", document: { name: "Node 1" } }];
+        (sendCommandToFigma as any).mockResolvedValue(mockResult);
+        registerDocumentTools(mockServer as any);
+
+        // Case 1: Specific nodeIds
+        await registeredTools["get_nodes_info"]({ nodeIds: ["node-1"] });
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: ["node-1"] });
+
+        // Case 2: No nodeIds
+        await registeredTools["get_nodes_info"]({});
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: undefined });
+    });
+
+    it("join_channel should call joinChannel and then get_nodes_info for discovery", async () => {
+        // Setup
+        (sendCommandToFigma as any).mockImplementation((cmd) => {
+            if (cmd === "get_nodes_info") {
+                return Promise.resolve([{ nodeId: "scope-123", document: { name: "Scope Frame" } }]);
+            }
+            return Promise.resolve({});
+        });
+        registerDocumentTools(mockServer as any);
+
+        // Execute
+        const result = await registeredTools["join_channel"]({ channel: "test-channel" });
+
+        // Verify
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", {});
+        expect(result.content[0].text).toContain("Scope Frame");
+        expect(result.content[0].text).toContain("scope-123");
+    });
 });
