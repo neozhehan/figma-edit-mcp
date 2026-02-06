@@ -439,10 +439,17 @@ async function handleCommand(command, params) {
         case "get_selection":
             return await getSelection();
         case "get_nodes_info":
-            if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
-                throw new Error(ERRORS.MISSING_NODE_IDS);
+            if (params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0) {
+                return await getNodesInfo(params.nodeIds);
             }
-            return await getNodesInfo(params.nodeIds);
+
+            // If no nodeIds provided, return the editable scope info
+            if (state.scopeRootId) {
+                return await getNodesInfo([state.scopeRootId]);
+            }
+
+            // Read-Only Mode: Return empty array
+            return [];
         case "read_my_design":
             return await readMyDesign();
         case "get_styles":

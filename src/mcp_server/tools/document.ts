@@ -72,15 +72,18 @@ export function registerDocumentTools(server: McpServer) {
     // Nodes Info Tool
     server.tool(
         "get_nodes_info",
-        "Get detailed information about one or more nodes in Figma",
+        "Get detailed information about one or more nodes. If no IDs provided, returns the editable scope node.",
         {
             nodeIds: z
                 .array(z.string())
+                .optional()
                 .describe("Array of node IDs to get information about"),
         },
         async ({ nodeIds }: any) => {
             try {
-                nodeIds = normalizeNodeIds(nodeIds);
+                if (nodeIds) {
+                    nodeIds = normalizeNodeIds(nodeIds);
+                }
                 const results = await sendCommandToFigma("get_nodes_info", { nodeIds });
 
                 return {
@@ -221,11 +224,27 @@ export function registerDocumentTools(server: McpServer) {
                 }
 
                 await joinChannel(channel);
+
+                // Fetch scope info after joining
+                let scopeMessage = `Successfully joined channel: ${channel}`;
+                try {
+                    const scopeResult = await sendCommandToFigma("get_nodes_info", {});
+                    if (Array.isArray(scopeResult) && scopeResult.length > 0) {
+                        const scopeNode: any = scopeResult[0];
+                        const nodeName = scopeNode.document?.name || 'Unknown';
+                        scopeMessage += `\n\nEditable Scope identified:\n- Node Name: ${nodeName}\n- Node ID: ${scopeNode.nodeId}\n\nYou have edit access to this node and its children.`;
+                    } else {
+                        scopeMessage += `\n\nPlugin is in Read-Only Mode. You can read the design but cannot make changes.`;
+                    }
+                } catch (scopeError) {
+                    scopeMessage += `\n\nNote: Could not automatically determine editable scope. You may be in Read-Only mode.`;
+                }
+
                 return {
                     content: [
                         {
                             type: "text",
-                            text: `Successfully joined channel: ${channel}`,
+                            text: scopeMessage,
                         },
                     ],
                 };

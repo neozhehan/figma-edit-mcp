@@ -1,0 +1,93 @@
+Figma Plugin API Usage List
+============================
+
+1. Global & UI Interaction
+--------------------------
+- figma.showUI(html, options)
+- figma.ui.onmessage
+- figma.ui.postMessage(msg)
+- figma.notify(message)
+- figma.closePlugin()
+- figma.on("run", callback)
+- figma.clientStorage.setAsync(key, value)
+- figma.clientStorage.getAsync(key)
+
+2. Document & Navigation
+------------------------
+- figma.root
+- figma.currentPage
+- figma.getNodeByIdAsync(id)
+- figma.loadAllPagesAsync()
+- figma.viewport.scrollAndZoomIntoView(nodes)
+- node.findOne(callback)
+- node.findAllWithCriteria(criteria)
+
+3. Node Creation
+----------------
+- figma.createRectangle()
+- figma.createFrame()
+- figma.createText()
+- figma.createEllipse()
+- figma.createPolygon()
+- figma.createStar()
+- figma.createNodeFromSvg(svgString)
+- figma.createComponent()
+- figma.createTextStyle()
+- figma.createPaintStyle()
+- figma.createEffectStyle()
+- figma.createGridStyle()
+
+4. Node Modification & Hierarchy
+--------------------------------
+- figma.group(nodes, parent)
+- figma.ungroup(node)
+- figma.flatten(nodes)
+- node.appendChild(child)
+- node.insertChild(index, child)
+- node.remove()
+- node.resize(width, height)
+- node.clone()
+- node.exportAsync(settings)
+
+5. Components & Instances
+-------------------------
+- figma.importComponentByKeyAsync(key)
+- figma.combineAsVariants(nodes, parent)
+- component.createInstance()
+- instance.swapComponent(componentNode)
+- instance.getMainComponentAsync()
+- instance.setProperties(properties)
+
+6. Variables (Advanced)
+-----------------------
+- figma.variables.getVariableByIdAsync(id)
+- figma.variables.getVariableCollectionByIdAsync(id)
+- figma.variables.getLocalVariableCollectionsAsync()
+- figma.variables.getLocalVariablesAsync()
+- figma.variables.createVariableCollection(name)
+- figma.variables.createVariable(name, collectionId, type)
+- figma.variables.setBoundVariableForPaint(paint, field, variable)
+- variable.setValueForMode(modeId, value)
+- node.setBoundVariable(field, variable)
+- node.setExplicitVariableModeForCollection(collectionId, modeId)
+
+7. Styles & Assets
+------------------
+- figma.getLocalPaintStylesAsync()
+- figma.getLocalTextStylesAsync()
+- figma.getLocalEffectStylesAsync()
+- figma.getLocalGridStylesAsync()
+- figma.loadFontAsync(fontName)
+
+8. Annotations
+--------------
+- figma.annotations.getAnnotationCategoriesAsync()
+- node.annotations (Read/Write property)
+
+9. Key Node Properties
+----------------------
+- fills, strokes, effects (Styling)
+- layoutMode, itemSpacing, padding..., primaryAxisAlignItems (Auto Layout)
+- characters, fontName, fontSize (Text)
+- boundVariables, explicitVariableModes (Variables)
+- connectorStart, connectorEnd (Connectors)
