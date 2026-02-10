@@ -178,21 +178,24 @@ figma.ui.onmessage = async (msg) => {
             break;
         case "execute-command":
             // Execute commands received from UI (which gets them from WebSocket)
-            try {
-                const result = await handleCommand(msg.command, msg.params);
-                // Send result back to UI
-                figma.ui.postMessage({
-                    type: "command-result",
-                    id: msg.id,
-                    result,
-                });
-            } catch (error) {
-                figma.ui.postMessage({
-                    type: "command-error",
-                    id: msg.id,
-                    error: error.message || "Error executing command",
-                });
-            }
+            // Use a promise chain (queue) to serialize execution and prevent race conditions
+            state.commandQueue = (state.commandQueue || Promise.resolve()).then(async () => {
+                try {
+                    const result = await handleCommand(msg.command, msg.params);
+                    // Send result back to UI
+                    figma.ui.postMessage({
+                        type: "command-result",
+                        id: msg.id,
+                        result,
+                    });
+                } catch (error) {
+                    figma.ui.postMessage({
+                        type: "command-error",
+                        id: msg.id,
+                        error: error.message || "Error executing command",
+                    });
+                }
+            });
             break;
     }
 };

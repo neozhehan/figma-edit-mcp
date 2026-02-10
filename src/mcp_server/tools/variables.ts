@@ -146,9 +146,10 @@ export function registerVariablesTools(server: McpServer) {
         "Comprehensive tool to create collections, variables, and set values/aliases.",
         {
             action: z
-                .enum(["CREATE_COLLECTION", "CREATE_VARIABLE", "SET_VALUE"])
+                .enum(["CREATE_COLLECTION", "CREATE_VARIABLE", "UPDATE_VARIABLE"])
                 .describe("Action type"),
-            name: z.string().optional().describe("Name for collection or variable"),
+            name: z.string().optional().describe("Name (for CREATE or UPDATE actions)"),
+            description: z.string().optional().describe("Description (for UPDATE_VARIABLE)"),
             modeName: z
                 .string()
                 .optional()
@@ -178,32 +179,40 @@ export function registerVariablesTools(server: McpServer) {
                     }),
                 ])
                 .optional()
-                .describe("Value for the variable (or alias)"),
+                .describe("Value for the variable (or alias) (for CREATE or UPDATE)"),
             variableId: z
                 .string()
                 .optional()
-                .describe("Variable ID (for SET_VALUE or alias)"),
-            modeId: z.string().optional().describe("Mode ID (for SET_VALUE)"),
+                .describe("Variable ID (for UPDATE_VARIABLE or alias)"),
+            currentVariableName: z
+                .string()
+                .optional()
+                .describe("Current name of the variable to verify against (for UPDATE_VARIABLE)"),
+            modeId: z.string().optional().describe("Mode ID (for UPDATE_VARIABLE value setting)"),
         },
         async ({
             action,
             name,
+            description,
             modeName,
             collectionId,
             type,
             value,
             variableId,
+            currentVariableName,
             modeId,
         }: any) => {
             try {
                 const result = await sendCommandToFigma("manage_variables", {
                     action,
                     name,
+                    description,
                     modeName,
                     collectionId,
                     type,
                     value,
                     variableId,
+                    currentVariableName,
                     modeId,
                 });
                 return {
