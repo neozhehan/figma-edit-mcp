@@ -254,7 +254,14 @@ export async function handleVariableRequest(params) {
             else if (type === 'BOOLEAN') resolvedType = "BOOLEAN";
             else throw new Error(`Invalid variable type: ${type}`);
 
-            const variable = figma.variables.createVariable(name, collectionId, resolvedType);
+            // Fetch the collection first
+            const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+            if (!collection) {
+                throw new Error(`Collection not found: ${collectionId}`);
+            }
+
+            // Using collection object for createVariable as requested by error message
+            const variable = figma.variables.createVariable(name, collection, resolvedType);
 
             // Set initial value if provided (for default mode)
             if (value !== undefined) {
@@ -291,28 +298,47 @@ export async function handleVariableRequest(params) {
             };
         }
 
-        case 'SET_VALUE': {
-            const { variableId, modeId, value } = params;
-            if (!variableId || !modeId || value === undefined) throw new Error("Missing parameters for setting variable value");
+        case 'UPDATE_VARIABLE': {
+            const { variableId, name, value, modeId, description, currentVariableName } = params;
+            if (!variableId) throw new Error("Missing variableId for update");
 
             const variable = await figma.variables.getVariableByIdAsync(variableId);
-            if (!variable) throw new Error("Variable not found");
+            if (!variable) throw new Error(`Variable ${variableId} not found`);
 
-            // Handle Aliases
-            if (typeof value === 'object' && value.type === 'VARIABLE_ALIAS') {
-                variable.setValueForMode(modeId, {
-                    type: 'VARIABLE_ALIAS',
-                    id: value.id
-                });
-            } else {
-                variable.setValueForMode(modeId, value);
+            if (currentVariableName && variable.name !== currentVariableName) {
+                throw new Error(`Variable name verification failed. Expected "${variable.name}", got "${currentVariableName}"`);
+            }
+
+            if (name) {
+                variable.name = name;
+            }
+
+            if (description !== undefined) {
+                variable.description = description;
+            }
+
+            if (value !== undefined) {
+                if (!modeId) throw new Error("Missing modeId for setting variable value");
+
+                // Handle Aliases
+                if (typeof value === 'object' && value.type === 'VARIABLE_ALIAS') {
+                    variable.setValueForMode(modeId, {
+                        type: 'VARIABLE_ALIAS',
+                        id: value.id
+                    });
+                } else {
+                    variable.setValueForMode(modeId, value);
+                }
             }
 
             return {
                 success: true,
-                variableId: variable.id,
-                modeId: modeId,
-                value: value
+                id: variable.id,
+                name: variable.name,
+                key: variable.key,
+                type: variable.resolvedType,
+                description: variable.description,
+                updatedValue: value !== undefined
             };
         }
 
