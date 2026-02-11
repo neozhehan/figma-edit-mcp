@@ -82,23 +82,23 @@ export async function applyStyle(params) {
             // But if the command fails, we might need to load fonts.
             // However, figma.getStyleByIdAsync might be needed to verify.
             // For now, simpler implementation:
-            node.textStyleId = styleId;
+            await node.setTextStyleIdAsync(styleId);
             break;
         case 'FILL':
             if (!('fillStyleId' in node)) throw new Error("Target node does not support fill styles.");
-            node.fillStyleId = styleId;
+            await node.setFillStyleIdAsync(styleId);
             break;
         case 'STROKE':
             if (!('strokeStyleId' in node)) throw new Error("Target node does not support stroke styles.");
-            node.strokeStyleId = styleId;
+            await node.setStrokeStyleIdAsync(styleId);
             break;
         case 'EFFECT':
             if (!('effectStyleId' in node)) throw new Error("Target node does not support effect styles.");
-            node.effectStyleId = styleId;
+            await node.setEffectStyleIdAsync(styleId);
             break;
         case 'GRID':
             if (!('gridStyleId' in node)) throw new Error("Target node does not support grid styles.");
-            node.gridStyleId = styleId;
+            await node.setGridStyleIdAsync(styleId);
             break;
         default:
             throw new Error(`Unsupported style type target: ${styleType}`);
