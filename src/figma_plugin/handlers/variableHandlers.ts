@@ -220,9 +220,29 @@ export async function setBoundVariable(params: any) {
 }
 
 /**
- * Handles comprehensive variable management
+ * Handles comprehensive variable management.
+ *
  * @param {Object} params - Parameters object
- * @param {string} params.action - Action type: CREATE_COLLECTION, CREATE_VARIABLE, SET_VALUE
+ * @param {'CREATE_COLLECTION' | 'CREATE_VARIABLE' | 'UPDATE_VARIABLE'} params.action - Action type
+ *
+ * CREATE_COLLECTION params:
+ * @param {string} params.name - Name for the new collection (required)
+ * @param {string} [params.modeName] - Optional name to assign to the default mode
+ *
+ * CREATE_VARIABLE params:
+ * @param {string} params.collectionId - ID of the collection to add the variable to (required)
+ * @param {string} params.name - Name for the new variable (required)
+ * @param {'FLOAT' | 'COLOR' | 'STRING' | 'BOOLEAN'} params.type - Variable type (required)
+ * @param {*} [params.value] - Optional initial value (set on the default mode)
+ *
+ * UPDATE_VARIABLE params:
+ * @param {string} params.variableId - ID of the variable to update (required)
+ * @param {string} [params.currentVariableName] - Current name for verification
+ * @param {string} [params.name] - New name for the variable
+ * @param {string} [params.description] - New description for the variable
+ * @param {*} [params.value] - New value to set (requires modeId)
+ * @param {string} [params.modeId] - Mode ID to set the value for (required when value is provided)
+ *
  * @returns {Promise<Object>} Result of the operation
  */
 export async function handleVariableRequest(params: any) {
