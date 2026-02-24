@@ -8,11 +8,11 @@
  * @param {Function|string} predicate - Function or property name to determine uniqueness
  * @returns {Array} Array with unique items
  */
-export function uniqBy(arr, predicate) {
-    const cb = typeof predicate === "function" ? predicate : (o) => o[predicate];
+export function uniqBy(arr: any, predicate: any) {
+    const cb = typeof predicate === "function" ? predicate : (o: any) => o[predicate];
     return [
         ...arr
-            .reduce((map, item) => {
+            .reduce((map: any, item: any) => {
                 const key = item === null || item === undefined ? item : cb(item);
 
                 map.has(key) || map.set(key, item);
@@ -28,6 +28,6 @@ export function uniqBy(arr, predicate) {
  * @param {number} ms - Milliseconds to delay
  * @returns {Promise} Promise that resolves after delay
  */
-export function delay(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+export function delay(ms: any) {
+    return new Promise((resolve: any) => setTimeout(resolve, ms));
 }

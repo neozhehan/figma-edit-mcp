@@ -10,7 +10,7 @@ import { customBase64Encode } from '../utils/exportUtils.js';
  * @returns {Promise<Object>} Object containing colors, texts, effects, and grids styles
  */
 export async function getStyles() {
-    const styles = {
+    const styles: any = {
         colors: await figma.getLocalPaintStylesAsync(),
         texts: await figma.getLocalTextStylesAsync(),
         effects: await figma.getLocalEffectStylesAsync(),
@@ -18,25 +18,25 @@ export async function getStyles() {
     };
 
     return {
-        colors: styles.colors.map((style) => ({
+        colors: styles.colors.map((style: any) => ({
             id: style.id,
             name: style.name,
             key: style.key,
             paint: style.paints[0],
         })),
-        texts: styles.texts.map((style) => ({
+        texts: styles.texts.map((style: any) => ({
             id: style.id,
             name: style.name,
             key: style.key,
             fontSize: style.fontSize,
             fontName: style.fontName,
         })),
-        effects: styles.effects.map((style) => ({
+        effects: styles.effects.map((style: any) => ({
             id: style.id,
             name: style.name,
             key: style.key,
         })),
-        grids: styles.grids.map((style) => ({
+        grids: styles.grids.map((style: any) => ({
             id: style.id,
             name: style.name,
             key: style.key,
@@ -51,7 +51,7 @@ export async function getStyles() {
  * @param {string} params.scope - 'current_page' (default) or 'document'
  * @returns {Promise<Object>} Object containing component count and list
  */
-export async function getComponents(params) {
+export async function getComponents(params: any) {
     const { filter, scope = 'current_page' } = params || {};
     // scope: 'current_page' (default) or 'document' (slow)
 
@@ -59,6 +59,7 @@ export async function getComponents(params) {
 
     if (scope === 'document') {
         await figma.loadAllPagesAsync();
+        // @ts-ignore
         searchRoot = figma.root;
     }
 
@@ -67,15 +68,15 @@ export async function getComponents(params) {
     });
 
     if (filter === 'local') {
-        components = components.filter(c => !c.remote);
+        components = components.filter((c: any) => !c.remote);
     } else if (filter === 'remote') {
-        components = components.filter(c => c.remote);
+        components = components.filter((c: any) => c.remote);
     }
 
     return {
         count: components.length,
         scope: scope,
-        components: components.map((component) => ({
+        components: components.map((component: any) => ({
             id: component.id,
             name: component.name,
             key: component.key,
@@ -95,7 +96,7 @@ export async function getComponents(params) {
  * @param {number} params.y - Y position
  * @returns {Promise<Object>} Created instance info
  */
-export async function createComponentInstance(params) {
+export async function createComponentInstance(params: any) {
     const { componentKey, x = 0, y = 0, parentId } = params || {};
 
     if (!componentKey) {
@@ -119,6 +120,7 @@ export async function createComponentInstance(params) {
                 // Although Page is via currentPage usually.
                 // If parentId is a Page, appendChild works.
             }
+            // @ts-ignore
             parent.appendChild(instance);
         } else {
             figma.currentPage.appendChild(instance);
@@ -131,9 +133,10 @@ export async function createComponentInstance(params) {
             y: instance.y,
             width: instance.width,
             height: instance.height,
+            // @ts-ignore
             componentId: instance.componentId,
         };
-    } catch (error) {
+    } catch (error: any) {
         throw new Error(`Error creating component instance: ${error.message}`);
     }
 }
@@ -145,7 +148,7 @@ export async function createComponentInstance(params) {
  * @param {number} params.scale - Export scale (default: 1)
  * @returns {Promise<Object>} Exported image data
  */
-export async function exportNodeAsImage(params) {
+export async function exportNodeAsImage(params: any) {
     const { nodeId, scale = 1 } = params || {};
 
     const format = "PNG";
@@ -164,7 +167,7 @@ export async function exportNodeAsImage(params) {
     }
 
     try {
-        const settings = {
+        const settings: any = {
             format: format,
             constraint: { type: "SCALE", value: scale },
         };
@@ -176,12 +179,15 @@ export async function exportNodeAsImage(params) {
             case "PNG":
                 mimeType = "image/png";
                 break;
+            // @ts-ignore
             case "JPG":
                 mimeType = "image/jpeg";
                 break;
+            // @ts-ignore
             case "SVG":
                 mimeType = "image/svg+xml";
                 break;
+            // @ts-ignore
             case "PDF":
                 mimeType = "application/pdf";
                 break;
@@ -199,7 +205,7 @@ export async function exportNodeAsImage(params) {
             mimeType,
             imageData: base64,
         };
-    } catch (error) {
+    } catch (error: any) {
         throw new Error(`Error exporting node as image: ${error.message}`);
     }
 }
@@ -219,6 +225,7 @@ export async function getInstanceOverrides(instanceNode = null) {
         console.log("Using provided instance node");
 
         // Validate that the provided node is an instance
+        // @ts-ignore
         if (instanceNode.type !== "INSTANCE") {
             console.error("Provided node is not an instance");
             figma.notify("Provided node is not a component instance");
@@ -241,7 +248,7 @@ export async function getInstanceOverrides(instanceNode = null) {
         }
 
         // Filter for instances in the selection
-        const instances = selection.filter(node => node.type === "INSTANCE");
+        const instances = selection.filter((node: any) => node.type === "INSTANCE");
 
         if (instances.length === 0) {
             console.log("No instances found in selection");
@@ -258,10 +265,12 @@ export async function getInstanceOverrides(instanceNode = null) {
         console.log(sourceInstance);
 
         // Get component overrides and main component
+        // @ts-ignore
         const overrides = sourceInstance.overrides || [];
         console.log(`  Raw Overrides:`, overrides);
 
         // Get main component
+        // @ts-ignore
         const mainComponent = await sourceInstance.getMainComponentAsync();
         if (!mainComponent) {
             console.error("Failed to get main component");
@@ -270,7 +279,7 @@ export async function getInstanceOverrides(instanceNode = null) {
         }
 
         // return data to MCP server
-        const returnData = {
+        const returnData: any = {
             success: true,
             message: `Got component information from "${sourceInstance.name}" for overrides.length: ${overrides.length}`,
             sourceInstanceId: sourceInstance.id,
@@ -282,7 +291,7 @@ export async function getInstanceOverrides(instanceNode = null) {
         figma.notify(`Got component information from "${sourceInstance.name}"`);
 
         return returnData;
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error in getInstanceOverrides:", error);
         figma.notify(`Error: ${error.message}`);
         return {
@@ -297,8 +306,8 @@ export async function getInstanceOverrides(instanceNode = null) {
  * @param {string[]} targetNodeIds - Array of instance node IDs
  * @returns {Promise<Object>} Validation result with target instances
  */
-export async function getValidTargetInstances(targetNodeIds) {
-    let targetInstances = [];
+export async function getValidTargetInstances(targetNodeIds: any) {
+    let targetInstances: any[] = [];
 
     // Handle array of instances or single instance
     if (Array.isArray(targetNodeIds)) {
@@ -326,7 +335,7 @@ export async function getValidTargetInstances(targetNodeIds) {
  * @param {string} sourceInstanceId - Source instance ID
  * @returns {Promise<Object>} Source instance data
  */
-export async function getSourceInstanceData(sourceInstanceId) {
+export async function getSourceInstanceData(sourceInstanceId: any) {
     if (!sourceInstanceId) {
         return { success: false, message: "Missing source instance ID" };
     }
@@ -371,7 +380,7 @@ export async function getSourceInstanceData(sourceInstanceId) {
  * @param {Object} sourceResult - Source instance data
  * @returns {Promise<Object>} Result of the set operation
  */
-export async function setInstanceOverrides(targetInstances, sourceResult) {
+export async function setInstanceOverrides(targetInstances: any, sourceResult: any) {
     try {
         const { sourceInstance, mainComponent, overrides } = sourceResult;
 
@@ -380,7 +389,7 @@ export async function setInstanceOverrides(targetInstances, sourceResult) {
         console.log(`Overrides:`, overrides);
 
         // Process all instances
-        const results = [];
+        const results: any[] = [];
         let totalAppliedCount = 0;
 
         for (const targetInstance of targetInstances) {
@@ -389,7 +398,7 @@ export async function setInstanceOverrides(targetInstances, sourceResult) {
                 try {
                     targetInstance.swapComponent(mainComponent);
                     console.log(`Swapped component for instance "${targetInstance.name}"`);
-                } catch (error) {
+                } catch (error: any) {
                     console.error(`Error swapping component for instance "${targetInstance.name}":`, error);
                     results.push({
                         success: false,
@@ -431,25 +440,32 @@ export async function setInstanceOverrides(targetInstances, sourceResult) {
                         try {
                             if (field === "componentProperties") {
                                 // Apply component properties
+                                // @ts-ignore
                                 if (sourceNode.componentProperties && overrideNode.componentProperties) {
-                                    const properties = {};
+                                    const properties: any = {};
+                                    // @ts-ignore
                                     for (const key in sourceNode.componentProperties) {
+                                        // @ts-ignore
                                         properties[key] = sourceNode.componentProperties[key].value;
                                     }
+                                    // @ts-ignore
                                     overrideNode.setProperties(properties);
                                     fieldApplied = true;
                                 }
                             } else if (field === "characters" && overrideNode.type === "TEXT") {
                                 // For text nodes, need to load fonts first
+                                // @ts-ignore
                                 await figma.loadFontAsync(overrideNode.fontName);
+                                // @ts-ignore
                                 overrideNode.characters = sourceNode.characters;
                                 fieldApplied = true;
                             } else if (field in overrideNode) {
                                 // Direct property assignment
+                                // @ts-ignore
                                 overrideNode[field] = sourceNode[field];
                                 fieldApplied = true;
                             }
-                        } catch (fieldError) {
+                        } catch (fieldError: any) {
                             console.error(`Error applying field ${field}:`, fieldError);
                         }
                     }
@@ -476,7 +492,7 @@ export async function setInstanceOverrides(targetInstances, sourceResult) {
                         message: "No overrides were applied"
                     });
                 }
-            } catch (instanceError) {
+            } catch (instanceError: any) {
                 console.error(`Error processing instance "${targetInstance.name}":`, instanceError);
                 results.push({
                     success: false,
@@ -489,7 +505,7 @@ export async function setInstanceOverrides(targetInstances, sourceResult) {
 
         // Return results
         if (totalAppliedCount > 0) {
-            const instanceCount = results.filter(r => r.success).length;
+            const instanceCount = results.filter((r: any) => r.success).length;
             const message = `Applied ${totalAppliedCount} overrides to ${instanceCount} instances`;
             figma.notify(message);
             return {
@@ -504,7 +520,7 @@ export async function setInstanceOverrides(targetInstances, sourceResult) {
             return { success: false, message, results };
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error in setInstanceOverrides:", error);
         const message = `Error: ${error.message}`;
         figma.notify(message);
@@ -518,7 +534,7 @@ export async function setInstanceOverrides(targetInstances, sourceResult) {
  * @param {string} params.nodeId - ID of the frame to convert
  * @returns {Promise<Object>} Created component info
  */
-export async function createComponent(params) {
+export async function createComponent(params: any) {
     const { nodeId } = params || {};
 
     if (!nodeId) {
@@ -606,7 +622,7 @@ export async function createComponent(params) {
             name: component.name,
             type: "COMPONENT"
         };
-    } catch (error) {
+    } catch (error: any) {
         throw new Error(`Error creating component: ${error.message}`);
     }
 }
@@ -620,7 +636,7 @@ export async function createComponent(params) {
  * @param {string} params.parentId - Parent node ID to place the set in
  * @returns {Promise<Object>} Created component set info
  */
-export async function createComponentSet(params) {
+export async function createComponentSet(params: any) {
     const { components, properties, componentSetName, parentId } = params;
 
     // Validate inputs (basic validation done in main.js, but good to be safe)
@@ -631,7 +647,7 @@ export async function createComponentSet(params) {
         throw new Error("Properties array is empty");
     }
 
-    const figmaComponents = [];
+    const figmaComponents: any[] = [];
 
     // Process each component: Rename and Collect
     for (const compData of components) {
@@ -645,7 +661,7 @@ export async function createComponentSet(params) {
             throw new Error(`Property values count mismatch for component ${component.name}`);
         }
 
-        const nameParts = properties.map((prop, index) => `${prop}=${compData.propertyValues[index]}`);
+        const nameParts = properties.map((prop: any, index: any) => `${prop}=${compData.propertyValues[index]}`);
         component.name = nameParts.join(", ");
 
         figmaComponents.push(component);
@@ -663,6 +679,7 @@ export async function createComponentSet(params) {
     if (parentId) {
         const parent = await figma.getNodeByIdAsync(parentId);
         if (parent) {
+            // @ts-ignore
             parent.appendChild(componentSet);
         }
     }

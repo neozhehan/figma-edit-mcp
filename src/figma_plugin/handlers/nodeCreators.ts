@@ -16,7 +16,7 @@ import { setCharacters } from '../utils/textUtils.js';
  * @param {string} params.parentId - Optional parent node ID
  * @returns {Promise<Object>} Created rectangle info
  */
-export async function createRectangle(params) {
+export async function createRectangle(params: any) {
     const {
         x = 0,
         y = 0,
@@ -42,6 +42,7 @@ export async function createRectangle(params) {
         if (!("appendChild" in parentNode)) {
             throw new Error(`Parent node does not support children: ${parentId}`);
         }
+        // @ts-ignore
         parentNode.appendChild(rect);
     } else {
         figma.currentPage.appendChild(rect);
@@ -50,6 +51,7 @@ export async function createRectangle(params) {
     // Handle absolute positioning if requested and parent is auto-layout
     if (useAbsolutePosition && parentId) {
         const parent = rect.parent;
+        // @ts-ignore
         if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
             rect.layoutPositioning = "ABSOLUTE";
             rect.x = x;
@@ -84,7 +86,7 @@ export async function createRectangle(params) {
  * @param {string} params.layoutWrap - Layout wrap (NO_WRAP, WRAP)
  * @returns {Promise<Object>} Created frame info
  */
-export async function createFrame(params) {
+export async function createFrame(params: any) {
     const {
         x = 0,
         y = 0,
@@ -139,7 +141,7 @@ export async function createFrame(params) {
 
     // Set fill color if provided
     if (fillColor) {
-        const paintStyle = {
+        const paintStyle: any = {
             type: "SOLID",
             color: {
                 r: parseFloat(fillColor.r) || 0,
@@ -153,7 +155,7 @@ export async function createFrame(params) {
 
     // Set stroke color and weight if provided
     if (strokeColor) {
-        const strokeStyle = {
+        const strokeStyle: any = {
             type: "SOLID",
             color: {
                 r: parseFloat(strokeColor.r) || 0,
@@ -179,6 +181,7 @@ export async function createFrame(params) {
         if (!("appendChild" in parentNode)) {
             throw new Error(`Parent node does not support children: ${parentId}`);
         }
+        // @ts-ignore
         parentNode.appendChild(frame);
     } else {
         figma.currentPage.appendChild(frame);
@@ -205,7 +208,7 @@ export async function createFrame(params) {
  * @param {number} weight - Font weight (100-900)
  * @returns {string} Figma font style name
  */
-function getFontStyle(weight) {
+function getFontStyle(weight: any) {
     switch (weight) {
         case 100:
             return "Thin";
@@ -243,7 +246,7 @@ function getFontStyle(weight) {
  * @param {string} params.parentId - Optional parent node ID
  * @returns {Promise<Object>} Created text node info
  */
-export async function createText(params) {
+export async function createText(params: any) {
     const {
         x = 0,
         y = 0,
@@ -266,13 +269,14 @@ export async function createText(params) {
         });
         textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
         textNode.fontSize = parseInt(fontSize);
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error setting font size", error);
     }
+    // @ts-ignore
     setCharacters(textNode, text);
 
     // Set text color
-    const paintStyle = {
+    const paintStyle: any = {
         type: "SOLID",
         color: {
             r: parseFloat(fontColor.r) || 0,
@@ -292,6 +296,7 @@ export async function createText(params) {
         if (!("appendChild" in parentNode)) {
             throw new Error(`Parent node does not support children: ${parentId}`);
         }
+        // @ts-ignore
         parentNode.appendChild(textNode);
     } else {
         figma.currentPage.appendChild(textNode);
@@ -322,7 +327,7 @@ export async function createText(params) {
  * @param {number} params.y - Optional Y position for clone
  * @returns {Promise<Object>} Cloned node info
  */
-export async function cloneNode(params) {
+export async function cloneNode(params: any) {
     const { nodeId, x, y } = params || {};
 
     if (!nodeId) {
@@ -335,6 +340,7 @@ export async function cloneNode(params) {
     }
 
     // Clone the node
+    // @ts-ignore
     const clone = node.clone();
 
     // If x and y are provided, move the clone to that position
@@ -377,11 +383,12 @@ export async function cloneNode(params) {
  * @param {Object} params.strokeColor - Optional stroke color
  * @returns {Promise<Object>} Created ellipse info
  */
-export async function createEllipse(params) {
+export async function createEllipse(params: any) {
     const { x = 0, y = 0, width = 100, height = 100, arcData, name = "Ellipse", parentId, fillColor, strokeColor, useAbsolutePosition = false } = params || {};
 
     let parent = figma.currentPage;
     if (parentId) {
+        // @ts-ignore
         parent = await figma.getNodeByIdAsync(parentId);
         if (!parent) {
             throw new Error(`Parent node not found with ID: ${parentId}`);
@@ -424,6 +431,7 @@ export async function createEllipse(params) {
 
     // Handle absolute positioning if requested and parent is auto-layout
     if (useAbsolutePosition && parentId) {
+        // @ts-ignore
         if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
             node.layoutPositioning = "ABSOLUTE";
             node.x = x;
@@ -449,11 +457,12 @@ export async function createEllipse(params) {
  * @param {Object} params.strokeColor - Optional stroke color
  * @returns {Promise<Object>} Created shape info
  */
-export async function createPolygonStar(params) {
+export async function createPolygonStar(params: any) {
     const { x = 0, y = 0, width = 100, height = 100, pointCount, innerRadius = 1.0, name, parentId, fillColor, strokeColor, useAbsolutePosition = false } = params || {};
 
     let parent = figma.currentPage;
     if (parentId) {
+        // @ts-ignore
         parent = await figma.getNodeByIdAsync(parentId);
         if (!parent) {
             throw new Error(`Parent node not found with ID: ${parentId}`);
@@ -500,6 +509,7 @@ export async function createPolygonStar(params) {
 
     // Handle absolute positioning if requested and parent is auto-layout
     if (useAbsolutePosition && parentId) {
+        // @ts-ignore
         if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
             node.layoutPositioning = "ABSOLUTE";
             node.x = x;

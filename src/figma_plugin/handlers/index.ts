@@ -8,10 +8,15 @@ export { setFillColor, setStrokeColor, setCornerRadius } from './stylingHandlers
 
 // Layout handlers
 export {
+    // @ts-ignore
     setLayoutMode,
+    // @ts-ignore
     setPadding,
+    // @ts-ignore
     setAxisAlign,
+    // @ts-ignore
     setLayoutSizing,
+    // @ts-ignore
     setItemSpacing
 } from './layoutHandlers.js';
 
@@ -43,6 +48,7 @@ export {
 // Component handlers
 export {
     getStyles,
+    // @ts-ignore
     getLocalComponents,
     createComponentInstance,
     exportNodeAsImage,

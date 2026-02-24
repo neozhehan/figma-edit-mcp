@@ -27,9 +27,11 @@
     "pub:release": "bun run build && npm publish"
   },
   "devDependencies": {
+    "@figma/plugin-typings": "^1.123.0",
     "@types/bun": "latest",
     "bun-types": "^1.2.5",
     "esbuild": "^0.27.2",
+    "ts-morph": "^27.0.2",
     "tsup": "^8.4.0",
     "typescript": "^5.0.0"
   },

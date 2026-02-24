@@ -12,15 +12,15 @@ import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js
  * @param {boolean} params.includeCategories - Whether to include category info
  * @returns {Promise<Object>} Annotations result
  */
-export async function getAnnotations(params) {
+export async function getAnnotations(params: any) {
     try {
         const { nodeId, includeCategories = true } = params;
 
         // Get categories first if needed
-        let categoriesMap = {};
+        let categoriesMap: any = {};
         if (includeCategories) {
             const categories = await figma.annotations.getAnnotationCategoriesAsync();
-            categoriesMap = categories.reduce((map, category) => {
+            categoriesMap = categories.reduce((map: any, category: any) => {
                 map[category.id] = {
                     id: category.id,
                     label: category.label,
@@ -43,8 +43,8 @@ export async function getAnnotations(params) {
             }
 
             // Collect annotations from this node and all its descendants
-            const mergedAnnotations = [];
-            const collect = async (n) => {
+            const mergedAnnotations: any[] = [];
+            const collect = async (n: any) => {
                 if ("annotations" in n && n.annotations && n.annotations.length > 0) {
                     for (const a of n.annotations) {
                         mergedAnnotations.push({ nodeId: n.id, annotation: a });
@@ -58,7 +58,7 @@ export async function getAnnotations(params) {
             };
             await collect(node);
 
-            const result = {
+            const result: any = {
                 nodeId: node.id,
                 name: node.name,
                 annotations: mergedAnnotations,
@@ -71,8 +71,8 @@ export async function getAnnotations(params) {
             return result;
         } else {
             // Get all annotations in the current page
-            const annotations = [];
-            const processNode = async (node) => {
+            const annotations: any[] = [];
+            const processNode = async (node: any) => {
                 if (
                     "annotations" in node &&
                     node.annotations &&
@@ -94,7 +94,7 @@ export async function getAnnotations(params) {
             // Start from current page
             await processNode(figma.currentPage);
 
-            const result = {
+            const result: any = {
                 annotatedNodes: annotations,
             };
 
@@ -104,7 +104,7 @@ export async function getAnnotations(params) {
 
             return result;
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error in getAnnotations:", error);
         throw error;
     }
@@ -117,7 +117,7 @@ export async function getAnnotations(params) {
  * @param {string[]} params.types - Array of node types to find
  * @returns {Promise<Object>} Object containing found nodes
  */
-export async function scanNodesByTypes(params) {
+export async function scanNodesByTypes(params: any) {
     console.log(`Starting to scan nodes by types from node ID: ${params.nodeId}`);
     const { nodeId, types = [] } = params || {};
 
@@ -132,7 +132,7 @@ export async function scanNodesByTypes(params) {
     }
 
     // Simple implementation without chunking
-    const matchingNodes = [];
+    const matchingNodes: any[] = [];
 
     // Send a single progress update to notify start
     const commandId = generateCommandId();
@@ -150,6 +150,7 @@ export async function scanNodesByTypes(params) {
     );
 
     // Recursively find nodes with specified types
+    // @ts-ignore
     await findNodesByTypes(node, types, matchingNodes);
 
     // Send completion update
@@ -179,13 +180,14 @@ export async function scanNodesByTypes(params) {
  * @param {string[]} types - Array of node types to find
  * @param {Array} matchingNodes - Array to store found nodes
  */
-async function findNodesByTypes(node, types, matchingNodes = []) {
+async function findNodesByTypes(node: any, types: any, matchingNodes = []) {
     // Skip invisible nodes
     if (node.visible === false) return;
 
     // Check if this node is one of the specified types
     if (types.includes(node.type)) {
         // Create a minimal representation with just ID, type and bbox
+        // @ts-ignore
         matchingNodes.push({
             id: node.id,
             name: node.name || `Unnamed ${node.type}`,
@@ -217,7 +219,7 @@ async function findNodesByTypes(node, types, matchingNodes = []) {
  * @param {Array} params.properties - Optional additional properties
  * @returns {Promise<Object>} Result of the annotation operation
  */
-async function setAnnotation(params) {
+async function setAnnotation(params: any) {
     const { nodeId, labelMarkdown, categoryId, properties } = params || {};
 
     if (!nodeId) {
@@ -239,7 +241,7 @@ async function setAnnotation(params) {
         }
 
         // Create the annotation object
-        const annotationObj = {
+        const annotationObj: any = {
             label: {
                 type: "MARKDOWN",
                 content: labelMarkdown,
@@ -265,7 +267,7 @@ async function setAnnotation(params) {
             nodeId: nodeId,
             annotationCount: node.annotations.length,
         };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error in setAnnotation:", error);
         return { success: false, error: error.message };
     }
@@ -278,7 +280,7 @@ async function setAnnotation(params) {
  * @param {Array} params.annotations - Array of annotation objects
  * @returns {Promise<Object>} Results of the operations
  */
-export async function setMultipleAnnotations(params) {
+export async function setMultipleAnnotations(params: any) {
     console.log("=== setMultipleAnnotations Debug Start ===");
     console.log("Input params:", JSON.stringify(params, null, 2));
 
@@ -293,7 +295,7 @@ export async function setMultipleAnnotations(params) {
         `Processing ${annotations.length} annotations for node ${nodeId}`
     );
 
-    const results = [];
+    const results: any[] = [];
     let successCount = 0;
     let failureCount = 0;
 
@@ -335,9 +337,9 @@ export async function setMultipleAnnotations(params) {
                 });
                 console.error(`✗ Annotation ${i + 1} failed:`, result.error);
             }
-        } catch (error) {
+        } catch (error: any) {
             failureCount++;
-            const errorResult = {
+            const errorResult: any = {
                 success: false,
                 nodeId: annotation.nodeId,
                 error: error.message,
@@ -351,7 +353,7 @@ export async function setMultipleAnnotations(params) {
         }
     }
 
-    const summary = {
+    const summary: any = {
         success: successCount > 0,
         annotationsApplied: successCount,
         annotationsFailed: failureCount,

@@ -14,7 +14,7 @@ import { delay } from '../utils/helpers.js';
  * @param {number} params.y - New Y position
  * @returns {Promise<Object>} Updated node info
  */
-export async function moveNode(params) {
+export async function moveNode(params: any) {
     const { nodeId, x, y } = params || {};
 
     if (!nodeId) {
@@ -53,7 +53,7 @@ export async function moveNode(params) {
  * @param {number} params.height - New height
  * @returns {Promise<Object>} Updated node info
  */
-export async function resizeNode(params) {
+export async function resizeNode(params: any) {
     const { nodeId, width, height } = params || {};
 
     if (!nodeId) {
@@ -89,7 +89,7 @@ export async function resizeNode(params) {
  * @param {string[]} params.nodeIds - Array of node IDs to delete
  * @returns {Promise<Object>} Deletion results
  */
-export async function deleteMultipleNodes(params) {
+export async function deleteMultipleNodes(params: any) {
     const { nodeIds } = params || {};
     const commandId = generateCommandId();
 
@@ -122,13 +122,13 @@ export async function deleteMultipleNodes(params) {
         { totalNodes: nodeIds.length }
     );
 
-    const results = [];
+    const results: any[] = [];
     let successCount = 0;
     let failureCount = 0;
 
     // Process nodes in chunks of 50 to avoid overwhelming Figma
     const CHUNK_SIZE = 50;
-    const chunks = [];
+    const chunks: any[] = [];
 
     for (let i = 0; i < nodeIds.length; i += CHUNK_SIZE) {
         chunks.push(nodeIds.slice(i, i + CHUNK_SIZE));
@@ -178,7 +178,7 @@ export async function deleteMultipleNodes(params) {
         );
 
         // Process deletions within a chunk in parallel
-        const chunkPromises = chunk.map(async (nodeId) => {
+        const chunkPromises = chunk.map(async (nodeId: any) => {
             try {
                 const node = await figma.getNodeByIdAsync(nodeId);
 
@@ -192,7 +192,7 @@ export async function deleteMultipleNodes(params) {
                 }
 
                 // Save node info before deleting
-                const nodeInfo = {
+                const nodeInfo: any = {
                     id: node.id,
                     name: node.name,
                     type: node.type,
@@ -207,7 +207,7 @@ export async function deleteMultipleNodes(params) {
                     nodeId: nodeId,
                     nodeInfo: nodeInfo,
                 };
-            } catch (error) {
+            } catch (error: any) {
                 console.error(`Error deleting node ${nodeId}: ${error.message}`);
                 return {
                     success: false,
@@ -221,7 +221,7 @@ export async function deleteMultipleNodes(params) {
         const chunkResults = await Promise.all(chunkPromises);
 
         // Process results for this chunk
-        chunkResults.forEach((result) => {
+        chunkResults.forEach((result: any) => {
             if (result.success) {
                 successCount++;
             } else {
@@ -295,7 +295,7 @@ export async function deleteMultipleNodes(params) {
  * @param {string[]} params.nodeIds - Array of node IDs to select
  * @returns {Promise<Object>} Selection result
  */
-export async function setSelections(params) {
+export async function setSelections(params: any) {
     if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
         throw new Error("Missing or invalid nodeIds parameter");
     }
@@ -305,8 +305,8 @@ export async function setSelections(params) {
     }
 
     // Get all valid nodes
-    const nodes = [];
-    const notFoundIds = [];
+    const nodes: any[] = [];
+    const notFoundIds: any[] = [];
 
     for (const nodeId of params.nodeIds) {
         const node = await figma.getNodeByIdAsync(nodeId);
@@ -327,7 +327,7 @@ export async function setSelections(params) {
     // Scroll and zoom to show all nodes in viewport
     figma.viewport.scrollAndZoomIntoView(nodes);
 
-    const selectedNodes = nodes.map(node => ({
+    const selectedNodes = nodes.map((node: any) => ({
         name: node.name,
         id: node.id
     }));
@@ -348,7 +348,7 @@ export async function setSelections(params) {
  * @param {string} params.name - New name for the node
  * @returns {Promise<Object>} Updated node info
  */
-export async function setNodeName(params) {
+export async function setNodeName(params: any) {
     const { nodeId, name } = params || {};
 
     if (!nodeId) {
@@ -381,7 +381,7 @@ export async function setNodeName(params) {
  * @param {string} [params.name] - Optional name for the group
  * @returns {Promise<Object>} Group info
  */
-export async function groupNodes(params) {
+export async function groupNodes(params: any) {
     const { nodes, name } = params;
 
     if (!nodes || nodes.length < 2) {
@@ -389,7 +389,7 @@ export async function groupNodes(params) {
     }
 
     // Collect all nodes
-    const resolvedNodes = [];
+    const resolvedNodes: any[] = [];
     for (const { nodeId } of nodes) {
         const node = await figma.getNodeByIdAsync(nodeId);
         if (node) resolvedNodes.push(node);
@@ -423,7 +423,7 @@ export async function groupNodes(params) {
  * @param {string} params.nodeId - Group ID
  * @returns {Promise<Object>} Ungroup info
  */
-export async function ungroupNodes(params) {
+export async function ungroupNodes(params: any) {
     const { nodeId } = params;
 
     const node = await figma.getNodeByIdAsync(nodeId);
@@ -435,7 +435,7 @@ export async function ungroupNodes(params) {
 
     const parent = node.parent;
     const children = [...node.children]; // Snapshot children before ungrouping
-    const childIds = children.map(c => ({ id: c.id, name: c.name }));
+    const childIds = children.map((c: any) => ({ id: c.id, name: c.name }));
 
     figma.ungroup(node);
 
@@ -448,7 +448,7 @@ export async function ungroupNodes(params) {
  * @param {string} params.nodeId - Node ID
  * @returns {Promise<Object>} Flattened node info
  */
-export async function flattenNode(params) {
+export async function flattenNode(params: any) {
     const { nodeId } = params;
 
     const node = await figma.getNodeByIdAsync(nodeId);
@@ -468,7 +468,7 @@ export async function flattenNode(params) {
  * @param {number} [params.index] - Index to insert at
  * @returns {Promise<Object>} Operation info
  */
-export async function insertChild(params) {
+export async function insertChild(params: any) {
     const { parentId, childId, index } = params;
 
     const parent = await figma.getNodeByIdAsync(parentId);
@@ -483,10 +483,13 @@ export async function insertChild(params) {
 
     // Perform reparenting
     if (index !== undefined) {
+        // @ts-ignore
         parent.insertChild(index, child);
     } else {
+        // @ts-ignore
         parent.appendChild(child);
     }
 
+    // @ts-ignore
     return { childId: child.id, newParentId: parent.id, index: parent.children.indexOf(child) };
 }
