@@ -2,7 +2,7 @@
 
 import { filterFigmaNode } from "../utils/nodeUtils.js";
 
-export async function getVariables(params) {
+export async function getVariables(params: any) {
     const { variableId } = params || {};
 
     try {
@@ -37,7 +37,7 @@ export async function getVariables(params) {
         const variables = await figma.variables.getLocalVariablesAsync();
 
         // Transform Collections
-        const mappedCollections = collections.map((c) => ({
+        const mappedCollections = collections.map((c: any) => ({
             id: c.id,
             name: c.name,
             key: c.key,
@@ -48,7 +48,7 @@ export async function getVariables(params) {
         }));
 
         // Transform Variables
-        const mappedVariables = variables.map((v) => ({
+        const mappedVariables = variables.map((v: any) => ({
             id: v.id,
             name: v.name,
             key: v.key,
@@ -62,12 +62,12 @@ export async function getVariables(params) {
             collections: mappedCollections,
             variables: mappedVariables,
         };
-    } catch (err) {
+    } catch (err: any) {
         throw new Error(`Error getting variables: ${err.message}`);
     }
 }
 
-export async function getNodeVariables(params) {
+export async function getNodeVariables(params: any) {
     const { nodeId } = params || {};
     if (!nodeId) {
         throw new Error("Missing nodeId parameter");
@@ -79,23 +79,25 @@ export async function getNodeVariables(params) {
     }
 
     // 1. Get Bound Variables (individual properties)
+    // @ts-ignore
     const boundVariables = node.boundVariables || {};
 
     // 2. Get Explicit Variable Modes (theme settings)
+    // @ts-ignore
     const explicitVariableModes = node.explicitVariableModes || {};
 
     // Resolve mode names (optional, but helpful)
-    const resolvedModes = {};
+    const resolvedModes: any = {};
     if (Object.keys(explicitVariableModes).length > 0) {
         try {
             const collections = await Promise.all(
-                Object.keys(explicitVariableModes).map(id => figma.variables.getVariableCollectionByIdAsync(id))
+                Object.keys(explicitVariableModes).map((id: any) => figma.variables.getVariableCollectionByIdAsync(id))
             );
 
-            collections.forEach(collection => {
+            collections.forEach((collection: any) => {
                 if (collection) {
                     const modeId = explicitVariableModes[collection.id];
-                    const mode = collection.modes.find(m => m.modeId === modeId);
+                    const mode = collection.modes.find((m: any) => m.modeId === modeId);
                     resolvedModes[collection.id] = {
                         collectionName: collection.name,
                         modeId: modeId,
@@ -103,25 +105,28 @@ export async function getNodeVariables(params) {
                     }
                 }
             })
-        } catch (e) {
+        } catch (e: any) {
             // ignore resolution errors
         }
     }
 
     // 3. Helper to look up variable details for bound variables
-    const resolvedBindings = {};
+    const resolvedBindings: any = {};
     for (const [field, alias] of Object.entries(boundVariables)) {
         // boundVariables can be nested (e.g. for fills/strokes/componentProperties)
         // or simple Alias (id, type)
         // Simple handling for now: if it has an id, try to resolve name
+        // @ts-ignore
         if (alias && alias.id) {
             try {
+                // @ts-ignore
                 const v = await figma.variables.getVariableByIdAsync(alias.id);
                 resolvedBindings[field] = {
+                    // @ts-ignore
                     variableId: alias.id,
                     variableName: v ? v.name : "Unknown Variable"
                 }
-            } catch (e) {
+            } catch (e: any) {
                 resolvedBindings[field] = alias;
             }
         } else {
@@ -140,7 +145,7 @@ export async function getNodeVariables(params) {
     };
 }
 
-export async function setBoundVariable(params) {
+export async function setBoundVariable(params: any) {
     const { nodeId, field, variableId, collectionId, modeId } = params || {};
 
     if (!nodeId) {
@@ -162,9 +167,10 @@ export async function setBoundVariable(params) {
             // Plugin API: setExplicitVariableModeForCollection(collectionId, modeId)
             // To clear, we usually don't have a clear method, but passing invalid mode might throw.
             // Let's assume user sends valid modeId.
+            // @ts-ignore
             await node.setExplicitVariableModeForCollection(collectionId, modeId);
             return { success: true, message: `Set mode ${modeId} for collection ${collectionId}` };
-        } catch (e) {
+        } catch (e: any) {
             throw new Error(`Failed to set explicit variable mode: ${e.message}`);
         }
     }
@@ -180,6 +186,7 @@ export async function setBoundVariable(params) {
 
             // Special handling for fills and strokes (paints)
             if (field === 'fills' || field === 'strokes') {
+                // @ts-ignore
                 const paints = JSON.parse(JSON.stringify(node[field]));
                 let modified = false;
                 for (let i = 0; i < paints.length; i++) {
@@ -190,6 +197,7 @@ export async function setBoundVariable(params) {
                 }
 
                 if (modified) {
+                    // @ts-ignore
                     node[field] = paints;
                     const action = variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`;
                     return { success: true, message: action };
@@ -198,11 +206,12 @@ export async function setBoundVariable(params) {
             }
 
             // Standard properties
+            // @ts-ignore
             node.setBoundVariable(field, variable);
             const action = variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`;
             return { success: true, message: action };
 
-        } catch (e) {
+        } catch (e: any) {
             throw new Error(`Failed to set bound variable: ${e.message}`);
         }
     }
@@ -216,7 +225,7 @@ export async function setBoundVariable(params) {
  * @param {string} params.action - Action type: CREATE_COLLECTION, CREATE_VARIABLE, SET_VALUE
  * @returns {Promise<Object>} Result of the operation
  */
-export async function handleVariableRequest(params) {
+export async function handleVariableRequest(params: any) {
     const { action } = params || {};
 
     if (!action) {
@@ -261,11 +270,13 @@ export async function handleVariableRequest(params) {
             }
 
             // Using collection object for createVariable as requested by error message
+            // @ts-ignore
             const variable = figma.variables.createVariable(name, collection, resolvedType);
 
             // Set initial value if provided (for default mode)
             if (value !== undefined) {
                 const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+                // @ts-ignore
                 const defaultModeId = collection.defaultModeId;
 
                 // Value parsing for color

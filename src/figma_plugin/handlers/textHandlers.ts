@@ -16,7 +16,7 @@ import { collectNodesToProcess } from '../utils/nodeUtils.js';
  * @param {number} params.chunkSize - Size of processing chunks
  * @returns {Promise<Object>} Scan results with text nodes
  */
-export async function scanTextNodes(params) {
+export async function scanTextNodes(params: any) {
     console.log(`Starting to scan text nodes from node ID: ${params.nodeId}`);
     const {
         nodeId,
@@ -45,7 +45,7 @@ export async function scanTextNodes(params) {
 
     // If chunking is not enabled, use the original implementation
     if (!useChunking) {
-        const textNodes = [];
+        const textNodes: any[] = [];
         try {
             // Send started progress update
             sendProgressUpdate(
@@ -59,6 +59,7 @@ export async function scanTextNodes(params) {
                 null
             );
 
+            // @ts-ignore
             await findTextNodes(node, [], 0, textNodes);
 
             // Send completed progress update
@@ -80,7 +81,7 @@ export async function scanTextNodes(params) {
                 textNodes: textNodes,
                 commandId,
             };
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error scanning text nodes:", error);
 
             // Send error progress update
@@ -103,7 +104,7 @@ export async function scanTextNodes(params) {
     console.log(`Using chunked scanning with chunk size: ${chunkSize}`);
 
     // First, collect all nodes to process (without processing them yet)
-    const nodesToProcess = [];
+    const nodesToProcess: any[] = [];
 
     // Send started progress update
     sendProgressUpdate(
@@ -117,6 +118,7 @@ export async function scanTextNodes(params) {
         { chunkSize }
     );
 
+    // @ts-ignore
     await collectNodesToProcess(node, [], 0, nodesToProcess);
 
     const totalNodes = nodesToProcess.length;
@@ -143,7 +145,7 @@ export async function scanTextNodes(params) {
     );
 
     // Process nodes in chunks
-    const allTextNodes = [];
+    const allTextNodes: any[] = [];
     let processedNodes = 0;
     let chunksProcessed = 0;
 
@@ -171,7 +173,7 @@ export async function scanTextNodes(params) {
         );
 
         const chunkNodes = nodesToProcess.slice(i, chunkEnd);
-        const chunkTextNodes = [];
+        const chunkTextNodes: any[] = [];
 
         // Process each node in this chunk
         for (const nodeInfo of chunkNodes) {
@@ -185,7 +187,7 @@ export async function scanTextNodes(params) {
                     if (textNodeInfo) {
                         chunkTextNodes.push(textNodeInfo);
                     }
-                } catch (error) {
+                } catch (error: any) {
                     console.error(`Error processing text node: ${error.message}`);
                     // Continue with other nodes
                 }
@@ -254,7 +256,7 @@ export async function scanTextNodes(params) {
  * @param {number} depth - Current depth level
  * @returns {Promise<Object|null>} Text node information
  */
-async function processTextNode(node, parentPath, depth) {
+async function processTextNode(node: any, parentPath: any, depth: any) {
     if (node.type !== "TEXT") return null;
 
     try {
@@ -270,7 +272,7 @@ async function processTextNode(node, parentPath, depth) {
         }
 
         // Create a safe representation of the text node
-        const safeTextNode = {
+        const safeTextNode: any = {
             id: node.id,
             name: node.name || "Text",
             type: node.type,
@@ -289,7 +291,7 @@ async function processTextNode(node, parentPath, depth) {
 
 
         return safeTextNode;
-    } catch (nodeErr) {
+    } catch (nodeErr: any) {
         console.error("Error processing text node:", nodeErr);
         return null;
     }
@@ -302,7 +304,7 @@ async function processTextNode(node, parentPath, depth) {
  * @param {number} depth - Current depth level
  * @param {Array} textNodes - Array to collect text nodes
  */
-async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
+async function findTextNodes(node: any, parentPath = [], depth = 0, textNodes = []) {
     // Skip invisible nodes
     if (node.visible === false) return;
 
@@ -323,7 +325,7 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
             }
 
             // Create a safe representation of the text node with only serializable properties
-            const safeTextNode = {
+            const safeTextNode: any = {
                 id: node.id,
                 name: node.name || "Text",
                 type: node.type,
@@ -341,8 +343,9 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
 
 
 
+            // @ts-ignore
             textNodes.push(safeTextNode);
-        } catch (nodeErr) {
+        } catch (nodeErr: any) {
             console.error("Error processing text node:", nodeErr);
             // Skip this node but continue with others
         }
@@ -351,6 +354,7 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
     // Recursively process children of container nodes
     if ("children" in node) {
         for (const child of node.children) {
+            // @ts-ignore
             await findTextNodes(child, nodePath, depth + 1, textNodes);
         }
     }
@@ -363,7 +367,7 @@ async function findTextNodes(node, parentPath = [], depth = 0, textNodes = []) {
  * @param {string} params.text - New text content
  * @returns {Promise<Object>} Result of the operation
  */
-async function setTextContent(params) {
+async function setTextContent(params: any) {
     const { nodeId, text } = params || {};
 
     if (!nodeId) {
@@ -380,6 +384,7 @@ async function setTextContent(params) {
     }
 
     // Use the setCharacters utility from textUtils
+    // @ts-ignore
     await setCharacters(node, text);
 
     return {
@@ -396,7 +401,7 @@ async function setTextContent(params) {
  * @param {Array} params.text - Array of {nodeId, text} objects
  * @returns {Promise<Object>} Results of the operations
  */
-export async function setMultipleTextContents(params) {
+export async function setMultipleTextContents(params: any) {
     const { nodeId, text } = params || {};
     const commandId = params.commandId || generateCommandId();
 
@@ -435,13 +440,13 @@ export async function setMultipleTextContents(params) {
     );
 
     // Define the results array and counters
-    const results = [];
+    const results: any[] = [];
     let successCount = 0;
     let failureCount = 0;
 
     // Split text replacements into chunks of 10
     const CHUNK_SIZE = 10;
-    const chunks = [];
+    const chunks: any[] = [];
 
     for (let i = 0; i < text.length; i += CHUNK_SIZE) {
         chunks.push(text.slice(i, i + CHUNK_SIZE));
@@ -491,7 +496,7 @@ export async function setMultipleTextContents(params) {
         );
 
         // Process replacements within a chunk in parallel
-        const chunkPromises = chunk.map(async (replacement) => {
+        const chunkPromises = chunk.map(async (replacement: any) => {
             if (!replacement.nodeId || replacement.text === undefined) {
                 console.error(`Missing nodeId or text for replacement`);
                 return {
@@ -553,7 +558,7 @@ export async function setMultipleTextContents(params) {
                     originalText: originalText,
                     translatedText: replacement.text,
                 };
-            } catch (error) {
+            } catch (error: any) {
                 console.error(
                     `Error replacing text in node ${replacement.nodeId}: ${error.message}`
                 );
@@ -569,7 +574,7 @@ export async function setMultipleTextContents(params) {
         const chunkResults = await Promise.all(chunkPromises);
 
         // Process results for this chunk
-        chunkResults.forEach((result) => {
+        chunkResults.forEach((result: any) => {
             if (result.success) {
                 successCount++;
             } else {
@@ -643,7 +648,7 @@ export async function setMultipleTextContents(params) {
  * @param {Object} params - Style parameters
  * @returns {Promise<Object>} Result
  */
-export async function setTextStyle(params) {
+export async function setTextStyle(params: any) {
     const { nodeId, fontFamily, fontStyle, fontSize,
         letterSpacing, lineHeight, paragraphSpacing, textCase,
         textDecoration, textAlignHorizontal, textAlignVertical } = params;

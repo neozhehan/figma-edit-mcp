@@ -9,26 +9,26 @@ import { rgbaToHex } from './colorUtils.js';
  * @param {SceneNode} node - Figma node to filter
  * @returns {Object|null} Filtered node object or null for VECTOR nodes
  */
-export function filterFigmaNode(node) {
+export function filterFigmaNode(node: any) {
     if (node.type === "VECTOR") {
         return null;
     }
 
-    var filtered = {
+    var filtered: any = {
         id: node.id,
         name: node.name,
         type: node.type,
     };
 
     if (node.fills && node.fills.length > 0) {
-        filtered.fills = node.fills.map((fill) => {
+        filtered.fills = node.fills.map((fill: any) => {
             var processedFill = Object.assign({}, fill);
             delete processedFill.boundVariables;
             delete processedFill.imageRef;
 
             if (processedFill.gradientStops) {
                 processedFill.gradientStops = processedFill.gradientStops.map(
-                    (stop) => {
+                    (stop: any) => {
                         var processedStop = Object.assign({}, stop);
                         if (processedStop.color) {
                             processedStop.color = rgbaToHex(processedStop.color);
@@ -48,7 +48,7 @@ export function filterFigmaNode(node) {
     }
 
     if (node.strokes && node.strokes.length > 0) {
-        filtered.strokes = node.strokes.map((stroke) => {
+        filtered.strokes = node.strokes.map((stroke: any) => {
             var processedStroke = Object.assign({}, stroke);
             delete processedStroke.boundVariables;
             if (processedStroke.color) {
@@ -84,10 +84,10 @@ export function filterFigmaNode(node) {
 
     if (node.children) {
         filtered.children = node.children
-            .map((child) => {
+            .map((child: any) => {
                 return filterFigmaNode(child);
             })
-            .filter((child) => {
+            .filter((child: any) => {
                 return child !== null;
             });
     }
@@ -103,7 +103,7 @@ export function filterFigmaNode(node) {
  * @param {Array} nodesToProcess - Array to collect nodes
  */
 export async function collectNodesToProcess(
-    node,
+    node: any,
     parentPath = [],
     depth = 0,
     nodesToProcess = []
@@ -115,6 +115,7 @@ export async function collectNodesToProcess(
     const nodePath = [...parentPath, node.name || `Unnamed ${node.type}`];
 
     // Add this node to the processing list
+    // @ts-ignore
     nodesToProcess.push({
         node: node,
         parentPath: nodePath,
@@ -124,6 +125,7 @@ export async function collectNodesToProcess(
     // Recursively add children
     if ("children" in node) {
         for (const child of node.children) {
+            // @ts-ignore
             await collectNodesToProcess(child, nodePath, depth + 1, nodesToProcess);
         }
     }

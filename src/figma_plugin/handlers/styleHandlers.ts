@@ -1,4 +1,4 @@
-export async function createStyle(params) {
+export async function createStyle(params: any) {
     const { type, name, description, properties } = params;
 
     // Validate required parameters
@@ -59,7 +59,7 @@ export async function createStyle(params) {
     };
 }
 
-export async function applyStyle(params) {
+export async function applyStyle(params: any) {
     const { nodeId, styleId, styleType } = params;
 
     // Validate parameters

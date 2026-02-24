@@ -15,7 +15,7 @@ export async function getDocumentInfo() {
 
     // Get all pages from document root
     // Note: figma.root.children returns all pages
-    const allPages = figma.root.children.map((p) => ({
+    const allPages = figma.root.children.map((p: any) => ({
         id: p.id,
         name: p.name,
         childCount: p.children.length,
@@ -38,14 +38,15 @@ export async function getDocumentInfo() {
  * @param {Object} params - Parameters including pageId
  * @returns {Promise<Object>} Page information including children
  */
-export async function getPageInfo(params) {
+export async function getPageInfo(params: any) {
     const { pageId } = params || {};
 
     let targetPage = figma.currentPage;
 
     if (pageId && pageId !== figma.currentPage.id) {
         // Find the requested page
-        targetPage = figma.root.children.find(p => p.id === pageId);
+        // @ts-ignore
+        targetPage = figma.root.children.find((p: any) => p.id === pageId);
         if (!targetPage) {
             throw new Error(`Page with ID ${pageId} not found`);
         }
@@ -59,7 +60,7 @@ export async function getPageInfo(params) {
         name: targetPage.name,
         type: "PAGE",
         isCurrent: targetPage.id === figma.currentPage.id,
-        children: targetPage.children.map((node) => ({
+        children: targetPage.children.map((node: any) => ({
             id: node.id,
             name: node.name,
             type: node.type,
@@ -74,7 +75,7 @@ export async function getPageInfo(params) {
 export async function getSelection() {
     return {
         selectionCount: figma.currentPage.selection.length,
-        selection: figma.currentPage.selection.map((node) => ({
+        selection: figma.currentPage.selection.map((node: any) => ({
             id: node.id,
             name: node.name,
             type: node.type,
@@ -88,19 +89,19 @@ export async function getSelection() {
  * @param {string[]} nodeIds - Array of node IDs to query
  * @returns {Promise<Object[]>} Array of node information objects
  */
-export async function getNodesInfo(nodeIds) {
+export async function getNodesInfo(nodeIds: any) {
     try {
         // Load all nodes in parallel
         const nodes = await Promise.all(
-            nodeIds.map((id) => figma.getNodeByIdAsync(id))
+            nodeIds.map((id: any) => figma.getNodeByIdAsync(id))
         );
 
         // Filter out any null values (nodes that weren't found)
-        const validNodes = nodes.filter((node) => node !== null);
+        const validNodes = nodes.filter((node: any) => node !== null);
 
         // Export all valid nodes in parallel
         const responses = await Promise.all(
-            validNodes.map(async (node) => {
+            validNodes.map(async (node: any) => {
                 const response = await node.exportAsync({
                     format: "JSON_REST_V1",
                 });
@@ -113,7 +114,7 @@ export async function getNodesInfo(nodeIds) {
         );
 
         return responses;
-    } catch (error) {
+    } catch (error: any) {
         throw new Error(`Error getting nodes info: ${error.message}`);
     }
 }
@@ -126,15 +127,15 @@ export async function readMyDesign() {
     try {
         // Load all selected nodes in parallel
         const nodes = await Promise.all(
-            figma.currentPage.selection.map((node) => figma.getNodeByIdAsync(node.id))
+            figma.currentPage.selection.map((node: any) => figma.getNodeByIdAsync(node.id))
         );
 
         // Filter out any null values (nodes that weren't found)
-        const validNodes = nodes.filter((node) => node !== null);
+        const validNodes = nodes.filter((node: any) => node !== null);
 
         // Export all valid nodes in parallel
         const responses = await Promise.all(
-            validNodes.map(async (node) => {
+            validNodes.map(async (node: any) => {
                 const response = await node.exportAsync({
                     format: "JSON_REST_V1",
                 });
@@ -146,7 +147,7 @@ export async function readMyDesign() {
         );
 
         return responses;
-    } catch (error) {
+    } catch (error: any) {
         throw new Error(`Error getting nodes info: ${error.message}`);
     }
 }

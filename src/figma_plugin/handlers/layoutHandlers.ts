@@ -21,7 +21,7 @@
  * @param {number} [params.counterAxisSpacing] - Space between wrapped rows/columns
  * @returns {Promise<Object>} Result with node info and applied settings
  */
-export async function setAutoLayout(params) {
+export async function setAutoLayout(params: any) {
     const {
         nodeId,
         layoutMode,

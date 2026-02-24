@@ -27,16 +27,16 @@ export function generateCommandId() {
  * @returns {Object} The update object that was sent
  */
 export function sendProgressUpdate(
-    commandId,
-    commandType,
-    status,
-    progress,
-    totalItems,
-    processedItems,
-    message,
-    payload = null
+    commandId: any,
+    commandType: any,
+    status: any,
+    progress: any,
+    totalItems: any,
+    processedItems: any,
+    message: any,
+    payload: any = null
 ) {
-    const update = {
+    const update: any = {
         type: "command_progress",
         commandId,
         commandType,

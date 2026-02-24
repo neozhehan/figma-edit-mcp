@@ -10,7 +10,7 @@
  * @param {Object} params.color - Color object with r, g, b, a values (0-1)
  * @returns {Promise<Object>} Result with node info and applied fills
  */
-export async function setFillColor(params) {
+export async function setFillColor(params: any) {
     console.log("setFillColor", params);
     const {
         nodeId,
@@ -31,7 +31,7 @@ export async function setFillColor(params) {
     }
 
     // Create RGBA color
-    const rgbColor = {
+    const rgbColor: any = {
         r: parseFloat(r) || 0,
         g: parseFloat(g) || 0,
         b: parseFloat(b) || 0,
@@ -39,7 +39,7 @@ export async function setFillColor(params) {
     };
 
     // Set fill
-    const paintStyle = {
+    const paintStyle: any = {
         type: "SOLID",
         color: {
             r: parseFloat(rgbColor.r),
@@ -68,7 +68,7 @@ export async function setFillColor(params) {
  * @param {number} params.weight - Stroke weight (default: 1)
  * @returns {Promise<Object>} Result with node info and applied strokes
  */
-export async function setStrokeColor(params) {
+export async function setStrokeColor(params: any) {
     const {
         nodeId,
         color: { r, g, b, a },
@@ -89,7 +89,7 @@ export async function setStrokeColor(params) {
     }
 
     // Create RGBA color
-    const rgbColor = {
+    const rgbColor: any = {
         r: r !== undefined ? r : 0,
         g: g !== undefined ? g : 0,
         b: b !== undefined ? b : 0,
@@ -97,7 +97,7 @@ export async function setStrokeColor(params) {
     };
 
     // Set stroke
-    const paintStyle = {
+    const paintStyle: any = {
         type: "SOLID",
         color: {
             r: rgbColor.r,
@@ -130,7 +130,7 @@ export async function setStrokeColor(params) {
  * @param {boolean[]} params.corners - Optional array of 4 booleans [topLeft, topRight, bottomRight, bottomLeft]
  * @returns {Promise<Object>} Result with node info and applied corner radii
  */
-export async function setCornerRadius(params) {
+export async function setCornerRadius(params: any) {
     const { nodeId, radius, corners } = params || {};
 
     if (!nodeId) {
@@ -161,10 +161,12 @@ export async function setCornerRadius(params) {
             if (corners[3]) node.bottomLeftRadius = radius;
         } else {
             // Node only supports uniform corner radius
+            // @ts-ignore
             node.cornerRadius = radius;
         }
     } else {
         // Set uniform corner radius
+        // @ts-ignore
         node.cornerRadius = radius;
     }
 
@@ -188,7 +190,7 @@ export async function setCornerRadius(params) {
  * @param {Array} params.effects - Array of effect objects
  * @returns {Promise<Object>} Result with node info and applied effects
  */
-export async function setEffects(params) {
+export async function setEffects(params: any) {
     const { nodeId, effects } = params || {};
 
     if (!nodeId) {
@@ -209,13 +211,13 @@ export async function setEffects(params) {
     }
 
     // Validate and process effects (basic validation)
-    const processedEffects = effects.map(effect => {
+    const processedEffects = effects.map((effect: any) => {
         if (!effect.type) {
             throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
         }
 
         // Defaults for required fields if missing, to prevent crashes
-        const baseEffect = {
+        const baseEffect: any = {
             type: effect.type,
             visible: effect.visible !== undefined ? effect.visible : true,
         };

@@ -1,4 +1,4 @@
-export async function createNodeFromSvg(params) {
+export async function createNodeFromSvg(params: any) {
     const { parentId, svg, name, x = 0, y = 0 } = params;
 
     if (!params.svg) {
@@ -14,6 +14,7 @@ export async function createNodeFromSvg(params) {
     if (parentId) {
         const parent = await figma.getNodeByIdAsync(parentId);
         if (parent) {
+            // @ts-ignore
             parent.appendChild(node);
         } else {
             // If parent not found, append to current page or root

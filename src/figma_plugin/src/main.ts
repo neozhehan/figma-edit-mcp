@@ -35,7 +35,7 @@ import { createNodeFromSvg } from '../handlers/vectorHandlers.js';
 
 
 // Constants
-const ERRORS = {
+const ERRORS: any = {
     // Editable Scope Errors
     READ_ONLY_MODE: "Operation Denied: Figma Plugin in Read-Only Mode. Verify if user intends for changes to be made. If so, advise user to disconnect plugin, paste a link to the page/layer to be edited into Link to Selection field, then reconnect plugin.",
     OUTSIDE_SCOPE: "Operation Denied: Node outside editable scope. Verify if user intends for changes to be made to this particular node. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
@@ -56,19 +56,19 @@ const ERRORS = {
 };
 
 // Plugin state
-const state = {
+const state: any = {
     serverPort: 3055, // Default port
     scopeRootId: null,
     readOnly: false // Default to false, but connection flow will set this
 };
 
 // Helper: Format error message with current scope ID
-function formatScopeError(errorMessage) {
+function formatScopeError(errorMessage: any) {
     return `${errorMessage} (Current Editable Scope Node ID: ${state.scopeRootId || 'None'})`;
 }
 
 // Helper: Check if a node is within the allowed scope
-async function checkScopeAccess(nodeId) {
+async function checkScopeAccess(nodeId: any) {
     if (state.readOnly) return false;
 
     // If scope is not set, we assume restricted access (deny) unless strict flow says otherwise.
@@ -95,7 +95,7 @@ async function checkScopeAccess(nodeId) {
 }
 
 // Helper: Verify node name matches expected name
-async function verifyNodeName(nodeId, expectedName) {
+async function verifyNodeName(nodeId: any, expectedName: any) {
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) return false; // Node existence checking should happen elsewhere usually, but if missing here, it's a mismatch technically.
 
@@ -108,7 +108,7 @@ async function verifyNodeName(nodeId, expectedName) {
 }
 
 // Helper: Verify parent name matches expected name
-async function verifyParentName(parentId, expectedParentName) {
+async function verifyParentName(parentId: any, expectedParentName: any) {
     const node = await figma.getNodeByIdAsync(parentId);
     if (!node) return false;
 
@@ -116,12 +116,13 @@ async function verifyParentName(parentId, expectedParentName) {
 }
 
 // Helper: Parse Node ID from URL
-function parseNodeIdFromUrl(url) {
+function parseNodeIdFromUrl(url: any) {
     try {
+        // @ts-ignore
         const urlObj = new URL(url);
         const nodeId = urlObj.searchParams.get("node-id");
         return nodeId ? nodeId.replace(/-/g, ":") : null;
-    } catch (e) {
+    } catch (e: any) {
         // Fallback for simple paste? Or maybe strictly require URL structure
         // Figma often copies as: "https://www.figma.com/design/..."
         // Regex fallback might be safer if URL object fails or protocol is weird
@@ -135,7 +136,7 @@ function parseNodeIdFromUrl(url) {
 figma.showUI(__html__, { width: 350, height: 450 });
 
 // Plugin commands from UI
-figma.ui.onmessage = async (msg) => {
+figma.ui.onmessage = async (msg: any) => {
     switch (msg.type) {
         case "update-settings":
             updateSettings(msg);
@@ -188,7 +189,7 @@ figma.ui.onmessage = async (msg) => {
                         id: msg.id,
                         result,
                     });
-                } catch (error) {
+                } catch (error: any) {
                     figma.ui.postMessage({
                         type: "command-error",
                         id: msg.id,
@@ -201,13 +202,13 @@ figma.ui.onmessage = async (msg) => {
 };
 
 // Listen for plugin commands from menu
-figma.on("run", ({ command }) => {
+figma.on("run", ({ command }: any) => {
     // Auto-connect removed to enforce Scope Selection workflow.
     // figma.ui.postMessage({ type: "auto-connect" });
 });
 
 // Update plugin settings
-function updateSettings(settings) {
+function updateSettings(settings: any) {
     if (settings.serverPort) {
         state.serverPort = settings.serverPort;
     }
@@ -218,7 +219,7 @@ function updateSettings(settings) {
 }
 
 // Handle commands from UI
-async function handleCommand(command, params) {
+async function handleCommand(command: any, params: any) {
     switch (command) {
         case "set_fill_color":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
@@ -267,7 +268,9 @@ async function handleCommand(command, params) {
 
                     // Check parent consistency
                     const node = await figma.getNodeByIdAsync(item.nodeId);
+                    // @ts-ignore
                     if (node.parent?.id !== parentId) {
+                        // @ts-ignore
                         throw new Error(`Invalid Grouping: All nodes must share the same parent. Node "${node.name}" is under a different parent than "${firstNode.name}". Use 'insert_child' to reparent them first.`);
                     }
                 }
@@ -396,7 +399,7 @@ async function handleCommand(command, params) {
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
 
-            const nodeIdsToDelete = [];
+            const nodeIdsToDelete: any[] = [];
             for (const item of params.nodes) {
                 if (!(await checkScopeAccess(item.nodeId))) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
                 if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
@@ -415,7 +418,7 @@ async function handleCommand(command, params) {
                     throw new Error("targetNodes must be an array");
                 }
 
-                const targetNodeIds = [];
+                const targetNodeIds: any[] = [];
 
                 // Permission check and name verification
                 for (const item of params.targetNodes) {
@@ -437,6 +440,7 @@ async function handleCommand(command, params) {
                     sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
 
                     if (!sourceInstanceData.success) {
+                        // @ts-ignore
                         figma.notify(sourceInstanceData.message);
                         return { success: false, message: sourceInstanceData.message };
                     }
@@ -487,6 +491,7 @@ async function handleCommand(command, params) {
                 if (!instanceNode) {
                     throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
                 }
+                // @ts-ignore
                 return await getInstanceOverrides(instanceNode);
             }
             // Call without instance node if not provided

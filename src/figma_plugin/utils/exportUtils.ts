@@ -7,7 +7,7 @@
  * @param {Uint8Array} bytes - Binary data to encode
  * @returns {string} Base64 encoded string
  */
-export function customBase64Encode(bytes) {
+export function customBase64Encode(bytes: any) {
     const chars =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let base64 = "";

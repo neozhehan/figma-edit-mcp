@@ -12,8 +12,8 @@ import { uniqBy } from './helpers.js';
  * @param {number} endIdx - End index
  * @returns {Array} Array of [start, end] position pairs
  */
-export const getDelimiterPos = (str, delimiter, startIdx = 0, endIdx = str.length) => {
-    const indices = [];
+export const getDelimiterPos = (str: any, delimiter: any, startIdx = 0, endIdx = str.length) => {
+    const indices: any[] = [];
     let temp = startIdx;
     for (let i = startIdx; i < endIdx; i++) {
         if (
@@ -34,10 +34,10 @@ export const getDelimiterPos = (str, delimiter, startIdx = 0, endIdx = str.lengt
  * @param {TextNode} node - Figma text node
  * @returns {Array} Array of font info objects
  */
-export const buildLinearOrder = (node) => {
-    const fontTree = [];
+export const buildLinearOrder = (node: any) => {
+    const fontTree: any[] = [];
     const newLinesPos = getDelimiterPos(node.characters, "\n");
-    newLinesPos.forEach(([newLinesRangeStart, newLinesRangeEnd], n) => {
+    newLinesPos.forEach(([newLinesRangeStart, newLinesRangeEnd]: any, n: any) => {
         const newLinesRangeFont = node.getRangeFontName(
             newLinesRangeStart,
             newLinesRangeEnd
@@ -49,7 +49,7 @@ export const buildLinearOrder = (node) => {
                 newLinesRangeStart,
                 newLinesRangeEnd
             );
-            spacesPos.forEach(([spacesRangeStart, spacesRangeEnd], s) => {
+            spacesPos.forEach(([spacesRangeStart, spacesRangeEnd]: any, s: any) => {
                 const spacesRangeFont = node.getRangeFontName(
                     spacesRangeStart,
                     spacesRangeEnd
@@ -84,8 +84,8 @@ export const buildLinearOrder = (node) => {
         }
     });
     return fontTree
-        .sort((a, b) => +a.start - +b.start)
-        .map(({ family, style, delimiter }) => ({ family, style, delimiter }));
+        .sort((a: any, b: any) => +a.start - +b.start)
+        .map(({ family, style, delimiter }: any) => ({ family, style, delimiter }));
 };
 
 /**
@@ -95,7 +95,7 @@ export const buildLinearOrder = (node) => {
  * @param {Object} options - Options including fallbackFont and smartStrategy
  * @returns {Promise<boolean>} Success status
  */
-export const setCharacters = async (node, characters, options) => {
+export const setCharacters = async (node: any, characters: any, options: any) => {
     const fallbackFont = (options && options.fallbackFont) || {
         family: "Inter",
         style: "Regular",
@@ -103,17 +103,17 @@ export const setCharacters = async (node, characters, options) => {
     try {
         if (node.fontName === figma.mixed) {
             if (options && options.smartStrategy === "prevail") {
-                const fontHashTree = {};
+                const fontHashTree: any = {};
                 for (let i = 1; i < node.characters.length; i++) {
                     const charFont = node.getRangeFontName(i - 1, i);
                     const key = `${charFont.family}::${charFont.style}`;
                     fontHashTree[key] = fontHashTree[key] ? fontHashTree[key] + 1 : 1;
                 }
                 const prevailedTreeItem = Object.entries(fontHashTree).sort(
-                    (a, b) => b[1] - a[1]
+                    (a: any, b: any) => b[1] - a[1]
                 )[0];
                 const [family, style] = prevailedTreeItem[0].split("::");
-                const prevailedFont = {
+                const prevailedFont: any = {
                     family,
                     style,
                 };
@@ -134,7 +134,7 @@ export const setCharacters = async (node, characters, options) => {
                 style: node.fontName.style,
             });
         }
-    } catch (err) {
+    } catch (err: any) {
         console.warn(
             `Failed to load "${node.fontName["family"]} ${node.fontName["style"]}" font and replaced with fallback "${fallbackFont.family} ${fallbackFont.style}"`,
             err
@@ -145,7 +145,7 @@ export const setCharacters = async (node, characters, options) => {
     try {
         node.characters = characters;
         return true;
-    } catch (err) {
+    } catch (err: any) {
         console.warn(`Failed to set characters. Skipped.`, err);
         return false;
     }
@@ -159,11 +159,11 @@ export const setCharacters = async (node, characters, options) => {
  * @returns {Promise<boolean>} Success status
  */
 export const setCharactersWithStrictMatchFont = async (
-    node,
-    characters,
-    fallbackFont
+    node: any,
+    characters: any,
+    fallbackFont: any
 ) => {
-    const fontHashTree = {};
+    const fontHashTree: any = {};
     for (let i = 1; i < node.characters.length; i++) {
         const startIdx = i - 1;
         const startCharFont = node.getRangeFontName(startIdx, i);
@@ -182,11 +182,11 @@ export const setCharactersWithStrictMatchFont = async (
     node.characters = characters;
     console.log(fontHashTree);
     await Promise.all(
-        Object.keys(fontHashTree).map(async (range) => {
+        Object.keys(fontHashTree).map(async (range: any) => {
             console.log(range, fontHashTree[range]);
             const [start, end] = range.split("_");
             const [family, style] = fontHashTree[range].split("::");
-            const matchedFont = {
+            const matchedFont: any = {
                 family,
                 style,
             };
@@ -205,15 +205,15 @@ export const setCharactersWithStrictMatchFont = async (
  * @returns {Promise<boolean>} Success status
  */
 export const setCharactersWithSmartMatchFont = async (
-    node,
-    characters,
-    fallbackFont
+    node: any,
+    characters: any,
+    fallbackFont: any
 ) => {
     const rangeTree = buildLinearOrder(node);
     const fontsToLoad = uniqBy(
         rangeTree,
-        ({ family, style }) => `${family}::${style}`
-    ).map(({ family, style }) => ({
+        ({ family, style }: any) => `${family}::${style}`
+    ).map(({ family, style }: any) => ({
         family,
         style,
     }));
@@ -224,12 +224,12 @@ export const setCharactersWithSmartMatchFont = async (
     node.characters = characters;
 
     let prevPos = 0;
-    rangeTree.forEach(({ family, style, delimiter }) => {
+    rangeTree.forEach(({ family, style, delimiter }: any) => {
         if (prevPos < node.characters.length) {
             const delimeterPos = node.characters.indexOf(delimiter, prevPos);
             const endPos =
                 delimeterPos > prevPos ? delimeterPos : node.characters.length;
-            const matchedFont = {
+            const matchedFont: any = {
                 family,
                 style,
             };

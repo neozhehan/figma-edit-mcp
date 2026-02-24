@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "target": "es2018",
+        "lib": [
+            "es2018"
+        ],
+        "strict": true,
+        "typeRoots": [
+            "../../node_modules/@figma"
+        ]
+    },
+    "include": [
+        "src/**/*",
+        "handlers/**/*",
+        "utils/**/*"
+    ]
+}
