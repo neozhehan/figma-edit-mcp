@@ -38,17 +38,31 @@ describe("Variables Tools", () => {
         expect(registeredTools["get_node_variables"]).toBeDefined();
         expect(registeredTools["set_bound_variable"]).toBeDefined();
         expect(registeredTools["manage_variables"]).toBeDefined();
+        expect(registeredTools["delete_variables"]).toBeDefined();
     });
 
     it("get_variables should call sendCommandToFigma with correct params", async () => {
         registerVariablesTools(mockServer as any);
         (sendCommandToFigma as any).mockResolvedValue([]);
 
-        const params = { variableId: "var-1" };
+        const params: any = { variableId: ["var-1"], includeConsumers: undefined };
         const result = await registeredTools["get_variables"](params);
 
         expect(sendCommandToFigma).toHaveBeenCalledWith("get_variables", params);
         expect(result.content[0].text).toBe("[]");
+    });
+
+    it("get_variables should pass array variableId and includeConsumers to sendCommandToFigma", async () => {
+        registerVariablesTools(mockServer as any);
+        (sendCommandToFigma as any).mockResolvedValue([]);
+
+        const params: any = {
+            variableId: ["var-1", "var-2"],
+            includeConsumers: "current_page",
+        };
+        await registeredTools["get_variables"](params);
+
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_variables", params);
     });
 
     it("get_node_variables should call sendCommandToFigma with correct params", async () => {
@@ -82,5 +96,16 @@ describe("Variables Tools", () => {
 
         expect(sendCommandToFigma).toHaveBeenCalledWith("manage_variables", params);
         expect(result.content[0].text).toContain('"id": "var-new"');
+    });
+
+    it("delete_variables should call sendCommandToFigma with variableIds", async () => {
+        registerVariablesTools(mockServer as any);
+        (sendCommandToFigma as any).mockResolvedValue({ success: true, deleted: ["var-1"] });
+
+        const params: any = { variableIds: ["var-1"] };
+        const result = await registeredTools["delete_variables"](params);
+
+        expect(sendCommandToFigma).toHaveBeenCalledWith("delete_variables", params);
+        expect(result.content[0].text).toContain('"success": true');
     });
 });

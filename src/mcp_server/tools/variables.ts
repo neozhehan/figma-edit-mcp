@@ -7,17 +7,22 @@ export function registerVariablesTools(server: McpServer) {
     // Get Variables Tool
     server.tool(
         "get_variables",
-        "Get all local variables/collections or detailed info for a specific variable by ID",
+        "Get all local variables/collections or detailed info for specific variable(s) by ID(s). When variableId is provided, optionally scan for consumer nodes via includeConsumers.",
         {
             variableId: z
-                .string()
+                .array(z.string())
                 .optional()
-                .describe("Optional ID of a specific variable to retrieve"),
+                .describe("Optional array of variable IDs to retrieve"),
+            includeConsumers: z
+                .enum(["current_page", "document"])
+                .optional()
+                .describe("Only used when variableId is provided; ignored otherwise. 'current_page' scans the active page (fast). 'document' scans all pages (slow on large files)."),
         },
-        async ({ variableId }: any) => {
+        async ({ variableId, includeConsumers }: any) => {
             try {
                 const result = await sendCommandToFigma("get_variables", {
                     variableId,
+                    includeConsumers,
                 });
                 return {
                     content: [
@@ -225,6 +230,39 @@ export function registerVariablesTools(server: McpServer) {
                             type: "text",
                             text: `Error managing variables: ${error instanceof Error ? error.message : String(error)
                                 }`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
+
+    // Delete Variables Tool
+    server.tool(
+        "delete_variables",
+        "Delete specific variables by ID or an entire variable collection. Provide either variableIds OR collectionId (not both). Performs a full-document consumer check first — if any variable is still in use, the entire operation is rejected.",
+        {
+            variableIds: z
+                .array(z.string())
+                .optional()
+                .describe("Array of variable IDs to delete. Mutually exclusive with collectionId."),
+            collectionId: z
+                .string()
+                .optional()
+                .describe("ID of a variable collection to delete (all its variables must be unused). Mutually exclusive with variableIds."),
+        },
+        async ({ variableIds, collectionId }: any) => {
+            try {
+                const result = await sendCommandToFigma("delete_variables", { variableIds, collectionId });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error deleting variables: ${error instanceof Error ? error.message : String(error)}`,
                         },
                     ],
                 };
