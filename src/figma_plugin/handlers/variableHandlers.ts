@@ -1,35 +1,121 @@
-// src/figma_plugin/handlers/variableHandlers.js
+// src/figma_plugin/handlers/variableHandlers.ts
 
-import { filterFigmaNode } from "../utils/nodeUtils.js";
+/**
+ * Single-pass tree walk that finds all nodes whose boundVariables
+ * reference any variable in the provided set.
+ * Returns results grouped by variable ID.
+ */
+async function findVariableConsumers(
+    rootNode: BaseNode,
+    variableIds: Set<string>
+): Promise<Map<string, Array<{
+    nodeId: string;
+    nodeName: string;
+    nodeType: string;
+    fields: string[];
+}>>> {
+    const consumerMap = new Map<string, Array<{
+        nodeId: string; nodeName: string; nodeType: string; fields: string[];
+    }>>();
 
-export async function getVariables(params: any) {
-    const { variableId } = params || {};
+    async function walk(node: BaseNode) {
+        const boundVars = (node as any).boundVariables;
+        if (boundVars) {
+            // Collect matches grouped by variableId
+            const matchesByVarId = new Map<string, string[]>();
 
-    try {
-        // Lookup Mode (if variableId is provided)
-        if (variableId) {
-            const variable = await figma.variables.getVariableByIdAsync(variableId);
-            if (!variable) {
-                return null;
+            for (const [field, binding] of Object.entries(boundVars)) {
+                // Simple alias: { id, type }
+                if (binding && (binding as any).id && variableIds.has((binding as any).id)) {
+                    const vid = (binding as any).id;
+                    if (!matchesByVarId.has(vid)) matchesByVarId.set(vid, []);
+                    matchesByVarId.get(vid)!.push(field);
+                }
+                // Array of aliases (e.g. fills, strokes)
+                if (Array.isArray(binding)) {
+                    for (const item of binding) {
+                        if (item && item.id && variableIds.has(item.id)) {
+                            if (!matchesByVarId.has(item.id)) matchesByVarId.set(item.id, []);
+                            matchesByVarId.get(item.id)!.push(field);
+                            break;
+                        }
+                    }
+                }
             }
 
-            // Resolve collection for context
-            const collection = await figma.variables.getVariableCollectionByIdAsync(
-                variable.variableCollectionId
-            );
+            for (const [vid, fields] of matchesByVarId.entries()) {
+                if (!consumerMap.has(vid)) consumerMap.set(vid, []);
+                consumerMap.get(vid)!.push({
+                    nodeId: node.id,
+                    nodeName: node.name,
+                    nodeType: node.type,
+                    fields,
+                });
+            }
+        }
+        if ("children" in node) {
+            for (const child of (node as any).children) {
+                await walk(child);
+            }
+        }
+    }
 
-            return {
-                id: variable.id,
-                name: variable.name,
-                key: variable.key,
-                type: variable.resolvedType, // COLOR, FLOAT, STRING, BOOLEAN
-                description: variable.description,
-                collectionId: variable.variableCollectionId,
-                collectionName: collection ? collection.name : "Unknown",
-                remote: variable.remote,
-                scopes: variable.scopes,
-                valuesByMode: variable.valuesByMode, // { modeId: value }
-            };
+    await walk(rootNode);
+    return consumerMap;
+}
+
+export async function getVariables(params: any) {
+    const { variableId, includeConsumers } = params || {};
+
+    try {
+        // Lookup Mode (if variableId array is provided)
+        if (variableId && variableId.length > 0) {
+            // Look up each variable in parallel
+            const variableDetails: any[] = (await Promise.all(variableId.map(async (id: string) => {
+                const variable = await figma.variables.getVariableByIdAsync(id);
+                if (!variable) return null;
+                const collection = await figma.variables.getVariableCollectionByIdAsync(
+                    variable.variableCollectionId
+                );
+                return {
+                    id: variable.id,
+                    name: variable.name,
+                    key: variable.key,
+                    type: variable.resolvedType,
+                    description: variable.description,
+                    collectionId: variable.variableCollectionId,
+                    collectionName: collection ? collection.name : "Unknown",
+                    remote: variable.remote,
+                    scopes: variable.scopes,
+                    valuesByMode: variable.valuesByMode,
+                };
+            }))).filter(Boolean);
+
+            // Consumer scanning — single walk, results grouped by variable ID
+            if (includeConsumers) {
+                const idSet = new Set(variableId as string[]);
+                let consumerMap: Map<string, Array<{ nodeId: string; nodeName: string; nodeType: string; fields: string[] }>>;
+
+                if (includeConsumers === "current_page") {
+                    consumerMap = await findVariableConsumers(figma.currentPage, idSet);
+                } else {
+                    consumerMap = new Map();
+                    for (const page of figma.root.children) {
+                        const pageResults = await findVariableConsumers(page, idSet);
+                        for (const [vid, entries] of pageResults) {
+                            const existing = consumerMap.get(vid) || [];
+                            consumerMap.set(vid, existing.concat(entries));
+                        }
+                    }
+                }
+
+                // Attach consumers to each variable
+                for (const v of variableDetails) {
+                    v.consumers = consumerMap.get(v.id) || [];
+                }
+            }
+
+            return variableDetails;
         }
 
         // List All Mode (Discovery)
@@ -64,6 +150,87 @@ export async function getVariables(params: any) {
         };
     } catch (err: any) {
         throw new Error(`Error getting variables: ${err.message}`);
+    }
+}
+
+export async function deleteVariables(params: any) {
+    const { variableIds, collectionId } = params || {};
+
+    // Mutual exclusivity check
+    if (variableIds && collectionId) {
+        throw new Error("Provide either variableIds or collectionId, not both");
+    }
+    if (!variableIds && !collectionId) {
+        throw new Error("Must provide either variableIds or collectionId");
+    }
+
+    let idsToCheck: string[];
+    let collection: any = null;
+
+    if (collectionId) {
+        // Collection mode: resolve all variable IDs from the collection
+        collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+        if (!collection) throw new Error(`Collection not found: ${collectionId}`);
+        idsToCheck = collection.variableIds || [];
+
+        // Empty collection — safe to delete immediately
+        if (idsToCheck.length === 0) {
+            collection.remove();
+            return { success: true, deleted: [], deletedCollection: collectionId };
+        }
+    } else {
+        // Variable IDs mode
+        if (!Array.isArray(variableIds) || variableIds.length === 0) {
+            throw new Error("variableIds must be a non-empty array");
+        }
+        idsToCheck = variableIds;
+    }
+
+    // Verify all variables exist
+    const variables = await Promise.all(
+        idsToCheck.map((id: string) => figma.variables.getVariableByIdAsync(id))
+    );
+    for (let i = 0; i < idsToCheck.length; i++) {
+        if (!variables[i]) throw new Error(`Variable not found: ${idsToCheck[i]}`);
+    }
+
+    // Full-document consumer scan (single pass for all IDs)
+    const idSet = new Set(idsToCheck);
+    const consumerMap = new Map<string, any[]>();
+    for (const page of figma.root.children) {
+        const pageResults = await findVariableConsumers(page, idSet);
+        for (const [vid, entries] of pageResults) {
+            const existing = consumerMap.get(vid) || [];
+            consumerMap.set(vid, existing.concat(entries));
+        }
+    }
+
+    // If any variable has consumers, reject the entire operation
+    if (consumerMap.size > 0) {
+        const variablesInUse: Record<string, any[]> = {};
+        for (const [vid, entries] of consumerMap) {
+            variablesInUse[vid] = entries;
+        }
+        const error = collectionId
+            ? `Cannot delete collection: ${consumerMap.size} of ${idsToCheck.length} variable(s) in collection are still in use`
+            : `Cannot delete: ${consumerMap.size} of ${idsToCheck.length} variable(s) are still in use`;
+        return {
+            success: false,
+            error,
+            variablesInUse,
+        };
+    }
+
+    // Safe to delete
+    if (collectionId) {
+        // Deleting collection cascades to its variables
+        collection.remove();
+        return { success: true, deleted: idsToCheck, deletedCollection: collectionId };
+    } else {
+        for (const variable of variables) {
+            (variable as any).remove();
+        }
+        return { success: true, deleted: idsToCheck };
     }
 }
 
@@ -220,9 +387,29 @@ export async function setBoundVariable(params: any) {
 }
 
 /**
- * Handles comprehensive variable management
+ * Handles comprehensive variable management.
+ *
  * @param {Object} params - Parameters object
- * @param {string} params.action - Action type: CREATE_COLLECTION, CREATE_VARIABLE, SET_VALUE
+ * @param {'CREATE_COLLECTION' | 'CREATE_VARIABLE' | 'UPDATE_VARIABLE'} params.action - Action type
+ *
+ * CREATE_COLLECTION params:
+ * @param {string} params.name - Name for the new collection (required)
+ * @param {string} [params.modeName] - Optional name to assign to the default mode
+ *
+ * CREATE_VARIABLE params:
+ * @param {string} params.collectionId - ID of the collection to add the variable to (required)
+ * @param {string} params.name - Name for the new variable (required)
+ * @param {'FLOAT' | 'COLOR' | 'STRING' | 'BOOLEAN'} params.type - Variable type (required)
+ * @param {*} [params.value] - Optional initial value (set on the default mode)
+ *
+ * UPDATE_VARIABLE params:
+ * @param {string} params.variableId - ID of the variable to update (required)
+ * @param {string} [params.currentVariableName] - Current name for verification
+ * @param {string} [params.name] - New name for the variable
+ * @param {string} [params.description] - New description for the variable
+ * @param {*} [params.value] - New value to set (requires modeId)
+ * @param {string} [params.modeId] - Mode ID to set the value for (required when value is provided)
+ *
  * @returns {Promise<Object>} Result of the operation
  */
 export async function handleVariableRequest(params: any) {

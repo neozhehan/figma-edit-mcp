@@ -29,7 +29,7 @@ import {
 import { getReactions, createConnections } from '../handlers/connectorHandlers.js';
 import { scanTextNodes, setMultipleTextContents, setTextStyle } from '../handlers/textHandlers.js';
 import { getAnnotations, scanNodesByTypes, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
-import { getVariables, getNodeVariables, setBoundVariable, handleVariableRequest } from '../handlers/variableHandlers.js';
+import { getVariables, getNodeVariables, setBoundVariable, handleVariableRequest, deleteVariables } from '../handlers/variableHandlers.js';
 import { createStyle, applyStyle } from '../handlers/styleHandlers.js';
 import { createNodeFromSvg } from '../handlers/vectorHandlers.js';
 
@@ -515,6 +515,10 @@ async function handleCommand(command: any, params: any) {
             // Often variables are global. But if we are scoped to a page/frame... variables are collection based.
             // Collections are document global. So we allow it if not read-only.
             return await handleVariableRequest(params);
+
+        case "delete_variables":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            return await deleteVariables(params);
 
         case "create_style":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
