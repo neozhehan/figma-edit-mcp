@@ -193,6 +193,39 @@ show_claude_code_instructions() {
     echo "After running the command above, Claude Code will be ready to use."
 }
 
+# Function for LM Studio instructions
+show_lm_studio_instructions() {
+    echo ""
+    echo "📦 LM Studio Instructions:"
+    
+    # Extract inner config for LM Studio deeplink
+    LM_STUDIO_CONFIG="{\"command\":\"bun\",\"args\":[\"run\",\"$PROJECT_DIR/dist/server.js\"]}"
+    
+    # Try node first, then python3 for base64 URL encoding
+    if command -v node >/dev/null 2>&1; then
+        export LM_STUDIO_CONFIG
+        ENCODED_CONFIG=$(node -e "console.log(encodeURIComponent(Buffer.from(process.env.LM_STUDIO_CONFIG).toString('base64')))")
+    elif command -v python3 >/dev/null 2>&1; then
+        export LM_STUDIO_CONFIG
+        ENCODED_CONFIG=$(python3 -c "import urllib.parse, base64, os; print(urllib.parse.quote(base64.b64encode(os.environ['LM_STUDIO_CONFIG'].encode('utf-8')).decode('utf-8')))")
+    else
+        # Fallback
+        ENCODED_CONFIG=$(echo -n "$LM_STUDIO_CONFIG" | base64 | tr -d '\n' | sed 's/+/%2B/g; s/\//%2F/g; s/=/%3D/g')
+    fi
+    
+    echo "To install for LM Studio with one click, please choose one of the following:"
+    echo "  1. Cmd/Ctrl + Click the link below if your terminal supports it"
+    echo "  2. Run: open \"lmstudio://add_mcp?name=FigmaEdit&config=$ENCODED_CONFIG\""
+    echo "  3. Copy and paste the link into your web browser"
+    echo ""
+    echo "  lmstudio://add_mcp?name=FigmaEdit&config=$ENCODED_CONFIG"
+    echo ""
+    echo "Or manually add this configuration to your mcp.json file by clicking 'Edit mcp.json' in LM Studio (Developer Tab):"
+    echo ""
+    echo '  "FigmaEdit": '"$LM_STUDIO_CONFIG"
+    echo ""
+}
+
 
 # Interactive Menu
 show_menu() {
@@ -203,6 +236,7 @@ show_menu() {
     echo "  3) Cursor"
     echo "  4) Claude Desktop"
     echo "  5) Claude Code (Command Line, Visual Studio Code, Google Antigravity)"
+    echo "  6) LM Studio"
     echo ""
     echo "  q) Quit"
     echo ""
@@ -227,6 +261,9 @@ case $choice in
         ;;
     5)
         show_claude_code_instructions
+        ;;
+    6)
+        show_lm_studio_instructions
         ;;
     q|Q)
         echo "Goodbye!"
