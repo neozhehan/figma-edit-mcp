@@ -8,6 +8,7 @@ Connect AI coding assistants to Figma via Model Context Protocol. Read designs, 
 - Google Antigravity
 - Claude Code (VS Code & CLI)
 - Claude Desktop
+- LM Studio
 
 ## Project Structure
 
@@ -51,6 +52,7 @@ Select an integration to configure:
   3) Cursor
   4) Claude Desktop
   5) Claude Code (Command Line, Visual Studio Code, Google Antigravity)
+  6) LM Studio
 
   q) Quit
 
@@ -104,6 +106,10 @@ claude mcp add FigmaEdit bun run /path/to/figma-edit-mcp/dist/server.js
 
 Replace `/path/to/figma-edit-mcp` with your actual installation path.
 
+### LM Studio
+
+Select option `6` to see instructions and an intelligent deeplink. You can either click the deeplink to install with one click, or use the provided JSON snippet to manually edit your `mcp.json` configuration in LM Studio's Developer tab.
+
 ---
 
 ## Manual Configuration
@@ -116,6 +122,7 @@ If you prefer manual setup, add the following to your MCP config file:
 | VS Code / Copilot | `~/Library/Application Support/Code/User/mcp.json` |
 | Antigravity | `~/.gemini/antigravity/mcp_config.json` |
 | Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| LM Studio | Use the in-app editor (via Developer tab) or edit `mcp.json` |
 
 ```json
 {
