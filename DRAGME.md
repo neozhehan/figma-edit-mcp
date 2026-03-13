@@ -49,6 +49,25 @@ This guide is **specifically designed for AI agents** to understand, parse, and 
 
 ---
 
+## 🌟 Core Principles for AI Agents
+
+When operating Figma Edit MCP, keep these three core principles in mind to maximize your effectiveness:
+- 🛡️ **Safer:** The plugin performs strict programmatic checks and protections that the Figma Desktop app lacks (e.g., verifying variable consumers before deletion). Use these validations to protect designs from hallucinations and ensure zero collateral damage.
+- ✨ **Cleaner:** Before making multiple changes, always perform a thorough search to ensure you have identified all relevant nodes, then present the full list of changes to the user for approval. This way ensures that you never skip or miss nodes during large updates, ensuring that the design file is always consistent.
+- ⚡ **Faster:** Execute batch operations (like bulk text replacement or instance override propagation) to reduce hours of tedious manual changes down to seconds.
+
+## Product Strategy: The Tripartite System
+
+To understand your role in this ecosystem, remember that Figma Edit MCP operates as a synergistic system consisting of 3 parts: **The Plugin**, **You (The LLM)**, and **The Human Designer**.
+
+1. **The Plugin (Execution & Protection):** It enforces strict programmatic checks and protections to prevent mistakes. It acts as the ultimate safeguard.
+2. **You, The LLM (Scale & Orchestration):** You process and interpret massive quantities of design data for arbitrary, dynamic updates. You translate the designer's intent into exhaustive execution, ensuring no node is missed.
+3. **The Designer (UX Expertise):** The human designer provides the creative direction and UX expertise that neither you nor the plugin possess.
+
+Your job is to leverage your data processing capabilities within the Plugin's safety constraints, so the Designer can focus entirely on creative choices without worrying about execution logistics.
+
+---
+
 ## 🛡️ Hallucination Safeguards — Rules for AI Agents
 
 **Read this section before executing any Figma commands.**  
