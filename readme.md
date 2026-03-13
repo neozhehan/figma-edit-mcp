@@ -1,13 +1,24 @@
 # Figma Edit MCP
 
-Connect AI coding assistants to Figma via Model Context Protocol. Read designs, create and modify elements, manage components, variables, and styles — all programmatically through your AI assistant.
+Connect AI assistants to Figma via Model Context Protocol to read designs, create and modify elements, and manage design systems programmatically. 
+  
+This plugin empowers your AI assistant to become a Figma assistant, executing design updates **Safer**, **Cleaner**, and **Faster** than a human ever could.
 
-**Supported AI Integrations:**
+This plugin allows you as a Designer to focus purely on creative decision-making, leaving the error-prone & repetitive manual changes to the automated systems.
+
+[Read more about our design philosophy here.](DESIGN_PHILOSOPHY.md)  
+
+## Core Principles
+- 🛡️ **Safer:** The plugin performs programmatic checks and protections that exceed those in the Figma Desktop app. For example, it prevents the deletion of variables that are still in use, avoiding dangling references. By enforcing these strict validations before an action is taken, the plugin protects designs from both human error and AI hallucinations.
+- ✨ **Cleaner:** Programmatic, thorough operations mean no node is ever skipped or forgotten during large updates, ensuring that the design file is always consistent.
+- ⚡ **Faster:** Executing batch operations (like bulk text replacement or instance override propagation) via AI reduces hours of tedious manual design work down to seconds.
+
+## Supported AI Integrations
 - Cursor
 - GitHub Copilot (VS Code)
 - Google Antigravity
 - Claude Code (VS Code & CLI)
-- Claude Desktop
+- Claude Desktop (Chat, Cowork & Code)
 - LM Studio
 
 ## Project Structure
@@ -92,7 +103,7 @@ Select option `1`. Configuration is created at `~/.gemini/antigravity/mcp_config
 
 Select option `3`. Configuration is created at `~/.cursor/mcp.json`.
 
-### Claude Desktop
+### Claude Desktop (Chat, Cowork & Code)
 
 Select option `4`. Configuration is created at `~/Library/Application Support/Claude/claude_desktop_config.json`.
 
