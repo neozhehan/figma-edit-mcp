@@ -27,6 +27,7 @@ import {
 } from '../handlers/componentHandlers.js';
 
 import { getReactions, createConnections } from '../handlers/connectorHandlers.js';
+import { updateReactions } from '../handlers/prototypingHandlers.js';
 import { scanTextNodes, setMultipleTextContents, setTextStyle } from '../handlers/textHandlers.js';
 import { getAnnotations, scanNodesByTypes, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
 import { getVariables, getNodeVariables, setBoundVariable, handleVariableRequest, deleteVariables } from '../handlers/variableHandlers.js';
@@ -501,6 +502,10 @@ async function handleCommand(command: any, params: any) {
                 throw new Error(ERRORS.MISSING_NODE_IDS);
             }
             return await getReactions(params.nodeIds);
+        case "update_reactions":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            return await updateReactions(params);
 
         case "set_selections":
             return await setSelections(params);
@@ -520,7 +525,7 @@ async function handleCommand(command: any, params: any) {
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             return await deleteVariables(params);
 
-        case "create_style":
+        case "manage_style":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             // Styles are document global.
             return await createStyle(params);

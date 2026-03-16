@@ -239,14 +239,14 @@ export function registerStylingTools(server: McpServer) {
         }
     );
 
-    // Create Style Tool
+    // Manage Style Tool
     server.tool(
-        "create_style",
-        "Creates named styles (Text, Paint, Effect, Grid).",
+        "manage_style",
+        "Creates named styles (Text, Paint, Effect, Grid) or updates an existing style if styleId is provided.",
         {
             type: z
                 .enum(["TEXT", "PAINT", "EFFECT", "GRID"])
-                .describe("Type of style to create"),
+                .describe("Type of style to create or update"),
             name: z.string().describe("Name of the style"),
             description: z.string().optional().describe("Description of the style"),
             propertiesJson: z
@@ -255,8 +255,10 @@ export function registerStylingTools(server: McpServer) {
                 .describe(
                     "JSON string containing style properties: {fontName?: {family, style}, fontSize?: number, paints?: [{type, color?, opacity?, visible?}], effects?: [{type, visible?, color?, offset?, radius?, spread?}], layoutGrids?: [{pattern, sectionSize?, visible?, color?}]}"
                 ),
+            styleId: z.string().optional().describe("ID of the style to update (if not creating a new one)"),
+            bindVariables: z.record(z.string(), z.string().nullable()).optional().describe("Map of field names to variable IDs (to bind) or null (to unbind). For PAINT styles, valid fields include 'color'. For TEXT styles, fields include 'fontSize', 'fontFamily', etc."),
         },
-        async ({ type, name, description, propertiesJson }: any) => {
+        async ({ type, name, description, propertiesJson, styleId, bindVariables }: any) => {
             try {
                 let properties;
                 if (propertiesJson) {
@@ -274,11 +276,13 @@ export function registerStylingTools(server: McpServer) {
                         };
                     }
                 }
-                const result = await sendCommandToFigma("create_style", {
+                const result = await sendCommandToFigma("manage_style", {
                     type,
                     name,
                     description,
                     properties,
+                    styleId,
+                    bindVariables,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(result, null, 2) }],

@@ -8,9 +8,6 @@ The current `findVariableConsumers` function only walks the node tree checking `
 
 ## User Review Required
 
-> [!IMPORTANT]
-> **Prototype reactions scanning** adds significant complexity (recursive expression tree walking). It is marked as **Phase 3** and can be deferred. Styles and aliases are the higher-impact gaps.
-
 > [!WARNING]
 > This change affects deletion safety — `deleteVariables` will now block deletion in more cases than before. This is a **safety improvement**, not a breaking change.
 
@@ -144,45 +141,42 @@ Extend the existing `createStyle` handler to also handle updating existing style
 4. Apply any provided `name`, `description`, and `properties` to the existing style (just as it currently does for newly created styles).
 5. If `styleId` is not provided, keep the existing creation logic.
 
-**Critical: Unbinding variables from styles**
+**Critical: Binding and unbinding variables on styles**
 
-Setting new `properties` (e.g., `paints`) on a style does **not** automatically clear its `boundVariables`. Figma style `boundVariables` is read-only — you cannot overwrite it by assigning new property values. To unbind a variable from a style, you must explicitly call:
+Setting new `properties` (e.g., `paints`) on a style does **not** automatically clear its `boundVariables`. Figma style `boundVariables` is read-only — you cannot overwrite it by assigning new property values. To bind or unbind a variable from a style, you must explicitly call:
 
 ```ts
-style.setBoundVariable(field, null);
+style.setBoundVariable(field, variable);  // bind
+style.setBoundVariable(field, null);      // unbind
 ```
 
-The updated handler must support an optional `unbindVariables` parameter:
+The handler supports a unified `bindVariables` parameter — a map of field names to variable IDs (to bind) or `null` (to unbind):
 
 ```ts
-// Example: unbind the 'color' field from a paint style
+// Example: bind 'color' to a variable, unbind 'opacity'
 {
   styleId: "S:abc123",
   type: "PAINT",
-  unbindVariables: ["color"],  // fields to unbind
+  bindVariables: {
+    "color": "VariableID:1:2",  // bind
+    "opacity": null              // unbind
+  },
   properties: {
-    paints: [{ type: "SOLID", color: { r: 1, g: 0, b: 0 } }]  // new hardcoded value
+    paints: [{ type: "SOLID", color: { r: 1, g: 0, b: 0 } }]
   }
 }
 ```
 
-Implementation in the handler:
-```ts
-if (unbindVariables && Array.isArray(unbindVariables)) {
-  for (const field of unbindVariables) {
-    style.setBoundVariable(field, null);
-  }
-}
-```
+**Execution order**: `properties` → `bindVariables`. Properties are applied first so that paint values exist before variable bindings are set on top of them.
 
-The `unbindVariables` step must run **before** applying `properties`, so the new property values take effect cleanly.
+**PAINT styles** require special handling: the Figma API uses `figma.variables.setBoundVariableForPaint(paint, field, variable)` rather than `style.setBoundVariable()`. The handler operates on the first paint in the paints array.
 
 #### [MODIFY] [main.ts](src/figma_plugin/src/main.ts)
-Rename the command dispatch case from `"create_style"` to `"manage_style"` and pass through `styleId` and `unbindVariables` to the handler.
+Rename the command dispatch case from `"create_style"` to `"manage_style"` and pass through `styleId` and `bindVariables` to the handler.
 
 ---
 
-**Phase 3 — Prototype Reaction Scanning (Deferred)**
+**Phase 3 — Prototype Reaction Scanning**
 
 Add scanning within the existing `walk` function in `findVariableConsumers` to also check prototype reactions on nodes. This adds significant logic complexity because prototype actions can nest expressions infinitely.
 
@@ -227,8 +221,6 @@ The `update_reactions` tool will accept a full `reactions` array (`{ nodeId: str
 - *Zod schema*: Must model the recursive Reaction type (Reaction → Action → ConditionalBlock → Action → Expression → ExpressionArgument → Expression...) using `z.lazy()` for recursive types. The schema validates *structure* (required fields, types, enum values) but not *semantic* correctness (e.g., it cannot verify that a `destinationId` points to a real node).
 - *Maintenance*: The Zod schema must be kept in sync with the Figma Plugin API as it evolves. Consider co-locating it with the existing Zod schemas in [prototyping.ts](src/mcp_server/tools/prototyping.ts) and adding a comment referencing the Figma Plugin API version it was built against.
 
-This phase requires a recursive expression walker **and** the new mutation tools, and is deferred to a follow-up.
-
 ---
 
 ### MCP Server
@@ -240,8 +232,8 @@ This phase requires a recursive expression walker **and** the new mutation tools
   2. Plugin command dispatch in [main.ts](src/figma_plugin/src/main.ts) — `case "create_style"` → `case "manage_style"`
   3. Any system prompts or agent instructions that reference `create_style` by name
 - Add an optional `styleId` property to the input schema (`z.string().optional()`).
-- Add an optional `unbindVariables` property to the input schema (`z.array(z.string()).optional()`) — list of bound variable fields to clear.
-- The tool will pass `styleId` and `unbindVariables` directly to the plugin handler if provided.
+- Add an optional `bindVariables` property to the input schema (`z.record(z.string(), z.string().nullable()).optional()`) — map of field names to variable IDs (bind) or null (unbind).
+- The tool will pass `styleId` and `bindVariables` directly to the plugin handler if provided.
 
 #### [MODIFY] [variables.ts](src/mcp_server/tools/variables.ts)
 

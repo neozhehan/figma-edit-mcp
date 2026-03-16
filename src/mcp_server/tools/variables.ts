@@ -7,7 +7,7 @@ export function registerVariablesTools(server: McpServer) {
     // Get Variables Tool
     server.tool(
         "get_variables",
-        "Get all local variables/collections or detailed info for specific variable(s) by ID(s). When variableId is provided, optionally scan for consumer nodes via includeConsumers.",
+        "Get all local variables/collections or detailed info for specific variable(s) by ID(s). When variableId is provided, optionally scan for consumer nodes, styles, and variable aliases via includeConsumers (Note: Consumer scanning is limited to the current document).",
         {
             variableId: z
                 .array(z.string())
@@ -240,7 +240,7 @@ export function registerVariablesTools(server: McpServer) {
     // Delete Variables Tool
     server.tool(
         "delete_variables",
-        "Delete specific variables by ID or an entire variable collection. Provide either variableIds OR collectionId (not both). Performs a full-document consumer check first — if any variable is still in use, the entire operation is rejected.",
+        "Delete specific variables by ID or an entire variable collection. Provide either variableIds OR collectionId (not both). Performs a full-document consumer check (nodes, styles, and variable aliases) first — if any variable is still in use, the entire operation is rejected. Note: Consumer scanning is limited to the current document.",
         {
             variableIds: z
                 .array(z.string())

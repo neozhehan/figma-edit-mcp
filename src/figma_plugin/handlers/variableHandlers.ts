@@ -1,5 +1,104 @@
 // src/figma_plugin/handlers/variableHandlers.ts
 
+export interface StyleConsumerEntry {
+    styleId: string;
+    styleName: string;
+    styleType: 'PAINT' | 'TEXT' | 'EFFECT' | 'GRID';
+    fields: string[];
+}
+
+export interface AliasConsumerEntry {
+    variableId: string;
+    variableName: string;
+    variableType: string;
+    modes: string[];
+}
+
+export async function findStyleConsumers(variableIds: Set<string>): Promise<Map<string, StyleConsumerEntry[]>> {
+    const consumerMap = new Map<string, StyleConsumerEntry[]>();
+    
+    const [paintStyles, textStyles, effectStyles, gridStyles] = await Promise.all([
+        figma.getLocalPaintStylesAsync(),
+        figma.getLocalTextStylesAsync(),
+        figma.getLocalEffectStylesAsync(),
+        figma.getLocalGridStylesAsync()
+    ]);
+    
+    function processStyles(styles: any[], type: 'PAINT' | 'TEXT' | 'EFFECT' | 'GRID') {
+        for (const style of styles) {
+            const boundVars = style.boundVariables;
+            if (boundVars) {
+                const matchesByVarId = new Map<string, string[]>();
+                
+                for (const [field, binding] of Object.entries(boundVars)) {
+                    if (binding && (binding as any).id && variableIds.has((binding as any).id)) {
+                        const vid = (binding as any).id;
+                        if (!matchesByVarId.has(vid)) matchesByVarId.set(vid, []);
+                        matchesByVarId.get(vid)!.push(field);
+                    }
+                    if (Array.isArray(binding)) {
+                        for (const item of binding) {
+                            if (item && item.id && variableIds.has(item.id)) {
+                                if (!matchesByVarId.has(item.id)) matchesByVarId.set(item.id, []);
+                                matchesByVarId.get(item.id)!.push(field);
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                for (const [vid, fields] of matchesByVarId.entries()) {
+                    if (!consumerMap.has(vid)) consumerMap.set(vid, []);
+                    consumerMap.get(vid)!.push({
+                        styleId: style.id,
+                        styleName: style.name,
+                        styleType: type,
+                        fields
+                    });
+                }
+            }
+        }
+    }
+
+    processStyles(paintStyles, 'PAINT');
+    processStyles(textStyles, 'TEXT');
+    processStyles(effectStyles, 'EFFECT');
+    processStyles(gridStyles, 'GRID');
+
+    return consumerMap;
+}
+
+export async function findAliasConsumers(variableIds: Set<string>): Promise<Map<string, AliasConsumerEntry[]>> {
+    const consumerMap = new Map<string, AliasConsumerEntry[]>();
+    const variables = await figma.variables.getLocalVariablesAsync();
+    
+    for (const variable of variables) {
+        const matchesByVarId = new Map<string, string[]>();
+        
+        for (const [modeId, value] of Object.entries(variable.valuesByMode)) {
+            if (value && typeof value === 'object' && (value as any).type === 'VARIABLE_ALIAS') {
+                const targetId = (value as any).id;
+                if (variableIds.has(targetId)) {
+                    if (!matchesByVarId.has(targetId)) matchesByVarId.set(targetId, []);
+                    matchesByVarId.get(targetId)!.push(modeId);
+                }
+            }
+        }
+        
+        for (const [targetId, modes] of matchesByVarId.entries()) {
+            if (!consumerMap.has(targetId)) consumerMap.set(targetId, []);
+            consumerMap.get(targetId)!.push({
+                variableId: variable.id,
+                variableName: variable.name,
+                variableType: variable.resolvedType,
+                modes
+            });
+        }
+    }
+    
+    return consumerMap;
+}
+
 /**
  * Single-pass tree walk that finds all nodes whose boundVariables
  * reference any variable in the provided set.
@@ -17,8 +116,13 @@ async function findVariableConsumers(
     const consumerMap = new Map<string, Array<{
         nodeId: string; nodeName: string; nodeType: string; fields: string[];
     }>>();
+    
+    let walkCount = 0;
 
     async function walk(node: BaseNode) {
+        if (++walkCount % 500 === 0) {
+            await new Promise(r => setTimeout(r, 0));
+        }
         const boundVars = (node as any).boundVariables;
         if (boundVars) {
             // Collect matches grouped by variableId
@@ -52,6 +156,158 @@ async function findVariableConsumers(
                     fields,
                 });
             }
+        }
+        if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+            const defs = (node as any).componentPropertyDefinitions;
+            if (defs) {
+                const matchesByVarId = new Map<string, string[]>();
+                for (const [propName, def] of Object.entries(defs)) {
+                    const boundVars = (def as any).boundVariables;
+                    if (boundVars) {
+                        for (const [field, binding] of Object.entries(boundVars)) {
+                            if (binding && (binding as any).id && variableIds.has((binding as any).id)) {
+                                const vid = (binding as any).id;
+                                if (!matchesByVarId.has(vid)) matchesByVarId.set(vid, []);
+                                matchesByVarId.get(vid)!.push(`componentProperty:${propName}`);
+                            }
+                            if (Array.isArray(binding)) {
+                                for (const item of binding) {
+                                    if (item && item.id && variableIds.has(item.id)) {
+                                        if (!matchesByVarId.has(item.id)) matchesByVarId.set(item.id, []);
+                                        matchesByVarId.get(item.id)!.push(`componentProperty:${propName}`);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                for (const [vid, fields] of matchesByVarId.entries()) {
+                    if (!consumerMap.has(vid)) consumerMap.set(vid, []);
+                    consumerMap.get(vid)!.push({
+                        nodeId: node.id,
+                        nodeName: node.name,
+                        nodeType: node.type,
+                        fields,
+                    });
+                }
+            }
+        }
+        
+        if (node.type === 'INSTANCE') {
+            const props = (node as any).componentProperties;
+            if (props) {
+                const matchesByVarId = new Map<string, string[]>();
+                for (const [propName, propVal] of Object.entries(props)) {
+                    const boundVars = (propVal as any).boundVariables;
+                    if (boundVars) {
+                        for (const [field, binding] of Object.entries(boundVars)) {
+                            if (binding && (binding as any).id && variableIds.has((binding as any).id)) {
+                                const vid = (binding as any).id;
+                                if (!matchesByVarId.has(vid)) matchesByVarId.set(vid, []);
+                                matchesByVarId.get(vid)!.push(`componentProperty:${propName}`);
+                            }
+                            if (Array.isArray(binding)) {
+                                for (const item of binding) {
+                                    if (item && item.id && variableIds.has(item.id)) {
+                                        if (!matchesByVarId.has(item.id)) matchesByVarId.set(item.id, []);
+                                        matchesByVarId.get(item.id)!.push(`componentProperty:${propName}`);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                for (const [vid, fields] of matchesByVarId.entries()) {
+                    if (!consumerMap.has(vid)) consumerMap.set(vid, []);
+                    consumerMap.get(vid)!.push({
+                        nodeId: node.id,
+                        nodeName: node.name,
+                        nodeType: node.type,
+                        fields,
+                    });
+                }
+            }
+        }
+
+        if ("reactions" in node) {
+            const reactions = (node as any).reactions;
+            if (Array.isArray(reactions)) {
+                const matchesByVarId = new Map<string, string[]>();
+
+                function walkExpression(expr: any) {
+                    if (!expr) return;
+                    if (expr.type === 'VARIABLE_ALIAS' && expr.id && variableIds.has(expr.id)) {
+                        if (!matchesByVarId.has(expr.id)) matchesByVarId.set(expr.id, []);
+                        matchesByVarId.get(expr.id)!.push('reactions:expression');
+                    }
+                    if (expr.type === 'EXPRESSION' && Array.isArray(expr.expressionArguments)) {
+                        for (const arg of expr.expressionArguments) {
+                            walkExpression(arg);
+                        }
+                    }
+                }
+
+                function walkAction(action: any) {
+                    if (!action) return;
+                    if (action.type === 'SET_VARIABLE') {
+                        if (action.variableId && variableIds.has(action.variableId)) {
+                            if (!matchesByVarId.has(action.variableId)) matchesByVarId.set(action.variableId, []);
+                            matchesByVarId.get(action.variableId)!.push('reactions:SET_VARIABLE');
+                        }
+                        if (action.variableValue) {
+                            if (action.variableValue.type === 'VARIABLE_ALIAS' && action.variableValue.id && variableIds.has(action.variableValue.id)) {
+                                if (!matchesByVarId.has(action.variableValue.id)) matchesByVarId.set(action.variableValue.id, []);
+                                matchesByVarId.get(action.variableValue.id)!.push('reactions:SET_VARIABLE:value');
+                            } else if (action.variableValue.type === 'EXPRESSION') {
+                                walkExpression(action.variableValue);
+                            }
+                        }
+                    } else if (action.type === 'CONDITIONAL' && Array.isArray(action.conditionalBlocks)) {
+                        for (const block of action.conditionalBlocks) {
+                            if (block.condition) {
+                                if (block.condition.type === 'VARIABLE_ALIAS' && block.condition.id && variableIds.has(block.condition.id)) {
+                                    if (!matchesByVarId.has(block.condition.id)) matchesByVarId.set(block.condition.id, []);
+                                    matchesByVarId.get(block.condition.id)!.push('reactions:CONDITIONAL:condition');
+                                } else if (block.condition.type === 'EXPRESSION') {
+                                    walkExpression(block.condition);
+                                }
+                            }
+                            if (Array.isArray(block.actions)) {
+                                for (const a of block.actions) {
+                                    walkAction(a);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for (const reaction of reactions) {
+                    if (reaction.action) {
+                        walkAction(reaction.action);
+                    }
+                    if (Array.isArray(reaction.actions)) {
+                        for (const a of reaction.actions) {
+                            walkAction(a);
+                        }
+                    }
+                }
+
+                for (const [vid, fields] of matchesByVarId.entries()) {
+                    if (!consumerMap.has(vid)) consumerMap.set(vid, []);
+                    consumerMap.get(vid)!.push({
+                        nodeId: node.id,
+                        nodeName: node.name,
+                        nodeType: node.type,
+                        fields: [...new Set(fields)],
+                    });
+                }
+            }
+        }
+
+        if (node.type === 'PAGE') {
+            await node.loadAsync();
         }
         if ("children" in node) {
             for (const child of (node as any).children) {
@@ -94,24 +350,46 @@ export async function getVariables(params: any) {
             // Consumer scanning — single walk, results grouped by variable ID
             if (includeConsumers) {
                 const idSet = new Set(variableId as string[]);
-                let consumerMap: Map<string, Array<{ nodeId: string; nodeName: string; nodeType: string; fields: string[] }>>;
+                const stylePromise = findStyleConsumers(idSet);
+                const aliasPromise = findAliasConsumers(idSet);
+                
+                let nodeConsumerMap: Map<string, Array<{ nodeId: string; nodeName: string; nodeType: string; fields: string[] }>>;
+                let styleConsumerMap: Map<string, StyleConsumerEntry[]>;
+                let aliasConsumerMap: Map<string, AliasConsumerEntry[]>;
 
                 if (includeConsumers === "current_page") {
-                    consumerMap = await findVariableConsumers(figma.currentPage, idSet);
+                    const [_nodeConsumerMap, _styleConsumerMap, _aliasConsumerMap] = await Promise.all([
+                        findVariableConsumers(figma.currentPage, idSet),
+                        stylePromise,
+                        aliasPromise
+                    ]);
+                    nodeConsumerMap = _nodeConsumerMap;
+                    styleConsumerMap = _styleConsumerMap;
+                    aliasConsumerMap = _aliasConsumerMap;
                 } else {
-                    consumerMap = new Map();
+                    const _styleConsumerMap = await stylePromise;
+                    const _aliasConsumerMap = await aliasPromise;
+                    const _nodeMaps: any[] = [];
                     for (const page of figma.root.children) {
-                        const pageResults = await findVariableConsumers(page, idSet);
+                        _nodeMaps.push(await findVariableConsumers(page, idSet));
+                    }
+                    
+                    nodeConsumerMap = new Map();
+                    for (const pageResults of _nodeMaps) {
                         for (const [vid, entries] of pageResults) {
-                            const existing = consumerMap.get(vid) || [];
-                            consumerMap.set(vid, existing.concat(entries));
+                            const existing = nodeConsumerMap.get(vid) || [];
+                            nodeConsumerMap.set(vid, existing.concat(entries));
                         }
                     }
+                    styleConsumerMap = _styleConsumerMap;
+                    aliasConsumerMap = _aliasConsumerMap;
                 }
 
                 // Attach consumers to each variable
                 for (const v of variableDetails) {
-                    v.consumers = consumerMap.get(v.id) || [];
+                    v.nodeConsumers = nodeConsumerMap.get(v.id) || [];
+                    v.styleConsumers = styleConsumerMap.get(v.id) || [];
+                    v.aliasConsumers = aliasConsumerMap.get(v.id) || [];
                 }
             }
 
@@ -196,27 +474,89 @@ export async function deleteVariables(params: any) {
 
     // Full-document consumer scan (single pass for all IDs)
     const idSet = new Set(idsToCheck);
-    const consumerMap = new Map<string, any[]>();
+    
+    // Concurrent scanning
+    const stylePromise = findStyleConsumers(idSet);
+    const aliasPromise = findAliasConsumers(idSet);
+    const styleConsumerMap = await stylePromise;
+    const _aliasConsumerMap = await aliasPromise;
+    
+    const _nodeMaps: any[] = [];
     for (const page of figma.root.children) {
-        const pageResults = await findVariableConsumers(page, idSet);
+        _nodeMaps.push(await findVariableConsumers(page, idSet));
+    }
+
+    const nodeConsumerMap = new Map<string, any[]>();
+    for (const pageResults of _nodeMaps) {
         for (const [vid, entries] of pageResults) {
-            const existing = consumerMap.get(vid) || [];
-            consumerMap.set(vid, existing.concat(entries));
+            const existing = nodeConsumerMap.get(vid) || [];
+            nodeConsumerMap.set(vid, existing.concat(entries));
+        }
+    }
+    
+    // Filter out intra-collection alias consumers when deleting by collectionId
+    let aliasConsumerMap = _aliasConsumerMap;
+    if (collectionId) {
+        aliasConsumerMap = new Map();
+        for (const [targetVid, consumers] of _aliasConsumerMap) {
+            // Filter out alias consumers whose variableId is inside the set of IDs we are deleting
+            const filteredConsumers = consumers.filter(c => !idSet.has(c.variableId));
+            if (filteredConsumers.length > 0) {
+                aliasConsumerMap.set(targetVid, filteredConsumers);
+            }
+        }
+    }
+    
+    let hasConsumers = false;
+    for (const vid of idsToCheck) {
+        if ((nodeConsumerMap.get(vid) || []).length > 0 ||
+            (styleConsumerMap.get(vid) || []).length > 0 ||
+            (aliasConsumerMap.get(vid) || []).length > 0) {
+            hasConsumers = true;
+            break;
         }
     }
 
-    // If any variable has consumers, reject the entire operation
-    if (consumerMap.size > 0) {
-        const variablesInUse: Record<string, any[]> = {};
-        for (const [vid, entries] of consumerMap) {
-            variablesInUse[vid] = entries;
+    if (hasConsumers) {
+        const variablesInUse: Record<string, any> = {};
+        for (const vid of idsToCheck) {
+            const nodeConsumers = nodeConsumerMap.get(vid) || [];
+            const styleConsumers = styleConsumerMap.get(vid) || [];
+            const aliasConsumers = aliasConsumerMap.get(vid) || [];
+            
+            if (nodeConsumers.length > 0 || styleConsumers.length > 0 || aliasConsumers.length > 0) {
+                variablesInUse[vid] = {
+                    nodeConsumers,
+                    styleConsumers,
+                    aliasConsumers
+                };
+            }
         }
-        const error = collectionId
-            ? `Cannot delete collection: ${consumerMap.size} of ${idsToCheck.length} variable(s) in collection are still in use`
-            : `Cannot delete: ${consumerMap.size} of ${idsToCheck.length} variable(s) are still in use`;
+        
+        let errorMsg = collectionId
+            ? `Cannot delete collection: variable(s) in collection are still in use.\n`
+            : `Cannot delete: variable(s) are still in use.\n`;
+            
+        // Build readable descriptions
+        for (const [vid, consumers] of Object.entries(variablesInUse)) {
+            const varName = variables.find(v => v && v.id === vid)?.name || vid;
+            errorMsg += `- Variable '${varName}' is used by:\n`;
+            
+            for (const n of consumers.nodeConsumers) {
+                errorMsg += `  - Node '${n.nodeName}' (${n.nodeType}) on fields: ${n.fields.join(", ")}\n`;
+            }
+            for (const s of consumers.styleConsumers) {
+                const styleTypeName = s.styleType === 'PAINT' ? 'Paint' : s.styleType === 'TEXT' ? 'Text' : s.styleType === 'EFFECT' ? 'Effect' : s.styleType === 'GRID' ? 'Grid' : 'Style';
+                errorMsg += `  - ${styleTypeName} style '${s.styleName}' on fields: ${s.fields.join(", ")}\n`;
+            }
+            for (const a of consumers.aliasConsumers) {
+                errorMsg += `  - Aliased by variable '${a.variableName}' in modes: ${a.modes.join(", ")}\n`;
+            }
+        }
+
         return {
             success: false,
-            error,
+            error: errorMsg.trim(),
             variablesInUse,
         };
     }

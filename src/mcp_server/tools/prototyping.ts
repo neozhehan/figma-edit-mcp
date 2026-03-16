@@ -2,7 +2,74 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
 
+// Figma Plugin API typings for Reaction (as of current known API version)
+const VariableDataSchema: z.ZodType<any> = z.lazy(() => z.object({
+    type: z.string().optional(),
+    resolvedType: z.string().optional(),
+    value: z.any().optional(), // Could be string, number, boolean, VariableAlias, or Expression
+}));
+
+const ExpressionSchema: z.ZodType<any> = z.lazy(() => z.object({
+    type: z.literal('EXPRESSION').optional(), // Sometimes marked with type
+    expressionFunction: z.string(),
+    expressionArguments: z.array(VariableDataSchema),
+}));
+
+const ActionSchema: z.ZodType<any> = z.lazy(() => z.union([
+    z.object({ type: z.enum(['BACK', 'CLOSE']) }),
+    z.object({ type: z.literal('URL'), url: z.string(), openInNewTab: z.boolean().optional() }),
+    z.object({ type: z.literal('UPDATE_MEDIA_RUNTIME'), destinationId: z.string().nullable().optional(), mediaAction: z.string(), amountToSkip: z.number().optional(), newTimestamp: z.number().optional() }),
+    z.object({ type: z.literal('SET_VARIABLE'), variableId: z.string().nullable(), variableValue: VariableDataSchema.optional() }),
+    z.object({ type: z.literal('SET_VARIABLE_MODE'), variableCollectionId: z.string().nullable(), variableModeId: z.string().nullable() }),
+    z.object({ type: z.literal('CONDITIONAL'), conditionalBlocks: z.array(z.object({ condition: VariableDataSchema.optional(), actions: z.array(ActionSchema) })) }),
+    z.object({ type: z.literal('NODE'), destinationId: z.string().nullable(), navigation: z.string(), transition: z.any().nullable().optional(), preserveScrollPosition: z.boolean().optional(), overlayRelativePosition: z.any().optional(), resetVideoPosition: z.boolean().optional(), resetScrollPosition: z.boolean().optional(), resetInteractiveComponents: z.boolean().optional() }),
+]));
+
+const TriggerSchema = z.object({
+    type: z.string(),
+    timeout: z.number().optional(),
+    delay: z.number().optional(),
+    deprecatedVersion: z.boolean().optional(),
+    device: z.string().optional(),
+    keyCodes: z.array(z.number()).optional(),
+    mediaHitTime: z.number().optional(),
+});
+
+const ReactionSchema = z.object({
+    action: ActionSchema.optional(),
+    actions: z.array(ActionSchema).optional(),
+    trigger: TriggerSchema.nullable(),
+});
+
 export function registerPrototypingTools(server: McpServer) {
+    // A tool to update Figma Prototyping Reactions for a node (replaces existing reactions)
+    server.tool(
+        "update_reactions",
+        "Update Figma Prototyping Reactions on a node by replacing its reactions array. Provide the full array of reactions. Use get_reactions first, modify the desired actions (e.g., to fix references to deleted variables), and pass the updated array here.",
+        {
+            nodeId: z.string().describe("The ID of the node to update reactions for"),
+            reactions: z.array(ReactionSchema).describe("The full array of Reaction objects to set"),
+        },
+        async ({ nodeId, reactions }: any) => {
+            try {
+                const result = await sendCommandToFigma("update_reactions", { nodeId, reactions });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(result) }]
+                };
+            } catch (error) {
+                 return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error updating reactions: ${error instanceof Error ? error.message : String(error)}`
+                        }
+                    ],
+                    isError: true
+                 };
+            }
+        }
+    );
+
     // A tool to get Figma Prototyping Reactions from multiple nodes
     server.tool(
         "get_reactions",
