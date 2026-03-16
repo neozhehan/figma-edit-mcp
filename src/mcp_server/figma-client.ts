@@ -72,7 +72,7 @@ export type FigmaCommand =
     | "set_layout_sizing"
     | "set_item_spacing"
     | "set_corner_radius"
-    | "create_style" // If implemented
+    | "manage_style" // If implemented
     | "get_styles" // If implemented
     | "mcp_FigmaEdit_apply_style" // Correct name? Check tool definitions. The tools usually map to internal commands.
     | string;

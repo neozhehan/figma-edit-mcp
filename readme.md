@@ -287,7 +287,7 @@ The MCP server provides the following tools for interacting with Figma:
 |---|---|
 | `get_styles` | List all local styles in the document |
 | `get_local_components` | List all local components in the document |
-| `create_style` | Create a named style (Text, Paint, Effect, or Grid) |
+| `manage_style` | Create or update a named style (Text, Paint, Effect, or Grid) |
 | `apply_style` | Apply an existing named style to a node |
 | `create_component` | Convert a frame into a main component |
 | `create_component_instance` | Instantiate a component by key at a given position |

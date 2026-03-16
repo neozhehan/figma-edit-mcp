@@ -39,7 +39,7 @@ describe("Styling Tools", () => {
         expect(registeredTools["set_corner_radius"]).toBeDefined();
         expect(registeredTools["set_effects"]).toBeDefined();
         expect(registeredTools["get_styles"]).toBeDefined();
-        expect(registeredTools["create_style"]).toBeDefined();
+        expect(registeredTools["manage_style"]).toBeDefined();
         expect(registeredTools["apply_style"]).toBeDefined();
     });
 
@@ -100,18 +100,20 @@ describe("Styling Tools", () => {
         expect(result.content[0].text).toContain('[{"id":"style-1","name":"My Style"}]');
     });
 
-    it("create_style should call sendCommandToFigma with correct params", async () => {
+    it("manage_style should call sendCommandToFigma with correct params", async () => {
         registerStylingTools(mockServer as any);
         (sendCommandToFigma as any).mockResolvedValue({ id: "style-1", name: "New Style" });
 
         const params = { type: "PAINT", name: "New Style", description: "Desc", propertiesJson: '{"paints":[]}' };
-        const result = await registeredTools["create_style"](params);
+        const result = await registeredTools["manage_style"](params);
 
-        expect(sendCommandToFigma).toHaveBeenCalledWith("create_style", {
+        expect(sendCommandToFigma).toHaveBeenCalledWith("manage_style", {
             type: "PAINT",
             name: "New Style",
             description: "Desc",
-            properties: { paints: [] }
+            properties: { paints: [] },
+            styleId: undefined,
+            unbindVariables: undefined
         });
         expect(result.content[0].text).toContain('"id": "style-1"');
     });
