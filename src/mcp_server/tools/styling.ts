@@ -23,6 +23,7 @@ export function registerStylingTools(server: McpServer) {
         },
         async ({ nodeId, nodeName, r, g, b, a }: any) => {
             try {
+                nodeId = normalizeNodeId(nodeId);
                 const result = await sendCommandToFigma("set_fill_color", {
                     nodeId,
                     nodeName,
@@ -72,6 +73,7 @@ export function registerStylingTools(server: McpServer) {
         },
         async ({ nodeId, nodeName, r, g, b, a, weight }: any) => {
             try {
+                nodeId = normalizeNodeId(nodeId);
                 const result = await sendCommandToFigma("set_stroke_color", {
                     nodeId,
                     nodeName,

@@ -16,6 +16,7 @@ export function registerModificationTools(server: McpServer) {
         },
         async ({ nodeId, nodeName, x, y }: any) => {
             try {
+                nodeId = normalizeNodeId(nodeId);
                 const result = await sendCommandToFigma("move_node", {
                     nodeId,
                     nodeName,
@@ -57,6 +58,7 @@ export function registerModificationTools(server: McpServer) {
         },
         async ({ nodeId, nodeName, width, height }: any) => {
             try {
+                nodeId = normalizeNodeId(nodeId);
                 const result = await sendCommandToFigma("resize_node", {
                     nodeId,
                     nodeName,
@@ -143,7 +145,7 @@ export function registerModificationTools(server: McpServer) {
         async ({ nodes }: any) => {
             try {
                 const result = await sendCommandToFigma("delete_multiple_nodes", {
-                    nodes,
+                    nodes: nodes.map((n: any) => ({ ...n, nodeId: normalizeNodeId(n.nodeId) })),
                 });
                 return {
                     content: [
@@ -179,6 +181,7 @@ export function registerModificationTools(server: McpServer) {
         },
         async ({ nodeId, nodeName, x, y }: any) => {
             try {
+                nodeId = normalizeNodeId(nodeId);
                 const result = await sendCommandToFigma("clone_node", {
                     nodeId,
                     nodeName,
@@ -221,7 +224,7 @@ export function registerModificationTools(server: McpServer) {
         },
         async ({ nodeIds }: any) => {
             try {
-                const result = await sendCommandToFigma("set_selections", { nodeIds });
+                const result = await sendCommandToFigma("set_selections", { nodeIds: nodeIds.map(normalizeNodeId) });
                 const typedResult = result as {
                     selectedNodes: Array<{ name: string; id: string }>;
                     count: number;
@@ -268,7 +271,7 @@ export function registerModificationTools(server: McpServer) {
         async ({ nodes, name }: any) => {
             try {
                 const result = await sendCommandToFigma("group_nodes", {
-                    nodes,
+                    nodes: nodes.map((n: any) => ({ ...n, nodeId: normalizeNodeId(n.nodeId) })),
                     name,
                 });
                 const typedResult = result as { id: string; name: string; childCount: number };
@@ -304,6 +307,7 @@ export function registerModificationTools(server: McpServer) {
         },
         async ({ nodeId, nodeName }: any) => {
             try {
+                nodeId = normalizeNodeId(nodeId);
                 const result = await sendCommandToFigma("ungroup_nodes", {
                     nodeId,
                     nodeName,
@@ -343,6 +347,7 @@ export function registerModificationTools(server: McpServer) {
         },
         async ({ nodeId, nodeName }: any) => {
             try {
+                nodeId = normalizeNodeId(nodeId);
                 const result = await sendCommandToFigma("flatten_node", {
                     nodeId,
                     nodeName,
@@ -386,6 +391,8 @@ export function registerModificationTools(server: McpServer) {
         },
         async ({ parentId, parentNodeName, childId, childNodeName, index }: any) => {
             try {
+                parentId = normalizeNodeId(parentId);
+                childId = normalizeNodeId(childId);
                 const result = await sendCommandToFigma("insert_child", {
                     parentId,
                     parentNodeName,
