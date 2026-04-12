@@ -56,6 +56,7 @@ export function registerTextTools(server: McpServer) {
             parentNodeName,
         }: any) => {
             try {
+                if (parentId) parentId = normalizeNodeId(parentId);
                 const result = await sendCommandToFigma("create_text", {
                     x,
                     y,

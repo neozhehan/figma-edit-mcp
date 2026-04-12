@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
+import { normalizeNodeId } from "../utils.js";
 
 export function registerAssetTools(server: McpServer) {
     // Export Node as Image Tool
@@ -17,6 +18,7 @@ export function registerAssetTools(server: McpServer) {
         },
         async ({ nodeId, format, scale }: any) => {
             try {
+                nodeId = normalizeNodeId(nodeId);
                 const result = await sendCommandToFigma("export_node_as_image", {
                     nodeId,
                     format: format || "PNG",

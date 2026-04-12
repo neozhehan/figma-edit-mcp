@@ -31,6 +31,7 @@ export function registerCreationTools(server: McpServer) {
         },
         async ({ x, y, width, height, name, parentId, parentNodeName, useAbsolutePosition }: any) => {
             try {
+                if (parentId) parentId = normalizeNodeId(parentId);
                 const result = await sendCommandToFigma("create_rectangle", {
                     x,
                     y,
@@ -166,6 +167,7 @@ export function registerCreationTools(server: McpServer) {
             height,
             name,
             parentId,
+            parentNodeName,
             fillColor,
             strokeColor,
             strokeWeight,
@@ -182,6 +184,7 @@ export function registerCreationTools(server: McpServer) {
             itemSpacing,
         }: any) => {
             try {
+                if (parentId) parentId = normalizeNodeId(parentId);
                 const result = await sendCommandToFigma("create_frame", {
                     x,
                     y,
@@ -189,6 +192,7 @@ export function registerCreationTools(server: McpServer) {
                     height,
                     name: name || "Frame",
                     parentId,
+                    parentNodeName,
                     fillColor: fillColor || { r: 1, g: 1, b: 1, a: 1 },
                     strokeColor: strokeColor,
                     strokeWeight: strokeWeight,

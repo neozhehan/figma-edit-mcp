@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
+import { normalizeNodeId } from "../utils.js";
 
 // Figma Plugin API typings for Reaction (as of current known API version)
 const VariableDataSchema: z.ZodType<any> = z.lazy(() => z.object({
@@ -52,6 +53,7 @@ export function registerPrototypingTools(server: McpServer) {
         },
         async ({ nodeId, reactions }: any) => {
             try {
+                nodeId = normalizeNodeId(nodeId);
                 const result = await sendCommandToFigma("update_reactions", { nodeId, reactions });
                 return {
                     content: [{ type: "text", text: JSON.stringify(result) }]
@@ -81,7 +83,7 @@ export function registerPrototypingTools(server: McpServer) {
         },
         async ({ nodeIds }: any) => {
             try {
-                const result = await sendCommandToFigma("get_reactions", { nodeIds });
+                const result = await sendCommandToFigma("get_reactions", { nodeIds: nodeIds.map(normalizeNodeId) });
                 return {
                     content: [
                         {
@@ -139,6 +141,15 @@ export function registerPrototypingTools(server: McpServer) {
         },
         async ({ connectorId, connections }: any) => {
             try {
+                if (connectorId) connectorId = normalizeNodeId(connectorId);
+                if (connections) {
+                    connections = connections.map((c: any) => ({
+                        ...c,
+                        startNodeId: normalizeNodeId(c.startNodeId),
+                        endNodeId: normalizeNodeId(c.endNodeId),
+                    }));
+                }
+                
                 // If checking/setting default (connectorId provided OR no params)
                 if (connectorId !== undefined || !connections) {
                     const result = await sendCommandToFigma("create_connections", {
