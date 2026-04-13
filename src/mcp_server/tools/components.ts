@@ -84,7 +84,8 @@ export function registerComponentTools(server: McpServer) {
         "create_component_instance",
         "Create an instance of a component in Figma",
         {
-            componentKey: z.string().describe("Key of the component to instantiate"),
+            componentKey: z.string().optional().describe("Key of the component to instantiate (for remote/library components)"),
+            componentId: z.string().optional().describe("Node ID of the component to instantiate (preferred for local components)"),
             x: z.number().describe("X position"),
             y: z.number().describe("Y position"),
             parentId: z
@@ -96,10 +97,11 @@ export function registerComponentTools(server: McpServer) {
                 .optional()
                 .describe("Name of the parent node to verify against"),
         },
-        async ({ componentKey, x, y, parentId, parentNodeName }: any) => {
+        async ({ componentKey, componentId, x, y, parentId, parentNodeName }: any) => {
             try {
                 const result = await sendCommandToFigma("create_component_instance", {
                     componentKey,
+                    componentId,
                     x,
                     y,
                     parentId,

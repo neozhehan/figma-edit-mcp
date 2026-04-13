@@ -91,40 +91,51 @@ export async function getComponents(params: any) {
 /**
  * Creates an instance of a component
  * @param {Object} params - Parameters object
- * @param {string} params.componentKey - Key of the component to instantiate
+ * @param {string} params.componentKey - Key of the component to instantiate (for remote/library components)
+ * @param {string} params.componentId - Node ID of the component (for local components, preferred over componentKey)
  * @param {number} params.x - X position
  * @param {number} params.y - Y position
+ * @param {string} params.parentId - Optional parent node ID to place the instance into
  * @returns {Promise<Object>} Created instance info
  */
 export async function createComponentInstance(params: any) {
-    const { componentKey, x = 0, y = 0, parentId } = params || {};
+    const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
 
-    if (!componentKey) {
-        throw new Error("Missing componentKey parameter");
+    if (!componentKey && !componentId) {
+        throw new Error("Missing componentKey or componentId parameter");
     }
 
     try {
-        const component = await figma.importComponentByKeyAsync(componentKey);
-        const instance = component.createInstance();
+        let component: ComponentNode;
 
-        instance.x = x;
-        instance.y = y;
+        if (componentId) {
+            // Local component: look up directly by node ID
+            const node = await figma.getNodeByIdAsync(componentId);
+            if (!node) {
+                throw new Error(`Component not found with ID: ${componentId}`);
+            }
+            if (node.type !== "COMPONENT") {
+                throw new Error(`Node ${componentId} is not a COMPONENT (got ${node.type})`);
+            }
+            component = node as ComponentNode;
+        } else {
+            // Remote/library component: import by key
+            component = await figma.importComponentByKeyAsync(componentKey);
+        }
+
+        const instance = component.createInstance();
 
         if (parentId) {
             const parent = await figma.getNodeByIdAsync(parentId);
             if (!parent) {
                 throw new Error(`Parent node not found with ID: ${parentId}`);
             }
-            if (parent.type !== "FRAME" && parent.type !== "GROUP" && parent.type !== "SECTION" && parent.type !== "PAGE") {
-                // Allow appending to Page, Frame, Group, Section
-                // Although Page is via currentPage usually.
-                // If parentId is a Page, appendChild works.
-            }
             // @ts-ignore
             parent.appendChild(instance);
-        } else {
-            figma.currentPage.appendChild(instance);
         }
+
+        instance.x = x;
+        instance.y = y;
 
         return {
             id: instance.id,
@@ -137,7 +148,7 @@ export async function createComponentInstance(params: any) {
             componentId: instance.componentId,
         };
     } catch (error: any) {
-        throw new Error(`Error creating component instance: ${error.message}`);
+        throw new Error(`Error creating component instance: ${error?.message || String(error)}`);
     }
 }
 
