@@ -86,7 +86,7 @@ A new tool focused purely on setting property values on component instances (not
   - `nodeId` (string, required): ID of the instance node.
   - `nodeName` (string, required): Name of the instance node for verification.
   - `propertyName` (string, required): The human-readable name of the component property to change (e.g., "State", "Show Icon"). The plugin will automatically resolve this to the qualified name.
-  - `value` (string | boolean, required): The new value for the property. **Note: For INSTANCE_SWAP properties, this must be a component `key` (the stable library identifier), not a node ID.**
+  - `value` (string | boolean, required): The new value for the property. **Note: For INSTANCE_SWAP properties on a local component, this must be the component's node ID; for an unimported library component, first import it via `figma.importComponentByKeyAsync(key)` to obtain a local node ID, then pass that ID.**
 - **Implementation Strategy**:
   - **Security / Validation**: In `main.ts` routing, apply the standard three-step gating before dispatching to the handler: `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName`.
   - **Property Name Resolution & Pre-Validation**: Accept the human-readable `propertyName` from the caller. Match it against the keys in `instance.componentProperties` to find the exact qualified name (e.g., `"Show Icon#5:0"`). If the property name is not found, return a structured error listing the available valid property names.
@@ -108,9 +108,9 @@ A new tool focused on defining, editing, and deleting component properties on Ma
   - `propertyName` (string, required): The human-readable name of the property to affect. The plugin will automatically resolve this to the qualified name for EDIT and DELETE actions.
   - `newPropertyName` (string, optional): For the `EDIT` action, to rename the property.
   - `propertyType` (enum, required for `ADD`): `BOOLEAN`, `TEXT`, or `INSTANCE_SWAP`. (Note: `VARIANT` properties are created implicitly via the `create_component_set` tool and cannot be added here).
-  - `defaultValue` (string | boolean, optional): Default value for the property (required for `ADD`). **Note: For INSTANCE_SWAP properties, this must be a component `key` (the stable library identifier), not a node ID.**
-  - `newDefaultValue` (string | boolean, optional): For the `EDIT` action, to change the default value of the property. **Note: For INSTANCE_SWAP properties, this must be a component `key`.**
-  - `preferredValues` (string[], optional): Array of preferred component `key`s. Relevant only for `INSTANCE_SWAP` properties during `ADD` or `EDIT`.
+  - `defaultValue` (string | boolean, optional): Default value for the property (required for `ADD`). **Note: For INSTANCE_SWAP properties, this must be a component **node ID** (a local node id for local components; for library components, first import via `figma.importComponentByKeyAsync(key)` to obtain a local node id). The Figma plugin API for `addComponentProperty` rejects raw library keys here.**
+  - `newDefaultValue` (string | boolean, optional): For the `EDIT` action, to change the default value of the property. **Note: For INSTANCE_SWAP properties, this must be a component node ID (same constraint as `defaultValue`).**
+  - `preferredValues` (`Array<{ type: "COMPONENT" | "COMPONENT_SET", key: string }>`, optional): Preferred values for `INSTANCE_SWAP` properties during `ADD` or `EDIT`. Each entry must be a `{ type, key }` object — `key` is the library key (`component.key`). The Figma plugin API rejects bare strings here.
 - **Implementation Strategy**:
   - **Security / Validation**: In `main.ts` routing, apply the standard three-step gating before dispatching to the handler: `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName`.
   - **Property Name Resolution & Pre-Validation**: 

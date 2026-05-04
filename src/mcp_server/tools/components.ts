@@ -283,6 +283,82 @@ export function registerComponentTools(server: McpServer) {
         }
     );
 
+    // Set Component Instance Property Tool
+    server.tool(
+        "set_component_instance_property",
+        "Set a specific property value (boolean toggle, text override, instance swap, or variant selection) on an instance.",
+        {
+            nodeId: z.string().describe("The ID of the instance node"),
+            nodeName: z.string().describe("Name of the instance node for verification"),
+            propertyName: z.string().describe("The human-readable name of the component property to change"),
+            value: z.union([z.string(), z.boolean()]).describe("The new value for the property. For INSTANCE_SWAP properties, this must be a component key (the stable library identifier)."),
+        },
+        async ({ nodeId, nodeName, propertyName, value }: any) => {
+            try {
+                const result = await sendCommandToFigma("set_component_instance_property", {
+                    nodeId,
+                    nodeName,
+                    propertyName,
+                    value,
+                });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error setting component instance property: ${error instanceof Error ? error.message : String(error)}`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
+
+    // Manage Component Property Tool
+    server.tool(
+        "manage_component_property",
+        "Perform CRUD operations on property definitions for main components or variant sets.",
+        {
+            nodeId: z.string().describe("ID of the COMPONENT or COMPONENT_SET"),
+            nodeName: z.string().describe("Name of the node for verification"),
+            action: z.enum(["ADD", "EDIT", "DELETE"]).describe("Action to perform"),
+            propertyName: z.string().describe("The human-readable name of the property to affect"),
+            newPropertyName: z.string().optional().describe("For the EDIT action, to rename the property"),
+            propertyType: z.enum(["BOOLEAN", "TEXT", "INSTANCE_SWAP"]).optional().describe("Required for ADD: The type of property"),
+            defaultValue: z.union([z.string(), z.boolean()]).optional().describe("Required for ADD: Default value for the property. For INSTANCE_SWAP, this must be a component node ID (for local components, the node id; for library components, first import via importComponentByKeyAsync to obtain a local node id)."),
+            newDefaultValue: z.union([z.string(), z.boolean()]).optional().describe("For the EDIT action, to change the default value. For INSTANCE_SWAP, this must be a component node ID."),
+            preferredValues: z.array(z.object({
+                type: z.enum(["COMPONENT", "COMPONENT_SET"]).describe("Whether the preferred value refers to a COMPONENT or a COMPONENT_SET"),
+                key: z.string().describe("The library key (the stable identifier from component.key) of the preferred component or component set"),
+            })).optional().describe("Array of preferred values for INSTANCE_SWAP properties during ADD or EDIT. Each entry must be { type, key } where key is the library key (component.key)."),
+        },
+        async (args: any) => {
+            try {
+                // Ensure required fields based on action
+                if (args.action === "ADD" && (args.propertyType === undefined || args.defaultValue === undefined)) {
+                    throw new Error("propertyType and defaultValue are required for ADD action");
+                }
+
+                const result = await sendCommandToFigma("manage_component_property", args);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+                };
+            } catch (error) {
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error managing component property: ${error instanceof Error ? error.message : String(error)}`,
+                        },
+                    ],
+                };
+            }
+        }
+    );
+
     // Instance Slot Filling Strategy Prompt
     server.prompt(
         "swap_overrides_instances",

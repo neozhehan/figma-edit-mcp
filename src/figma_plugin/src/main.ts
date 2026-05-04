@@ -23,7 +23,9 @@ import {
     getSourceInstanceData,
     setInstanceOverrides,
     createComponent,
-    createComponentSet
+    createComponentSet,
+    setComponentInstanceProperty,
+    manageComponentProperty
 } from '../handlers/componentHandlers.js';
 
 import { getReactions, createConnections } from '../handlers/connectorHandlers.js';
@@ -451,6 +453,18 @@ async function handleCommand(command: any, params: any) {
                 }
             }
             throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
+
+        case "set_component_instance_property":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await setComponentInstanceProperty(params);
+
+        case "manage_component_property":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await manageComponentProperty(params);
 
         case "get_document_info":
             return await getDocumentInfo();

@@ -126,9 +126,9 @@ This document breaks down the implementation of the Component Property Enhanceme
       - `propertyName` (string, required) — the human-readable name; the plugin resolves it to the qualified name for `EDIT`/`DELETE`.
       - `newPropertyName` (string, optional) — for `EDIT` only, to rename the property.
       - `propertyType` (enum: `BOOLEAN` | `TEXT` | `INSTANCE_SWAP`, **required for `ADD`**). `VARIANT` is intentionally excluded — variant properties are created implicitly via `create_component_set`.
-      - `defaultValue` (string | boolean, optional, **required for `ADD`**). **For `INSTANCE_SWAP` properties, this must be a component `key` (the stable library identifier), not a node ID.**
-      - `newDefaultValue` (string | boolean, optional) — for `EDIT` only, to change the default. **For `INSTANCE_SWAP` properties, this must be a component `key`.**
-      - `preferredValues` (string[], optional) — array of preferred component `key`s, relevant only for `INSTANCE_SWAP` properties during `ADD` or `EDIT`.
+      - `defaultValue` (string | boolean, optional, **required for `ADD`**). **For `INSTANCE_SWAP` properties, this must be a component node ID (local node id for local components; for library components, first import via `figma.importComponentByKeyAsync(key)`). The Figma plugin API rejects bare library keys here.**
+      - `newDefaultValue` (string | boolean, optional) — for `EDIT` only, to change the default. **For `INSTANCE_SWAP` properties, this must be a component node ID (same constraint as `defaultValue`).**
+      - `preferredValues` (`Array<{ type: "COMPONENT" | "COMPONENT_SET", key: string }>`, optional) — preferred values for `INSTANCE_SWAP` properties during `ADD` or `EDIT`. Each entry must be a `{ type, key }` object — `key` is the library key (`component.key`). Bare strings are rejected by the Figma plugin API.
 
 16. **Route Command with Security Gates**
     - **File:** `src/figma_plugin/src/main.ts`
