@@ -9,7 +9,7 @@ import { rgbaToHex } from './colorUtils.js';
  * @param {SceneNode} node - Figma node to filter
  * @returns {Object|null} Filtered node object or null for VECTOR nodes
  */
-export function filterFigmaNode(node: any) {
+export function filterFigmaNode(node: any, fields?: string[]) {
     if (node.type === "VECTOR") {
         return null;
     }
@@ -20,72 +20,18 @@ export function filterFigmaNode(node: any) {
         type: node.type,
     };
 
-    if (node.fills && node.fills.length > 0) {
-        filtered.fills = node.fills.map((fill: any) => {
-            var processedFill = Object.assign({}, fill);
-            delete processedFill.boundVariables;
-            delete processedFill.imageRef;
-
-            if (processedFill.gradientStops) {
-                processedFill.gradientStops = processedFill.gradientStops.map(
-                    (stop: any) => {
-                        var processedStop = Object.assign({}, stop);
-                        if (processedStop.color) {
-                            processedStop.color = rgbaToHex(processedStop.color);
-                        }
-                        delete processedStop.boundVariables;
-                        return processedStop;
-                    }
-                );
+    if (fields && Array.isArray(fields)) {
+        for (const field of fields) {
+            if (field in node && field !== "id" && field !== "name" && field !== "type" && field !== "children") {
+                filtered[field] = node[field];
             }
-
-            if (processedFill.color) {
-                processedFill.color = rgbaToHex(processedFill.color);
-            }
-
-            return processedFill;
-        });
-    }
-
-    if (node.strokes && node.strokes.length > 0) {
-        filtered.strokes = node.strokes.map((stroke: any) => {
-            var processedStroke = Object.assign({}, stroke);
-            delete processedStroke.boundVariables;
-            if (processedStroke.color) {
-                processedStroke.color = rgbaToHex(processedStroke.color);
-            }
-            return processedStroke;
-        });
-    }
-
-    if (node.cornerRadius !== undefined) {
-        filtered.cornerRadius = node.cornerRadius;
-    }
-
-    if (node.absoluteBoundingBox) {
-        filtered.absoluteBoundingBox = node.absoluteBoundingBox;
-    }
-
-    if (node.characters) {
-        filtered.characters = node.characters;
-    }
-
-    if (node.style) {
-        filtered.style = {
-            fontFamily: node.style.fontFamily,
-            fontStyle: node.style.fontStyle,
-            fontWeight: node.style.fontWeight,
-            fontSize: node.style.fontSize,
-            textAlignHorizontal: node.style.textAlignHorizontal,
-            letterSpacing: node.style.letterSpacing,
-            lineHeightPx: node.style.lineHeightPx,
-        };
+        }
     }
 
     if (node.children) {
         filtered.children = node.children
             .map((child: any) => {
-                return filterFigmaNode(child);
+                return filterFigmaNode(child, fields);
             })
             .filter((child: any) => {
                 return child !== null;

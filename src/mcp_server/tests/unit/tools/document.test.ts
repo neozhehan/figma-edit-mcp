@@ -36,6 +36,12 @@ describe("Document Tools", () => {
         expect(registeredTools["get_page_info"]).toBeDefined();
     });
 
+    it("should not register the design_strategy prompt", () => {
+        registerDocumentTools(mockServer as any);
+        const promptNames = (mockServer.prompt as any).mock.calls.map((call: any[]) => call[0]);
+        expect(promptNames).not.toContain("design_strategy");
+    });
+
     it("get_document_info should call sendCommandToFigma and return result", async () => {
         // Setup
         const mockResult = { id: "doc-123", name: "My Doc" };
@@ -77,11 +83,15 @@ describe("Document Tools", () => {
 
         // Case 1: Specific nodeIds
         await registeredTools["get_nodes_info"]({ nodeIds: ["node-1"] });
-        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: ["node-1"] });
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: ["node-1"], fields: undefined });
 
         // Case 2: No nodeIds
         await registeredTools["get_nodes_info"]({});
-        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: undefined });
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: undefined, fields: undefined });
+        
+        // Case 3: With fields
+        await registeredTools["get_nodes_info"]({ nodeIds: ["node-1"], fields: ["fills", "componentProperties"] });
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: ["node-1"], fields: ["fills", "componentProperties"] });
     });
 
     it("join_channel should call joinChannel and then get_nodes_info for discovery", async () => {
@@ -98,7 +108,7 @@ describe("Document Tools", () => {
         const result = await registeredTools["join_channel"]({ channel: "test-channel" });
 
         // Verify
-        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", {});
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { fields: ["absoluteBoundingBox", "layoutMode"] });
         expect(result.content[0].text).toContain("Scope Frame");
         expect(result.content[0].text).toContain("scope-123");
     });

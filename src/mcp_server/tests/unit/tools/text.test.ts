@@ -113,4 +113,21 @@ describe("Text Tools", () => {
         }));
         expect(result.content[0].text).toBeDefined();
     });
+
+    it("should register text_replacement_strategy prompt with updated fields", () => {
+        let registeredPrompts: Record<string, Function> = {};
+        mockServer.prompt = mock((name, desc, handler) => {
+            registeredPrompts[name] = handler;
+        });
+
+        registerTextTools(mockServer as any);
+        const promptHandler = registeredPrompts["text_replacement_strategy"];
+        expect(promptHandler).toBeDefined();
+
+        const result = promptHandler({});
+        const text = result.messages[0].content.text;
+
+        expect(text).toContain('fields: ["characters", "style"]');
+        expect(text).not.toContain('get_nodes_info(nodeIds: ["node-id"])  // optional');
+    });
 });

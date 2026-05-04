@@ -89,7 +89,7 @@ export async function getSelection() {
  * @param {string[]} nodeIds - Array of node IDs to query
  * @returns {Promise<Object[]>} Array of node information objects
  */
-export async function getNodesInfo(nodeIds: any) {
+export async function getNodesInfo(nodeIds: any, fields?: string[]) {
     try {
         // Load all nodes in parallel
         const nodes = await Promise.all(
@@ -108,7 +108,7 @@ export async function getNodesInfo(nodeIds: any) {
                 return {
                     nodeId: node.id,
                     parentId: node.parent ? node.parent.id : null,
-                    document: filterFigmaNode(response.document),
+                    document: filterFigmaNode(response.document, fields),
                 };
             })
         );

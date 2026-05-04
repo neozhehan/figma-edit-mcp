@@ -75,4 +75,23 @@ describe("Component Tools", () => {
         expect(sendCommandToFigma).toHaveBeenCalledWith("create_component_set", params);
         expect(JSON.parse(result.content[0].text)).toEqual(mockResult);
     });
+
+    it("should register swap_overrides_instances prompt with updated fields", () => {
+        let registeredPrompts: Record<string, Function> = {};
+        mockServer.prompt = mock((name, desc, handler) => {
+            registeredPrompts[name] = handler;
+        });
+
+        registerComponentTools(mockServer as any);
+        const promptHandler = registeredPrompts["swap_overrides_instances"];
+        expect(promptHandler).toBeDefined();
+
+        const result = promptHandler({});
+        const text = result.messages[0].content.text;
+
+        expect(text).toContain('fields: ["componentProperties", "characters", "overrides"]');
+        expect(text).toContain('targetNodes: [');
+        expect(text).toContain('{ nodeId: "target-id-1"');
+        expect(text).not.toContain('targetNodeIds: [');
+    });
 });

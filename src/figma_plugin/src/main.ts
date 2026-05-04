@@ -460,12 +460,12 @@ async function handleCommand(command: any, params: any) {
             return await getSelection();
         case "get_nodes_info":
             if (params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0) {
-                return await getNodesInfo(params.nodeIds);
+                return await getNodesInfo(params.nodeIds, params.fields);
             }
 
             // If no nodeIds provided, return the editable scope info
             if (state.scopeRootId) {
-                return await getNodesInfo([state.scopeRootId]);
+                return await getNodesInfo([state.scopeRootId], params?.fields);
             }
 
             // Read-Only Mode: Return empty array

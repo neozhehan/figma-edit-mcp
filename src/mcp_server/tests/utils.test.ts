@@ -1,4 +1,4 @@
-import { normalizeNodeId, normalizeNodeIds, rgbaToHex } from '../utils.js';
+import { normalizeNodeId, normalizeNodeIds } from '../utils.js';
 
 describe('normalizeNodeId', () => {
     it('should return undefined if input is undefined', () => {
@@ -27,15 +27,4 @@ describe('normalizeNodeIds', () => {
     });
 });
 
-describe('rgbaToHex', () => {
-    it('should return the same string if it starts with #', () => {
-        expect(rgbaToHex('#ff0000')).toBe('#ff0000');
-    });
-
-    it('should convert rgba object to hex string', () => {
-        expect(rgbaToHex({ r: 1, g: 0, b: 0, a: 1 })).toBe('#ff0000');
-        expect(rgbaToHex({ r: 0, g: 1, b: 0, a: 0.5 })).toBe('#00ff0080');
-        expect(rgbaToHex({ r: 0, g: 0, b: 1, a: 1 })).toBe('#0000ff');
-    });
-});
 

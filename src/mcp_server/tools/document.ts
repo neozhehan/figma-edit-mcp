@@ -78,13 +78,17 @@ export function registerDocumentTools(server: McpServer) {
                 .array(z.string())
                 .optional()
                 .describe("Array of node IDs to get information about"),
+            fields: z
+                .array(z.string())
+                .optional()
+                .describe("Array of field names to return. Must exactly match keys in Figma's JSON_REST_V1 export format. Supported fields - Component Properties: componentPropertyDefinitions, componentProperties. Instance Data: overrides. Layout & Positioning: layoutMode, itemSpacing, paddingLeft, paddingRight, paddingTop, paddingBottom, primaryAxisAlignItems, counterAxisAlignItems, absoluteBoundingBox. Styling: fills, strokes, cornerRadius, opacity, blendMode, effects. Text: characters, style. Prototyping: transitionNodeID, transitionDuration, transitionEasing. Metadata: visible, locked. Default behavior: When empty or omitted, only id, name, type are returned per node (plus recursive children)."),
         },
-        async ({ nodeIds }: any) => {
+        async ({ nodeIds, fields }: any) => {
             try {
                 if (nodeIds) {
                     nodeIds = normalizeNodeIds(nodeIds);
                 }
-                const results = await sendCommandToFigma("get_nodes_info", { nodeIds });
+                const results = await sendCommandToFigma("get_nodes_info", { nodeIds, fields });
 
                 return {
                     content: [
@@ -228,7 +232,7 @@ export function registerDocumentTools(server: McpServer) {
                 // Fetch scope info after joining
                 let scopeMessage = `Successfully joined channel: ${channel}`;
                 try {
-                    const scopeResult = await sendCommandToFigma("get_nodes_info", {});
+                    const scopeResult = await sendCommandToFigma("get_nodes_info", { fields: ["absoluteBoundingBox", "layoutMode"] });
                     if (Array.isArray(scopeResult) && scopeResult.length > 0) {
                         const scopeNode: any = scopeResult[0];
                         const nodeName = scopeNode.document?.name || 'Unknown';
@@ -262,27 +266,5 @@ export function registerDocumentTools(server: McpServer) {
         }
     );
 
-    server.prompt(
-        "read_design_strategy",
-        "Best practices for reading Figma designs",
-        (extra) => {
-            return {
-                messages: [
-                    {
-                        role: "assistant",
-                        content: {
-                            type: "text",
-                            text: `When reading Figma designs, follow these best practices:
 
-1. Start with Document Info:
-   - Use get_document_info() to explore the page structure
-   - Identify nodes by their IDs
-`,
-                        },
-                    },
-                ],
-                description: "Best practices for reading Figma designs",
-            };
-        }
-    );
 }
