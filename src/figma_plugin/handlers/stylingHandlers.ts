@@ -65,14 +65,22 @@ export async function setFillColor(params: any) {
  * @param {Object} params - Parameters object
  * @param {string} params.nodeId - ID of the node to modify
  * @param {Object} params.color - Color object with r, g, b, a values (0-1)
- * @param {number} params.weight - Stroke weight (default: 1)
+ * @param {number} params.weight - Uniform stroke weight (default: 1)
+ * @param {number} params.strokeTopWeight - Top stroke weight (optional)
+ * @param {number} params.strokeBottomWeight - Bottom stroke weight (optional)
+ * @param {number} params.strokeLeftWeight - Left stroke weight (optional)
+ * @param {number} params.strokeRightWeight - Right stroke weight (optional)
  * @returns {Promise<Object>} Result with node info and applied strokes
  */
-export async function setStrokeColor(params: any) {
+export async function setStroke(params: any) {
     const {
         nodeId,
         color: { r, g, b, a },
         weight = 1,
+        strokeTopWeight,
+        strokeBottomWeight,
+        strokeLeftWeight,
+        strokeRightWeight,
     } = params || {};
 
     if (!nodeId) {
@@ -109,16 +117,42 @@ export async function setStrokeColor(params: any) {
 
     node.strokes = [paintStyle];
 
-    // Set stroke weight if available
-    if ("strokeWeight" in node) {
+    // Check if any individual stroke side weight is provided
+    const hasIndividualWeights =
+        strokeTopWeight !== undefined ||
+        strokeBottomWeight !== undefined ||
+        strokeLeftWeight !== undefined ||
+        strokeRightWeight !== undefined;
+
+    if (hasIndividualWeights) {
+        // Set individual stroke side weights
+        if ("strokeTopWeight" in node) {
+            node.strokeTopWeight = strokeTopWeight !== undefined ? strokeTopWeight : 0;
+            node.strokeBottomWeight = strokeBottomWeight !== undefined ? strokeBottomWeight : 0;
+            node.strokeLeftWeight = strokeLeftWeight !== undefined ? strokeLeftWeight : 0;
+            node.strokeRightWeight = strokeRightWeight !== undefined ? strokeRightWeight : 0;
+        } else {
+            throw new Error(`Node does not support individual stroke weights: ${nodeId}`);
+        }
+    } else if ("strokeWeight" in node) {
+        // Set uniform stroke weight
         node.strokeWeight = weight;
     }
+
+    // Build return value - handle figma.mixed Symbol for strokeWeight
+    const strokeWeightValue = "strokeWeight" in node
+        ? (node.strokeWeight === figma.mixed ? "mixed" : node.strokeWeight)
+        : undefined;
 
     return {
         id: node.id,
         name: node.name,
         strokes: node.strokes,
-        strokeWeight: "strokeWeight" in node ? node.strokeWeight : undefined,
+        strokeWeight: strokeWeightValue,
+        strokeTopWeight: "strokeTopWeight" in node ? node.strokeTopWeight : undefined,
+        strokeBottomWeight: "strokeBottomWeight" in node ? node.strokeBottomWeight : undefined,
+        strokeLeftWeight: "strokeLeftWeight" in node ? node.strokeLeftWeight : undefined,
+        strokeRightWeight: "strokeRightWeight" in node ? node.strokeRightWeight : undefined,
     };
 }
 

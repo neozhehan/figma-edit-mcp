@@ -4,7 +4,7 @@
  */
 
 // Styling handlers
-export { setFillColor, setStrokeColor, setCornerRadius } from './stylingHandlers.js';
+export { setFillColor, setStroke, setCornerRadius } from './stylingHandlers.js';
 
 // Layout handlers
 export {
