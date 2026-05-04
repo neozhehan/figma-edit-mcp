@@ -34,8 +34,11 @@ A search across the entire `src/` directory shows **0 usages** of `ts-morph`. It
 
 **Recommendation:** Rather than updating `ts-morph`, it should be completely uninstalled from the project to reduce dependency bloat:
 ```bash
-npm uninstall ts-morph
+bun remove ts-morph
 ```
 
 ## Potential Risks
 - Major version bumps for `zod` (v3 → v4) and `typescript` (v5 → v6) might contain breaking changes. It's recommended to test the test suite (`bun test`) after applying these updates to ensure stability.
+
+## Tooling Note
+Bun is the **default and exclusive** package manager for this project. All install / remove / update commands use `bun add`, `bun remove`, etc. — `npm` usage is deprecated and being removed throughout the project (see Phase 0 in [package_update_plan.md](package_update_plan.md)).
