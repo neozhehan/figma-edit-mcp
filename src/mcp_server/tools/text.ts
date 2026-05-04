@@ -380,7 +380,7 @@ export function registerTextTools(server: McpServer) {
   * Navigation (menu items, breadcrumbs)
 \`\`\`
 scan_text_nodes(nodeId: "node-id")
-get_nodes_info(nodeIds: ["node-id"])  // optional
+get_nodes_info(nodeIds: ["node-id"], fields: ["characters", "style"])  // optional
 \`\`\`
 
 ## 2. Strategic Chunking for Complex Designs

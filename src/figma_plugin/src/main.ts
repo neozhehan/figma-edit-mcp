@@ -7,10 +7,10 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 
 // Import handlers
-import { getDocumentInfo, getSelection, getNodesInfo, readMyDesign, getPageInfo } from '../handlers/nodeReaders.js';
+import { getDocumentInfo, getSelection, getNodesInfo, getPageInfo } from '../handlers/nodeReaders.js';
 import { createRectangle, createFrame, createText, cloneNode, createEllipse, createPolygonStar } from '../handlers/nodeCreators.js';
 import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName, groupNodes, ungroupNodes, flattenNode, insertChild } from '../handlers/nodeModifiers.js';
-import { setFillColor, setStrokeColor, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
+import { setFillColor, setStroke, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
 
 import { setAutoLayout } from '../handlers/layoutHandlers.js';
 import {
@@ -23,7 +23,9 @@ import {
     getSourceInstanceData,
     setInstanceOverrides,
     createComponent,
-    createComponentSet
+    createComponentSet,
+    setComponentInstanceProperty,
+    manageComponentProperty
 } from '../handlers/componentHandlers.js';
 
 import { getReactions, createConnections } from '../handlers/connectorHandlers.js';
@@ -227,11 +229,11 @@ async function handleCommand(command: any, params: any) {
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await setFillColor(params);
-        case "set_stroke_color":
+        case "set_stroke":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
-            return await setStrokeColor(params);
+            return await setStroke(params);
         case "set_corner_radius":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
@@ -452,6 +454,18 @@ async function handleCommand(command: any, params: any) {
             }
             throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
 
+        case "set_component_instance_property":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await setComponentInstanceProperty(params);
+
+        case "manage_component_property":
+            if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            return await manageComponentProperty(params);
+
         case "get_document_info":
             return await getDocumentInfo();
         case "get_page_info":
@@ -460,18 +474,16 @@ async function handleCommand(command: any, params: any) {
             return await getSelection();
         case "get_nodes_info":
             if (params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0) {
-                return await getNodesInfo(params.nodeIds);
+                return await getNodesInfo(params.nodeIds, params.fields);
             }
 
             // If no nodeIds provided, return the editable scope info
             if (state.scopeRootId) {
-                return await getNodesInfo([state.scopeRootId]);
+                return await getNodesInfo([state.scopeRootId], params?.fields);
             }
 
             // Read-Only Mode: Return empty array
             return [];
-        case "read_my_design":
-            return await readMyDesign();
         case "get_styles":
             return await getStyles();
         case "get_components":

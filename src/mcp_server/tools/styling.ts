@@ -53,10 +53,10 @@ export function registerStylingTools(server: McpServer) {
         }
     );
 
-    // Set Stroke Color Tool
+    // Set Stroke Tool
     server.tool(
-        "set_stroke_color",
-        "Set the stroke color of a node in Figma",
+        "set_stroke",
+        "Set the stroke color and weight of a node in Figma. Supports both uniform weight and individual side weights (top, bottom, left, right).",
         {
             nodeId: z.string().describe("The ID of the node to modify"),
             nodeName: z.string().describe("Name of the node to modify"),
@@ -69,24 +69,45 @@ export function registerStylingTools(server: McpServer) {
                 .max(1)
                 .optional()
                 .describe("Alpha component (0-1)"),
-            weight: z.number().positive().optional().describe("Stroke weight"),
+            weight: z.number().positive().optional().describe("Uniform stroke weight (used when individual side weights are not provided)"),
+            strokeTopWeight: z.number().min(0).optional().describe("Top side stroke weight"),
+            strokeBottomWeight: z.number().min(0).optional().describe("Bottom side stroke weight"),
+            strokeLeftWeight: z.number().min(0).optional().describe("Left side stroke weight"),
+            strokeRightWeight: z.number().min(0).optional().describe("Right side stroke weight"),
         },
-        async ({ nodeId, nodeName, r, g, b, a, weight }: any) => {
+        async ({ nodeId, nodeName, r, g, b, a, weight, strokeTopWeight, strokeBottomWeight, strokeLeftWeight, strokeRightWeight }: any) => {
             try {
                 nodeId = normalizeNodeId(nodeId);
-                const result = await sendCommandToFigma("set_stroke_color", {
+                const result = await sendCommandToFigma("set_stroke", {
                     nodeId,
                     nodeName,
                     color: { r, g, b, a: a ?? 1 },
                     weight: weight || 1,
+                    strokeTopWeight,
+                    strokeBottomWeight,
+                    strokeLeftWeight,
+                    strokeRightWeight,
                 });
                 const typedResult = result as { name: string };
+
+                const hasIndividualWeights =
+                    strokeTopWeight !== undefined ||
+                    strokeBottomWeight !== undefined ||
+                    strokeLeftWeight !== undefined ||
+                    strokeRightWeight !== undefined;
+
+                let message = `Set stroke of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a ?? 1})`;
+                if (hasIndividualWeights) {
+                    message += ` with individual weights: top=${strokeTopWeight ?? 0}, bottom=${strokeBottomWeight ?? 0}, left=${strokeLeftWeight ?? 0}, right=${strokeRightWeight ?? 0}`;
+                } else {
+                    message += ` with weight ${weight || 1}`;
+                }
+
                 return {
                     content: [
                         {
                             type: "text",
-                            text: `Set stroke color of node "${typedResult.name}" to RGBA(${r}, ${g}, ${b}, ${a ?? 1
-                                }) with weight ${weight || 1}`,
+                            text: message,
                         },
                     ],
                 };
@@ -95,7 +116,7 @@ export function registerStylingTools(server: McpServer) {
                     content: [
                         {
                             type: "text",
-                            text: `Error setting stroke color: ${error instanceof Error ? error.message : String(error)
+                            text: `Error setting stroke: ${error instanceof Error ? error.message : String(error)
                                 }`,
                         },
                     ],

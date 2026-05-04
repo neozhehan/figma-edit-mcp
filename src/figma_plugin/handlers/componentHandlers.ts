@@ -703,3 +703,189 @@ export async function createComponentSet(params: any) {
         variantProperties: componentSet.variantGroupProperties
     };
 }
+
+/**
+ * Sets a component instance property
+ * @param {Object} params - Parameters object
+ * @param {string} params.nodeId - ID of the instance node
+ * @param {string} params.propertyName - Human-readable name of the property
+ * @param {string|boolean} params.value - The new value for the property
+ * @returns {Promise<Object>} Updated node info
+ */
+export async function setComponentInstanceProperty(params: any) {
+    const { nodeId, propertyName, value } = params || {};
+
+    if (!nodeId || !propertyName || value === undefined) {
+        throw new Error("Missing nodeId, propertyName, or value parameter");
+    }
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+        throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (node.type !== "INSTANCE") {
+        throw new Error(`Target node must be an INSTANCE, got ${node.type}`);
+    }
+
+    const instance = node as InstanceNode;
+    const properties = instance.componentProperties;
+    
+    // Find qualified name
+    let qualifiedName: string | null = null;
+    const validNames: string[] = [];
+    
+    for (const key in properties) {
+        // The key format is usually "PropertyName#nodeId" or similar, 
+        // We split by '#' to get the human readable name
+        const parts = key.split('#');
+        const readableName = parts[0];
+        validNames.push(readableName);
+        
+        if (readableName === propertyName) {
+            qualifiedName = key;
+            break;
+        }
+    }
+
+    if (!qualifiedName) {
+        throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
+    }
+
+    try {
+        instance.setProperties({ [qualifiedName]: value });
+        return {
+            id: instance.id,
+            name: instance.name,
+            type: instance.type,
+            updatedProperty: propertyName,
+            value: value
+        };
+    } catch (error: any) {
+        throw new Error(`Error setting component instance property: ${error.message}`);
+    }
+}
+
+/**
+ * Manages properties on a main component or component set
+ * @param {Object} params - Parameters object
+ * @param {string} params.nodeId - ID of the component node
+ * @param {string} params.action - ADD, EDIT, or DELETE
+ * @param {string} params.propertyName - Human-readable name of the property
+ * @param {string} params.newPropertyName - New human-readable name of the property (EDIT)
+ * @param {string} params.propertyType - Type of property (ADD)
+ * @param {string|boolean} params.defaultValue - Default value (ADD)
+ * @param {string|boolean} params.newDefaultValue - New default value (EDIT)
+ * @param {Array<{type: "COMPONENT"|"COMPONENT_SET", key: string}>} params.preferredValues - Preferred values for INSTANCE_SWAP (ADD/EDIT)
+ * @returns {Promise<Object>} Updated node info
+ */
+export async function manageComponentProperty(params: any) {
+    const { 
+        nodeId, 
+        action, 
+        propertyName, 
+        newPropertyName, 
+        propertyType, 
+        defaultValue, 
+        newDefaultValue, 
+        preferredValues 
+    } = params || {};
+
+    if (!nodeId || !action || !propertyName) {
+        throw new Error("Missing nodeId, action, or propertyName parameter");
+    }
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+        throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+        throw new Error(`Target node must be a COMPONENT or COMPONENT_SET, got ${node.type}`);
+    }
+
+    const targetNode = node as ComponentNode | ComponentSetNode;
+    const properties = targetNode.componentPropertyDefinitions;
+    
+    // Find qualified name for EDIT and DELETE
+    let qualifiedName: string | null = null;
+    const validNames: string[] = [];
+    
+    for (const key in properties) {
+        const parts = key.split('#');
+        const readableName = parts[0];
+        validNames.push(readableName);
+        
+        if (readableName === propertyName) {
+            qualifiedName = key;
+        }
+    }
+
+    try {
+        if (action === "ADD") {
+            if (validNames.includes(propertyName)) {
+                throw new Error(`Property "${propertyName}" already exists. Available properties: ${validNames.join(', ')}`);
+            }
+            if (!propertyType || defaultValue === undefined) {
+                throw new Error("propertyType and defaultValue are required for ADD action");
+            }
+            if (propertyType === "VARIANT") {
+                throw new Error("VARIANT properties cannot be added manually. Use create_component_set instead.");
+            }
+            
+            const options: any = {};
+            if (preferredValues) options.preferredValues = preferredValues;
+            
+            targetNode.addComponentProperty(propertyName, propertyType, defaultValue, options);
+            
+            return {
+                id: targetNode.id,
+                name: targetNode.name,
+                action: "ADD",
+                propertyName,
+                propertyType,
+                defaultValue
+            };
+            
+        } else if (action === "EDIT") {
+            if (!qualifiedName) {
+                throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
+            }
+            
+            const options: any = {};
+            if (newPropertyName !== undefined) options.name = newPropertyName;
+            if (newDefaultValue !== undefined) options.defaultValue = newDefaultValue;
+            if (preferredValues !== undefined) options.preferredValues = preferredValues;
+            
+            targetNode.editComponentProperty(qualifiedName, options);
+            
+            return {
+                id: targetNode.id,
+                name: targetNode.name,
+                action: "EDIT",
+                propertyName: newPropertyName || propertyName,
+                updated: true
+            };
+            
+        } else if (action === "DELETE") {
+            if (!qualifiedName) {
+                throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
+            }
+            
+            targetNode.deleteComponentProperty(qualifiedName);
+            
+            return {
+                id: targetNode.id,
+                name: targetNode.name,
+                action: "DELETE",
+                propertyName
+            };
+            
+        } else {
+            throw new Error(`Invalid action: ${action}`);
+        }
+    } catch (error: any) {
+        throw new Error(`Error managing component property: ${error.message}`);
+    }
+}
+

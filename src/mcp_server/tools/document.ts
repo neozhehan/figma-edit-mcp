@@ -78,13 +78,17 @@ export function registerDocumentTools(server: McpServer) {
                 .array(z.string())
                 .optional()
                 .describe("Array of node IDs to get information about"),
+            fields: z
+                .array(z.string())
+                .optional()
+                .describe("Array of field names to return. Must exactly match keys in Figma's JSON_REST_V1 export format. Supported fields - Component Properties: componentPropertyDefinitions, componentProperties. Instance Data: overrides. Layout & Positioning: layoutMode, itemSpacing, paddingLeft, paddingRight, paddingTop, paddingBottom, primaryAxisAlignItems, counterAxisAlignItems, absoluteBoundingBox. Styling: fills, strokes, cornerRadius, opacity, blendMode, effects. Text: characters, style. Prototyping: transitionNodeID, transitionDuration, transitionEasing. Metadata: visible, locked. Default behavior: When empty or omitted, only id, name, type are returned per node (plus recursive children)."),
         },
-        async ({ nodeIds }: any) => {
+        async ({ nodeIds, fields }: any) => {
             try {
                 if (nodeIds) {
                     nodeIds = normalizeNodeIds(nodeIds);
                 }
-                const results = await sendCommandToFigma("get_nodes_info", { nodeIds });
+                const results = await sendCommandToFigma("get_nodes_info", { nodeIds, fields });
 
                 return {
                     content: [
@@ -228,7 +232,7 @@ export function registerDocumentTools(server: McpServer) {
                 // Fetch scope info after joining
                 let scopeMessage = `Successfully joined channel: ${channel}`;
                 try {
-                    const scopeResult = await sendCommandToFigma("get_nodes_info", {});
+                    const scopeResult = await sendCommandToFigma("get_nodes_info", { fields: ["absoluteBoundingBox", "layoutMode"] });
                     if (Array.isArray(scopeResult) && scopeResult.length > 0) {
                         const scopeNode: any = scopeResult[0];
                         const nodeName = scopeNode.document?.name || 'Unknown';
@@ -262,115 +266,5 @@ export function registerDocumentTools(server: McpServer) {
         }
     );
 
-    // Define design strategy prompt
-    server.prompt(
-        "design_strategy",
-        "Best practices for working with Figma designs",
-        (extra) => {
-            return {
-                messages: [
-                    {
-                        role: "assistant",
-                        content: {
-                            type: "text",
-                            text: `When working with Figma designs, follow these best practices:
 
-1. Start with Document Structure:
-   - First use get_document_info() to understand the current document
-   - Plan your layout hierarchy before creating elements
-   - Create a main container frame for each screen/section
-
-2. Naming Conventions:
-   - Use descriptive, semantic names for all elements
-   - Follow a consistent naming pattern (e.g., "Login Screen", "Logo Container", "Email Input")
-   - Group related elements with meaningful names
-
-3. Layout Hierarchy:
-   - Create parent frames first, then add child elements
-   - For forms/login screens:
-     * Start with the main screen container frame
-     * Create a logo container at the top
-     * Group input fields in their own containers
-     * Place action buttons (login, submit) after inputs
-     * Add secondary elements (forgot password, signup links) last
-
-4. Input Fields Structure:
-   - Create a container frame for each input field
-   - Include a label text above or inside the input
-   - Group related inputs (e.g., username/password) together
-
-5. Element Creation:
-   - Use create_frame() for containers and input fields
-   - Use create_text() for labels, buttons text, and links
-   - Set appropriate colors and styles:
-     * Use fillColor for backgrounds
-     * Use strokeColor for borders
-     * Set proper fontWeight for different text elements
-
-6. Mofifying existing elements:
-  - use set_multiple_text_contents() to modify text content.
-
-7. Visual Hierarchy:
-   - Position elements in logical reading order (top to bottom)
-   - Maintain consistent spacing between elements
-   - Use appropriate font sizes for different text types:
-     * Larger for headings/welcome text
-     * Medium for input labels
-     * Standard for button text
-     * Smaller for helper text/links
-
-8. Best Practices:
-   - Verify each creation with get_nodes_info()
-   - Use parentId to maintain proper hierarchy
-   - Group related elements together in frames
-   - Keep consistent spacing and alignment
-
-Example Login Screen Structure:
-- Login Screen (main frame)
-  - Logo Container (frame)
-    - Logo (image/text)
-  - Welcome Text (text)
-  - Input Container (frame)
-    - Email Input (frame)
-      - Email Label (text)
-      - Email Field (frame)
-    - Password Input (frame)
-      - Password Label (text)
-      - Password Field (frame)
-  - Login Button (frame)
-    - Button Text (text)
-  - Helper Links (frame)
-    - Forgot Password (text)
-    - Don't have account (text)`,
-                        },
-                    },
-                ],
-                description: "Best practices for working with Figma designs",
-            };
-        }
-    );
-
-    server.prompt(
-        "read_design_strategy",
-        "Best practices for reading Figma designs",
-        (extra) => {
-            return {
-                messages: [
-                    {
-                        role: "assistant",
-                        content: {
-                            type: "text",
-                            text: `When reading Figma designs, follow these best practices:
-
-1. Start with Document Info:
-   - Use get_document_info() to explore the page structure
-   - Identify nodes by their IDs
-`,
-                        },
-                    },
-                ],
-                description: "Best practices for reading Figma designs",
-            };
-        }
-    );
 }
