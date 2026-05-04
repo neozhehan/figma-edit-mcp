@@ -1,7 +1,7 @@
 {
   "name": "figma-edit-mcp",
   "description": "Figma Edit MCP - Connect AI coding assistants to Figma via Model Context Protocol",
-  "version": "0.3.5",
+  "version": "1.2.0",
   "module": "dist/server.js",
   "main": "dist/server.js",
   "bin": {
@@ -35,9 +35,9 @@
     "typescript": "6.0.3"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.13.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "uuid": "14.0.0",
     "ws": "8.20.0",
-    "zod": "3.22.4"
+    "zod": "4.4.3"
   }
 }
