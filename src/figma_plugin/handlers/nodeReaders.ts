@@ -119,35 +119,3 @@ export async function getNodesInfo(nodeIds: any) {
     }
 }
 
-/**
- * Reads the design of currently selected nodes
- * @returns {Promise<Object[]>} Array of selected node information
- */
-export async function readMyDesign() {
-    try {
-        // Load all selected nodes in parallel
-        const nodes = await Promise.all(
-            figma.currentPage.selection.map((node: any) => figma.getNodeByIdAsync(node.id))
-        );
-
-        // Filter out any null values (nodes that weren't found)
-        const validNodes = nodes.filter((node: any) => node !== null);
-
-        // Export all valid nodes in parallel
-        const responses = await Promise.all(
-            validNodes.map(async (node: any) => {
-                const response = await node.exportAsync({
-                    format: "JSON_REST_V1",
-                });
-                return {
-                    nodeId: node.id,
-                    document: filterFigmaNode(response.document),
-                };
-            })
-        );
-
-        return responses;
-    } catch (error: any) {
-        throw new Error(`Error getting nodes info: ${error.message}`);
-    }
-}

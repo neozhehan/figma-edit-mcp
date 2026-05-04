@@ -316,13 +316,16 @@ This strategy enables transferring content and property overrides from a source 
 - Command syntax:
   \`\`\`
   set_instance_overrides({
-    sourceInstanceId: "source-instance-id", 
-    targetNodeIds: ["target-id-1", "target-id-2", ...]
+    sourceInstanceId: "source-instance-id",
+    targetNodes: [
+      { nodeId: "target-id-1", nodeName: "Target Name 1" },
+      { nodeId: "target-id-2", nodeName: "Target Name 2" }
+    ]
   })
   \`\`\`
 
 ### 4. Verification
-- Verify results with \`get_nodes_info()\`
+- Verify results with \`get_nodes_info(nodeIds, fields: ["componentProperties", "characters", "overrides"])\`
 - Confirm text content and style overrides have transferred successfully
 
 ## Key Tips

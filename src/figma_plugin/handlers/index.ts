@@ -24,8 +24,7 @@ export {
 export {
     getDocumentInfo,
     getSelection,
-    getNodesInfo,
-    readMyDesign
+    getNodesInfo
 } from './nodeReaders.js';
 
 // Node creators

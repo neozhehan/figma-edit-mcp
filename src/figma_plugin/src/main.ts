@@ -7,7 +7,7 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 
 // Import handlers
-import { getDocumentInfo, getSelection, getNodesInfo, readMyDesign, getPageInfo } from '../handlers/nodeReaders.js';
+import { getDocumentInfo, getSelection, getNodesInfo, getPageInfo } from '../handlers/nodeReaders.js';
 import { createRectangle, createFrame, createText, cloneNode, createEllipse, createPolygonStar } from '../handlers/nodeCreators.js';
 import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName, groupNodes, ungroupNodes, flattenNode, insertChild } from '../handlers/nodeModifiers.js';
 import { setFillColor, setStroke, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
@@ -470,8 +470,6 @@ async function handleCommand(command: any, params: any) {
 
             // Read-Only Mode: Return empty array
             return [];
-        case "read_my_design":
-            return await readMyDesign();
         case "get_styles":
             return await getStyles();
         case "get_components":
