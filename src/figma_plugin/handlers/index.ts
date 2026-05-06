@@ -22,7 +22,7 @@ export {
 
 // Node readers
 export {
-    getDocumentInfo,
+    getPagesInfo,
     getSelection,
     getNodesInfo
 } from './nodeReaders.js';
@@ -84,3 +84,8 @@ export {
     getNodeVariables,
     setBoundVariable
 } from './variableHandlers.js';
+
+// Connect handlers
+export {
+    getConnectPayload
+} from './connectHandlers.js';

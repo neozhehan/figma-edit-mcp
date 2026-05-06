@@ -207,11 +207,11 @@ The process of converting manual annotations (numbered/alphabetical indicators w
 
 ## Step 1: Get Selection and Initial Setup
 
-First, use get_document_info to find the IDs of the frames or components:
+First, use get_pages_info to find the IDs of the frames or components:
 
 \`\`\`typescript
 // Get document structure
-const doc = await get_document_info();
+const doc = await get_pages_info();
 // Find relevant node IDs from the response
 const selectedNodeId = "..." // extracted from doc
 

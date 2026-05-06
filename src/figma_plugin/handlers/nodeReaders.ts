@@ -4,67 +4,108 @@
  */
 
 import { filterFigmaNode } from '../utils/nodeUtils.js';
+import { sendProgressUpdate } from '../utils/progressUtils.js';
 
 /**
- * Gets information about the current document
- * @returns {Promise<Object>} Document information including pages and children
+ * Gets information about pages in the document
+ * @param {Object} params - Parameters including pageIds and commandId
+ * @returns {Promise<Object>} Pages information
  */
-export async function getDocumentInfo() {
-    await figma.loadAllPagesAsync();
-    const page = figma.currentPage;
+export async function getPagesInfo(params: any) {
+    const { pageIds, commandId } = params || {};
 
-    // Get all pages from document root
-    // Note: figma.root.children returns all pages
-    const allPages = figma.root.children.map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        childCount: p.children.length,
-        isCurrent: p.id === page.id,
-    }));
+    const documentId = figma.root.id;
+    const documentName = figma.root.name;
+    const pageCount = figma.root.children.length;
 
-    return {
-        name: figma.root.name,
-        id: figma.root.id,
-        type: "DOCUMENT",
-        currentPageId: page.id,
-        currentPageName: page.name,
-        pages: allPages,
-        pageCount: allPages.length,
-    };
-}
+    if (!pageIds || !Array.isArray(pageIds) || pageIds.length === 0) {
+        const pages = figma.root.children.map((p: any) => ({
+            pageId: p.id,
+            pageName: p.name
+        }));
+        
+        return {
+            documentId,
+            documentName,
+            pageCount,
+            pages
+        };
+    }
 
-/**
- * Gets the content of a specific page
- * @param {Object} params - Parameters including pageId
- * @returns {Promise<Object>} Page information including children
- */
-export async function getPageInfo(params: any) {
-    const { pageId } = params || {};
+    const seen = new Set<string>();
+    const orderedIds = pageIds.filter((id: string) => !seen.has(id) && (seen.add(id), true));
 
-    let targetPage = figma.currentPage;
+    const pages: any[] = [];
+    const missingPageIds: string[] = [];
 
-    if (pageId && pageId !== figma.currentPage.id) {
-        // Find the requested page
+    if (commandId) {
+        await sendProgressUpdate(
+            commandId,
+            'get_pages_info',
+            'started',
+            0,
+            orderedIds.length,
+            0,
+            `Starting page info retrieval for ${orderedIds.length} pages`
+        );
+    }
+
+    let processedItems = 0;
+    for (const id of orderedIds) {
+        const node = await figma.getNodeByIdAsync(id);
+        
+        // Strict page check: must be PAGE and parent must be root
         // @ts-ignore
-        targetPage = figma.root.children.find((p: any) => p.id === pageId);
-        if (!targetPage) {
-            throw new Error(`Page with ID ${pageId} not found`);
+        if (node && node.type === "PAGE" && node.parent?.id === figma.root.id) {
+            // @ts-ignore
+            await node.loadAsync();
+            pages.push({
+                pageId: node.id,
+                pageName: node.name,
+                // @ts-ignore
+                children: node.children.map((child: any) => ({
+                    id: child.id,
+                    name: child.name,
+                    type: child.type
+                }))
+            });
+        } else {
+            missingPageIds.push(id);
         }
-        await targetPage.loadAsync();
-    } else {
-        await figma.currentPage.loadAsync();
+
+        processedItems++;
+        
+        if (commandId) {
+            await sendProgressUpdate(
+                commandId,
+                'get_pages_info',
+                'in_progress',
+                Math.round((processedItems / orderedIds.length) * 100),
+                orderedIds.length,
+                processedItems,
+                `Processed ${processedItems}/${orderedIds.length} pages`
+            );
+        }
+    }
+
+    if (commandId) {
+        await sendProgressUpdate(
+            commandId,
+            'get_pages_info',
+            'completed',
+            100,
+            orderedIds.length,
+            processedItems,
+            `Completed retrieving page info`
+        );
     }
 
     return {
-        id: targetPage.id,
-        name: targetPage.name,
-        type: "PAGE",
-        isCurrent: targetPage.id === figma.currentPage.id,
-        children: targetPage.children.map((node: any) => ({
-            id: node.id,
-            name: node.name,
-            type: node.type,
-        })),
+        documentId,
+        documentName,
+        pageCount,
+        pages,
+        missingPageIds
     };
 }
 

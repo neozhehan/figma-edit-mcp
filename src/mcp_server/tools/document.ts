@@ -1,52 +1,22 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { sendCommandToFigma, joinChannel } from "../figma-client.js";
+import { sendCommandToFigma, joinChannel, resetChannel } from "../figma-client.js";
 import { normalizeNodeIds } from "../utils.js";
 
 export function registerDocumentTools(server: McpServer) {
-    // Document Info Tool
-    server.tool(
-        "get_document_info",
-        "Get detailed information about the current Figma document",
-        {},
-        async () => {
-            try {
-                const result = await sendCommandToFigma("get_document_info");
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: JSON.stringify(result),
-                        },
-                    ],
-                };
-            } catch (error) {
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `Error getting document info: ${error instanceof Error ? error.message : String(error)
-                                }`,
-                        },
-                    ],
-                };
-            }
-        }
-    );
-
     // Page Info Tool
     server.tool(
-        "get_page_info",
-        "Get information about a specific page in Figma including its children",
+        "get_pages_info",
+        "Get information about pages in the Figma document. No argument or empty array returns all pages without children. 1 or more pageIds returns the requested pageIds with top-level children for each requested page. Prefer batches of ≤25 pageIds per call; for larger requests, split across multiple calls for better responsiveness.",
         {
-            pageId: z
-                .string()
+            pageIds: z
+                .array(z.string())
                 .optional()
-                .describe("ID of the page to inspect (default: current page)"),
+                .describe("Array of page IDs to inspect"),
         },
-        async ({ pageId }: any) => {
+        async ({ pageIds }: any) => {
             try {
-                const result = await sendCommandToFigma("get_page_info", { pageId });
+                const result = await sendCommandToFigma("get_pages_info", { pageIds });
                 return {
                     content: [
                         {
@@ -227,38 +197,101 @@ export function registerDocumentTools(server: McpServer) {
                     };
                 }
 
-                await joinChannel(channel);
-
-                // Fetch scope info after joining
-                let scopeMessage = `Successfully joined channel: ${channel}`;
                 try {
-                    const scopeResult = await sendCommandToFigma("get_nodes_info", { fields: ["absoluteBoundingBox", "layoutMode"] });
-                    if (Array.isArray(scopeResult) && scopeResult.length > 0) {
-                        const scopeNode: any = scopeResult[0];
-                        const nodeName = scopeNode.document?.name || 'Unknown';
-                        scopeMessage += `\n\nEditable Scope identified:\n- Node Name: ${nodeName}\n- Node ID: ${scopeNode.nodeId}\n\nYou have edit access to this node and its children.`;
-                    } else {
-                        scopeMessage += `\n\nPlugin is in Read-Only Mode. You can read the design but cannot make changes.`;
+                    await joinChannel(channel);
+                } catch (error: any) {
+                    let errorCode = "UNKNOWN_ERROR";
+                    let errorMessage = `An unexpected error occurred while joining the channel: ${error.message || String(error)}.`;
+
+                    if (error.joinErrorCode === "CHANNEL_NOT_FOUND") {
+                        errorCode = "CHANNEL_NOT_FOUND";
+                        errorMessage = `Channel '${channel}' was not found. Verify the channel name and that the Figma plugin is running and connected.`;
+                    } else if (error.message && error.message.includes("timed out")) {
+                        errorCode = "CHANNEL_JOIN_FAILED";
+                        errorMessage = `Failed to join channel '${channel}'. The Figma plugin did not acknowledge the join within the expected time. Try reconnecting the plugin.`;
+                    } else if (error.message && error.message.includes("Connection closed")) {
+                        errorCode = "PLUGIN_DISCONNECTED";
+                        errorMessage = "The Figma plugin disconnected before the editable scope could be read. Reopen the plugin and try again.";
                     }
-                } catch (scopeError) {
-                    scopeMessage += `\n\nNote: Could not automatically determine editable scope. You may be in Read-Only mode.`;
+
+                    return {
+                        content: [{
+                            type: "text",
+                            text: JSON.stringify({
+                                status: "error",
+                                channel,
+                                errorCode,
+                                errorMessage
+                            })
+                        }]
+                    };
                 }
 
-                return {
-                    content: [
-                        {
+                // Leg 2: Get connect payload
+                let payload: any;
+                try {
+                    payload = await sendCommandToFigma("get_connect_payload");
+                } catch (error: any) {
+                    resetChannel();
+                    let errorCode = "UNKNOWN_ERROR";
+                    let errorMessage = `An unexpected error occurred while joining the channel: ${error.message || String(error)}.`;
+
+                    if (error.message && error.message.includes("Connection closed")) {
+                        errorCode = "PLUGIN_DISCONNECTED";
+                        errorMessage = "The Figma plugin disconnected before the editable scope could be read. Reopen the plugin and try again.";
+                    }
+
+                    return {
+                        content: [{
                             type: "text",
-                            text: scopeMessage,
-                        },
-                    ],
+                            text: JSON.stringify({
+                                status: "error",
+                                channel,
+                                errorCode,
+                                errorMessage
+                            })
+                        }]
+                    };
+                }
+
+                // Handle structured plugin error
+                if (payload && payload.errorCode) {
+                    resetChannel();
+                    return {
+                        content: [{
+                            type: "text",
+                            text: JSON.stringify({
+                                status: "error",
+                                channel,
+                                errorCode: payload.errorCode,
+                                errorMessage: payload.errorMessage
+                            })
+                        }]
+                    };
+                }
+
+                // Success path
+                return {
+                    content: [{
+                        type: "text",
+                        text: JSON.stringify({
+                            status: "success",
+                            channel,
+                            ...payload
+                        })
+                    }]
                 };
-            } catch (error) {
+            } catch (error: any) {
                 return {
                     content: [
                         {
                             type: "text",
-                            text: `Error joining channel: ${error instanceof Error ? error.message : String(error)
-                                }`,
+                            text: JSON.stringify({
+                                status: "error",
+                                channel,
+                                errorCode: "UNKNOWN_ERROR",
+                                errorMessage: `An unexpected error occurred while joining the channel: ${error.message || String(error)}.`
+                            }),
                         },
                     ],
                 };

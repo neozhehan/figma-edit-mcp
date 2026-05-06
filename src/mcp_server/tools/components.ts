@@ -378,7 +378,7 @@ This strategy enables transferring content and property overrides from a source 
 ## Step-by-Step Process
 
 ### 1. Selection Analysis
-- Use \`get_document_info()\` to explore the document structure and identify node IDs.
+- Use \`get_pages_info()\` to explore the document structure and identify node IDs.
 - Determine which is the source node (with content to copy) and which are targets (where to apply content).
 
 ### 2. Extract Source Overrides
@@ -406,7 +406,7 @@ This strategy enables transferring content and property overrides from a source 
 
 ## Key Tips
 - Always join the appropriate channel first with \`join_channel()\`
-- When working with multiple targets, verify their IDs with \`get_document_info()\`.
+- When working with multiple targets, verify their IDs with \`get_pages_info()\`.
 - Preserve component relationships by using instance overrides rather than direct text manipulation`,
                         },
                     },

@@ -25,14 +25,14 @@ The following are deliberately excluded from this release. Each one is either fi
 
 **Objective**: Ensure the UI bridge can handle async progress events correctly without blocking or coalescing, which is a precondition for the streaming pattern.
 
-### [ ] 1. Make `sendProgressUpdate` Async
+### [x] 1. Make `sendProgressUpdate` Async
 - **File**: `src/figma_plugin/utils/progressUtils.ts` ([line 65](../../src/figma_plugin/utils/progressUtils.ts#L65))
 - **Action**: Change the `sendProgressUpdate` function to be `async`.
 - **Implementation**:
   - Immediately after the `figma.ui.postMessage(...)` call, add `await new Promise(r => setTimeout(r, 0));`.
   - **Reasoning**: This forces the Figma sandbox to flush the UI message to the UI thread before proceeding to the next iteration, preventing UI freezes and ensuring the MCP server's inactivity timeout gets reset correctly.
 
-### [ ] 1a. Update All Existing `sendProgressUpdate` Callers to `await`
+### [x] 1a. Update All Existing `sendProgressUpdate` Callers to `await`
 - **Action**: Once `sendProgressUpdate` becomes `async`, every call site must be `await`ed (and its enclosing function made `async` if it isn't already). Without this, the trailing `setTimeout(0)` flush is bypassed — call sites move on without yielding and progress events coalesce, defeating the whole point of step 1.
 - **Files & known call sites** (grep `sendProgressUpdate(` to confirm — list as of writing):
   - `src/figma_plugin/handlers/annotationHandlers.ts`
@@ -45,7 +45,7 @@ The following are deliberately excluded from this release. Each one is either fi
   - Watch for fire-and-forget patterns (`sendProgressUpdate(...).catch(...)` style) — the migration intent is sequential `await`, NOT background dispatch.
 - **Verification**: TypeScript `strictNullChecks` + `noImplicitAny` won't catch missing `await` on a now-Promise-returning function. Run a grep at the end of the change to confirm zero unawaited `sendProgressUpdate(` call sites remain.
 
-### [ ] 2. Implement `activeRequestId` Capture in UI Bridge
+### [x] 2. Implement `activeRequestId` Capture in UI Bridge
 - **File**: `src/figma_plugin/ui.html` ([command-handling section, lines 779-855 area](../../src/figma_plugin/ui.html#L779))
 - **Action**: Ensure `state.activeRequestId` is set on every inbound MCP request and read by the outbound `command_progress` → `progress_update` forwarder.
 - **Implementation**:
@@ -61,7 +61,7 @@ The following are deliberately excluded from this release. Each one is either fi
 
 **Objective**: Eliminate the heavy `loadAllPagesAsync()` calls by removing `get_document_info`, replacing `get_page_info` with a streaming `get_pages_info` tool, and enforcing on-demand loading.
 
-### [ ] 1. Remove `get_document_info` Tool (Breaking Change)
+### [x] 1. Remove `get_document_info` Tool (Breaking Change)
 - **File**: `src/mcp_server/tools/document.ts`
   - Delete the `server.tool("get_document_info", ...)` block.
 - **File**: `src/mcp_server/figma-client.ts`
@@ -77,7 +77,7 @@ The following are deliberately excluded from this release. Each one is either fi
 - **Files**: `src/mcp_server/tools/annotations.ts`, `src/mcp_server/tools/components.ts`
   - Update LLM prompt strings to instruct the model to use `get_pages_info` instead of `get_document_info`.
 
-### [ ] 2. Replace `get_page_info` with `get_pages_info` (Breaking Change)
+### [x] 2. Replace `get_page_info` with `get_pages_info` (Breaking Change)
 - **File**: `src/mcp_server/tools/document.ts`
   - Rename the tool registration from `get_page_info` to `get_pages_info`.
   - **Schema Update**:
@@ -118,7 +118,7 @@ The following are deliberately excluded from this release. Each one is either fi
 - **File**: `src/figma_plugin/handlers/index.ts`
   - Update export to `getPagesInfo`.
 
-### [ ] 3. Removed-Fields Search-and-Replace Pass
+### [x] 3. Removed-Fields Search-and-Replace Pass
 - **Action**: Sweep the repo for the field names that Change 1 removes, so no caller, prompt string, or doc still references them after v1.3.0 lands.
 - **Field list** (from "Removed fields" in [read_tools_update.md](read_tools_update.md)):
   - `childCount`
@@ -136,7 +136,7 @@ The following are deliberately excluded from this release. Each one is either fi
   - Specifically rewrite any prompt sentence like *"call `get_document_info` to learn about pages"* to *"call `get_pages_info` to learn about pages"*.
   - Final grep for each token must return zero v1.3.0-relevant hits before the change is considered done.
 
-### [ ] 4. Version Bump and Changelog
+### [x] 4. Version Bump and Changelog
 - **File**: `package.json`
   - Bump `version` to `1.3.0`.
 - **File**: `CHANGELOG.md` (or release notes file — check what the repo uses)
@@ -163,7 +163,7 @@ The connect payload is assembled by the MCP server's `join_channel` tool in two 
 
 The MCP server wraps the plugin's response with the `status` / `channel` envelope before returning it. Partial success ("joined but no scope") is not a valid state — leg 2 failures clear `currentChannel` and return the Change 1 error envelope.
 
-### [ ] 1. Add the `get_connect_payload` Plugin Command
+### [x] 1. Add the `get_connect_payload` Plugin Command
 - **File**: `src/figma_plugin/handlers/connectHandlers.ts` (new file)
   - Export an async `getConnectPayload()` handler. No params.
   - Branch on `state.readOnly` and `state.scopeRootId` (read from the module-level `state` in [main.ts](../../src/figma_plugin/src/main.ts), or refactor into a small accessor — implementer's call).
@@ -189,7 +189,7 @@ The MCP server wraps the plugin's response with the `status` / `channel` envelop
 - **File**: `src/mcp_server/figma-client.ts`
   - Add `"get_connect_payload"` to the `FigmaCommand` union.
 
-### [ ] 2. Rewrite the `join_channel` MCP Tool
+### [x] 2. Rewrite the `join_channel` MCP Tool
 - **File**: `src/mcp_server/tools/document.ts` ([lines 202-267](../../src/mcp_server/tools/document.ts#L202))
 - **Action**: Replace the prose-based success message and the hacky `get_nodes_info` scope probe ([lines 233-244](../../src/mcp_server/tools/document.ts#L233)) with the two-leg flow.
 - **Fail-closed contract** (covers Q6): "joined but no scope" is not a valid state. If leg 2 fails for any reason after leg 1 succeeded, the tool MUST:
@@ -212,7 +212,7 @@ The MCP server wraps the plugin's response with the `status` / `channel` envelop
   4. **Success path**: wrap the resolved payload as `{ status: "success", channel, ...payload }` and return as the tool's `content[0].text` (JSON-stringified). Do NOT call `resetChannel()`.
 - **Note**: Tool response is always a single `text` content item containing JSON — matches MCP convention. Both success and error envelopes use the same content shape; clients branch on `status`.
 
-### [ ] 3. Wire Socket-Side `CHANNEL_NOT_FOUND` Detection
+### [x] 3. Wire Socket-Side `CHANNEL_NOT_FOUND` Detection
 - **File**: `src/mcp_server/figma-client.ts`
   - **Tag MCP joins.** Update `joinChannel` ([line 223](../../src/mcp_server/figma-client.ts#L223)) so the join request includes `clientType: "mcp"`. The plugin's existing join (sent from [src/figma_plugin/ui.html](../../src/figma_plugin/ui.html)) stays unchanged — absence of `clientType` is treated as a plugin join, which keeps older plugin builds working without modification.
   - **Recognize `join_error` acks.** In the `ws.on("message", ...)` handler ([lines 126-200](../../src/mcp_server/figma-client.ts#L126)), branch on `json.type === "join_error"` before the generic response path. Look up the pending request by `json.id`, reject with a tagged error (e.g. `Object.assign(new Error(json.message), { joinErrorCode: json.code })`), and delete the request entry. The tool layer reads `joinErrorCode` to decide which Change 1 `errorCode` to surface.
@@ -224,7 +224,7 @@ The MCP server wraps the plugin's response with the `status` / `channel` envelop
 - **File**: `src/figma_plugin/ui.html`
   - **No change required.** The plugin's join request continues to omit `clientType` and is treated as a plugin join by the socket server.
 
-### [ ] 4. Map Plugin-Side `SCOPE_DELETED` to a Structured Code
+### [x] 4. Map Plugin-Side `SCOPE_DELETED` to a Structured Code
 - **File**: `src/figma_plugin/src/main.ts` ([line 85](../../src/figma_plugin/src/main.ts#L85))
 - **Action**: Today `checkScopeAccess` throws a free-text error. Leave that behavior alone for write paths, but in `getConnectPayload`, perform the same scope-existence check first and return `{ errorCode: "SCOPE_DELETED", errorMessage: ... }` as a structured value rather than letting it propagate as a thrown string.
 
@@ -234,7 +234,7 @@ The MCP server wraps the plugin's response with the `status` / `channel` envelop
 
 **Objective**: Ensure changes are stable, schemas validate properly, and legacy usages fail predictably.
 
-### [ ] 1. Schema & Dispatch Unit Tests
+### [x] 1. Schema & Dispatch Unit Tests
 - **File**: `src/mcp_server/tests/unit/tools/document.test.ts`
   - Rename old `get_page_info` tests to `get_pages_info`.
   - Add tests validating that calling `get_pages_info` with no arguments returns the schema *without* `children` and `missingPageIds`.
@@ -255,33 +255,33 @@ The MCP server wraps the plugin's response with the `status` / `channel` envelop
     - Input is a non-existent id (mock returns `null`) → goes to `missingPageIds`.
   - Verify `get_document_info` is completely rejected by the tool router.
 
-### [ ] 2. Progress Event Streaming Tests
+### [x] 2. Progress Event Streaming Tests
 - **File**: Unit tests for `nodeReaders.ts`
   - Mock `figma.ui.postMessage`.
   - Call `getPagesInfo` with multiple mocked IDs.
   - Assert that `postMessage` is called for `started`, interleaved `in_progress`, and `completed`.
   - **Concrete yield-between-chunks assertion**: spy on `setTimeout` (or use `jest.useFakeTimers()` + a microtask checkpoint). Run `getPagesInfo` with 3 mocked IDs. Assert that between consecutive `figma.ui.postMessage` calls, a `setTimeout(fn, 0)` was scheduled and resolved before the next `postMessage` runs. Equivalent assertion: capture the order of side effects and verify `[postMessage#1, setTimeout#1 resolves, postMessage#2, setTimeout#2 resolves, postMessage#3]`. A test that only checks "`postMessage` was called N times" passes even when the yield is missing — this assertion is what catches a future regression that drops the `await new Promise(r => setTimeout(r, 0))`.
 
-### [ ] 2a. `sendProgressUpdate` Caller Regression Tests
+### [x] 2a. `sendProgressUpdate` Caller Regression Tests
 - **Action**: After making `sendProgressUpdate` async (Phase 1 step 1) and updating all callers (Phase 1 step 1a), confirm the callers still produce correctly-ordered progress streams.
 - **Files** (add or extend tests for the handlers updated in Phase 1 step 1a):
   - `src/mcp_server/tests/unit/figma_plugin/annotationHandlers.test.ts` (or equivalent)
   - tests covering `connectorHandlers`, `nodeModifiers`, `componentHandlers` — wherever progress emission already has coverage; otherwise add a thin smoke test per handler.
 - **Per-handler assertion**: invoke a code path that emits at least 2 progress events; spy on `figma.ui.postMessage` and `setTimeout`; assert events fire in order *and* a `setTimeout(fn, 0)` resolves between them. This catches the failure mode where a caller forgot the `await` and the post-message flush is bypassed.
 
-### [ ] 2b. `getPagesInfo` Does Not Call `figma.loadAllPagesAsync()`
+### [x] 2b. `getPagesInfo` Does Not Call `figma.loadAllPagesAsync()`
 - **File**: Unit tests for `nodeReaders.ts`
 - **Action**: Spy on a mocked `figma.loadAllPagesAsync` and assert it is **never** invoked across the full `getPagesInfo` test suite — no-args path, single-id path, multi-id path, missing-ids path, length-100 path. This is the regression canary for "Loading & performance" Rule 1.
 - **Why separate from connect-flow tests**: connect-flow tests in step 3 already check this for the connect path. This step locks down the handler in isolation so a future refactor that introduces a "convenience" `loadAllPagesAsync` call doesn't slip through under the assumption that "the connect tests will catch it."
 
-### [ ] 3. Connect Flow Scope Tests
+### [x] 3. Connect Flow Scope Tests
 - **File**: E2E or Integration connection tests
   - Mock the Figma plugin state into `readonly`, `page`, and `node` scopes.
   - Assert the connection payload returned exactly matches the schema in Change 1.
   - Specifically check that `loadAllPagesAsync` is never called.
   - Test Error Scenarios: specifically mock a deleted node for `SCOPE_DELETED` to ensure the correct `errorCode` and `errorMessage` are produced.
 
-### [ ] 3a. Handler-Level `get_connect_payload` Tests
+### [x] 3a. Handler-Level `get_connect_payload` Tests
 - **File**: New unit test file, `src/mcp_server/tests/unit/figma_plugin/connectHandlers.test.ts` (or co-located depending on repo conventions)
 - **Action**: Test `getConnectPayload()` directly against a mocked Figma sandbox, independent of the `join_channel` tool layer. The integration tests in step 3 cover the end-to-end path; these isolate the handler's branching logic.
 - **Cases**:
@@ -293,7 +293,7 @@ The MCP server wraps the plugin's response with the `status` / `channel` envelop
   - `loadAsync()` rejects → returns `{ errorCode: "DOCUMENT_LOAD_FAILED", errorMessage }`.
   - Catch-all path (any other unexpected throw) → returns `{ errorCode: "UNKNOWN_ERROR", errorMessage }` with the underlying message appended.
 
-### [ ] 3b. Snapshot Tests for the Three Connect-Payload Shapes
+### [x] 3b. Snapshot Tests for the Three Connect-Payload Shapes
 - **File**: `src/mcp_server/tests/unit/figma_plugin/connectHandlers.test.ts`
 - **Action**: For each `editableScopeType`, snapshot the full handler return value to lock the schema. Snapshot tests catch silent shape drift (a renamed field, an accidentally-added property, a swapped order) that schema-shape unit tests can miss.
 - **Cases** (one snapshot per scope):
@@ -309,7 +309,7 @@ The MCP server wraps the plugin's response with the `status` / `channel` envelop
     - **No partial success**: assert the tool response never contains both `status: "success"` and a missing/error scope payload, in any leg-2 failure case.
     - **Recovery**: after any leg-2 failure, calling `join_channel` again with a now-valid plugin scope returns `{ status: "success", ...complete payload }` — confirms the reset path actually works.
 
-### [ ] 4. `get_nodes_info` Regression Tests (Q7 — shape unchanged)
+### [x] 4. `get_nodes_info` Regression Tests (Q7 — shape unchanged)
 - **File**: `src/mcp_server/tests/unit/tools/document.test.ts`
 - **Action**: Add tests that lock in today's `get_nodes_info` shape so the v1.3.0 work doesn't accidentally drift it. These also serve as the canary that the deferred shape-alignment hasn't snuck in.
 - **Cases**:

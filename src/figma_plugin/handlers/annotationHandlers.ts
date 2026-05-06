@@ -136,7 +136,7 @@ export async function scanNodesByTypes(params: any) {
 
     // Send a single progress update to notify start
     const commandId = generateCommandId();
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "scan_nodes_by_types",
         "started",
@@ -154,7 +154,7 @@ export async function scanNodesByTypes(params: any) {
     await findNodesByTypes(node, types, matchingNodes);
 
     // Send completion update
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "scan_nodes_by_types",
         "completed",

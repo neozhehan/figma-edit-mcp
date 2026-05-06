@@ -1,0 +1,198 @@
+bun test v1.3.10 (30e609e0)
+
+src/mcp_server/tests/utils.test.ts:
+(pass) normalizeNodeId > should return undefined if input is undefined
+(pass) normalizeNodeId > should return the same string if it does not match the pattern [0.58ms]
+(pass) normalizeNodeId > should replace dash with colon for Figma URL format [0.03ms]
+(pass) normalizeNodeIds > should return undefined if input is undefined
+(pass) normalizeNodeIds > should normalize each ID in the array
+
+src/mcp_server/tests/unit/tools/document.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+1 | })
+2 | {
+    ^
+SyntaxError: Export named 'resetChannel' not found in module '/Users/neozhehan/Git/figma-edit-mcp/src/mcp_server/figma-client.ts'.
+      at requestImportModule (2:1)
+-------------------------------
+
+
+src/mcp_server/tests/unit/tools/prototyping.test.ts:
+(pass) Prototyping Tools > should register prototyping tools [0.39ms]
+(pass) Prototyping Tools > get_reactions should call sendCommandToFigma with correct params [0.37ms]
+(pass) Prototyping Tools > create_connections should call sendCommandToFigma with correct params (create lines) [0.58ms]
+(pass) Prototyping Tools > create_connections should handle connectorId (set default) [0.20ms]
+
+src/mcp_server/tests/unit/tools/annotations.test.ts:
+(pass) Annotation Tools > should register annotation tools [0.54ms]
+(pass) Annotation Tools > get_annotations should call sendCommandToFigma with correct params [0.17ms]
+(pass) Annotation Tools > set_multiple_annotations should call sendCommandToFigma with correct params [0.46ms]
+
+src/mcp_server/tests/unit/tools/text.test.ts:
+(pass) Text Tools > should register text tools [0.51ms]
+(pass) Text Tools > create_text should call sendCommandToFigma with correct params [0.93ms]
+(pass) Text Tools > set_multiple_text_contents should call sendCommandToFigma with correct params [0.60ms]
+(pass) Text Tools > scan_text_nodes should call sendCommandToFigma with correct params [0.72ms]
+(pass) Text Tools > set_text_style should call sendCommandToFigma with correct params [0.37ms]
+(pass) Text Tools > should register text_replacement_strategy prompt with updated fields [0.65ms]
+
+src/mcp_server/tests/unit/tools/components.test.ts:
+(pass) Component Tools > should register component tools [0.72ms]
+(pass) Component Tools > get_components should call sendCommandToFigma with correct params [0.27ms]
+(pass) Component Tools > create_component_set should call sendCommandToFigma with correct params
+(pass) Component Tools > should register swap_overrides_instances prompt with updated fields [1.00ms]
+(pass) Component Tools > set_component_instance_property should call sendCommandToFigma with correct params (BOOLEAN true) [0.26ms]
+(pass) Component Tools > set_component_instance_property should forward BOOLEAN false value [0.39ms]
+(pass) Component Tools > set_component_instance_property should forward TEXT string value [0.39ms]
+(pass) Component Tools > set_component_instance_property should forward INSTANCE_SWAP component-key value
+(pass) Component Tools > set_component_instance_property should forward VARIANT selection value [0.68ms]
+(pass) Component Tools > manage_component_property ADD should call sendCommandToFigma with correct params [0.41ms]
+(pass) Component Tools > manage_component_property ADD without propertyType should throw error [0.33ms]
+(pass) Component Tools > manage_component_property ADD without defaultValue should throw error [0.51ms]
+(pass) Component Tools > manage_component_property schema rejects propertyType: 'VARIANT' [1.39ms]
+(pass) Component Tools > manage_component_property schema accepts BOOLEAN, TEXT, INSTANCE_SWAP propertyTypes [0.63ms]
+(pass) Component Tools > manage_component_property EDIT should call sendCommandToFigma with correct params [0.09ms]
+(pass) Component Tools > manage_component_property schema rejects preferredValues entries that are bare strings [0.57ms]
+(pass) Component Tools > manage_component_property schema accepts structured preferredValues with type+key [0.73ms]
+(pass) Component Tools > manage_component_property DELETE should call sendCommandToFigma with correct params [0.04ms]
+
+src/mcp_server/tests/unit/tools/layout.test.ts:
+(pass) Layout Tools > should register set_auto_layout tool [0.23ms]
+(pass) Layout Tools > set_auto_layout should call sendCommandToFigma with correct params [0.31ms]
+(pass) Layout Tools > set_auto_layout handles error correctly [0.01ms]
+
+src/mcp_server/tests/unit/tools/styling.test.ts:
+(pass) Styling Tools > should register styling tools [0.96ms]
+(pass) Styling Tools > should no longer register set_stroke_color (renamed to set_stroke) [0.43ms]
+(pass) Styling Tools > set_fill_color should call sendCommandToFigma with correct params [0.52ms]
+(pass) Styling Tools > set_stroke should call sendCommandToFigma with uniform weight [0.57ms]
+(pass) Styling Tools > set_stroke should call sendCommandToFigma with individual side weights [0.47ms]
+(pass) Styling Tools > set_stroke should support partial individual side weights [0.36ms]
+(pass) Styling Tools > set_stroke should default alpha to 1 when not provided [0.36ms]
+(pass) Styling Tools > set_stroke should default weight to 1 when not provided [0.38ms]
+(pass) Styling Tools > set_stroke should handle errors gracefully [0.61ms]
+(pass) Styling Tools > set_corner_radius should call sendCommandToFigma with correct params [0.30ms]
+(pass) Styling Tools > get_styles should call sendCommandToFigma [0.61ms]
+(pass) Styling Tools > manage_style should call sendCommandToFigma with correct params [0.44ms]
+(pass) Styling Tools > apply_style should call sendCommandToFigma with correct params [0.30ms]
+
+src/mcp_server/tests/unit/tools/variables.test.ts:
+(pass) Variables Tools > should register variables tools [0.33ms]
+(pass) Variables Tools > get_variables should call sendCommandToFigma with correct params
+(pass) Variables Tools > get_variables should pass array variableId and includeConsumers to sendCommandToFigma [0.61ms]
+(pass) Variables Tools > get_node_variables should call sendCommandToFigma with correct params [0.32ms]
+(pass) Variables Tools > set_bound_variable should call sendCommandToFigma with correct params
+(pass) Variables Tools > manage_variables should call sendCommandToFigma with correct params
+(pass) Variables Tools > delete_variables should call sendCommandToFigma with variableIds [1.00ms]
+
+src/mcp_server/tests/unit/tools/modification.test.ts:
+(pass) Modification Tools > should register modification tools [0.13ms]
+(pass) Modification Tools > move_node should call sendCommandToFigma with correct params [0.56ms]
+(pass) Modification Tools > resize_node should call sendCommandToFigma with correct params [0.26ms]
+(pass) Modification Tools > set_node_name should call sendCommandToFigma with correct params [0.27ms]
+(pass) Modification Tools > delete_multiple_nodes should call sendCommandToFigma with correct params [0.27ms]
+(pass) Modification Tools > clone_node should call sendCommandToFigma with correct params
+(pass) Modification Tools > set_selections should call sendCommandToFigma with correct params
+(pass) Modification Tools > group_nodes should call sendCommandToFigma with correct params [0.91ms]
+(pass) Modification Tools > ungroup_nodes should call sendCommandToFigma with correct params [0.29ms]
+(pass) Modification Tools > flatten_node should call sendCommandToFigma with correct params [0.03ms]
+(pass) Modification Tools > insert_child should call sendCommandToFigma with correct params [0.53ms]
+
+src/mcp_server/tests/unit/tools/assets.test.ts:
+(pass) Asset Tools > should register asset tools
+(pass) Asset Tools > export_node_as_image should call sendCommandToFigma with correct params
+
+src/mcp_server/tests/unit/tools/creation.test.ts:
+(pass) Creation Tools > should register creation tools [0.82ms]
+(pass) Creation Tools > create_rectangle should call sendCommandToFigma with correct params [0.87ms]
+(pass) Creation Tools > create_ellipse should call sendCommandToFigma with correct params [0.51ms]
+(pass) Creation Tools > create_polygon_star should call sendCommandToFigma with correct params [0.97ms]
+
+src/mcp_server/tests/unit/figma_plugin/getPagesInfo.phase2.test.ts:
+(pass) Phase 2.1: get_document_info / get_page_info fully removed > source tree contains no get_document_info, getDocumentInfo, get_page_info, or getPageInfo references [7.31ms]
+(pass) Phase 2.2: get_pages_info MCP tool registration > tool description surfaces soft batch guidance and streaming semantics [0.14ms]
+(pass) Phase 2.2: get_pages_info MCP tool registration > FigmaCommand union includes get_pages_info and excludes get_document_info / get_page_info [0.10ms]
+(pass) Phase 2.2: getPagesInfo handler — no-args / empty array path > returns documentId, documentName, pageCount, and pages with id+name only [0.90ms]
+(pass) Phase 2.2: getPagesInfo handler — no-args / empty array path > does not include children or missingPageIds when no pageIds provided [0.09ms]
+(pass) Phase 2.2: getPagesInfo handler — no-args / empty array path > treats empty array the same as no args [0.04ms]
+(pass) Phase 2.2: getPagesInfo handler — no-args / empty array path > never calls figma.loadAllPagesAsync [0.02ms]
+(pass) Phase 2.2: getPagesInfo handler — no-args / empty array path > never calls page.loadAsync on the no-args path
+(pass) Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + strict page check) > preserves input order for resolvable ids [0.66ms]
+(pass) Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + strict page check) > returns top-level children for resolved pages [0.02ms]
+(pass) Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + strict page check) > skips unresolvable ids and surfaces them via missingPageIds [0.07ms]
+(pass) Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + strict page check) > dedupes resolvable ids while preserving first-occurrence order [0.05ms]
+(pass) Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + strict page check) > dedupes unresolvable ids in first-occurrence order
+(pass) Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + strict page check) > rejects SECTION ids — strict page check (parent must be figma.root, type must be PAGE) [0.05ms]
+(pass) Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + strict page check) > rejects FRAME / COMPONENT ids
+(pass) Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + strict page check) > rejects PAGE nodes whose parent !== figma.root (different document) [0.05ms]
+(pass) Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + strict page check) > calls page.loadAsync only on resolved pages [0.08ms]
+(pass) Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + strict page check) > never calls figma.loadAllPagesAsync on the pageIds path [0.06ms]
+(pass) Phase 2.2: getPagesInfo soft-limit non-enforcement > processes 100 ids without truncation, warning, or error [0.57ms]
+Progress update: started - 0% - Starting page info retrieval for 3 pages
+Progress update: in_progress - 33% - Processed 1/3 pages
+Progress update: in_progress - 67% - Processed 2/3 pages
+Progress update: in_progress - 100% - Processed 3/3 pages
+Progress update: completed - 100% - Completed retrieving page info
+(pass) Phase 2.2: getPagesInfo progress event streaming (commandId path) > emits started, in_progress (one per id), and completed events when commandId is set [6.52ms]
+(pass) Phase 2.2: getPagesInfo progress event streaming (commandId path) > emits no progress events when commandId is absent [0.02ms]
+(pass) Phase 2.3: removed-fields sweep > README has no stale get_document_info / get_page_info references [0.14ms]
+(pass) Phase 2.3: removed-fields sweep > source has no type: "DOCUMENT" root discriminator [2.60ms]
+(pass) Phase 2.3: removed-fields sweep > source has no currentPageId / currentPageName / isCurrent (page-context fields) [4.22ms]
+(pass) Phase 2.4: version + changelog > package.json version is 1.3.0 [0.11ms]
+(pass) Phase 2.4: version + changelog > CHANGELOG.md has a [1.3.0] section listing the breaking changes [0.09ms]
+
+src/mcp_server/tests/unit/figma_plugin/componentHandlers.test.ts:
+(pass) Component Handlers > setComponentInstanceProperty > should successfully set a property on an instance [0.18ms]
+(pass) Component Handlers > setComponentInstanceProperty > should throw error if node is not an instance [0.03ms]
+(pass) Component Handlers > setComponentInstanceProperty > should throw error with available properties if property not found [0.02ms]
+(pass) Component Handlers > manageComponentProperty > ADD > should add a new TEXT property [0.23ms]
+(pass) Component Handlers > manageComponentProperty > ADD > should add a new BOOLEAN property [0.04ms]
+(pass) Component Handlers > manageComponentProperty > ADD > should add a new INSTANCE_SWAP property and forward preferredValues [0.04ms]
+(pass) Component Handlers > manageComponentProperty > ADD > should reject duplicate property name [0.06ms]
+(pass) Component Handlers > manageComponentProperty > ADD > should reject VARIANT propertyType [0.02ms]
+(pass) Component Handlers > manageComponentProperty > EDIT > should rename property when only newPropertyName provided [0.03ms]
+(pass) Component Handlers > manageComponentProperty > EDIT > should update defaultValue when only newDefaultValue provided [0.03ms]
+(pass) Component Handlers > manageComponentProperty > EDIT > should update preferredValues when only preferredValues provided [0.02ms]
+(pass) Component Handlers > manageComponentProperty > EDIT > should resolve human-readable name to qualified name and forward all mutations together [0.03ms]
+(pass) Component Handlers > manageComponentProperty > EDIT > should throw on missing property [0.02ms]
+(pass) Component Handlers > manageComponentProperty > DELETE > should delete an existing property [0.03ms]
+(pass) Component Handlers > manageComponentProperty > DELETE > should throw on missing property [0.02ms]
+(pass) Security Gates via main.ts routing > set_component_instance_property > blocks when state.readOnly is true [2.15ms]
+(pass) Security Gates via main.ts routing > set_component_instance_property > blocks when checkScopeAccess fails (target outside scope) [0.14ms]
+(pass) Security Gates via main.ts routing > set_component_instance_property > blocks when verifyNodeName fails (name mismatch) [0.07ms]
+(pass) Security Gates via main.ts routing > manage_component_property > blocks when state.readOnly is true (any action) [0.05ms]
+(pass) Security Gates via main.ts routing > manage_component_property > blocks when checkScopeAccess fails (any action)
+(pass) Security Gates via main.ts routing > manage_component_property > blocks when verifyNodeName fails (any action) [0.09ms]
+
+src/mcp_server/tests/unit/figma_plugin/progressUtils.phase1.test.ts:
+Progress update: in_progress - 0% - msg
+(pass) Phase 1.1: sendProgressUpdate is async with yield > returns a Promise (function is declared async) [1.25ms]
+Progress update: started - 0% - starting
+(pass) Phase 1.1: sendProgressUpdate is async with yield > calls figma.ui.postMessage with the update payload [1.24ms]
+Progress update: in_progress - 0.5% - m
+(pass) Phase 1.1: sendProgressUpdate is async with yield > schedules setTimeout(_, 0) AFTER postMessage to flush UI thread [1.23ms]
+Progress update: in_progress - 0.25% - a
+Progress update: in_progress - 0.5% - b
+(pass) Phase 1.1: sendProgressUpdate is async with yield > yields to the event loop between postMessages on consecutive calls [2.62ms]
+(pass) Phase 1.1a: callers await sendProgressUpdate > all sendProgressUpdate( call sites in handlers are awaited [0.57ms]
+(pass) Phase 1.2: ui.html activeRequestId wiring > declares activeRequestId in state [0.09ms]
+(pass) Phase 1.2: ui.html activeRequestId wiring > sets state.activeRequestId on inbound command before postMessage to plugin [0.07ms]
+(pass) Phase 1.2: ui.html activeRequestId wiring > uses state.activeRequestId on outbound progress_update payload id field [0.08ms]
+(pass) Phase 1.2: ui.html activeRequestId wiring > clears state.activeRequestId on command-result and command-error [0.10ms]
+
+src/mcp_server/tests/unit/figma_plugin/nodeUtils.test.ts:
+(pass) filterFigmaNode > should return null for VECTOR nodes [0.04ms]
+(pass) filterFigmaNode > should always include id, name, type [0.02ms]
+(pass) filterFigmaNode > should include requested fields if present [0.02ms]
+(pass) filterFigmaNode > should silently drop requested fields if absent [0.01ms]
+(pass) filterFigmaNode > should always recurse into children and pass fields down [0.03ms]
+
+1 tests failed:
+
+ 137 pass
+ 1 fail
+ 1 error
+ 294 expect() calls
+Ran 138 tests across 16 files. [103.00ms]
