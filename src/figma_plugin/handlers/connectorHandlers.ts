@@ -13,7 +13,7 @@ import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js
 export async function getReactions(nodeIds: any) {
     try {
         const commandId = generateCommandId();
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "get_reactions",
             "started",
@@ -101,7 +101,7 @@ export async function getReactions(nodeIds: any) {
 
                 if (!node) {
                     processedCount++;
-                    sendProgressUpdate(
+                    await sendProgressUpdate(
                         commandId,
                         "get_reactions",
                         "in_progress",
@@ -122,7 +122,7 @@ export async function getReactions(nodeIds: any) {
 
                 // Update progress
                 processedCount++;
-                sendProgressUpdate(
+                await sendProgressUpdate(
                     commandId,
                     "get_reactions",
                     "in_progress",
@@ -133,7 +133,7 @@ export async function getReactions(nodeIds: any) {
                 );
             } catch (error: any) {
                 processedCount++;
-                sendProgressUpdate(
+                await sendProgressUpdate(
                     commandId,
                     "get_reactions",
                     "in_progress",
@@ -146,7 +146,7 @@ export async function getReactions(nodeIds: any) {
         }
 
         // Completion update
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "get_reactions",
             "completed",
@@ -440,7 +440,7 @@ export async function createConnections(params: any) {
 
     // Command ID for progress tracking
     const commandId = generateCommandId();
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "create_connections",
         "started",
@@ -587,7 +587,7 @@ export async function createConnections(params: any) {
 
             // Update progress
             processedCount++;
-            sendProgressUpdate(
+            await sendProgressUpdate(
                 commandId,
                 "create_connections",
                 "in_progress",
@@ -601,7 +601,7 @@ export async function createConnections(params: any) {
             console.error("Error creating connection", error);
             // Continue processing remaining connections even if an error occurs
             processedCount++;
-            sendProgressUpdate(
+            await sendProgressUpdate(
                 commandId,
                 "create_connections",
                 "in_progress",
@@ -619,7 +619,7 @@ export async function createConnections(params: any) {
     }
 
     // Completion update
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "create_connections",
         "completed",

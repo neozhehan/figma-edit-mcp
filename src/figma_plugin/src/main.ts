@@ -7,7 +7,7 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 
 // Import handlers
-import { getDocumentInfo, getSelection, getNodesInfo, getPageInfo } from '../handlers/nodeReaders.js';
+import { getSelection, getNodesInfo, getPagesInfo } from '../handlers/nodeReaders.js';
 import { createRectangle, createFrame, createText, cloneNode, createEllipse, createPolygonStar } from '../handlers/nodeCreators.js';
 import { moveNode, resizeNode, deleteMultipleNodes, setSelections, setNodeName, groupNodes, ungroupNodes, flattenNode, insertChild } from '../handlers/nodeModifiers.js';
 import { setFillColor, setStroke, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
@@ -35,6 +35,7 @@ import { getAnnotations, scanNodesByTypes, setMultipleAnnotations } from '../han
 import { getVariables, getNodeVariables, setBoundVariable, handleVariableRequest, deleteVariables } from '../handlers/variableHandlers.js';
 import { createStyle, applyStyle } from '../handlers/styleHandlers.js';
 import { createNodeFromSvg } from '../handlers/vectorHandlers.js';
+import { getConnectPayload } from '../handlers/connectHandlers.js';
 
 
 // Constants
@@ -64,6 +65,10 @@ const state: any = {
     scopeRootId: null,
     readOnly: false // Default to false, but connection flow will set this
 };
+
+export function getPluginState() {
+    return state;
+}
 
 // Helper: Format error message with current scope ID
 function formatScopeError(errorMessage: any) {
@@ -224,6 +229,8 @@ function updateSettings(settings: any) {
 // Handle commands from UI
 async function handleCommand(command: any, params: any) {
     switch (command) {
+        case "get_connect_payload":
+            return await getConnectPayload();
         case "set_fill_color":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
@@ -466,10 +473,8 @@ async function handleCommand(command: any, params: any) {
             if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
             return await manageComponentProperty(params);
 
-        case "get_document_info":
-            return await getDocumentInfo();
-        case "get_page_info":
-            return await getPageInfo(params);
+        case "get_pages_info":
+            return await getPagesInfo(params);
         case "get_selection":
             return await getSelection();
         case "get_nodes_info":

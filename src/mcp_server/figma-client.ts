@@ -51,8 +51,8 @@ export interface setInstanceOverridesResult {
 
 // Define specific command types
 export type FigmaCommand =
-    | "get_document_info"
-    | "get_page_info"
+    | "get_connect_payload"
+    | "get_pages_info"
     | "get_nodes_info"
     | "join"
     | "create_rectangle"
@@ -133,6 +133,22 @@ export function connectToFigma(port: number = defaultPort) {
             }
 
             const json = JSON.parse(data) as ProgressMessage;
+
+            // Handle join_error
+            if (json.type === 'join_error') {
+                const requestId = json.id || '';
+                if (requestId && pendingRequests.has(requestId)) {
+                    const request = pendingRequests.get(requestId)!;
+                    clearTimeout(request.timeout);
+                    
+                    const error = new Error(json.message as string);
+                    (error as any).joinErrorCode = json.code;
+                    request.reject(error);
+                    
+                    pendingRequests.delete(requestId);
+                }
+                return;
+            }
 
             // Handle progress updates
             if (json.type === 'progress_update') {
@@ -218,6 +234,10 @@ export function connectToFigma(port: number = defaultPort) {
         logger.info('Attempting to reconnect in 2 seconds...');
         setTimeout(() => connectToFigma(port), 2000);
     });
+}
+
+export function resetChannel() {
+    currentChannel = null;
 }
 
 export async function joinChannel(channelName: string): Promise<void> {
@@ -330,7 +350,7 @@ export function sendCommandToFigma(
             id,
             type: command === "join" ? "join" : "message",
             ...(command === "join"
-                ? { channel: normalizedParams.channel }
+                ? { channel: normalizedParams.channel, clientType: "mcp" }
                 : { channel: currentChannel }),
             message: {
                 id,

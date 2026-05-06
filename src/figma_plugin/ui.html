@@ -337,6 +337,7 @@
       verifiedNodeId: null,
       pendingRequests: new Map(),
       channel: null,
+      activeRequestId: null,
     };
 
     // UI Elements
@@ -559,6 +560,7 @@
       // If it's a new command
       if (data.command) {
         try {
+          state.activeRequestId = data.id;
           // Send the command to the plugin code
           parent.postMessage(
             {
@@ -786,11 +788,11 @@
 
       state.socket.send(
         JSON.stringify({
-          id: progressData.commandId,
+          id: state.activeRequestId || progressData.commandId,
           type: "progress_update",
           channel: state.channel,
           message: {
-            id: progressData.commandId,
+            id: state.activeRequestId || progressData.commandId,
             type: "progress_update",
             data: progressData
           }
@@ -828,10 +830,12 @@
         case "command-result":
           // Forward the result from plugin code back to WebSocket
           sendSuccessResponse(message.id, message.result);
+          state.activeRequestId = null;
           break;
         case "command-error":
           // Forward the error from plugin code back to WebSocket
           sendErrorResponse(message.id, message.error);
+          state.activeRequestId = null;
           break;
         case "scope-validation-result":
           const scopeStatus = document.getElementById("scope-status");

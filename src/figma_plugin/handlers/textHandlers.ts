@@ -30,7 +30,7 @@ export async function scanTextNodes(params: any) {
     if (!node) {
         console.error(`Node with ID ${nodeId} not found`);
         // Send error progress update
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "scan_text_nodes",
             "error",
@@ -48,7 +48,7 @@ export async function scanTextNodes(params: any) {
         const textNodes: any[] = [];
         try {
             // Send started progress update
-            sendProgressUpdate(
+            await sendProgressUpdate(
                 commandId,
                 "scan_text_nodes",
                 "started",
@@ -63,7 +63,7 @@ export async function scanTextNodes(params: any) {
             await findTextNodes(node, [], 0, textNodes);
 
             // Send completed progress update
-            sendProgressUpdate(
+            await sendProgressUpdate(
                 commandId,
                 "scan_text_nodes",
                 "completed",
@@ -85,7 +85,7 @@ export async function scanTextNodes(params: any) {
             console.error("Error scanning text nodes:", error);
 
             // Send error progress update
-            sendProgressUpdate(
+            await sendProgressUpdate(
                 commandId,
                 "scan_text_nodes",
                 "error",
@@ -107,7 +107,7 @@ export async function scanTextNodes(params: any) {
     const nodesToProcess: any[] = [];
 
     // Send started progress update
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "scan_text_nodes",
         "started",
@@ -129,7 +129,7 @@ export async function scanTextNodes(params: any) {
     console.log(`Will process in ${totalChunks} chunks`);
 
     // Send update after node collection
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "scan_text_nodes",
         "in_progress",
@@ -157,7 +157,7 @@ export async function scanTextNodes(params: any) {
         );
 
         // Send update before processing chunk
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "scan_text_nodes",
             "in_progress",
@@ -202,7 +202,7 @@ export async function scanTextNodes(params: any) {
         chunksProcessed++;
 
         // Send update after processing chunk
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "scan_text_nodes",
             "in_progress",
@@ -223,7 +223,7 @@ export async function scanTextNodes(params: any) {
     }
 
     // Send completed progress update
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "scan_text_nodes",
         "completed",
@@ -409,7 +409,7 @@ export async function setMultipleTextContents(params: any) {
         const errorMsg = "Missing required parameters: nodeId and text array";
 
         // Send error progress update
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "set_multiple_text_contents",
             "error",
@@ -428,7 +428,7 @@ export async function setMultipleTextContents(params: any) {
     );
 
     // Send started progress update
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "set_multiple_text_contents",
         "started",
@@ -455,7 +455,7 @@ export async function setMultipleTextContents(params: any) {
     console.log(`Split ${text.length} replacements into ${chunks.length} chunks`);
 
     // Send chunking info update
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "set_multiple_text_contents",
         "in_progress",
@@ -479,7 +479,7 @@ export async function setMultipleTextContents(params: any) {
         );
 
         // Send chunk processing start update
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "set_multiple_text_contents",
             "in_progress",
@@ -584,7 +584,7 @@ export async function setMultipleTextContents(params: any) {
         });
 
         // Send chunk processing complete update with partial results
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "set_multiple_text_contents",
             "in_progress",
@@ -614,7 +614,7 @@ export async function setMultipleTextContents(params: any) {
     );
 
     // Send completed progress update
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "set_multiple_text_contents",
         "completed",

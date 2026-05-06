@@ -95,7 +95,7 @@ export async function deleteMultipleNodes(params: any) {
 
     if (!nodeIds || !Array.isArray(nodeIds) || nodeIds.length === 0) {
         const errorMsg = "Missing or invalid nodeIds parameter";
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "delete_multiple_nodes",
             "error",
@@ -111,7 +111,7 @@ export async function deleteMultipleNodes(params: any) {
     console.log(`Starting deletion of ${nodeIds.length} nodes`);
 
     // Send started progress update
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "delete_multiple_nodes",
         "started",
@@ -137,7 +137,7 @@ export async function deleteMultipleNodes(params: any) {
     console.log(`Split ${nodeIds.length} deletions into ${chunks.length} chunks`);
 
     // Send chunking info update
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "delete_multiple_nodes",
         "in_progress",
@@ -161,7 +161,7 @@ export async function deleteMultipleNodes(params: any) {
         );
 
         // Send chunk processing start update
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "delete_multiple_nodes",
             "in_progress",
@@ -231,7 +231,7 @@ export async function deleteMultipleNodes(params: any) {
         });
 
         // Send chunk processing complete update
-        sendProgressUpdate(
+        await sendProgressUpdate(
             commandId,
             "delete_multiple_nodes",
             "in_progress",
@@ -261,7 +261,7 @@ export async function deleteMultipleNodes(params: any) {
     );
 
     // Send completed progress update
-    sendProgressUpdate(
+    await sendProgressUpdate(
         commandId,
         "delete_multiple_nodes",
         "completed",

@@ -74,6 +74,20 @@ const server = Bun.serve({
             return;
           }
 
+          // Detect lone-MCP joins
+          if (data.clientType === "mcp") {
+            const size = channels.get(channelName)?.size ?? 0;
+            if (size === 0) {
+              ws.send(JSON.stringify({
+                type: "join_error",
+                code: "CHANNEL_NOT_FOUND",
+                id: data.id,
+                message: `Channel '${channelName}' was not found. Verify the channel name and that the Figma plugin is running and connected.`
+              }));
+              return;
+            }
+          }
+
           // Create channel if it doesn't exist
           if (!channels.has(channelName)) {
             channels.set(channelName, new Set());

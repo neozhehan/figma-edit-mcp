@@ -26,7 +26,7 @@ export function generateCommandId() {
  * @param {Object|null} payload - Optional additional data
  * @returns {Object} The update object that was sent
  */
-export function sendProgressUpdate(
+export async function sendProgressUpdate(
     commandId: any,
     commandType: any,
     status: any,
@@ -63,6 +63,7 @@ export function sendProgressUpdate(
 
     // Send to UI
     figma.ui.postMessage(update);
+    await new Promise(r => setTimeout(r, 0));
     console.log(`Progress update: ${status} - ${progress}% - ${message}`);
 
     return update;
