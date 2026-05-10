@@ -42,23 +42,66 @@ export function registerDocumentTools(server: McpServer) {
     // Nodes Info Tool
     server.tool(
         "get_nodes_info",
-        "Get detailed information about one or more nodes. If no IDs provided, returns the editable scope node.",
+        `Get detailed information about one or more nodes. Supports recursive subtree traversal, property filtering, and streaming progress.
+
+- If no nodeIds are provided, the tool defaults to the current 'editable scope' (the node(s) selected when the plugin was opened).
+- Properties: When 'fields' is empty, only 'id', 'name', and 'type' are returned for each node. To get more data, specify fields from Figma's REST API (e.g., 'fills', 'strokes', 'characters', 'layoutMode').
+- Safe-list: Common properties like 'id', 'name', 'type', 'visible', 'locked', 'children', and 'descendantCount' are always available and do not incur additional performance cost.
+- Filtering: Use the 'filter' object to prune the tree (e.g., {"type": ["TEXT", "COMPONENT"]}). A node is included if it matches the filter OR has matching descendants.
+- Depth: 'maxDepth' controls how deep the recursive walk goes. Use 0 for just the target nodes, or higher for subtrees. Boundary nodes at maxDepth will include a 'descendantCount'.
+- Performance: This tool streams progress updates and is safe for deep traversals.
+
+RESPONSE SHAPE:
+- Returns { nodes: [...], missingNodeIds?: [...] }. Each node has recursive 'children' arrays. When 'fields' is non-empty, every node (top-level and descendants) carries a 'properties' sub-object with only applicable keys — inapplicable keys are omitted (never null). Top-level entries always include 'descendantCount' (total recursive descendants). Boundary nodes at 'maxDepth' also include 'descendantCount' so you can distinguish truncated nodes from genuine leaves.
+
+PATH:
+- Each top-level node includes a 'path' array of 3-tuples [type, id, name] representing the ancestor chain from the containing page down to the immediate parent. Pages have path === []. Direct children of a page have one element.
+
+FILTER BEHAVIOR:
+- Filters are applied recursively across the entire subtree. Non-matching ancestors of matching nodes are retained as structural containers. Filter evaluation only runs within the maxDepth window — matches deeper than the depth cap are invisible.
+
+COST & LATENCY:
+- Cost scales with SUBTREE SIZE, not nodeId count. A single PAGE-level id can be as expensive as thousands of leaf ids. Use 'maxDepth' to bound the walk.
+- Non-safe-list 'fields' trigger per-node exportAsync (moderate cost on retained nodes only). Non-safe-list 'filter' keys trigger exportAsync on EVERY candidate descendant before pruning (higher cost). Prefer safe-list filter keys with tight nodeIds or maxDepth.
+
+MISSING NODES:
+- ALWAYS check 'missingNodeIds' in the response. Any nodeId not present in 'nodes' is listed there. Treat absence from 'nodes' as authoritative and surface to the user.
+
+RECOMMENDED PAIRINGS:
+- For cheap structural scans: safe-list filter + no fields.
+- For targeted property reads: tight nodeIds or maxDepth + specific fields.
+- For filtered property reads: safe-list filter + fields on retained nodes.`,
         {
             nodeIds: z
                 .array(z.string())
                 .optional()
-                .describe("Array of node IDs to get information about"),
+                .describe("Array of node IDs to get information about. If empty, uses editable scope."),
             fields: z
                 .array(z.string())
                 .optional()
-                .describe("Array of field names to return. Must exactly match keys in Figma's JSON_REST_V1 export format. Supported fields - Component Properties: componentPropertyDefinitions, componentProperties. Instance Data: overrides. Layout & Positioning: layoutMode, itemSpacing, paddingLeft, paddingRight, paddingTop, paddingBottom, primaryAxisAlignItems, counterAxisAlignItems, absoluteBoundingBox. Styling: fills, strokes, cornerRadius, opacity, blendMode, effects. Text: characters, style. Prototyping: transitionNodeID, transitionDuration, transitionEasing. Metadata: visible, locked. Default behavior: When empty or omitted, only id, name, type are returned per node (plus recursive children)."),
+                .describe("Array of field names to return. Supported fields include 'fills', 'strokes', 'cornerRadius', 'opacity', 'blendMode', 'effects', 'characters', 'style', 'layoutMode', 'itemSpacing', 'paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom', 'primaryAxisAlignItems', 'counterAxisAlignItems', 'absoluteBoundingBox', 'visible', 'locked', 'componentPropertyDefinitions', 'componentProperties', 'overrides', 'transitionNodeID', 'transitionDuration', 'transitionEasing'."),
+            filter: z
+                .record(z.array(z.string()))
+                .optional()
+                .describe("Optional filter criteria. Format: { fieldName: [value1, value2] }. Example: { type: ['TEXT', 'COMPONENT'], layoutMode: ['HORIZONTAL'] }. Matches are case-sensitive and multiple values for a field are treated as OR. Multiple fields are treated as AND."),
+            maxDepth: z
+                .number()
+                .int()
+                .min(0)
+                .optional()
+                .describe("Maximum depth for recursive child traversal. 0 = self only, 1 = self and immediate children, etc. If omitted, performs a full depth traversal (use with caution on large subtrees)."),
         },
-        async ({ nodeIds, fields }: any) => {
+        async ({ nodeIds, fields, filter, maxDepth }: any) => {
             try {
                 if (nodeIds) {
                     nodeIds = normalizeNodeIds(nodeIds);
                 }
-                const results = await sendCommandToFigma("get_nodes_info", { nodeIds, fields });
+                const results = await sendCommandToFigma("get_nodes_info", { 
+                    nodeIds, 
+                    properties: fields, // Map 'fields' to 'properties' for plugin handler
+                    filter, 
+                    maxDepth 
+                });
 
                 return {
                     content: [
@@ -73,8 +116,7 @@ export function registerDocumentTools(server: McpServer) {
                     content: [
                         {
                             type: "text",
-                            text: `Error getting nodes info: ${error instanceof Error ? error.message : String(error)
-                                }`,
+                            text: `Error getting nodes info: ${error instanceof Error ? error.message : String(error)}`,
                         },
                     ],
                 };
@@ -82,92 +124,6 @@ export function registerDocumentTools(server: McpServer) {
         }
     );
 
-    // Node Type Scanning Tool
-    server.tool(
-        "scan_nodes_by_types",
-        "Scan for child nodes with specific types in the selected Figma node",
-        {
-            nodeId: z.string().describe("ID of the node to scan"),
-            types: z
-                .array(z.string())
-                .describe(
-                    "Array of node types to find in the child nodes (e.g. ['COMPONENT', 'FRAME'])"
-                ),
-        },
-        async ({ nodeId, types }: any) => {
-            try {
-                // Initial response to indicate we're starting the process
-                const initialStatus = {
-                    type: "text" as const,
-                    text: `Starting node type scanning for types: ${types.join(", ")}...`,
-                };
-
-                // Use the plugin's scan_nodes_by_types function
-                const result = await sendCommandToFigma("scan_nodes_by_types", {
-                    nodeId,
-                    types,
-                });
-
-                // Format the response
-                if (result && typeof result === "object" && "matchingNodes" in result) {
-                    const typedResult = result as {
-                        success: boolean;
-                        count: number;
-                        matchingNodes: Array<{
-                            id: string;
-                            name: string;
-                            type: string;
-                            bbox: {
-                                x: number;
-                                y: number;
-                                width: number;
-                                height: number;
-                            };
-                        }>;
-                        searchedTypes: Array<string>;
-                    };
-
-                    const summaryText = `Scan completed: Found ${typedResult.count
-                        } nodes matching types: ${typedResult.searchedTypes.join(", ")}`;
-
-                    return {
-                        content: [
-                            initialStatus,
-                            {
-                                type: "text" as const,
-                                text: summaryText,
-                            },
-                            {
-                                type: "text" as const,
-                                text: JSON.stringify(typedResult.matchingNodes, null, 2),
-                            },
-                        ],
-                    };
-                }
-
-                // If the result is in an unexpected format, return it as is
-                return {
-                    content: [
-                        initialStatus,
-                        {
-                            type: "text",
-                            text: JSON.stringify(result, null, 2),
-                        },
-                    ],
-                };
-            } catch (error) {
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `Error scanning nodes by types: ${error instanceof Error ? error.message : String(error)
-                                }`,
-                        },
-                    ],
-                };
-            }
-        }
-    );
 
     // Update the join_channel tool
     server.tool(

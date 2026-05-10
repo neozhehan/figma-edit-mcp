@@ -30,8 +30,8 @@ import {
 
 import { getReactions, createConnections } from '../handlers/connectorHandlers.js';
 import { updateReactions } from '../handlers/prototypingHandlers.js';
-import { scanTextNodes, setMultipleTextContents, setTextStyle } from '../handlers/textHandlers.js';
-import { getAnnotations, scanNodesByTypes, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
+import { setMultipleTextContents, setTextStyle } from '../handlers/textHandlers.js';
+import { getAnnotations, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
 import { getVariables, getNodeVariables, setBoundVariable, handleVariableRequest, deleteVariables } from '../handlers/variableHandlers.js';
 import { createStyle, applyStyle } from '../handlers/styleHandlers.js';
 import { createNodeFromSvg } from '../handlers/vectorHandlers.js';
@@ -478,29 +478,31 @@ async function handleCommand(command: any, params: any) {
         case "get_selection":
             return await getSelection();
         case "get_nodes_info":
-            if (params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0) {
-                return await getNodesInfo(params.nodeIds, params.fields);
+            // 1. Prepare nodeIds (Empty-args dispatch)
+            const effectiveNodeIds = (params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0) 
+                ? params.nodeIds 
+                : (state.scopeRootId ? [state.scopeRootId] : []);
+            
+            // 2. Read-Only Mode check for empty-args
+            if (effectiveNodeIds.length === 0 && state.readOnly) {
+                return { nodes: [] };
             }
 
-            // If no nodeIds provided, return the editable scope info
-            if (state.scopeRootId) {
-                return await getNodesInfo([state.scopeRootId], params?.fields);
-            }
+            // 3. Call unified handler path
+            // NOTE: Avoid object spread (...) — Figma's plugin sandbox JS engine does not support it.
+            return await getNodesInfo(Object.assign({}, params, {
+                nodeIds: effectiveNodeIds,
+                commandId: (params && params.commandId) ? params.commandId : generateCommandId()
+            }));
 
-            // Read-Only Mode: Return empty array
-            return [];
         case "get_styles":
             return await getStyles();
         case "get_components":
             return await getComponents(params);
         case "export_node_as_image":
             return await exportNodeAsImage(params);
-        case "scan_text_nodes":
-            return await scanTextNodes(params);
         case "get_annotations":
             return await getAnnotations(params);
-        case "scan_nodes_by_types":
-            return await scanNodesByTypes(params);
         case "get_instance_overrides":
             // Check if instanceNode parameter is provided
             if (params && params.instanceNodeId) {

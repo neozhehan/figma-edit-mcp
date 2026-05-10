@@ -67,14 +67,12 @@ export {
 
 // Text handlers
 export {
-    scanTextNodes,
     setMultipleTextContents
 } from './textHandlers.js';
 
 // Annotation handlers
 export {
     getAnnotations,
-    scanNodesByTypes,
     setMultipleAnnotations
 } from './annotationHandlers.js';
 

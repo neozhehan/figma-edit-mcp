@@ -45,46 +45,111 @@ export async function getStyles() {
 }
 
 /**
- * Gets components from the document with optional filtering
+ * Gets components from the document with optional filtering.
+ * Optimised to avoid heavy loadAllPagesAsync() by iterating page-by-page.
  * @param {Object} params - Parameters object
  * @param {string} params.filter - 'local' or 'remote' (undefined = all)
  * @param {string} params.scope - 'current_page' (default) or 'document'
+ * @param {string} params.commandId - Optional command ID for progress updates
  * @returns {Promise<Object>} Object containing component count and list
  */
 export async function getComponents(params: any) {
-    const { filter, scope = 'current_page' } = params || {};
-    // scope: 'current_page' (default) or 'document' (slow)
-
-    let searchRoot = figma.currentPage;
-
-    if (scope === 'document') {
-        await figma.loadAllPagesAsync();
-        // @ts-ignore
-        searchRoot = figma.root;
+    const { filter, scope = 'current_page', commandId } = params || {};
+    
+    // 1. Started event
+    if (commandId) {
+        await sendProgressUpdate(
+            commandId, 
+            'get_components', 
+            'started', 
+            0, 
+            0, 
+            0, 
+            `Starting get_components in ${scope} scope`
+        );
     }
 
-    let components = searchRoot.findAllWithCriteria({
-        types: ["COMPONENT"],
-    });
+    const allComponents: any[] = [];
+    
+    if (scope === 'current_page') {
+        const components = figma.currentPage.findAllWithCriteria({ 
+            types: ["COMPONENT", "COMPONENT_SET"] 
+        });
+        allComponents.push(...components);
+    } else {
+        // scope === 'document'
+        // MANDATORY: Do NOT use loadAllPagesAsync(). Iterate pages instead.
+        const pages = figma.root.children;
+        for (const [index, page] of pages.entries()) {
+            const components = page.findAllWithCriteria({ 
+                types: ["COMPONENT", "COMPONENT_SET"] 
+            });
+            allComponents.push(...components);
 
+            if (commandId) {
+                await sendProgressUpdate(
+                    commandId, 
+                    'get_components', 
+                    'in_progress', 
+                    Math.round(((index + 1) / pages.length) * 100), 
+                    pages.length, 
+                    index + 1, 
+                    `Searching page ${index + 1}/${pages.length}: ${page.name}`
+                );
+            }
+        }
+    }
+
+    // 2. Filter logic
+    let filtered = allComponents;
     if (filter === 'local') {
-        components = components.filter((c: any) => !c.remote);
+        filtered = allComponents.filter((c: any) => !c.remote);
     } else if (filter === 'remote') {
-        components = components.filter((c: any) => c.remote);
+        filtered = allComponents.filter((c: any) => c.remote);
+    }
+
+    // 3. Mapping
+    const mapped = filtered.map((component: any) => ({
+        id: component.id,
+        name: component.name,
+        key: component.key,
+        remote: component.remote,
+        type: component.type,
+        pageId: getContainingPageId(component)
+    }));
+
+    if (commandId) {
+        await sendProgressUpdate(
+            commandId, 
+            'get_components', 
+            'completed', 
+            100, 
+            1, 
+            1, 
+            `Found ${mapped.length} components/sets`
+        );
     }
 
     return {
-        count: components.length,
-        scope: scope,
-        components: components.map((component: any) => ({
-            id: component.id,
-            name: component.name,
-            key: component.key,
-            remote: component.remote,
-            pageId: (component.parent && component.parent.type === 'PAGE') ? component.parent.id : 'nested',
-        })),
+        count: mapped.length,
+        scope,
+        components: mapped
     };
 }
+
+/**
+ * Helper to find the containing page ID for a node.
+ */
+function getContainingPageId(node: BaseNode): string {
+    let current: BaseNode | null = node;
+    while (current && current.type !== 'PAGE' && current.type !== 'DOCUMENT') {
+        current = current.parent;
+    }
+    return (current && current.type === 'PAGE') ? current.id : 'unknown';
+}
+
+import { sendProgressUpdate } from '../utils/progressUtils.js';
+
 
 
 
