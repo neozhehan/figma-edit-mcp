@@ -93,7 +93,7 @@ describe("Component Tools", () => {
         const result = promptHandler({});
         const text = result.messages[0].content.text;
 
-        expect(text).toContain('fields: ["componentProperties", "characters", "overrides"]');
+        expect(text).toContain('properties: ["componentProperties", "characters", "overrides"]');
         expect(text).toContain('targetNodes: [');
         expect(text).toContain('{ nodeId: "target-id-1"');
         expect(text).not.toContain('targetNodeIds: [');

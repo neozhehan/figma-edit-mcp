@@ -276,87 +276,6 @@ export function registerTextTools(server: McpServer) {
         }
     );
 
-    // Text Node Scanning Tool
-    server.tool(
-        "scan_text_nodes",
-        "Scan all text nodes in the selected Figma node",
-        {
-            nodeId: z.string().describe("ID of the node to scan"),
-        },
-        async ({ nodeId }: any) => {
-            try {
-                // Initial response to indicate we're starting the process
-                const initialStatus = {
-                    type: "text" as const,
-                    text: "Starting text node scanning. This may take a moment for large designs...",
-                };
-
-                // Use the plugin's scan_text_nodes function with chunking flag
-                const result = await sendCommandToFigma(
-                    "scan_text_nodes",
-                    {
-                        nodeId,
-                        useChunking: true, // Enable chunking on the plugin side
-                        chunkSize: 10, // Process 10 nodes at a time
-                    },
-                    120000
-                );
-
-                // If the result indicates chunking was used, format the response accordingly
-                if (result && typeof result === "object" && "chunks" in result) {
-                    const typedResult = result as {
-                        success: boolean;
-                        totalNodes: number;
-                        processedNodes: number;
-                        chunks: number;
-                        textNodes: Array<any>;
-                    };
-
-                    const summaryText = `
-          Scan completed:
-          - Found ${typedResult.totalNodes} text nodes
-          - Processed in ${typedResult.chunks} chunks
-          `;
-
-                    return {
-                        content: [
-                            initialStatus,
-                            {
-                                type: "text" as const,
-                                text: summaryText,
-                            },
-                            {
-                                type: "text" as const,
-                                text: JSON.stringify(typedResult.textNodes, null, 2),
-                            },
-                        ],
-                    };
-                }
-
-                // If chunking wasn't used or wasn't reported in the result format, return the result as is
-                return {
-                    content: [
-                        initialStatus,
-                        {
-                            type: "text",
-                            text: JSON.stringify(result, null, 2),
-                        },
-                    ],
-                };
-            } catch (error) {
-                return {
-                    content: [
-                        {
-                            type: "text",
-                            text: `Error scanning text nodes: ${error instanceof Error ? error.message : String(error)
-                                }`,
-                        },
-                    ],
-                };
-            }
-        }
-    );
-
     // Text Replacement Strategy Prompt
     server.prompt(
         "text_replacement_strategy",
@@ -371,7 +290,7 @@ export function registerTextTools(server: McpServer) {
                             text: `# Intelligent Text Replacement Strategy
 
 ## 1. Analyze Design & Identify Structure
-- Scan text nodes to understand the overall structure of the design
+- Use get_nodes_info with a type filter to understand the design structure
 - Use AI pattern recognition to identify logical groupings:
   * Tables (rows, columns, headers, cells)
   * Lists (items, headers, nested lists)
@@ -379,8 +298,7 @@ export function registerTextTools(server: McpServer) {
   * Forms (labels, input fields, validation text)
   * Navigation (menu items, breadcrumbs)
 \`\`\`
-scan_text_nodes(nodeId: "node-id")
-get_nodes_info(nodeIds: ["node-id"], fields: ["characters", "style"])  // optional
+get_nodes_info(nodeIds: ["parent-id"], filter: { type: ["TEXT"] }, properties: ["characters"], maxDepth: 10)
 \`\`\`
 
 ## 2. Strategic Chunking for Complex Designs
@@ -390,6 +308,7 @@ get_nodes_info(nodeIds: ["node-id"], fields: ["characters", "style"])  // option
   * **Spatial Chunking**: Top-to-bottom, left-to-right in screen areas
   * **Semantic Chunking**: Content related to the same topic or functionality
   * **Component-Based Chunking**: Process similar component instances together
+
 
 ## 3. Progressive Replacement with Verification
 - Create a safe copy of the node for text replacement

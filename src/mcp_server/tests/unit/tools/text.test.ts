@@ -37,7 +37,6 @@ describe("Text Tools", () => {
         expect(mockServer.tool).toHaveBeenCalled();
         expect(registeredTools["create_text"]).toBeDefined();
         expect(registeredTools["set_multiple_text_contents"]).toBeDefined();
-        expect(registeredTools["scan_text_nodes"]).toBeDefined();
     });
 
     it("create_text should call sendCommandToFigma with correct params", async () => {
@@ -77,27 +76,6 @@ describe("Text Tools", () => {
         expect(result.content[0].text).toContain("Starting text replacement");
     });
 
-    it("scan_text_nodes should call sendCommandToFigma with correct params", async () => {
-        registerTextTools(mockServer as any);
-        (sendCommandToFigma as any).mockResolvedValue({
-            success: true,
-            totalNodes: 5,
-            processedNodes: 5,
-            chunks: 1,
-            textNodes: []
-        });
-
-        const params = { nodeId: "node-1" };
-        const result = await registeredTools["scan_text_nodes"](params);
-
-        expect(sendCommandToFigma).toHaveBeenCalledWith("scan_text_nodes", {
-            nodeId: "node-1",
-            useChunking: true,
-            chunkSize: 10
-        }, 120000);
-        expect(result.content[0].text).toContain("Starting text node scanning");
-    });
-
     it("set_text_style should call sendCommandToFigma with correct params", async () => {
         registerTextTools(mockServer as any);
         (sendCommandToFigma as any).mockResolvedValue({ id: "123:456" });
@@ -127,7 +105,7 @@ describe("Text Tools", () => {
         const result = promptHandler({});
         const text = result.messages[0].content.text;
 
-        expect(text).toContain('fields: ["characters", "style"]');
-        expect(text).not.toContain('get_nodes_info(nodeIds: ["node-id"])  // optional');
+        expect(text).toContain('filter: { type: ["TEXT"] }');
+        expect(text).not.toContain('scan_text_nodes');
     });
 });

@@ -3,6 +3,41 @@
  */
 
 import { rgbaToHex } from './colorUtils.js';
+import { PathTuple } from '../../shared/nodeTypes.js';
+
+/**
+ * Constant set of property names that can be read directly from a Figma node
+ * without requiring an expensive exportAsync call.
+ */
+export const SAFE_LIST_PROPERTIES: ReadonlySet<string> = new Set([
+    // Identity & structure
+    "id", "name", "type", "parent", "key", "expanded",
+    // Visibility
+    "visible", "locked", "opacity", "blendMode", "isMask", "maskType",
+    // Geometry & transform
+    "x", "y", "width", "height", "rotation", "absoluteBoundingBox", "absoluteRenderBounds", "absoluteTransform", "relativeTransform", "constrainProportions",
+    // Auto-layout
+    "layoutMode", "layoutAlign", "layoutGrow", "layoutPositioning", "layoutWrap", "layoutSizingHorizontal", "layoutSizingVertical", "primaryAxisAlignItems", "primaryAxisSizingMode", "counterAxisAlignItems", "counterAxisSizingMode", "counterAxisSpacing", "counterAxisAlignContent", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "itemSpacing", "minWidth", "maxWidth", "minHeight", "maxHeight", "clipsContent",
+    // Constraints
+    "constraints",
+    // Corner radius
+    "cornerRadius", "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius", "cornerSmoothing",
+    // Fills & strokes
+    "fills", "fillStyleId", "strokes", "strokeStyleId", "strokeWeight", "strokeAlign", "strokeCap", "strokeJoin", "strokeMiterLimit", "dashPattern", "strokeLeftWeight", "strokeRightWeight", "strokeTopWeight", "strokeBottomWeight",
+    // Effects
+    "effects", "effectStyleId",
+    // Text
+    "characters", "fontSize", "fontName", "fontWeight", "lineHeight", "letterSpacing", "paragraphIndent", "paragraphSpacing", "listSpacing", "textCase", "textDecoration", "textAlignHorizontal", "textAlignVertical", "textAutoResize", "autoRename", "maxLines", "textTruncation", "hangingPunctuation", "hangingList", "leadingTrim", "hasMissingFont", "hyperlink",
+    // Component / instance
+    "componentProperties", "componentPropertyDefinitions", "componentPropertyReferences", "variantProperties", "overrides", "exposedInstances", "isExposedInstance", "scaleFactor", "mainComponent",
+    // Prototyping
+    "reactions", "transitionNodeID", "transitionDuration", "transitionEasing",
+    // Variables
+    "boundVariables", "explicitVariableModes",
+    // Export & dev metadata
+    "exportSettings", "devStatus", "annotations"
+]);
+
 
 /**
  * Filters and transforms a Figma node for serialization
@@ -76,3 +111,36 @@ export async function collectNodesToProcess(
         }
     }
 }
+
+/**
+ * Builds the full ancestor chain from the containing page down to the immediate parent.
+ * Pages return []. Direct children of a page return [[pageType, pageId, pageName]].
+ * The node itself is NOT included in the path.
+ */
+export function buildPathArray(node: any): PathTuple[] {
+    const path: PathTuple[] = [];
+    let current = node.parent;
+
+    while (current && current.type !== 'DOCUMENT') {
+        path.unshift([current.type as string, current.id as string, current.name as string]);
+        if (current.type === 'PAGE') break;
+        current = current.parent;
+    }
+
+    return path;
+}
+
+/**
+ * Performs a synchronous recursive walk of node.children to count all descendants.
+ * Does not include the node itself.
+ */
+export function countDescendants(node: any): number {
+    let count = 0;
+    if (node && 'children' in node && Array.isArray(node.children)) {
+        for (const child of node.children) {
+            count += 1 + countDescendants(child);
+        }
+    }
+    return count;
+}
+

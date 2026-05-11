@@ -320,6 +320,7 @@ describe("Phase 4 §3a (direct invocation): getConnectPayload — page scope", (
             documentId: "doc-1",
             documentName: "Sample Doc",
             pageCount: 3,
+            descendantCount: 2,
             pages: [
                 {
                     pageId: "p2",
@@ -380,12 +381,12 @@ describe("Phase 4 §3a (direct invocation): getConnectPayload — node scope", (
                 nodeId: "deep",
                 nodeName: "Deep",
                 type: "FRAME",
-                parentNodeId: "outer",
-                parentNodeName: "Outer",
-                parentNodeType: "FRAME",
-                containingPageId: "p2",
-                containingPageName: "Flow",
-                children: [{ id: "rect", name: "Rect", type: "RECTANGLE" }],
+                path: [
+                    ["PAGE", "p2", "Flow"],
+                    ["FRAME", "outer", "Outer"]
+                ],
+                descendantCount: 1,
+                children: [{ id: "rect", name: "Rect", "type": "RECTANGLE" }],
             },
         });
         expect(env.loadCalls).toEqual([]);
@@ -411,7 +412,7 @@ describe("Phase 4 §3a (direct invocation): getConnectPayload — node scope", (
             const r = await callConnectPayload();
             expect(r.editableScopeType).toBe("node");
             expect(r.node.type).toBe(type);
-            expect(r.node.containingPageId).toBe("px");
+            expect(r.node.path[0]).toEqual(["PAGE", "px", "PX"]);
         }
     });
 });
@@ -486,102 +487,3 @@ describe("Phase 4 §3a (direct invocation): getConnectPayload — structured err
     });
 });
 
-// --------------------------------------------------------------------------
-// §4: get_nodes_info Q7 shape-frozen regression
-// --------------------------------------------------------------------------
-
-describe("Phase 4 §4: get_nodes_info shape-frozen regression (Q7)", () => {
-    let registered: Record<string, Function>;
-    let sendCommandToFigma: any;
-
-    beforeEach(async () => {
-        mock.module("../../../figma-client.js", () => ({
-            sendCommandToFigma: mock(() => Promise.resolve({})),
-            joinChannel: mock(() => Promise.resolve()),
-            resetChannel: mock(() => {}),
-        }));
-        const clientMod = await import("../../../figma-client.js");
-        sendCommandToFigma = clientMod.sendCommandToFigma;
-
-        const docMod = await import("../../../tools/document.js");
-        registered = {};
-        const mockServer: any = {
-            tool: mock(
-                (name: string, _d: any, _s: any, handler: Function) => {
-                    registered[name] = handler;
-                },
-            ),
-            prompt: mock(() => {}),
-        };
-        docMod.registerDocumentTools(mockServer);
-    });
-
-    it("get_nodes_info({ nodeIds }) returns [{ nodeId, parentId, document }] — NOT the Change 1 node block", async () => {
-        const legacyShape = [
-            {
-                nodeId: "59:8",
-                parentId: "0:1",
-                document: { id: "59:8", name: "TestMain", type: "INSTANCE", children: [] },
-            },
-        ];
-        (sendCommandToFigma as any).mockResolvedValue(legacyShape);
-        const r = await registered["get_nodes_info"]({ nodeIds: ["59:8"] });
-        const parsed = JSON.parse(r.content[0].text);
-        expect(parsed).toEqual(legacyShape);
-        // Q7 negative invariants — Change 1 node-block fields MUST NOT appear at top-level.
-        for (const item of parsed) {
-            expect(item.nodeName).toBeUndefined();
-            expect(item.containingPageId).toBeUndefined();
-            expect(item.containingPageName).toBeUndefined();
-            expect(item.parentNodeId).toBeUndefined();
-            expect(item.parentNodeName).toBeUndefined();
-            expect(item.parentNodeType).toBeUndefined();
-            expect(item.type).toBeUndefined();
-            // The legacy shape DOES carry `document` and `parentId`.
-            expect(item.parentId).toBe("0:1");
-            expect(item.document).toBeDefined();
-        }
-    });
-
-    it("get_nodes_info() with no args dispatches to sendCommandToFigma with undefined nodeIds (delegating scope-resolution to the plugin)", async () => {
-        (sendCommandToFigma as any).mockResolvedValue([]);
-        await registered["get_nodes_info"]({});
-        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", {
-            nodeIds: undefined,
-            fields: undefined,
-        });
-    });
-
-    it("get_nodes_info() returning a single-element scope array preserves the legacy shape (no Change 1 fields)", async () => {
-        const scopeShape = [
-            {
-                nodeId: "frame-deep",
-                parentId: "frame-outer",
-                document: {
-                    id: "frame-deep",
-                    name: "Deep",
-                    type: "FRAME",
-                    children: [{ id: "rect", name: "Rect", type: "RECTANGLE" }],
-                },
-            },
-        ];
-        (sendCommandToFigma as any).mockResolvedValue(scopeShape);
-        const r = await registered["get_nodes_info"]({});
-        const parsed = JSON.parse(r.content[0].text);
-        expect(parsed).toEqual(scopeShape);
-        expect(parsed.length).toBe(1);
-        // Same Q7 negative checks as above.
-        expect(parsed[0].nodeName).toBeUndefined();
-        expect(parsed[0].containingPageId).toBeUndefined();
-    });
-
-    it("get_nodes_info() readonly behavior: today's plugin returns [] — locked in (NOT redefined)", async () => {
-        // The plan §4 says: "behavior is whatever it is today; document the
-        // current behavior in the test rather than redefining it."
-        // Plugin's readonly path (main.ts: when no scopeRootId) returns [].
-        (sendCommandToFigma as any).mockResolvedValue([]);
-        const r = await registered["get_nodes_info"]({});
-        const parsed = JSON.parse(r.content[0].text);
-        expect(parsed).toEqual([]);
-    });
-});

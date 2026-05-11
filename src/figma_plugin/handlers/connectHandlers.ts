@@ -1,4 +1,5 @@
 import { getPluginState } from '../src/main.js';
+import { buildPathArray, countDescendants } from '../utils/nodeUtils.js';
 
 export async function getConnectPayload() {
     try {
@@ -10,6 +11,7 @@ export async function getConnectPayload() {
                 pageName: page.name
             }));
 
+            // Read-only mode: no descendantCount (pages are not loaded)
             return {
                 editableScopeType: "readonly",
                 documentId: figma.root.id,
@@ -53,6 +55,7 @@ export async function getConnectPayload() {
                     pages: [{
                         pageId: scopeNode.id,
                         pageName: scopeNode.name,
+                        descendantCount: countDescendants(scopeNode),
                         children
                     }]
                 };
@@ -84,6 +87,7 @@ export async function getConnectPayload() {
                     }));
                 }
 
+                // v1.4.0: Replace 5 legacy fields with path array + descendantCount
                 return {
                     editableScopeType: "node",
                     documentId: figma.root.id,
@@ -92,11 +96,8 @@ export async function getConnectPayload() {
                         nodeId: scopeNode.id,
                         nodeName: scopeNode.name,
                         type: scopeNode.type,
-                        parentNodeId: scopeNode.parent?.id,
-                        parentNodeName: scopeNode.parent?.name,
-                        parentNodeType: scopeNode.parent?.type,
-                        containingPageId: containingPage.id,
-                        containingPageName: containingPage.name,
+                        path: buildPathArray(scopeNode),
+                        descendantCount: countDescendants(scopeNode),
                         children
                     }
                 };

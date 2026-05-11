@@ -1,4 +1,6 @@
 // src/figma_plugin/handlers/variableHandlers.ts
+import { sendProgressUpdate } from '../utils/progressUtils.js';
+
 
 export interface StyleConsumerEntry {
     styleId: string;
@@ -321,19 +323,39 @@ async function findVariableConsumers(
 }
 
 export async function getVariables(params: any) {
-    const { variableId, includeConsumers } = params || {};
+    const { variableId, includeConsumers, commandId } = params || {};
 
     try {
-        // Lookup Mode (if variableId array is provided)
+        // 1. Lookup Mode
         if (variableId && variableId.length > 0) {
-            // Look up each variable in parallel
-            const variableDetails: any[] = (await Promise.all(variableId.map(async (id: string) => {
+            const variables: any[] = [];
+            const idSet = new Set(variableId as string[]);
+            // Per spec §get_variables rule 2: only includeConsumers: 'document'
+            // streams. Lookup mode (no includeConsumers) and current_page mode
+            // are O(1) in page count — no bookends, no yield.
+            const isStreaming = includeConsumers === 'document';
+
+            if (commandId && isStreaming) {
+                await sendProgressUpdate(
+                    commandId,
+                    'get_variables',
+                    'started',
+                    0,
+                    variableId.length,
+                    0,
+                    `Fetching details for ${variableId.length} variables`
+                );
+            }
+
+            for (const [index, id] of (variableId as string[]).entries()) {
                 const variable = await figma.variables.getVariableByIdAsync(id);
-                if (!variable) return null;
+                if (!variable) continue;
+                
                 const collection = await figma.variables.getVariableCollectionByIdAsync(
                     variable.variableCollectionId
                 );
-                return {
+                
+                variables.push({
                     id: variable.id,
                     name: variable.name,
                     key: variable.key,
@@ -344,92 +366,95 @@ export async function getVariables(params: any) {
                     remote: variable.remote,
                     scopes: variable.scopes,
                     valuesByMode: variable.valuesByMode,
-                };
-            }))).filter(Boolean);
+                });
+            }
 
-            // Consumer scanning — single walk, results grouped by variable ID
+            // Consumer scanning
             if (includeConsumers) {
-                const idSet = new Set(variableId as string[]);
                 const stylePromise = findStyleConsumers(idSet);
                 const aliasPromise = findAliasConsumers(idSet);
                 
-                let nodeConsumerMap: Map<string, Array<{ nodeId: string; nodeName: string; nodeType: string; fields: string[] }>>;
-                let styleConsumerMap: Map<string, StyleConsumerEntry[]>;
-                let aliasConsumerMap: Map<string, AliasConsumerEntry[]>;
-
-                if (includeConsumers === "current_page") {
-                    const [_nodeConsumerMap, _styleConsumerMap, _aliasConsumerMap] = await Promise.all([
-                        findVariableConsumers(figma.currentPage, idSet),
-                        stylePromise,
-                        aliasPromise
-                    ]);
-                    nodeConsumerMap = _nodeConsumerMap;
-                    styleConsumerMap = _styleConsumerMap;
-                    aliasConsumerMap = _aliasConsumerMap;
+                let nodeConsumerMap = new Map<string, any[]>();
+                
+                if (includeConsumers === 'current_page') {
+                    nodeConsumerMap = await findVariableConsumers(figma.currentPage, idSet);
                 } else {
-                    const _styleConsumerMap = await stylePromise;
-                    const _aliasConsumerMap = await aliasPromise;
-                    const _nodeMaps: any[] = [];
-                    for (const page of figma.root.children) {
-                        _nodeMaps.push(await findVariableConsumers(page, idSet));
-                    }
-                    
-                    nodeConsumerMap = new Map();
-                    for (const pageResults of _nodeMaps) {
-                        for (const [vid, entries] of pageResults) {
+                    // includeConsumers === 'document'
+                    const pages = figma.root.children;
+                    for (const [index, page] of pages.entries()) {
+                        const pageConsumers = await findVariableConsumers(page, idSet);
+                        for (const [vid, entries] of pageConsumers) {
                             const existing = nodeConsumerMap.get(vid) || [];
                             nodeConsumerMap.set(vid, existing.concat(entries));
                         }
+                        
+                        if (commandId) {
+                            await sendProgressUpdate(
+                                commandId, 
+                                'get_variables', 
+                                'in_progress', 
+                                Math.round(((index + 1) / pages.length) * 100), 
+                                pages.length, 
+                                index + 1, 
+                                `Scanning page ${index + 1}/${pages.length} for consumers: ${page.name}`
+                            );
+                        }
                     }
-                    styleConsumerMap = _styleConsumerMap;
-                    aliasConsumerMap = _aliasConsumerMap;
                 }
 
-                // Attach consumers to each variable
-                for (const v of variableDetails) {
+                const styleConsumerMap = await stylePromise;
+                const aliasConsumerMap = await aliasPromise;
+
+                for (const v of variables) {
                     v.nodeConsumers = nodeConsumerMap.get(v.id) || [];
                     v.styleConsumers = styleConsumerMap.get(v.id) || [];
                     v.aliasConsumers = aliasConsumerMap.get(v.id) || [];
                 }
             }
 
-            return variableDetails;
+            if (commandId && isStreaming) {
+                await sendProgressUpdate(
+                    commandId,
+                    'get_variables',
+                    'completed',
+                    100,
+                    1,
+                    1,
+                    `Completed fetching variable information`
+                );
+            }
+            return variables;
         }
 
-        // List All Mode (Discovery)
+        // 2. List All Mode (Discovery)
         const collections = await figma.variables.getLocalVariableCollectionsAsync();
         const variables = await figma.variables.getLocalVariablesAsync();
 
-        // Transform Collections
-        const mappedCollections = collections.map((c: any) => ({
-            id: c.id,
-            name: c.name,
-            key: c.key,
-            modes: c.modes, // [{ modeId, name }, ...]
-            defaultModeId: c.defaultModeId,
-            remote: c.remote,
-            variableIds: c.variableIds,
-        }));
-
-        // Transform Variables
-        const mappedVariables = variables.map((v: any) => ({
-            id: v.id,
-            name: v.name,
-            key: v.key,
-            type: v.resolvedType,
-            collectionId: v.variableCollectionId,
-            valuesByMode: v.valuesByMode,
-            description: v.description,
-        }));
-
         return {
-            collections: mappedCollections,
-            variables: mappedVariables,
+            collections: collections.map((c: any) => ({
+                id: c.id,
+                name: c.name,
+                key: c.key,
+                modes: c.modes,
+                defaultModeId: c.defaultModeId,
+                remote: c.remote,
+                variableIds: c.variableIds,
+            })),
+            variables: variables.map((v: any) => ({
+                id: v.id,
+                name: v.name,
+                key: v.key,
+                type: v.resolvedType,
+                collectionId: v.variableCollectionId,
+                valuesByMode: v.valuesByMode,
+                description: v.description,
+            })),
         };
     } catch (err: any) {
         throw new Error(`Error getting variables: ${err.message}`);
     }
 }
+
 
 export async function deleteVariables(params: any) {
     const { variableIds, collectionId } = params || {};

@@ -14,7 +14,7 @@ export function registerComponentTools(server: McpServer) {
         "Get components from the Figma document with filtering options",
         {
             filter: z.enum(["local", "remote"]).optional().describe("Filter components by origin: 'local' (created in this file) or 'remote' (library components). If omitted, returns all."),
-            scope: z.enum(["current_page", "document"]).optional().default("current_page").describe("Scope of the search: 'current_page' (default) or 'document' (entire file, slower)."),
+            scope: z.enum(["current_page", "document"]).optional().default("current_page").describe("Scope of the search: 'current_page' (default) or 'document' (entire file, streams progress page-by-page and survives 60s inactivity timeout on large files)."),
         },
         async ({ filter, scope }: any) => {
             try {
@@ -401,7 +401,7 @@ This strategy enables transferring content and property overrides from a source 
   \`\`\`
 
 ### 4. Verification
-- Verify results with \`get_nodes_info(nodeIds, fields: ["componentProperties", "characters", "overrides"])\`
+- Verify results with \`get_nodes_info(nodeIds, properties: ["componentProperties", "characters", "overrides"])\`
 - Confirm text content and style overrides have transferred successfully
 
 ## Key Tips

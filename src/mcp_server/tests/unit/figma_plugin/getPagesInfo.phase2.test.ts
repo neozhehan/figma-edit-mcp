@@ -452,7 +452,9 @@ describe("Phase 2.3: removed-fields sweep", () => {
         const files = await walk("src");
         const offenders: string[] = [];
         for (const f of files) {
-            if (f.endsWith("getPagesInfo.phase2.test.ts")) continue;
+            // Skip test files — they legitimately construct DOCUMENT-typed
+            // parent stubs to exercise buildPathArray / connect-flow walks.
+            if (f.endsWith(".test.ts")) continue;
             const src = await fs.readFile(f, "utf8");
             if (/type\s*:\s*["']DOCUMENT["']/.test(src))
                 offenders.push(f);

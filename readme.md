@@ -225,8 +225,7 @@ The MCP server provides the following tools for interacting with Figma:
 | Tool | Description |
 |---|---|
 | `get_pages_info` | Get information about specific pages in Figma including their children |
-| `get_nodes_info` | Get detailed information about one or more nodes by providing an array of node IDs |
-| `scan_nodes_by_types` | Find child nodes matching specific types (e.g., `COMPONENT`, `FRAME`) |
+| `get_nodes_info` | Get detailed information about one or more nodes. Supports recursive depth (`maxDepth`), filtering (`filter`), and specifying fields (`fields`) |
 | `set_selections` | Set selection to one or more nodes and scroll the viewport to show them |
 
 ### Node Creation
@@ -271,7 +270,6 @@ The MCP server provides the following tools for interacting with Figma:
 
 | Tool | Description |
 |---|---|
-| `scan_text_nodes` | Scan and retrieve all text nodes within a node, with chunking for large designs |
 | `set_multiple_text_contents` | Batch-update text content across multiple nodes in parallel |
 
 ### Annotations

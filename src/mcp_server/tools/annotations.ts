@@ -229,9 +229,12 @@ Scan all text nodes to identify annotations and their descriptions:
 
 \`\`\`typescript
 // Get all text nodes in the selection
-const textNodes = await scan_text_nodes({
-  nodeId: selectedNodeId
+const response = await get_nodes_info({
+  nodeIds: [selectedNodeId],
+  filter: { type: ["TEXT"] },
+  properties: ["characters"]
 });
+const textNodes = response.nodes;
 
 // Filter and group annotation markers and descriptions
 
@@ -253,14 +256,11 @@ Get all potential target elements that annotations might refer to:
 
 \`\`\`typescript
 // Scan for all UI elements that could be annotation targets
-const targetNodes = await scan_nodes_by_types({
-  nodeId: selectedNodeId,
-  types: [
-    "COMPONENT",
-    "INSTANCE",
-    "FRAME"
-  ]
+const response = await get_nodes_info({
+  nodeIds: [selectedNodeId],
+  filter: { type: ["COMPONENT", "INSTANCE", "FRAME"] }
 });
+const targetNodes = response.nodes;
 \`\`\`
 
 ## Step 4: Match Annotations to Targets
