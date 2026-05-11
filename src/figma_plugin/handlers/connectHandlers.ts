@@ -52,10 +52,10 @@ export async function getConnectPayload() {
                     documentId: figma.root.id,
                     documentName: figma.root.name,
                     pageCount: figma.root.children.length,
-                    descendantCount: countDescendants(scopeNode),
                     pages: [{
                         pageId: scopeNode.id,
                         pageName: scopeNode.name,
+                        descendantCount: countDescendants(scopeNode),
                         children
                     }]
                 };

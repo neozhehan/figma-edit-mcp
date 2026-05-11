@@ -186,15 +186,36 @@ export async function getNodesInfo(params: any) {
             );
 
             // 3. Top-level result construction
-            if (mappedSubtree) {
-                // Ensure top-level entries have the mandatory path and descendantCount
-                mappedSubtree.path = buildPathArray(node);
-                mappedSubtree.descendantCount = countDescendants(node);
-                nodes.push(mappedSubtree);
+            // Per spec §Filtering: requested ids ALWAYS appear in the response,
+            // even when neither the node nor any descendant matches the filter.
+            // mapNodeRecursive returns null in that case — synthesize a
+            // passthrough entry so the requested id is preserved.
+            let entry = mappedSubtree;
+            if (!entry) {
+                entry = {
+                    id: node.id,
+                    name: node.name,
+                    type: node.type
+                };
+                if (Array.isArray(properties) && properties.length > 0) {
+                    const props = await extractProperties(node, properties, exportCache);
+                    if (Object.keys(props).length > 0) {
+                        entry.properties = props;
+                    }
+                }
             }
+            // Ensure top-level entries have the mandatory path and descendantCount
+            entry.path = buildPathArray(node);
+            entry.descendantCount = countDescendants(node);
+            nodes.push(entry);
 
-            // Multi-id streaming boundary
-            if (commandId && (index + 1) % 25 === 0) {
+            // Multi-id streaming: per spec §Loading rule 2, emit `in_progress`
+            // + yield AFTER EACH id (not every-25). Order matters — emit first
+            // resets the MCP 60s inactivity timer, yield then flushes the
+            // sandbox postMessage queue so the event isn't coalesced.
+            // Skipped for single-id calls (the intra-subtree pair inside
+            // mapNodeRecursive carries the timeout reset for the lone iteration).
+            if (commandId && uniqueIds.length > 1) {
                 await sendProgressUpdate(
                     commandId,
                     'get_nodes_info',
@@ -204,7 +225,6 @@ export async function getNodesInfo(params: any) {
                     index + 1,
                     `Processed ${index + 1}/${uniqueIds.length} top-level nodes`
                 );
-                // Yield to main thread
                 await new Promise(r => setTimeout(r, 0));
             }
         }
@@ -246,10 +266,12 @@ async function mapNodeRecursive(
     exportCache: Map<string, any>,
     progressTracker: { processed: number; commandId?: string }
 ): Promise<NodeEntry | null> {
-    // 1. Yield and progress every N nodes
+    // 1. Progress + yield every N nodes. Order is REQUIRED per spec
+    // (§Loading rule 2): emit first (resets MCP 60s inactivity timer), then
+    // yield (flushes the sandbox postMessage queue so the event isn't coalesced).
+    // Reversing the two reintroduces the coalescing bug.
     progressTracker.processed++;
     if (progressTracker.processed % 25 === 0) {
-        await new Promise(r => setTimeout(r, 0));
         if (progressTracker.commandId) {
             await sendProgressUpdate(
                 progressTracker.commandId,
@@ -261,6 +283,7 @@ async function mapNodeRecursive(
                 `Traversed ${progressTracker.processed} total nodes...`
             );
         }
+        await new Promise(r => setTimeout(r, 0));
     }
 
     const matchesFilter = checkFilterMatch(node, filter);
@@ -316,9 +339,11 @@ async function mapNodeRecursive(
     }
 
     // 6. descendantCount on boundary nodes
-    // Populated ONLY if we reached maxDepth and node has children we didn't visit
-    if (hasChildren && !shouldRecurse) {
-        entry.descendantCount = countDescendants(node);
+    // Per spec §Per-node entry: boundary nodes at maxDepth carry descendantCount
+    // so the LLM can distinguish genuine leaves (descendantCount: 0, children: [])
+    // from truncated nodes (descendantCount: 12, children: []).
+    if (!shouldRecurse) {
+        entry.descendantCount = hasChildren ? countDescendants(node) : 0;
     }
 
     return entry;
@@ -370,11 +395,26 @@ async function extractProperties(
         }
     }
 
+    // Spec §Per-node entry, with `properties`: these keys are silently excluded
+    // from the `properties` block — they live at the structured fields level.
+    // Requesting them via `properties: [...]` must be a no-op, even though they
+    // appear in SAFE_LIST_PROPERTIES (where they're used for filter-key matching).
+    const STRUCTURAL_KEYS = new Set(["id", "name", "type", "children", "path"]);
+
     for (const key of requestedProps) {
+        if (STRUCTURAL_KEYS.has(key)) continue;
         if (SAFE_LIST_PROPERTIES.has(key)) {
-            const val = (node as any)[key];
+            // mainComponent on InstanceNode requires getMainComponentAsync() under
+            // documentAccess: "dynamic-page" (manifest.json). Reading it sync
+            // returns a Promise that would be stored unawaited.
+            let val: any;
+            if (key === "mainComponent" && typeof (node as any).getMainComponentAsync === "function") {
+                val = await (node as any).getMainComponentAsync();
+            } else {
+                val = (node as any)[key];
+            }
             // Only include if property is applicable (not undefined)
-            if (val !== undefined) {
+            if (val !== undefined && val !== null) {
                 props[key] = val;
             }
         } else if (exportedData && exportedData[key] !== undefined) {

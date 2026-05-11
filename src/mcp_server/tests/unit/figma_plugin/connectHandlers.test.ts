@@ -65,12 +65,9 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
         expect(src).toMatch(/await\s+scopeNode\.loadAsync\(\)/);
     });
 
-    it("node-scope branch includes parent + containing page metadata fields", () => {
-        expect(src).toMatch(/parentNodeId/);
-        expect(src).toMatch(/parentNodeName/);
-        expect(src).toMatch(/parentNodeType/);
-        expect(src).toMatch(/containingPageId/);
-        expect(src).toMatch(/containingPageName/);
+    it("node-scope branch includes path array and descendantCount", () => {
+        expect(src).toMatch(/path:\s*buildPathArray\(/);
+        expect(src).toMatch(/descendantCount:\s*countDescendants\(/);
     });
 });
 
@@ -183,11 +180,11 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
                 nodeId: "n1",
                 nodeName: "Target",
                 type: "FRAME",
-                parentNodeId: "wrapper",
-                parentNodeName: "Wrapper",
-                parentNodeType: "FRAME",
-                containingPageId: "sp2",
-                containingPageName: "Flow",
+                path: [
+                    ["PAGE", "sp2", "Flow"],
+                    ["FRAME", "wrapper", "Wrapper"]
+                ],
+                descendantCount: 1,
                 children: [
                     { id: "n1-c1", name: "Child X", type: "RECTANGLE" },
                 ],
@@ -204,9 +201,9 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         expect(parsed.node).toEqual(payload.node);
         // Must not have pages array
         expect(parsed.pages).toBeUndefined();
-        expect(parsed.node.containingPageId).toBe("sp2");
-        expect(parsed.node.containingPageName).toBe("Flow");
-        expect(parsed.node.parentNodeId).toBe("wrapper");
+        expect(parsed.node.path[0]).toEqual(["PAGE", "sp2", "Flow"]);
+        expect(parsed.node.path[1]).toEqual(["FRAME", "wrapper", "Wrapper"]);
+        expect(parsed.node.descendantCount).toBe(1);
         expect(parsed.node.children).toHaveLength(1);
         expect((resetChannel as any).mock.calls.length).toBe(0);
     });

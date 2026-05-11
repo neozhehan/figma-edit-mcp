@@ -298,7 +298,7 @@ export function registerTextTools(server: McpServer) {
   * Forms (labels, input fields, validation text)
   * Navigation (menu items, breadcrumbs)
 \`\`\`
-get_nodes_info(nodeIds: ["parent-id"], filter: { type: ["TEXT"] }, maxDepth: 10)
+get_nodes_info(nodeIds: ["parent-id"], filter: { type: ["TEXT"] }, properties: ["characters"], maxDepth: 10)
 \`\`\`
 
 ## 2. Strategic Chunking for Complex Designs

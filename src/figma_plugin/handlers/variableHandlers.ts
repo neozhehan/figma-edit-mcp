@@ -330,15 +330,19 @@ export async function getVariables(params: any) {
         if (variableId && variableId.length > 0) {
             const variables: any[] = [];
             const idSet = new Set(variableId as string[]);
-            
-            if (commandId) {
+            // Per spec §get_variables rule 2: only includeConsumers: 'document'
+            // streams. Lookup mode (no includeConsumers) and current_page mode
+            // are O(1) in page count — no bookends, no yield.
+            const isStreaming = includeConsumers === 'document';
+
+            if (commandId && isStreaming) {
                 await sendProgressUpdate(
-                    commandId, 
-                    'get_variables', 
-                    'started', 
-                    0, 
-                    variableId.length, 
-                    0, 
+                    commandId,
+                    'get_variables',
+                    'started',
+                    0,
+                    variableId.length,
+                    0,
                     `Fetching details for ${variableId.length} variables`
                 );
             }
@@ -408,14 +412,14 @@ export async function getVariables(params: any) {
                 }
             }
 
-            if (commandId) {
+            if (commandId && isStreaming) {
                 await sendProgressUpdate(
-                    commandId, 
-                    'get_variables', 
-                    'completed', 
-                    100, 
-                    1, 
-                    1, 
+                    commandId,
+                    'get_variables',
+                    'completed',
+                    100,
+                    1,
+                    1,
                     `Completed fetching variable information`
                 );
             }

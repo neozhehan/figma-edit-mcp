@@ -67,15 +67,15 @@ describe("Document Tools", () => {
 
         // Case 1: Specific nodeIds
         await registeredTools["get_nodes_info"]({ nodeIds: ["node-1"] });
-        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: ["node-1"], fields: undefined });
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: ["node-1"], filter: undefined, properties: undefined, maxDepth: undefined });
 
         // Case 2: No nodeIds
         await registeredTools["get_nodes_info"]({});
-        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: undefined, fields: undefined });
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: undefined, filter: undefined, properties: undefined, maxDepth: undefined });
         
-        // Case 3: With fields
-        await registeredTools["get_nodes_info"]({ nodeIds: ["node-1"], fields: ["fills", "componentProperties"] });
-        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: ["node-1"], fields: ["fills", "componentProperties"] });
+        // Case 3: With fields and filter
+        await registeredTools["get_nodes_info"]({ nodeIds: ["node-1"], fields: ["fills", "componentProperties"], filter: { type: ["TEXT"] }, maxDepth: 2 });
+        expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", { nodeIds: ["node-1"], properties: ["fills", "componentProperties"], filter: { type: ["TEXT"] }, maxDepth: 2 });
     });
 
     it("join_channel should call joinChannel and then get_connect_payload for discovery", async () => {
@@ -153,90 +153,3 @@ describe("Document Tools", () => {
     });
 });
 
-// ============================================================
-// Phase 4 §4: get_nodes_info Regression Tests (Q7 — shape unchanged)
-// ============================================================
-
-describe("Phase 4 §4: get_nodes_info response shape regression", () => {
-    let registeredTools: Record<string, Function>;
-    let mockServer: any;
-
-    beforeEach(() => {
-        registeredTools = {};
-        mockServer = {
-            tool: mock((name, description, schema, handler) => {
-                registeredTools[name] = handler;
-            }),
-            prompt: mock(() => {})
-        };
-        (sendCommandToFigma as any).mockClear();
-    });
-
-    it("get_nodes_info({ nodeIds: [<id>] }) returns [{ nodeId, parentId, document }]", async () => {
-        const mockResult = [
-            {
-                nodeId: "42:6",
-                parentId: "0:1",
-                document: { name: "TestComponent", id: "42:6", type: "COMPONENT" },
-            },
-        ];
-        (sendCommandToFigma as any).mockResolvedValue(mockResult);
-        registerDocumentTools(mockServer as any);
-
-        const result = await registeredTools["get_nodes_info"]({ nodeIds: ["42:6"] });
-        const parsed = JSON.parse(result.content[0].text);
-
-        expect(parsed).toHaveLength(1);
-        expect(parsed[0].nodeId).toBe("42:6");
-        expect(parsed[0].parentId).toBe("0:1");
-        expect(parsed[0].document).toBeDefined();
-        // Must NOT contain Change 1 node-scope fields
-        expect(parsed[0].nodeName).toBeUndefined();
-        expect(parsed[0].containingPageId).toBeUndefined();
-        expect(parsed[0].node).toBeUndefined();
-    });
-
-    it("get_nodes_info() (empty args, scope root) returns the same { nodeId, parentId, document }[] shape", async () => {
-        const mockResult = [
-            {
-                nodeId: "scope-root",
-                parentId: "0:1",
-                document: { name: "Scope Frame", id: "scope-root", type: "FRAME" },
-            },
-        ];
-        (sendCommandToFigma as any).mockResolvedValue(mockResult);
-        registerDocumentTools(mockServer as any);
-
-        const result = await registeredTools["get_nodes_info"]({});
-        const parsed = JSON.parse(result.content[0].text);
-
-        // Shape must be the pre-v1.3.0 shape — array with nodeId/parentId/document
-        expect(Array.isArray(parsed) || typeof parsed === "object").toBe(true);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-            expect(parsed[0]).toHaveProperty("nodeId");
-            expect(parsed[0]).toHaveProperty("document");
-        }
-    });
-
-    it("get_nodes_info response does NOT contain Change 1 node-scope 'node' block", async () => {
-        const mockResult = [
-            {
-                nodeId: "n1",
-                parentId: "p1",
-                document: { name: "N", id: "n1", type: "FRAME" },
-            },
-        ];
-        (sendCommandToFigma as any).mockResolvedValue(mockResult);
-        registerDocumentTools(mockServer as any);
-
-        const result = await registeredTools["get_nodes_info"]({ nodeIds: ["n1"] });
-        const parsed = JSON.parse(result.content[0].text);
-
-        // Verify absence of all Change 1 Node-scope fields
-        for (const item of parsed) {
-            expect(item.editableScopeType).toBeUndefined();
-            expect(item.containingPageId).toBeUndefined();
-            expect(item.containingPageName).toBeUndefined();
-        }
-    });
-});

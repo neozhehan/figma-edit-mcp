@@ -72,7 +72,7 @@ Verify new types, Zod schemas, and utility functions compile cleanly before buil
 - [x] **`properties` on every node**: When present, attached to top-level entries AND every included descendant in `children`.
 - [x] **Inapplicable property keys are omitted**: e.g., `characters` is omitted for a `FRAME` even if requested. Never return `null` or `undefined` — just exclude the key.
 - [x] **Structural fields excluded from `properties`**: `id`, `name`, `type`, `children`, `path` are silently excluded even if requested. These live at the structured fields level.
-- [x] **`mainComponent` async handling**: On `InstanceNode`, direct read is sync except in `dynamic-page` manifest mode, which requires `getMainComponentAsync()`. Handler SHOULD detect manifest mode and use the async accessor. Still avoids `exportAsync`, but is a per-instance async hop.
+- [x] **`mainComponent` async handling**: On `InstanceNode`, direct read is sync except in `dynamic-page` manifest mode, which requires `getMainComponentAsync()`. Handler MUST detect manifest mode and use the async accessor. Still avoids `exportAsync`, but is a per-instance async hop.
 
 ### 1.6 — Export Cache
 
@@ -168,11 +168,11 @@ Phases 1+2 rewrite the plugin handler and add streaming. Verify the plugin compi
 
 ### 4.2 — Update `get_components` Registration
 
-- [ ] **Update description** in `src/mcp_server/tools/components.ts` to explicitly note that `scope: 'document'` now streams progress page-by-page and survives the 60s inactivity timeout on large files.
+- [x] **Update description** in `src/mcp_server/tools/components.ts` to explicitly note that `scope: 'document'` now streams progress page-by-page and survives the 60s inactivity timeout on large files.
 
 ### 4.3 — Update `get_variables` Registration
 
-- [ ] **Optionally extend** `includeConsumers: 'document'` description in `src/mcp_server/tools/variables.ts` to mention progress streaming. No schema change required.
+- [x] **Extend** `includeConsumers: 'document'` description in `src/mcp_server/tools/variables.ts` to mention progress streaming. No schema change required.
 
 ### ✅ Checkpoint: `bun run build:all`
 MCP server registration is now aligned with the plugin handler. Both sides compile against the new response shapes. Tests still fail (old shape assertions, removed tool references not yet cleaned up) — that's expected until Phases 5+6.
@@ -183,29 +183,29 @@ MCP server registration is now aligned with the plugin handler. Both sides compi
 
 ### 5.1 — Remove `scan_text_nodes`
 
-- [ ] Delete tool registration (`server.tool("scan_text_nodes", ...)`) at `src/mcp_server/tools/text.ts` (line ~281-358).
-- [ ] Delete plugin handler (`scanTextNodes` export) from `src/figma_plugin/handlers/textHandlers.ts` and any internal helpers that only serve `scan_text_nodes`.
-- [ ] Remove dispatch case (`case "scan_text_nodes"`) at `src/figma_plugin/src/main.ts` (line ~498-499).
-- [ ] Remove `scanTextNodes` import at `src/figma_plugin/src/main.ts` (line ~33).
-- [ ] Remove test cases for `scan_text_nodes` in `src/mcp_server/tests/unit/tools/text.test.ts` (lines ~40, 80-93).
+- [x] Delete tool registration (`server.tool("scan_text_nodes", ...)`) at `src/mcp_server/tools/text.ts` (line ~281-358).
+- [x] Delete plugin handler (`scanTextNodes` export) from `src/figma_plugin/handlers/textHandlers.ts` and any internal helpers that only serve `scan_text_nodes`.
+- [x] Remove dispatch case (`case "scan_text_nodes"`) at `src/figma_plugin/src/main.ts` (line ~498-499).
+- [x] Remove `scanTextNodes` import at `src/figma_plugin/src/main.ts` (line ~33).
+- [x] Remove test cases for `scan_text_nodes` in `src/mcp_server/tests/unit/tools/text.test.ts` (lines ~40, 80-93).
 
 ### 5.2 — Remove `scan_nodes_by_types`
 
-- [ ] Delete tool registration (`server.tool("scan_nodes_by_types", ...)`) at `src/mcp_server/tools/document.ts` (line ~86-160).
-- [ ] Delete plugin handler (`scanNodesByTypes` export) from `src/figma_plugin/handlers/annotationHandlers.ts`. Verify remaining annotation handlers (`getAnnotations`, `setMultipleAnnotations`) do not depend on it.
-- [ ] Remove dispatch case (`case "scan_nodes_by_types"`) at `src/figma_plugin/src/main.ts` (line ~502-503).
-- [ ] Remove `scanNodesByTypes` import at `src/figma_plugin/src/main.ts` (line ~34).
+- [x] Delete tool registration (`server.tool("scan_nodes_by_types", ...)`) at `src/mcp_server/tools/document.ts` (line ~86-160).
+- [x] Delete plugin handler (`scanNodesByTypes` export) from `src/figma_plugin/handlers/annotationHandlers.ts`. Verify remaining annotation handlers (`getAnnotations`, `setMultipleAnnotations`) do not depend on it.
+- [x] Remove dispatch case (`case "scan_nodes_by_types"`) at `src/figma_plugin/src/main.ts` (line ~502-503).
+- [x] Remove `scanNodesByTypes` import at `src/figma_plugin/src/main.ts` (line ~34).
 
 ### 5.3 — Update Prompts
 
-- [ ] **`text_replacement_strategy`** prompt in `text.ts` (line ~361-492): Replace `scan_text_nodes(nodeId: "node-id")` with `get_nodes_info({ nodeIds: ["node-id"], filter: { type: "TEXT" }, properties: ["characters"] })`.
-- [ ] **`annotation_conversion_strategy`** prompt in `annotations.ts` (line ~186-342): Replace both `scan_text_nodes` (Step 2, line ~232) and `scan_nodes_by_types` (Step 3, line ~256) references with `get_nodes_info` equivalents per the migration tables in the spec.
-- [ ] **Prompt-string sweep**: Grep for and update ALL occurrences across `src/mcp_server/tools/*.ts` and any system prompts:
+- [x] **`text_replacement_strategy`** prompt in `text.ts` (line ~361-492): Replace `scan_text_nodes(nodeId: "node-id")` with `get_nodes_info({ nodeIds: ["node-id"], filter: { type: "TEXT" }, properties: ["characters"] })`.
+- [x] **`annotation_conversion_strategy`** prompt in `annotations.ts` (line ~186-342): Replace both `scan_text_nodes` (Step 2, line ~232) and `scan_nodes_by_types` (Step 3, line ~256) references with `get_nodes_info` equivalents per the migration tables in the spec.
+- [x] **Prompt-string sweep**: Grep for and update ALL occurrences across `src/mcp_server/tools/*.ts` and any system prompts:
     - `document.fills`, `document.layoutMode`, `document.children`, `document.<anything>` → `properties.<field>`
     - `parentId`, `parentNodeId`, `parentNodeName`, `parentNodeType` → `path` references
     - `containingPageId`, `containingPageName` → `path[0]` references
     - `scan_text_nodes`, `scan_nodes_by_types` → `get_nodes_info` equivalents
-- [ ] **Specific files to check**: `src/mcp_server/tools/annotations.ts`, `src/mcp_server/tools/components.ts`, and any other tool description files referencing `document.<field>` paths.
+- [x] **Specific files to check**: `src/mcp_server/tools/annotations.ts`, `src/mcp_server/tools/components.ts`, and any other tool description files referencing `document.<field>` paths.
 
 ### ✅ Checkpoint: `bun run build:all` + `bun test`
 Removals are the riskiest step for dangling imports. Build verifies no broken references. Test run verifies old scan-tool tests are removed and prompt updates don't break other tests. This is the first point where the full suite should pass (the v1.3.0 regression tests that need updating will be handled in Phase 6).
@@ -216,35 +216,35 @@ Removals are the riskiest step for dangling imports. Build verifies no broken re
 
 ### 6.1 — Unit Tests
 
-- [ ] **Safe-list classifier**: Test that all safe-list properties return `true`, non-safe properties return `false`, unrecognized names return `false` (but do not force export fallback).
-- [ ] **Path builder**: Test page nodes return `[]`, direct children of a page return one element, deeply nested nodes return the full ancestor chain (page first, immediate parent last), node itself is not in `path`.
-- [ ] **Descendant count**: Test leaf nodes return `0`, nodes with known subtrees return exact counts.
-- [ ] **Filter logic**: Test AND matching, OR matching for `type` and `layoutMode`, array value on non-`type`/`layoutMode` keys is a no-op, ancestor passthrough pruning.
-- [ ] **Input deduplication**: Test first-occurrence dedup, ordering preserved.
+- [x] **Safe-list classifier**: Test that all safe-list properties return `true`, non-safe properties return `false`, unrecognized names return `false` (but do not force export fallback).
+- [x] **Path builder**: Test page nodes return `[]`, direct children of a page return one element, deeply nested nodes return the full ancestor chain (page first, immediate parent last), node itself is not in `path`.
+- [x] **Descendant count**: Test leaf nodes return `0`, nodes with known subtrees return exact counts.
+- [x] **Filter logic**: Test AND matching, OR matching for `type` and `layoutMode`, array value on non-`type`/`layoutMode` keys is a no-op, ancestor passthrough pruning.
+- [x] **Input deduplication**: Test first-occurrence dedup, ordering preserved.
 
 ### 6.2 — Integration / Regression Tests
 
-- [ ] **New `get_nodes_info` response shape**: Verify the `{ nodes, missingNodeIds }` envelope replaces the bare array.
-- [ ] **`missingNodeIds` silent-skip**: Verify unresolved ids appear in `missingNodeIds`, resolved ids appear in `nodes`, ordering matches deduped input.
-- [ ] **`descendantCount` accuracy**: Verify correct counts on top-level entries, on `maxDepth` boundary nodes, and absence on interior descendants.
-- [ ] **`maxDepth` truncation**: Verify `maxDepth: 0` returns no children, `maxDepth: 1` returns direct children only with `descendantCount` on each, `maxDepth: N` returns N levels deep with boundary nodes carrying `descendantCount`.
-- [ ] **Filter + `maxDepth` interaction**: Verify filter only evaluates within the depth window — matches below `maxDepth` are invisible.
-- [ ] **Boundary-node `descendantCount` vs leaf nodes**: Verify truncated nodes (`descendantCount: 12, children: []`) are distinguishable from genuine leaves (`descendantCount: 0, children: []`).
-- [ ] **`properties` on inapplicable nodes**: Verify keys are omitted (not `null` or `undefined`) for nodes where the property doesn't apply (e.g., `characters` on `FRAME`).
-- [ ] **Export cache reuse**: Verify a node is exported at most once when both `filter` and `properties` trigger the export path.
-- [ ] **Empty-args**: Verify empty-args routes through the same handler path as single-id, verify `PAGE`-scoped empty-args emits progress events.
-- [ ] **Read-only mode**: Verify returns `{ nodes: [] }` immediately with no plugin work.
-- [ ] **Update v1.3.0 `{ nodeId, parentId, document }[]` regression test** — it MUST be updated or replaced to expect the new shape. It will fail under v1.4.0 and that's the point.
-- [ ] **Update v1.3.0 connect payload test** — update to expect `path` instead of `parentNodeId`, `parentNodeName`, `parentNodeType`, `containingPageId`, `containingPageName`.
-- [ ] **Connect-flow consistency snapshot test**: Verify connect payload and `get_nodes_info` produce identical `nodeId` / `nodeName` / `type` / `path` / `descendantCount` for the same node. Verify connect `children` equals first level of `get_nodes_info` `children` (without `properties`) with recursive `children` stripped.
-- [ ] **`get_components` ordering regression test** (REQUIRED by spec):
+- [x] **New `get_nodes_info` response shape**: Verify the `{ nodes, missingNodeIds }` envelope replaces the bare array.
+- [x] **`missingNodeIds` silent-skip**: Verify unresolved ids appear in `missingNodeIds`, resolved ids appear in `nodes`, ordering matches deduped input.
+- [x] **`descendantCount` accuracy**: Verify correct counts on top-level entries, on `maxDepth` boundary nodes, and absence on interior descendants.
+- [x] **`maxDepth` truncation**: Verify `maxDepth: 0` returns no children, `maxDepth: 1` returns direct children only with `descendantCount` on each, `maxDepth: N` returns N levels deep with boundary nodes carrying `descendantCount`.
+- [x] **Filter + `maxDepth` interaction**: Verify filter only evaluates within the depth window — matches below `maxDepth` are invisible.
+- [x] **Boundary-node `descendantCount` vs leaf nodes**: Verify truncated nodes (`descendantCount: 12, children: []`) are distinguishable from genuine leaves (`descendantCount: 0, children: []`).
+- [x] **`properties` on inapplicable nodes**: Verify keys are omitted (not `null` or `undefined`) for nodes where the property doesn't apply (e.g., `characters` on `FRAME`).
+- [x] **Export cache reuse**: Verify a node is exported at most once when both `filter` and `properties` trigger the export path.
+- [x] **Empty-args**: Verify empty-args routes through the same handler path as single-id, verify `PAGE`-scoped empty-args emits progress events.
+- [x] **Read-only mode**: Verify returns `{ nodes: [] }` immediately with no plugin work.
+- [x] **Update v1.3.0 `{ nodeId, parentId, document }[]` regression test** — it MUST be updated or replaced to expect the new shape. It will fail under v1.4.0 and that's the point.
+- [x] **Update v1.3.0 connect payload test** — update to expect `path` instead of `parentNodeId`, `parentNodeName`, `parentNodeType`, `containingPageId`, `containingPageName`.
+- [x] **Connect-flow consistency snapshot test**: Verify connect payload and `get_nodes_info` produce identical `nodeId` / `nodeName` / `type` / `path` / `descendantCount` for the same node. Verify connect `children` equals first level of `get_nodes_info` `children` (without `properties`) with recursive `children` stripped.
+- [x] **`get_components` ordering regression test** (REQUIRED by spec):
     - Fixture: at least 2 pages (recommended 3), each with multiple components (recommended 3 per page), deterministic names (`Page A` / `Page B` / `Page C`, `Comp-1` / `Comp-2` / `Comp-3`).
     - Call `get_components({ scope: 'document' })`.
     - Assert page-then-document-order: all components from `figma.root.children[0]` first, then `[1]`, etc.
     - Assert `pageId` populated correctly on every entry.
     - Place next to `get_pages_info` regression tests for co-location.
     - This fixture also serves as the smoke test for `loadAllPagesAsync` removal and streaming behavior.
-- [ ] **`get_pages_info` `descendantCount`**: Verify present when `pageIds` provided, absent for no-args calls.
+- [x] **`get_pages_info` `descendantCount`**: Verify present when `pageIds` provided, absent for no-args calls.
 
 ### 6.3 — Manual Validation
 
@@ -256,8 +256,8 @@ Removals are the riskiest step for dangling imports. Build verifies no broken re
 
 ## Phase 7: Documentation & Release
 
-- [ ] **Update README.md**: Reflect tool removals (`scan_text_nodes`, `scan_nodes_by_types`) and the enhanced `get_nodes_info` capabilities (filter, properties, maxDepth).
-- [ ] **Draft Release Notes** with the following REQUIRED structure:
+- [x] **Update README.md**: Reflect tool removals (`scan_text_nodes`, `scan_nodes_by_types`) and the enhanced `get_nodes_info` capabilities (filter, properties, maxDepth).
+- [x] **Draft Release Notes** with the following REQUIRED structure:
     1. **FIRST item — Connect payload `node` block break** (🚨): Explicitly framed as "the second breaking change to this contract in two releases." Include a "Migration required" section with:
         - (a) Which v1.3.0 fields are gone (`parentNodeId`, `parentNodeName`, `parentNodeType`, `containingPageId`, `containingPageName`).
         - (b) The new `path` shape with a 3-tuple example.

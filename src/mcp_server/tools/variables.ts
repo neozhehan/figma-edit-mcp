@@ -16,7 +16,7 @@ export function registerVariablesTools(server: McpServer) {
             includeConsumers: z
                 .enum(["current_page", "document"])
                 .optional()
-                .describe("Only used when variableId is provided; ignored otherwise. 'current_page' scans the active page (fast). 'document' scans all pages (slow on large files)."),
+                .describe("Only used when variableId is provided; ignored otherwise. 'current_page' scans the active page (fast). 'document' scans all pages (streams progress page-by-page, slow on large files)."),
         },
         async ({ variableId, includeConsumers }: any) => {
             try {

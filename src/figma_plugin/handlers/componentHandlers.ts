@@ -55,16 +55,19 @@ export async function getStyles() {
  */
 export async function getComponents(params: any) {
     const { filter, scope = 'current_page', commandId } = params || {};
-    
-    // 1. Started event
-    if (commandId) {
+    // Per spec §get_components rule 2: only the 'document' scope streams.
+    // 'current_page' is a single-pass non-streaming call — no bookends, no yield.
+    const isStreaming = scope === 'document';
+
+    // 1. Started event (document scope only)
+    if (commandId && isStreaming) {
         await sendProgressUpdate(
-            commandId, 
-            'get_components', 
-            'started', 
-            0, 
-            0, 
-            0, 
+            commandId,
+            'get_components',
+            'started',
+            0,
+            0,
+            0,
             `Starting get_components in ${scope} scope`
         );
     }
@@ -118,14 +121,14 @@ export async function getComponents(params: any) {
         pageId: getContainingPageId(component)
     }));
 
-    if (commandId) {
+    if (commandId && isStreaming) {
         await sendProgressUpdate(
-            commandId, 
-            'get_components', 
-            'completed', 
-            100, 
-            1, 
-            1, 
+            commandId,
+            'get_components',
+            'completed',
+            100,
+            1,
+            1,
             `Found ${mapped.length} components/sets`
         );
     }

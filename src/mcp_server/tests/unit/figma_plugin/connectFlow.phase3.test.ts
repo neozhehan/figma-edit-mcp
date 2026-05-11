@@ -57,14 +57,11 @@ describe("Phase 3.1 (static): getConnectPayload handler — branches present", (
         expect(src).toMatch(/await\s+scopeNode\.loadAsync\(\)/);
     });
 
-    it("node-scope branch walks node.parent until PAGE, returns containing-page metadata", () => {
+    it("node-scope branch walks node.parent until PAGE, builds path array and computes descendantCount", () => {
         expect(src).toMatch(/editableScopeType:\s*["']node["']/);
         expect(src).toMatch(/while\s*\(\s*currentNode\s*\)/);
-        expect(src).toMatch(/containingPageId/);
-        expect(src).toMatch(/containingPageName/);
-        expect(src).toMatch(/parentNodeId/);
-        expect(src).toMatch(/parentNodeName/);
-        expect(src).toMatch(/parentNodeType/);
+        expect(src).toMatch(/path:\s*buildPathArray\(/);
+        expect(src).toMatch(/descendantCount:\s*countDescendants\(/);
     });
 
     it("returns SCOPE_DELETED when getNodeByIdAsync resolves to null (Task 4)", () => {
@@ -338,11 +335,10 @@ describe("Phase 3.2: join_channel — two-leg flow", () => {
                         nodeId: "f1",
                         nodeName: "F",
                         type: "FRAME",
-                        parentNodeId: "p1",
-                        parentNodeName: "P1",
-                        parentNodeType: "PAGE",
-                        containingPageId: "p1",
-                        containingPageName: "P1",
+                        path: [
+                            ["PAGE", "p1", "P1"]
+                        ],
+                        descendantCount: 0,
                         children: [],
                     },
                 },
