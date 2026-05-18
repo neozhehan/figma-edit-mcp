@@ -9,12 +9,12 @@ This plan executes [spec.md](./spec.md) using decisions ratified in [questions.m
 These do not block code changes but must be done before tagging.
 
 - [x] **Open GitHub Support ticket** (category: "Repositories") requesting detachment of `neozhehan/figma-edit-mcp` from `grab/cursor-talk-to-figma-mcp`. Cite divergence: hallucination safeguards, unique workflows, rewritten tools. *(Verified 2026-05-12 via `gh api`: `fork: false`, `parent: null`, `source: null`.)*
-- [ ] **Tighten GitHub repo topics** to: `mcp`, `mcp-server`, `figma`, `figma-plugin`, `model-context-protocol`, `design-automation`.
-- [ ] **Enable Issues and Discussions** in repo Settings.
-- [ ] **Keep the current "About" description** unchanged (it functions as the meta description and matches the planned `package.json#description`).
-- [ ] **Enable NPM `auth-and-writes` 2FA** on the publishing account (Q10).
-- [ ] **Generate a fine-grained NPM automation token** scoped to `figma-edit-mcp` with publish rights.
-- [ ] **Add the token as `NPM_TOKEN`** in GitHub Actions repository secrets.
+- [x] **Tighten GitHub repo topics** to: `mcp`, `mcp-server`, `figma`, `figma-plugin`, `model-context-protocol`, `design-automation`.
+- [x] **Enable Issues and Discussions** in repo Settings.
+- [x] **Keep the current "About" description** unchanged (it functions as the meta description and matches the planned `package.json#description`).
+- [x] **Enable NPM `auth-and-writes` 2FA** on the publishing account (Q10).
+- [x] **Generate a fine-grained NPM automation token** scoped to `figma-edit-mcp` with publish rights.
+- [x] **Add the token as `NPM_TOKEN`** in GitHub Actions repository secrets.
 
 ---
 
@@ -22,11 +22,11 @@ These do not block code changes but must be done before tagging.
 
 These must land on `main` before the release PR is opened so CI passes on the release PR itself.
 
-- [ ] Update `Contract F — v1.4.0 release notes file exists with required sections > leads with the migration-required / connect-payload break framing` test to point at `documentation/completed/v1.4.0 - get_nodes_info_update/` (new path).
-- [ ] Apply the same path fix to `Contract F — … > documents the scan_text_nodes / scan_nodes_by_types removals with migration guidance`.
-- [ ] Fix `Phase 4 §3a (direct invocation): getConnectPayload — page scope > loads exactly the scoped page (no loadAllPagesAsync)` by replacing the `expect(...).toEqual(...)` with a key-order-insensitive assertion (e.g. `expect.objectContaining` or sorted-key normalization), or by emitting `descendantCount` in the expected key order.
-- [ ] Run `bun test` locally; all three previously-red tests must pass, no regressions.
-- [ ] Open a PR with only these three test fixes, merge to `main`.
+- [x] Update `Contract F — v1.4.0 release notes file exists with required sections > leads with the migration-required / connect-payload break framing` test to point at `documentation/completed/v1.4.0 - get_nodes_info_update/` (new path).
+- [x] Apply the same path fix to `Contract F — … > documents the scan_text_nodes / scan_nodes_by_types removals with migration guidance`.
+- [x] Fix `Phase 4 §3a (direct invocation): getConnectPayload — page scope > loads exactly the scoped page (no loadAllPagesAsync)` by replacing the `expect(...).toEqual(...)` with a key-order-insensitive assertion (e.g. `expect.objectContaining` or sorted-key normalization), or by emitting `descendantCount` in the expected key order.
+- [x] Run `bun test` locally; all three previously-red tests must pass, no regressions.
+- [x] Open a PR with only these three test fixes, merge to `main`.
 
 **Exit criteria:** `bun test` green on `main`.
 
@@ -36,7 +36,7 @@ These must land on `main` before the release PR is opened so CI passes on the re
 
 All subsequent phases are commits on the release branch. Per Q27 the CHANGELOG `[1.5.0]` rewrite lands first so every later commit maps to one of its bullets.
 
-- [ ] Create branch `feature/v1.5.0-visibility-cleanup` (already current per `git status`).
+- [x] Create branch `feature/v1.5.0-visibility-cleanup` (already current per `git status`).
 - [ ] **Commit #1 — CHANGELOG rewrite only.** Edit [CHANGELOG.md](../../CHANGELOG.md):
   - [ ] Retain/refine the top-of-file note: 1.3.0 and 1.4.0 were never published to NPM; 1.5.0 is the first registry release.
   - [ ] Rewrite `[1.4.0]` entry covering: connect payload `path` rewrite, `get_nodes_info` parameter rename (`properties` → `fields`), recursive children response shape, `filter` / `maxDepth` parameters, `descendantCount`, `progress_update` streaming, removal of `scan_nodes_by_types` / `scan_text_nodes`.
