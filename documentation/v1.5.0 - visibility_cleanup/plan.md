@@ -125,14 +125,14 @@ Edit [src/mcp_server/server.ts](../../src/mcp_server/server.ts) and `src/socket.
 
 ## Phase 7 — Scripts (Q8, Q24, Q29)
 
-- [ ] Edit [scripts/integrate.sh](../../scripts/integrate.sh):
-  - [ ] Replace hardcoded `bun run $PROJECT_DIR/dist/server.js` with default `"command": "npx", "args": ["figma-edit-mcp"]` for all integrations (Antigravity, VS Code, Cursor, Claude Desktop).
-  - [ ] Add `--local` flag that restores the clone-based template (`bun run $PROJECT_DIR/dist/server.js`).
-  - [ ] Add `--port <n>` flag that appends `--port <n>` to the generated config's `args`.
-  - [ ] At [scripts/integrate.sh:191](../../scripts/integrate.sh#L191), print `claude mcp add FigmaEdit npx figma-edit-mcp` by default; clone-based form under `--local`; append `--port` to both forms when supplied.
-  - [ ] At [scripts/integrate.sh:202](../../scripts/integrate.sh#L202), rebuild the LM Studio deeplink config from the same default/local/port toggles.
-  - [ ] Document `--local` and `--port` in the script's help/usage output.
-- [ ] Edit [scripts/setup.sh](../../scripts/setup.sh): add the contributor-only banner at the very top:
+- [x] Edit [scripts/integrate.sh](../../scripts/integrate.sh):
+  - [x] Replace hardcoded `bun run $PROJECT_DIR/dist/server.js` with default `"command": "npx", "args": ["figma-edit-mcp"]` for all integrations (Antigravity, VS Code, Cursor, Claude Desktop).
+  - [x] Add `--local` flag that restores the clone-based template (`bun run $PROJECT_DIR/dist/server.js`).
+  - [x] Add `--port <n>` flag that appends `--port <n>` to the generated config's `args`.
+  - [x] At [scripts/integrate.sh:191](../../scripts/integrate.sh#L191), print `claude mcp add FigmaEdit npx figma-edit-mcp` by default; clone-based form under `--local`; append `--port` to both forms when supplied.
+  - [x] At [scripts/integrate.sh:202](../../scripts/integrate.sh#L202), rebuild the LM Studio deeplink config from the same default/local/port toggles.
+  - [x] Document `--local` and `--port` in the script's help/usage output.
+- [x] Edit [scripts/setup.sh](../../scripts/setup.sh): add the contributor-only banner at the very top:
 
   ```bash
   # ------------------------------------------------------------
