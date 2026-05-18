@@ -101,25 +101,25 @@ Edit [src/mcp_server/server.ts](../../src/mcp_server/server.ts) and `src/socket.
 
 ## Phase 6 — Agent / contributor documentation (Q4, Q16, Q28)
 
-- [ ] **Promote `AGENTS.draft.md` → `AGENTS.md` at repo root.**
-  - [ ] Remove the draft banner.
-  - [ ] Rewrite every `../../` relative link to `./` (e.g., `../../README.md` → `./README.md`, `../../package.json` → `./package.json`).
-  - [ ] Scope (per Q4): hallucination safeguards as hard constraints with full error-code taxonomy; tool-selection guidance (`get_nodes_info` `filter`/`fields`/`maxDepth`, batch vs. single-item); discover-before-acting pattern; per-error-code response playbook; tripartite framing (Plugin enforces, Agent orchestrates, Designer decides). Out of scope: install/setup, repo development.
-- [ ] **Create `CLAUDE.md`** at repo root containing exactly one line: `@AGENTS.md`.
-- [ ] **Create `.cursorrules`** at repo root with the pointer paragraph:
+- [x] **Promote `AGENTS.draft.md` → `AGENTS.md` at repo root.**
+  - [x] Remove the draft banner.
+  - [x] Rewrite every `../../` relative link to `./` (e.g., `../../README.md` → `./README.md`, `../../package.json` → `./package.json`).
+  - [x] Scope (per Q4): hallucination safeguards as hard constraints with full error-code taxonomy; tool-selection guidance (`get_nodes_info` `filter`/`fields`/`maxDepth`, batch vs. single-item); discover-before-acting pattern; per-error-code response playbook; tripartite framing (Plugin enforces, Agent orchestrates, Designer decides). Out of scope: install/setup, repo development.
+- [x] **Create `CLAUDE.md`** at repo root containing exactly one line: `@AGENTS.md`.
+- [x] **Create `.cursorrules`** at repo root with the pointer paragraph:
 
   ```
   See AGENTS.md for the canonical rules, error-code taxonomy, and tool-selection guidance. Treat that file as authoritative; do not duplicate its content here.
   ```
 
-- [ ] **Create `.github/copilot-instructions.md`** with the same one-paragraph pointer to `AGENTS.md`.
-- [ ] **Promote `CONTRIBUTING.draft.md` → `CONTRIBUTING.md` at repo root** (Q7, Q8).
-  - [ ] Rewrite every `../../` relative link to `./`.
-  - [ ] Add a "Local development setup" note confirming `bun setup` is contributor-only (Q24).
-  - [ ] Add a release-section paragraph explaining `prepublishOnly` (Q23): runs only on `npm publish` / `bun publish`, never on `bun install`, defense in depth.
-  - [ ] Add a line documenting the tag-naming contract (Q19): `v<X.Y.Z>` must match `package.json#version` exactly; CI verifies this before any publish step.
-  - [ ] Add a line documenting `figma-edit-mcp-socket --port <n>` (Q29): default `3055`, env fallback `FIGMA_EDIT_MCP_SOCKET_PORT`.
-  - [ ] Document that publishing is tag-driven and that maintainers must use a fine-grained automation token scoped to `figma-edit-mcp` only.
+- [x] **Create `.github/copilot-instructions.md`** with the same one-paragraph pointer to `AGENTS.md`.
+- [x] **Promote `CONTRIBUTING.draft.md` → `CONTRIBUTING.md` at repo root** (Q7, Q8).
+  - [x] Rewrite every `../../` relative link to `./`.
+  - [x] Add a "Local development setup" note confirming `bun setup` is contributor-only (Q24).
+  - [x] Add a release-section paragraph explaining `prepublishOnly` (Q23): runs only on `npm publish` / `bun publish`, never on `bun install`, defense in depth.
+  - [x] Add a line documenting the tag-naming contract (Q19): `v<X.Y.Z>` must match `package.json#version` exactly; CI verifies this before any publish step.
+  - [x] Add a line documenting `figma-edit-mcp-socket --port <n>` (Q29): default `3055`, env fallback `FIGMA_EDIT_MCP_SOCKET_PORT`.
+  - [x] Document that publishing is tag-driven and that maintainers must use a fine-grained automation token scoped to `figma-edit-mcp` only.
 
 ---
 

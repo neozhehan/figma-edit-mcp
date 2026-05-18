@@ -1,8 +1,6 @@
 # Contributing to figma-edit-mcp
 
-> **Draft — reference material for [questions.md](./questions.md) item 7, Option C.** Move to the repo root as `CONTRIBUTING.md` if that option is adopted.
-
-Thanks for your interest in contributing. This document is for **people working on figma-edit-mcp itself** — fixing bugs, adding tools, or improving the plugin. If you just want to *use* the MCP server with an AI assistant, follow the install instructions in the [README](../../README.md) and ignore this file.
+Thanks for your interest in contributing. This document is for **people working on figma-edit-mcp itself** — fixing bugs, adding tools, or improving the plugin. If you just want to *use* the MCP server with an AI assistant, follow the install instructions in the [README](./README.md) and ignore this file.
 
 ---
 
@@ -32,6 +30,8 @@ documentation/       # Specs, plans, and release notes per version
 ---
 
 ## Local development setup
+
+> **Note:** The `bun setup` script is strictly for contributors to initialize their local workspace. End users should never run it; they should use `npx figma-edit-mcp` instead.
 
 ```bash
 git clone https://github.com/neozhehan/figma-edit-mcp.git
@@ -64,6 +64,8 @@ In one terminal, start the WebSocket bridge:
 bun socket
 ```
 
+*(You can override the bridge port with `bun socket --port <n>` (or `figma-edit-mcp-socket --port <n>` when running from the installed package). The default is `3055`, which can also be set via the `FIGMA_EDIT_MCP_SOCKET_PORT` environment variable.)*
+
 In another, watch for source changes:
 
 ```bash
@@ -91,7 +93,7 @@ Tests run against in-memory mocks; no Figma connection required. Please add or u
 
 - TypeScript strict mode; no `any` in new code.
 - Tools live in `src/mcp_server/tools/<tool_name>.ts` and register themselves via the central registry.
-- Error responses use structured codes — see existing tools and [AGENTS.md](../../AGENTS.md) for the full taxonomy.
+- Error responses use structured codes — see existing tools and [AGENTS.md](./AGENTS.md) for the full taxonomy.
 - Follow the **discover-before-acting** pattern for any new tool: never trust unverified names or IDs from the agent.
 - Hallucination safeguards (scope locking, name verification, batch validation) are non-negotiable. New tools must integrate with them, not bypass them.
 
@@ -107,7 +109,7 @@ Before adding a new tool, work through this checklist in order. Stop at the firs
 
 1. **Can an existing tool be extended with a new parameter or option?** Prefer this when the new behavior shares the same conceptual operation, target node type, and return shape. Example: adding a `filter` predicate to `get_nodes_info` rather than introducing `get_filtered_nodes_info`.
 2. **Can an existing tool's parameter be generalized?** If two tools differ only by a hard-coded value (a node type, a property name, a side-effect mode), unify them and accept the value as input. The v1.4.0 collapse of `scan_*` tools is the canonical precedent.
-3. **Can the agent compose existing tools to achieve the result?** If the new "tool" is really a fixed sequence of existing calls with no plugin-side atomicity requirement, document the pattern in [AGENTS.md](../../AGENTS.md) instead of adding a tool. Reserve new tools for operations that genuinely require server- or plugin-side logic (atomicity, validation, batching, safeguard enforcement).
+3. **Can the agent compose existing tools to achieve the result?** If the new "tool" is really a fixed sequence of existing calls with no plugin-side atomicity requirement, document the pattern in [AGENTS.md](./AGENTS.md) instead of adding a tool. Reserve new tools for operations that genuinely require server- or plugin-side logic (atomicity, validation, batching, safeguard enforcement).
 4. **Is this a batch variant of an existing single-item tool?** Batch tools are justified when they (a) reduce N round-trips on a common workflow and (b) enforce per-item validation that the agent cannot reliably reproduce by looping. If neither holds, the single-item tool plus agent-side iteration is sufficient.
 
 Only add a new tool when none of the above apply — i.e., the operation is conceptually distinct, cannot be expressed by extending an existing tool without overloading its semantics, and benefits from being a first-class call (atomicity, safeguards, or a clearly different mental model for the agent).
@@ -138,7 +140,7 @@ Once the design decision is settled:
 2. Register it in the tool registry.
 3. If it mutates the document, add the corresponding plugin-side handler in `figma_plugin/` and the validation/safeguard checks.
 4. Add a test in `src/mcp_server/tests/`.
-5. Update the README tool inventory and [AGENTS.md](../../AGENTS.md) usage guidance — including when to reach for the new tool vs. its neighbors, so agents don't pick it by accident.
+5. Update the README tool inventory and [AGENTS.md](./AGENTS.md) usage guidance — including when to reach for the new tool vs. its neighbors, so agents don't pick it by accident.
 6. If the new tool supersedes existing functionality, mark the displaced tool deprecated in the same PR and schedule its removal for the next minor release.
 
 ---
@@ -155,7 +157,11 @@ Once the design decision is settled:
 
 ## Versioning and releases
 
-The project follows semver. Release mechanics (NPM publish, tarball verification, GitHub Release) live in the per-version specs under `documentation/`. Maintainers handle publishing; contributors do not need NPM credentials.
+The project follows semver. Release mechanics (NPM publish, tarball verification, GitHub Release) live in the per-version specs under `documentation/`. Maintainers handle publishing; contributors do not need NPM credentials. Publishing is tag-driven, and maintainers must use a fine-grained NPM automation token scoped exclusively to the `figma-edit-mcp` package.
+
+**Tag contract:** Git tags must exactly match the `package.json#version` (e.g., `v1.5.0` for version `1.5.0`). The CI pipeline enforces this contract and will reject any release where the tag and package version diverge.
+
+**Build security:** The `package.json` uses the `prepublishOnly` lifecycle script to ensure a fresh, identical build runs *immediately* before an NPM publish. This prevents stale `dist/` artifacts from being published. Unlike `prepare` or `preinstall`, `prepublishOnly` never runs when a user does `bun install`, keeping the consumer install fast and secure.
 
 ---
 
@@ -173,4 +179,4 @@ Open an issue at <https://github.com/neozhehan/figma-edit-mcp/issues> with:
 
 ## Questions
 
-For design or architecture questions, open a GitHub Discussion rather than an issue. For security-sensitive reports, email the maintainer address listed in [package.json](../../package.json) `author.email` rather than filing publicly.
+For design or architecture questions, open a GitHub Discussion rather than an issue. For security-sensitive reports, email the maintainer address listed in [package.json](./package.json) `author.email` rather than filing publicly.

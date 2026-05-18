@@ -1,10 +1,9 @@
 # AGENTS.md — Using figma-edit-mcp from an AI agent
 
-> **Draft — pre-release content for the canonical `AGENTS.md`. Promote to the repo root as `AGENTS.md` in the v1.5.0 release PR. After promotion, rewrite all `../../` relative links to `./` per Q16 (link-checker-gated).**
 
 This document is for **AI agents that have figma-edit-mcp installed and connected** to a Figma file. It tells you how to use the tools without breaking things — what the plugin will refuse to do, how to discover state, and how to recover from each structured error.
 
-If you are a human looking to install or develop figma-edit-mcp, see [README.md](../../README.md) (install) and [CONTRIBUTING.md](../../CONTRIBUTING.md) (development) instead.
+If you are a human looking to install or develop figma-edit-mcp, see [README.md](./README.md) (install) and [CONTRIBUTING.md](./CONTRIBUTING.md) (development) instead.
 
 ---
 
