@@ -87,15 +87,15 @@ Edit [tsup.config.ts](../../tsup.config.ts):
 
 Edit [src/mcp_server/server.ts](../../src/mcp_server/server.ts) and `src/socket.ts`. Add a top-of-`main` argv check shared by both bins:
 
-- [ ] **`--version`** — read `version` from `package.json`, print one line, exit 0 **before** opening the stdio transport or binding the WebSocket.
-- [ ] **`--help`** — print a one-paragraph usage block naming `--version`, `--help`, and `--port`; exit 0.
-- [ ] **`--port <n>`** — override the default WebSocket bridge port (`3055`). Env fallback: `FIGMA_EDIT_MCP_SOCKET_PORT`. Both bins must read the same source so they negotiate the same port.
-- [ ] Add a port field in the Figma plugin UI (under `figma_plugin/`) defaulting to `3055` so the user can match whatever port the bridge listens on.
-- [ ] Acceptance (local):
-  - [ ] `bun run dist/server.js --version` → one version line, exit 0.
-  - [ ] `bun run dist/socket.js --version` → one version line, exit 0, no port bind.
-  - [ ] `--help` on each lists all three flags.
-  - [ ] `--port 4000` causes both bins to use port 4000 without errors.
+- [x] **`--version`** — read `version` from `package.json`, print one line, exit 0 **before** opening the stdio transport or binding the WebSocket.
+- [x] **`--help`** — print a one-paragraph usage block naming `--version`, `--help`, and `--port`; exit 0.
+- [x] **`--port <n>`** — override the default WebSocket bridge port (`3055`). Env fallback: `FIGMA_EDIT_MCP_SOCKET_PORT`. Both bins must read the same source so they negotiate the same port.
+- [x] Add a port field in the Figma plugin UI (under `figma_plugin/`) defaulting to `3055` so the user can match whatever port the bridge listens on.
+- [x] Acceptance (local):
+  - [x] `bun run dist/server.js --version` → one version line, exit 0.
+  - [x] `bun run dist/socket.js --version` → one version line, exit 0, no port bind.
+  - [x] `--help` on each lists all three flags.
+  - [x] `--port 4000` causes both bins to use port 4000 without errors.
 
 ---
 
