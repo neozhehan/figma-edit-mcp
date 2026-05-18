@@ -24,7 +24,7 @@ This plugin allows you as a Designer to focus purely on creative decision-making
 ## Project Structure
 
 - `src/mcp_server/` — TypeScript MCP server implementing 40+ Figma tools
-- `src/figma_plugin/` — Figma plugin with a modular handler architecture
+- `figma_plugin/` — Figma plugin with a modular handler architecture
 - `src/socket.ts` — WebSocket server that bridges communication between the MCP server and the Figma plugin
 
 ## Quick Start
@@ -178,7 +178,7 @@ bun socket
 
 1. In Figma, go to Plugins > Development > New Plugin
 2. Choose "Link existing plugin"
-3. Select the `src/figma_plugin/manifest.json` file
+3. Select the `figma_plugin/manifest.json` file
 4. The plugin should now be available in your Figma development plugins
 
 ---

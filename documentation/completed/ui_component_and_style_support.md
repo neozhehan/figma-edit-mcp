@@ -12,25 +12,25 @@ To enable an AI Agent to build a complete, premium design system and UI componen
 
 ## Proposed Changes
 
-### Figma Plugin (`src/figma_plugin/src`)
+### Figma Plugin (`figma_plugin/src`)
 
-#### [NEW] `src/figma_plugin/src/handlers/styleHandlers.js`
+#### [NEW] `figma_plugin/src/handlers/styleHandlers.js`
 - Implement `createStyle` (handles TEXT, PAINT, EFFECT, GRID)
 - Implement `applyStyle` (applies style by ID to node)
 
-#### [MODIFY] `src/figma_plugin/src/handlers/componentHandlers.js`
+#### [MODIFY] `figma_plugin/src/handlers/componentHandlers.js`
 - Add `createComponent` (wraps `figma.createComponent`)
 
-#### [NEW] `src/figma_plugin/src/handlers/vectorHandlers.js`
+#### [NEW] `figma_plugin/src/handlers/vectorHandlers.js`
 - Implement `createNodeFromSvg`
 
-#### [MODIFY] `src/figma_plugin/src/handlers/stylingHandlers.js`
+#### [MODIFY] `figma_plugin/src/handlers/stylingHandlers.js`
 - Add `setEffects` (for Drop Shadows, Layer Blurs)
 
-#### [MODIFY] `src/figma_plugin/src/handlers/variableHandlers.js`
+#### [MODIFY] `figma_plugin/src/handlers/variableHandlers.js`
 - Implement `handleVariableRequest` (dispatches CREATE_COLLECTION, CREATE_VARIABLE, SET_VALUE)
 
-#### [MODIFY] `src/figma_plugin/src/main.js`
+#### [MODIFY] `figma_plugin/src/main.js`
 - Register new command handlers with the following validation requirements:
 
 | Command | Enforce `state.readOnly` | Check Scope | Verify Name | Context |

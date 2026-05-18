@@ -27,7 +27,7 @@ if (!(globalThis as any).figma) {
     };
 }
 
-import { getNodesInfo } from "../../../../../src/figma_plugin/handlers/nodeReaders.js";
+import { getNodesInfo } from "../../../../../figma_plugin/handlers/nodeReaders.js";
 
 // ---------------- fixture helpers ----------------
 

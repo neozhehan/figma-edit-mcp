@@ -38,7 +38,7 @@ The following tools have been identified as redundant wrappers or state-dependen
 - Remove `server.tool("get_selection", ...)` definition.
 - Remove `server.tool("read_my_design", ...)` definition.
 
-Note: The underlying plugin handlers in [src/figma_plugin/code.js](file:///Users/neoworks/Git/figma-edit-mcp/src/figma_plugin/code.js) can be kept if they are used internally or by the plugin UI, but removing them from `server.ts` prevents MCP usage.
+Note: The underlying plugin handlers in [figma_plugin/code.js](file:///Users/neoworks/Git/figma-edit-mcp/figma_plugin/code.js) can be kept if they are used internally or by the plugin UI, but removing them from `server.ts` prevents MCP usage.
 
 ## Verification Plan
 

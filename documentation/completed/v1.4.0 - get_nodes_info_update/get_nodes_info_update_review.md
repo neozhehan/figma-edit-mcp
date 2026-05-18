@@ -32,7 +32,7 @@ One remaining gap:
 
 ### `scan_text_nodes` — strong replacement
 
-Today ([textHandlers.ts:279](../../src/figma_plugin/handlers/textHandlers.ts#L279)) it returns `characters`, `fontSize`, `fontFamily`, `fontStyle`, `x/y/width/height` per text node, with **chunked progress events** (`chunkSize: 10`). Under v1.4.0:
+Today ([textHandlers.ts:279](../../figma_plugin/handlers/textHandlers.ts#L279)) it returns `characters`, `fontSize`, `fontFamily`, `fontStyle`, `x/y/width/height` per text node, with **chunked progress events** (`chunkSize: 10`). Under v1.4.0:
 
 ```
 get_nodes_info({

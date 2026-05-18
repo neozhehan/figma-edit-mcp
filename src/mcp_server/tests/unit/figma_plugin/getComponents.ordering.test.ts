@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach } from "bun:test";
 //
 // Fixture: 3 pages × 3 components per page, deterministic names.
 
-import { getComponents } from "../../../../../src/figma_plugin/handlers/componentHandlers.js";
+import { getComponents } from "../../../../../figma_plugin/handlers/componentHandlers.js";
 
 type FakeComponent = {
     id: string;

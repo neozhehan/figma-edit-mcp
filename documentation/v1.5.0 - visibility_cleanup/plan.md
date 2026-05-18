@@ -37,31 +37,31 @@ These must land on `main` before the release PR is opened so CI passes on the re
 All subsequent phases are commits on the release branch. Per Q27 the CHANGELOG `[1.5.0]` rewrite lands first so every later commit maps to one of its bullets.
 
 - [x] Create branch `feature/v1.5.0-visibility-cleanup` (already current per `git status`).
-- [ ] **Commit #1 — CHANGELOG rewrite only.** Edit [CHANGELOG.md](../../CHANGELOG.md):
-  - [ ] Retain/refine the top-of-file note: 1.3.0 and 1.4.0 were never published to NPM; 1.5.0 is the first registry release.
-  - [ ] Rewrite `[1.4.0]` entry covering: connect payload `path` rewrite, `get_nodes_info` parameter rename (`properties` → `fields`), recursive children response shape, `filter` / `maxDepth` parameters, `descendantCount`, `progress_update` streaming, removal of `scan_nodes_by_types` / `scan_text_nodes`.
-  - [ ] Rewrite `[1.5.0]` entry covering: first NPM publish; repository changes (fork detachment, README rewrites, `fork` sweep, topics, Issues+Discussions, MCP directory submissions); packaging (`description`, `keywords`, `repository`, `homepage`, `bugs`, `author`, `license`, `engines`; removal of `main`/`module` per Q18; `prepublishOnly`; expanded `files` array; second bin `figma-edit-mcp-socket` per Q6; `--version`/`--help`/`--port` flags per Q14, Q29; tsup `node20` target, ESM-only, `dts: false` per Q17; shebang banner); plugin layout move (Q15); agent docs (`DRAGME.md` retired, `AGENTS.md`+`CLAUDE.md` added); contributor experience (`CONTRIBUTING.md`, `bun integrate` `--local` and `--port` flags, contributor-only banner on `setup.sh` per Q24); CI/supply chain (`ci.yml`, `publish.yml`, Bun 1.3.0 pin per Q30, NPM 2FA per Q10); cleanup (`test_output.txt`, `bun-types`, stale v1.4.0 docs, `Dockerfile` per Q25, `pub:release` per Q32, LICENSE prefix trim per Q21).
-- [ ] **Add a release-PR review checklist** (PR template comment or PR body) requiring each `[1.5.0]` bullet → diff mapping be confirmed before approval.
+- [x] **Commit #1 — CHANGELOG rewrite only.** Edit [CHANGELOG.md](../../CHANGELOG.md):
+  - [x] Retain/refine the top-of-file note: 1.3.0 and 1.4.0 were never published to NPM; 1.5.0 is the first registry release.
+  - [x] Rewrite `[1.4.0]` entry covering: connect payload `path` rewrite, `get_nodes_info` parameter rename (`properties` → `fields`), recursive children response shape, `filter` / `maxDepth` parameters, `descendantCount`, `progress_update` streaming, removal of `scan_nodes_by_types` / `scan_text_nodes`.
+  - [x] Rewrite `[1.5.0]` entry covering: first NPM publish; repository changes (fork detachment, README rewrites, `fork` sweep, topics, Issues+Discussions, MCP directory submissions); packaging (`description`, `keywords`, `repository`, `homepage`, `bugs`, `author`, `license`, `engines`; removal of `main`/`module` per Q18; `prepublishOnly`; expanded `files` array; second bin `figma-edit-mcp-socket` per Q6; `--version`/`--help`/`--port` flags per Q14, Q29; tsup `node20` target, ESM-only, `dts: false` per Q17; shebang banner); plugin layout move (Q15); agent docs (`DRAGME.md` retired, `AGENTS.md`+`CLAUDE.md` added); contributor experience (`CONTRIBUTING.md`, `bun integrate` `--local` and `--port` flags, contributor-only banner on `setup.sh` per Q24); CI/supply chain (`ci.yml`, `publish.yml`, Bun 1.3.0 pin per Q30, NPM 2FA per Q10); cleanup (`test_output.txt`, `bun-types`, stale v1.4.0 docs, `Dockerfile` per Q25, `pub:release` per Q32, LICENSE prefix trim per Q21).
+- [x] **Add a release-PR review checklist** (PR template comment or PR body) requiring each `[1.5.0]` bullet → diff mapping be confirmed before approval.
 
 ---
 
 ## Phase 3 — Codebase cleanup (deletions + plugin move)
 
-- [ ] Confirm `test_output.txt` deletion is staged (already `D` in `git status`); keep staged.
-- [ ] Confirm deletion of `documentation/v1.4.0 - get_nodes_info_update/` is staged (already `D` in `git status`) — the files were moved to `documentation/completed/v1.4.0 - get_nodes_info_update/`.
-- [ ] Sweep for any other temporary build files or un-ignored logs (`*.log`); remove if present.
-- [ ] **`git mv src/figma_plugin figma_plugin`** (Q15).
-- [ ] Edit `figma_plugin/build.js` to emit `figma_plugin/code.js` directly (remove the intermediate `dist/` subdirectory under the plugin folder). `manifest.json` `main`/`ui` paths remain `code.js`/`ui.html`.
-- [ ] Grep for and update every `src/figma_plugin/...` reference across the repo, including:
-  - [ ] [README.md:181](../../README.md#L181) — change to "Select `figma_plugin/manifest.json`".
-  - [ ] `scripts/integrate.sh` and `scripts/setup.sh`.
-  - [ ] `package.json` scripts (`plugin:build`, `plugin:watch`).
-  - [ ] `tsconfig.json` paths / aliases.
-  - [ ] [CONTRIBUTING.draft.md](./CONTRIBUTING.draft.md) "Repository layout" section.
-  - [ ] Any `AGENTS.draft.md` references.
-- [ ] **Delete `Dockerfile`** at repo root (Q25). Verify no `.dockerignore` exists, no Docker block in `smithery.yaml`, no Docker-image CI jobs. Grep the README for container/Docker deployment mentions; remove if found.
-- [ ] **Delete `DRAGME.md`** (replaced in Phase 6).
-- [ ] Run `bun run build:all` locally; confirm plugin builds at new path.
+- [x] Confirm `test_output.txt` deletion is staged (already `D` in `git status`); keep staged.
+- [x] Confirm deletion of `documentation/v1.4.0 - get_nodes_info_update/` is staged (already `D` in `git status`) — the files were moved to `documentation/completed/v1.4.0 - get_nodes_info_update/`.
+- [x] Sweep for any other temporary build files or un-ignored logs (`*.log`); remove if present.
+- [x] **`git mv src/figma_plugin figma_plugin`** (Q15).
+- [x] Edit `figma_plugin/build.js` to emit `figma_plugin/code.js` directly (remove the intermediate `dist/` subdirectory under the plugin folder). `manifest.json` `main`/`ui` paths remain `code.js`/`ui.html`.
+- [x] Grep for and update every `src/figma_plugin/...` reference across the repo, including:
+  - [x] [README.md:181](../../README.md#L181) — change to "Select `figma_plugin/manifest.json`".
+  - [x] `scripts/integrate.sh` and `scripts/setup.sh`.
+  - [x] `package.json` scripts (`plugin:build`, `plugin:watch`).
+  - [x] `tsconfig.json` paths / aliases.
+  - [x] [CONTRIBUTING.draft.md](./CONTRIBUTING.draft.md) "Repository layout" section.
+  - [x] Any `AGENTS.draft.md` references.
+- [x] **Delete `Dockerfile`** at repo root (Q25). Verify no `.dockerignore` exists, no Docker block in `smithery.yaml`, no Docker-image CI jobs. Grep the README for container/Docker deployment mentions; remove if found.
+- [x] **Delete `DRAGME.md`** (replaced in Phase 6).
+- [x] Run `bun run build:all` locally; confirm plugin builds at new path.
 
 ---
 
@@ -344,6 +344,6 @@ Run only after Phase 13's publish succeeds (Smithery/MCP.so/Glama configs depend
 Walk the full Section 5 checklist in [spec.md](./spec.md#5-verification-checklist). Every box must be checked:
 
 - [ ] **Visibility:** `view-source:` shows no `noindex`; no "forked from" banner; `meta-octolytics-dimension-repository_is_fork` is `false`; all four README edits landed; repo-wide `fork` sweep done; LICENSE retains both copyright lines; `package.json#description` matches GitHub About verbatim; NPM+CI badges render; Google `site:` query returns results within ~7 days.
-- [ ] **Cleanup & new files:** `DRAGME.md` deleted; `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md` present with the specified content; `CONTRIBUTING.md` promoted with rewritten relative links; `src/figma_plugin/` moved; `tsup.config.ts` matches Phase 4 spec; `--version`/`--help`/`--port` work on both bins; `integrate.sh` and `setup.sh` updated; `ci.yml` and `publish.yml` present, green, pinned to Bun `1.3.0`; three pre-existing test failures fixed; `smithery.yaml` uses `npx`; `Dockerfile` deleted; `bun-types` removed; `pub:release` deleted.
+- [ ] **Cleanup & new files:** `DRAGME.md` deleted; `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md` present with the specified content; `CONTRIBUTING.md` promoted with rewritten relative links; `figma_plugin/` moved; `tsup.config.ts` matches Phase 4 spec; `--version`/`--help`/`--port` work on both bins; `integrate.sh` and `setup.sh` updated; `ci.yml` and `publish.yml` present, green, pinned to Bun `1.3.0`; three pre-existing test failures fixed; `smithery.yaml` uses `npx`; `Dockerfile` deleted; `bun-types` removed; `pub:release` deleted.
 - [ ] **Publish:** CHANGELOG rewrite was commit #1; `package.json` correct (no `main`/`module`/`pub:release`); tarball inspection passed; smoke test passed; 2FA active; `NPM_TOKEN` configured; tag pushed; provenance badge visible; GitHub Release published.
 - [ ] **Discovery:** Smithery/MCP.so/Glama/GitHub MCP Registry submissions accepted; Search Console indexing requested.

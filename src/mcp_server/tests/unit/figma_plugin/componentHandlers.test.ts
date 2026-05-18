@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
-import { setComponentInstanceProperty, manageComponentProperty } from "../../../../../src/figma_plugin/handlers/componentHandlers.js";
+import { setComponentInstanceProperty, manageComponentProperty } from "../../../../../figma_plugin/handlers/componentHandlers.js";
 
 // === Setup for Security Gate tests via main.ts routing ===
 // main.ts must be imported once with globalThis.figma + __html__ already in place,
@@ -38,7 +38,7 @@ const gateFigma = makeGateFigma();
 
 // Import main.ts dynamically after globals are in place; main.ts assigns
 // gateFigma.ui.onmessage = handler at module load.
-await import("../../../../../src/figma_plugin/src/main.js");
+await import("../../../../../figma_plugin/src/main.js");
 const gateOnMessage = gateFigma.ui.onmessage as (msg: any) => Promise<void> | void;
 
 describe("Component Handlers", () => {

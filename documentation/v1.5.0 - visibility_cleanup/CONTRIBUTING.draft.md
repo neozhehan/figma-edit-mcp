@@ -52,7 +52,7 @@ To load the plugin into Figma:
 
 1. Open the Figma desktop app.
 2. Menu → **Plugins → Development → Import plugin from manifest**.
-3. Select `src/figma_plugin/manifest.json` from your clone.
+3. Select `figma_plugin/manifest.json` from your clone.
 
 ---
 
@@ -136,7 +136,7 @@ Once the design decision is settled:
 
 1. Implement the tool in `src/mcp_server/tools/`.
 2. Register it in the tool registry.
-3. If it mutates the document, add the corresponding plugin-side handler in `src/figma_plugin/` and the validation/safeguard checks.
+3. If it mutates the document, add the corresponding plugin-side handler in `figma_plugin/` and the validation/safeguard checks.
 4. Add a test in `src/mcp_server/tests/`.
 5. Update the README tool inventory and [AGENTS.md](../../AGENTS.md) usage guidance — including when to reach for the new tool vs. its neighbors, so agents don't pick it by accident.
 6. If the new tool supersedes existing functionality, mark the displaced tool deprecated in the same PR and schedule its removal for the next minor release.

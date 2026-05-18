@@ -6,7 +6,7 @@ This document captures the gaps, pitfalls, and contradictions identified while c
 
 ## 1. Correct the file references in the plan ✅ Adopted
 
-The plan implies `get_nodes_info` lives near the other component code, but it actually lives in [src/mcp_server/tools/document.ts:74](../src/mcp_server/tools/document.ts#L74), not [src/mcp_server/tools/components.ts](../src/mcp_server/tools/components.ts). The plugin-side dispatch is in [src/figma_plugin/src/main.ts:461-472](../src/figma_plugin/src/main.ts#L461-L472).
+The plan implies `get_nodes_info` lives near the other component code, but it actually lives in [src/mcp_server/tools/document.ts:74](../src/mcp_server/tools/document.ts#L74), not [src/mcp_server/tools/components.ts](../src/mcp_server/tools/components.ts). The plugin-side dispatch is in [figma_plugin/src/main.ts:461-472](../figma_plugin/src/main.ts#L461-L472).
 
 **Action:** Update Section 1 of the plan to reference `document.ts` and the correct dispatch location so the implementer doesn't edit the wrong file.
 
@@ -20,9 +20,9 @@ The plan adds `fields` to the MCP tool schema but never describes how the value 
 
 1. The MCP tool schema in [src/mcp_server/tools/document.ts](../src/mcp_server/tools/document.ts) — add the `fields` zod definition.
 2. The `sendCommandToFigma("get_nodes_info", { nodeIds, fields })` call in the same file — currently only passes `nodeIds`.
-3. The `case "get_nodes_info"` branch in [src/figma_plugin/src/main.ts:461](../src/figma_plugin/src/main.ts#L461) — currently calls `getNodesInfo(params.nodeIds)`, dropping `fields`.
-4. The signature of `getNodesInfo` in [src/figma_plugin/handlers/nodeReaders.ts:92](../src/figma_plugin/handlers/nodeReaders.ts#L92) — accept and forward `fields`.
-5. The signature of `filterFigmaNode` in [src/figma_plugin/utils/nodeUtils.ts:12](../src/figma_plugin/utils/nodeUtils.ts#L12) — accept `fields` and use it in place of the hardcoded property selection.
+3. The `case "get_nodes_info"` branch in [figma_plugin/src/main.ts:461](../figma_plugin/src/main.ts#L461) — currently calls `getNodesInfo(params.nodeIds)`, dropping `fields`.
+4. The signature of `getNodesInfo` in [figma_plugin/handlers/nodeReaders.ts:92](../figma_plugin/handlers/nodeReaders.ts#L92) — accept and forward `fields`.
+5. The signature of `filterFigmaNode` in [figma_plugin/utils/nodeUtils.ts:12](../figma_plugin/utils/nodeUtils.ts#L12) — accept `fields` and use it in place of the hardcoded property selection.
 
 **Action:** Enumerate these five touch-points in Section 1 of the plan so nothing is silently missed.
 
@@ -32,15 +32,15 @@ The plan adds `fields` to the MCP tool schema but never describes how the value 
 
 ## 3. Decide whether `readMyDesign` gets the same `fields` treatment ✅ Adopted (deleted)
 
-`readMyDesign` ([src/figma_plugin/handlers/nodeReaders.ts:126](../src/figma_plugin/handlers/nodeReaders.ts#L126)) shares the same export-and-filter pattern as `getNodesInfo`. If only `getNodesInfo` is updated, the two readers will diverge in capability and surprise callers.
+`readMyDesign` ([figma_plugin/handlers/nodeReaders.ts:126](../figma_plugin/handlers/nodeReaders.ts#L126)) shares the same export-and-filter pattern as `getNodesInfo`. If only `getNodesInfo` is updated, the two readers will diverge in capability and surprise callers.
 
 **Action:** Either extend `fields` support to `readMyDesign` as well, or state explicitly in the plan that it is intentionally left alone.
 
 **Resolution:** Investigation showed `readMyDesign` had no corresponding MCP tool registration — the plugin command `read_my_design` was unreachable from any client (and its removal had already been planned in [completed/tool_rationalization_plan.md](completed/tool_rationalization_plan.md) but never executed plugin-side). Deleted in four places:
-- Function definition removed from [src/figma_plugin/handlers/nodeReaders.ts](../src/figma_plugin/handlers/nodeReaders.ts).
-- Re-export removed from [src/figma_plugin/handlers/index.ts](../src/figma_plugin/handlers/index.ts).
-- Import removed from [src/figma_plugin/src/main.ts:10](../src/figma_plugin/src/main.ts#L10).
-- `case "read_my_design"` dispatch removed from [src/figma_plugin/src/main.ts](../src/figma_plugin/src/main.ts).
+- Function definition removed from [figma_plugin/handlers/nodeReaders.ts](../figma_plugin/handlers/nodeReaders.ts).
+- Re-export removed from [figma_plugin/handlers/index.ts](../figma_plugin/handlers/index.ts).
+- Import removed from [figma_plugin/src/main.ts:10](../figma_plugin/src/main.ts#L10).
+- `case "read_my_design"` dispatch removed from [figma_plugin/src/main.ts](../figma_plugin/src/main.ts).
 
 ---
 
@@ -48,7 +48,7 @@ The plan adds `fields` to the MCP tool schema but never describes how the value 
 
 There are two `filterFigmaNode` implementations:
 
-- [src/figma_plugin/utils/nodeUtils.ts:12](../src/figma_plugin/utils/nodeUtils.ts#L12) — actually used by the plugin.
+- [figma_plugin/utils/nodeUtils.ts:12](../figma_plugin/utils/nodeUtils.ts#L12) — actually used by the plugin.
 - [src/mcp_server/utils.ts:45](../src/mcp_server/utils.ts#L45) — orphaned; the server never calls it because filtering happens plugin-side before the data crosses the wire.
 
 The plan only references the plugin copy, but leaving the dead copy in place invites future contributors to edit the wrong one.
@@ -59,7 +59,7 @@ The plan only references the plugin copy, but leaving the dead copy in place inv
 - Function removed from [src/mcp_server/utils.ts](../src/mcp_server/utils.ts).
 - `import { ... filterFigmaNode }` and the entire `describe('filterFigmaNode', ...)` block removed from [src/mcp_server/tests/utils.test.ts](../src/mcp_server/tests/utils.test.ts).
 
-**Follow-up:** `rgbaToHex` in [src/mcp_server/utils.ts:31](../src/mcp_server/utils.ts#L31) is now also dead — its only consumer was the deleted `filterFigmaNode` (the plugin has its own `rgbaToHex` in [colorUtils.ts](../src/figma_plugin/utils/colorUtils.ts)). Tracked as item #19 below.
+**Follow-up:** `rgbaToHex` in [src/mcp_server/utils.ts:31](../src/mcp_server/utils.ts#L31) is now also dead — its only consumer was the deleted `filterFigmaNode` (the plugin has its own `rgbaToHex` in [colorUtils.ts](../figma_plugin/utils/colorUtils.ts)). Tracked as item #19 below.
 
 ---
 
@@ -151,7 +151,7 @@ The plan groups `overrides` under "Component Properties," but on an INSTANCE nod
 
 ## 10. Add read-only and scope checks to both new write tools ✅ Adopted
 
-Every existing write command in [src/figma_plugin/src/main.ts](../src/figma_plugin/src/main.ts) follows the pattern:
+Every existing write command in [figma_plugin/src/main.ts](../figma_plugin/src/main.ts) follows the pattern:
 
 ```ts
 if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
@@ -209,7 +209,7 @@ Both new tools accept a `value` / `defaultValue` of `string | boolean`. For INST
 
 ## 14. Remove `VARIANT` from `manage_component_property`'s `ADD` enum ✅ Adopted
 
-The Figma Plugin API's `addComponentProperty(name, type, defaultValue)` only supports `BOOLEAN | TEXT | INSTANCE_SWAP`. Variant properties are created exclusively via `combineAsVariants` — see existing usage in [src/figma_plugin/handlers/componentHandlers.ts:682](../src/figma_plugin/handlers/componentHandlers.ts#L682).
+The Figma Plugin API's `addComponentProperty(name, type, defaultValue)` only supports `BOOLEAN | TEXT | INSTANCE_SWAP`. Variant properties are created exclusively via `combineAsVariants` — see existing usage in [figma_plugin/handlers/componentHandlers.ts:682](../figma_plugin/handlers/componentHandlers.ts#L682).
 
 Listing `VARIANT` in the ADD enum is a contradiction that will fail at runtime.
 
@@ -269,7 +269,7 @@ The repo already has [src/mcp_server/tests/unit/tools/components.test.ts](../src
 
 ## 19. Delete the orphaned `rgbaToHex` in server `utils.ts` ✅ Adopted
 
-Surfaced as a follow-up while adopting #4. After removing `filterFigmaNode` from [src/mcp_server/utils.ts](../src/mcp_server/utils.ts), `rgbaToHex` at [src/mcp_server/utils.ts:31](../src/mcp_server/utils.ts#L31) has no production caller — its only consumer was the deleted `filterFigmaNode`. The plugin has its own copy in [src/figma_plugin/utils/colorUtils.ts](../src/figma_plugin/utils/colorUtils.ts), so removing the server copy doesn't affect the plugin.
+Surfaced as a follow-up while adopting #4. After removing `filterFigmaNode` from [src/mcp_server/utils.ts](../src/mcp_server/utils.ts), `rgbaToHex` at [src/mcp_server/utils.ts:31](../src/mcp_server/utils.ts#L31) has no production caller — its only consumer was the deleted `filterFigmaNode`. The plugin has its own copy in [figma_plugin/utils/colorUtils.ts](../figma_plugin/utils/colorUtils.ts), so removing the server copy doesn't affect the plugin.
 
 **Action:** Delete `rgbaToHex` from [src/mcp_server/utils.ts](../src/mcp_server/utils.ts), drop the import and the `describe('rgbaToHex', ...)` block from [src/mcp_server/tests/utils.test.ts](../src/mcp_server/tests/utils.test.ts).
 
@@ -293,7 +293,7 @@ Surfaced during the read-tool overlap audit. Once `get_nodes_info` returns `id`/
 
 Two minor differences need handling before removal:
 
-- **`targetPage.loadAsync()`** — `get_page_info` calls this before reading children ([nodeReaders.ts:53-56](../src/figma_plugin/handlers/nodeReaders.ts#L53-L56)). `get_nodes_info` doesn't. The fix is to add a PAGE-type check inside `getNodesInfo` and call `loadAsync` when needed.
+- **`targetPage.loadAsync()`** — `get_page_info` calls this before reading children ([nodeReaders.ts:53-56](../figma_plugin/handlers/nodeReaders.ts#L53-L56)). `get_nodes_info` doesn't. The fix is to add a PAGE-type check inside `getNodesInfo` and call `loadAsync` when needed.
 - **`isCurrent: boolean`** — Unique to `get_page_info`. Either expose it as a derivable flag in `get_nodes_info` for PAGE nodes, or document that callers should compare `id` to `get_document_info().currentPageId`.
 
 **Confirmed NOT redundant** during the same audit (kept because each adds resolution/filtering value beyond raw fields):

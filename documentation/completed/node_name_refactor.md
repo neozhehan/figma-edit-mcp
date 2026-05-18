@@ -50,10 +50,10 @@ Update tool definitions to use new parameter names and descriptions.
 - Update parameter descriptions to match user request.
 
 ### Figma Plugin
-#### [figma_plugin](src/figma_plugin)
+#### [figma_plugin](figma_plugin)
 Update input validation logic to check for new parameter names.
 
-##### [MODIFY] [main.js](file:///Users/neoworks/Git/figma-edit-mcp/src/figma_plugin/src/main.js)
+##### [MODIFY] [main.js](file:///Users/neoworks/Git/figma-edit-mcp/figma_plugin/src/main.js)
 - Update `ERRORS` object constants to refer to new names.
 - Update `handleCommand` switch cases to access `params.nodeName`, `params.parentNodeName`, etc.
 - Update `checkScopeAccess` and `verifyNodeName` calls to pass the correct new parameters.

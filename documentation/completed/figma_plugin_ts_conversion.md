@@ -10,7 +10,7 @@ Converting the Figma Plugin to TypeScript provides several key benefits:
 
 ## Prerequisites
 - The backend MCP server is already in TypeScript.
-- The project is already using `esbuild` for the plugin (`src/figma_plugin/build.js`), which supports TypeScript out-of-the-box.
+- The project is already using `esbuild` for the plugin (`figma_plugin/build.js`), which supports TypeScript out-of-the-box.
 - A new branch `feature/convert-plugin-to-typescript` has been created for these changes.
 
 ## Step-by-Step Implementation Plan
@@ -22,20 +22,20 @@ Converting the Figma Plugin to TypeScript provides several key benefits:
 
 ### 2. Configure TypeScript for the Plugin
 - **Task:** Add a `tsconfig.json` file specifically for the Figma plugin to handle DOM and Figma API types correctly without interfering with the Node.js backend `tsconfig.json`.
-- **Action:** Create `src/figma_plugin/tsconfig.json` with appropriate settings:
+- **Action:** Create `figma_plugin/tsconfig.json` with appropriate settings:
   - `compilerOptions`: `target: "es6"`, `lib: ["es6", "dom"]`, `strict: true`, `typeRoots`: `["./node_modules/@types", "./node_modules/@figma"]`.
   - `include`: `["src/**/*"]`.
 
 ### 3. Rename JavaScript Files to TypeScript
 - **Task:** Change the file extensions of all plugin source files from `.js` to `.ts`.
 - **Action:**
-  - Rename `src/figma_plugin/src/main.js` to `main.ts`.
-  - Rename all files in `src/figma_plugin/handlers/` and `src/figma_plugin/utils/` to `.ts`.
+  - Rename `figma_plugin/src/main.js` to `main.ts`.
+  - Rename all files in `figma_plugin/handlers/` and `figma_plugin/utils/` to `.ts`.
 - **Verification:** Ensure all files are renamed and no `.js` files remain in these source directories.
 
 ### 4. Update the Build Script
 - **Task:** Update the ESBuild configuration to target the new `.ts` entry point.
-- **Action:** Modify `src/figma_plugin/build.js`:
+- **Action:** Modify `figma_plugin/build.js`:
   - Change `entryPoints: [join(__dirname, 'src/main.js')]` to `entryPoints: [join(__dirname, 'src/main.ts')]`.
 - **Verification:** Run `npm run plugin:build` to confirm `esbuild` can process the `.ts` entry point (even with temporary type errors).
 
@@ -46,7 +46,7 @@ Converting the Figma Plugin to TypeScript provides several key benefits:
   - Define interfaces for the JSON RPC payloads sent between the plugin and the server. This may involve importing types from the backend `src/mcp_server` or defining shared types.
   - Fix any implicit `any` errors.
   - Ensure correct handling of null/undefined values, especially when querying Figma nodes.
-- **Verification:** Running `tsc -p src/figma_plugin/tsconfig.json --noEmit` should complete with zero errors.
+- **Verification:** Running `tsc -p figma_plugin/tsconfig.json --noEmit` should complete with zero errors.
 
 ### 6. Verification and Testing
 - **Task:** Verify the built plugin functions correctly within Figma.

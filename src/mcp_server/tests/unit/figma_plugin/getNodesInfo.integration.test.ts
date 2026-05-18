@@ -35,10 +35,10 @@ if (!(globalThis as any).figma) {
 
 // Use dynamic imports — static imports get hoisted above the figma-stub setup
 // above, which causes main.ts to throw at module-load (it calls figma.showUI).
-const mainMod: any = await import("../../../../../src/figma_plugin/src/main.js");
+const mainMod: any = await import("../../../../../figma_plugin/src/main.js");
 const realState: any = mainMod.getPluginState();
-const { getNodesInfo, getPagesInfo } = await import("../../../../../src/figma_plugin/handlers/nodeReaders.js");
-const { getConnectPayload } = await import("../../../../../src/figma_plugin/handlers/connectHandlers.js");
+const { getNodesInfo, getPagesInfo } = await import("../../../../../figma_plugin/handlers/nodeReaders.js");
+const { getConnectPayload } = await import("../../../../../figma_plugin/handlers/connectHandlers.js");
 function setState(next: { readOnly: boolean; scopeRootId: string | null }) {
     realState.readOnly = next.readOnly;
     realState.scopeRootId = next.scopeRootId;
@@ -443,7 +443,7 @@ describe("Phase 6.2 — empty-args dispatch + read-only short-circuit (static so
     let src: string;
     beforeEach(async () => {
         const fs = await import("node:fs/promises");
-        src = await fs.readFile("src/figma_plugin/src/main.ts", "utf8");
+        src = await fs.readFile("figma_plugin/src/main.ts", "utf8");
     });
 
     it("get_nodes_info dispatch substitutes the scope id when nodeIds is empty/missing", () => {

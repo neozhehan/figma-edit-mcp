@@ -23,7 +23,7 @@ An analysis of the codebase reveals that almost all of these packages are active
 
 - **`zod`**: Heavily used throughout `src/mcp_server/tools/*.ts` for defining strict schemas for MCP tool inputs.
 - **`uuid` & `ws`**: Used in `src/mcp_server/figma-client.ts`, `src/mcp_server/server.ts`, and `src/socket.ts` for managing WebSocket connections to Figma.
-- **`esbuild`**: Utilized by the custom build script (`src/figma_plugin/build.js`) to compile the Figma plugin.
+- **`esbuild`**: Utilized by the custom build script (`figma_plugin/build.js`) to compile the Figma plugin.
 - **`tsup`**: The core build tool specified in the `package.json` scripts (`build: "tsup"`) for compiling the MCP server.
 - **`typescript`, `@figma/plugin-typings`, `bun-types`, `@types/bun`**: Essential for type-checking and providing the types for the Bun runtime environment and Figma plugin development.
 

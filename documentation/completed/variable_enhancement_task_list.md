@@ -73,7 +73,7 @@ This document provides a component-level breakdown of the implementation phases 
 - [x] Build the `update_reactions` tool (wholesale replacement with Zod validation)
   - [x] Create a comprehensive Zod schema for the Figma `Reaction` type in `prototyping.ts`, using `z.lazy()` for recursive types (Action → ConditionalBlock → Action → Expression → ExpressionArgument → Expression...)
   - [x] Add a comment referencing the Figma Plugin API version the schema was built against
-  - [x] Create an `updateReactions` command handler in `src/figma_plugin/handlers/prototypingHandlers.ts` that calls `node.setReactionsAsync(reactions)`
+  - [x] Create an `updateReactions` command handler in `figma_plugin/handlers/prototypingHandlers.ts` that calls `node.setReactionsAsync(reactions)`
   - [x] Create an `update_reactions` MCP tool definition in `src/mcp_server/tools/prototyping.ts` that validates the reactions payload against the Zod schema before sending to the plugin
   - [x] Reject malformed payloads with descriptive Zod validation errors
 

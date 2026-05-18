@@ -9,7 +9,7 @@ To prevent AI hallucinations and errors, we will implement a verification mechan
 
 ## Proposed Changes
 
-We will modify `src/mcp_server/server.ts` to update Zod schemas and `src/figma_plugin/src/main.js` to implement the verification logic.
+We will modify `src/mcp_server/server.ts` to update Zod schemas and `figma_plugin/src/main.js` to implement the verification logic.
 
 ### Server Side (`src/mcp_server/server.ts`)
 
@@ -48,7 +48,7 @@ These tools operate on multiple nodes and will require an array of objects patte
 - `set_multiple_annotations`: Update the existing `annotations` array objects to include `expectedName: z.string()`.
 - `create_connections`: Update `connections` array objects to include `expectedStartNodeName: z.string()` and `expectedEndNodeName: z.string()`. These verify the identities of the nodes being connected.
 
-### Plugin Side (`src/figma_plugin/src/main.js`)
+### Plugin Side (`figma_plugin/src/main.js`)
 
 1.  **Helper Functions**:
     - `verifyNodeName(nodeId, expectedName)`: Throws error if node not found or name mismatch.

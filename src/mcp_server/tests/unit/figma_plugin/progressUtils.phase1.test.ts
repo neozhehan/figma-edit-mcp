@@ -108,10 +108,10 @@ describe("Phase 1.1a: callers await sendProgressUpdate", () => {
         // strictness alone won't catch missing awaits.
         const fs = await import("node:fs/promises");
         const files = [
-            "src/figma_plugin/handlers/annotationHandlers.ts",
-            "src/figma_plugin/handlers/connectorHandlers.ts",
-            "src/figma_plugin/handlers/nodeModifiers.ts",
-            "src/figma_plugin/handlers/textHandlers.ts",
+            "figma_plugin/handlers/annotationHandlers.ts",
+            "figma_plugin/handlers/connectorHandlers.ts",
+            "figma_plugin/handlers/nodeModifiers.ts",
+            "figma_plugin/handlers/textHandlers.ts",
         ];
         const offenders: string[] = [];
         for (const path of files) {
@@ -139,7 +139,7 @@ describe("Phase 1.2: ui.html activeRequestId wiring", () => {
 
     beforeEach(async () => {
         const fs = await import("node:fs/promises");
-        html = await fs.readFile("src/figma_plugin/ui.html", "utf8");
+        html = await fs.readFile("figma_plugin/ui.html", "utf8");
     });
 
     it("declares activeRequestId in state", () => {

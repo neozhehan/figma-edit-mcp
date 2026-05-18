@@ -176,7 +176,7 @@ describe("Phase 4 §2a: sendProgressUpdate callers await correctly", () => {
         const fs = await import("node:fs/promises");
         const path = await import("node:path");
 
-        const handlersDir = "src/figma_plugin/handlers";
+        const handlersDir = "figma_plugin/handlers";
         const entries = await fs.readdir(handlersDir);
         const tsFiles = entries.filter((e) => e.endsWith(".ts"));
 
@@ -201,7 +201,7 @@ describe("Phase 4 §2a: sendProgressUpdate callers await correctly", () => {
     it("sendProgressUpdate is declared async in progressUtils.ts", async () => {
         const fs = await import("node:fs/promises");
         const src = await fs.readFile(
-            "src/figma_plugin/utils/progressUtils.ts",
+            "figma_plugin/utils/progressUtils.ts",
             "utf8",
         );
         expect(src).toMatch(/export\s+async\s+function\s+sendProgressUpdate/);
@@ -210,7 +210,7 @@ describe("Phase 4 §2a: sendProgressUpdate callers await correctly", () => {
     it("sendProgressUpdate includes the setTimeout(fn, 0) yield after postMessage", async () => {
         const fs = await import("node:fs/promises");
         const src = await fs.readFile(
-            "src/figma_plugin/utils/progressUtils.ts",
+            "figma_plugin/utils/progressUtils.ts",
             "utf8",
         );
         // The postMessage call must come before the setTimeout yield

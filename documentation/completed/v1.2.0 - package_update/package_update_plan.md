@@ -59,12 +59,12 @@ This phase removes unused dependencies and safely updates packages that only hav
 ---
 
 ## Phase 2: `esbuild` Update
-esbuild's stated versioning policy treats every 0.x bump as potentially breaking, so `0.27.2 → 0.28.0` is given its own phase rather than being grouped with safe minors. esbuild drives the Figma plugin build via [src/figma_plugin/build.js](../../src/figma_plugin/build.js); a silent API change there would not necessarily surface in `bun run build:all` exit status without inspection.
+esbuild's stated versioning policy treats every 0.x bump as potentially breaking, so `0.27.2 → 0.28.0` is given its own phase rather than being grouped with safe minors. esbuild drives the Figma plugin build via [figma_plugin/build.js](../../figma_plugin/build.js); a silent API change there would not necessarily surface in `bun run build:all` exit status without inspection.
 
 **Tasks:**
 - [x] **Scan the changelog** for `esbuild` 0.27 → 0.28 ahead of the bump. Flag any of: removed/renamed build options, default behavior changes (e.g. `format`, `platform`, `target`, `loader` defaults), changes to plugin API or output file naming.
 - [x] **Update esbuild**: `bun add -d esbuild@0.28.0`
-- [x] **Audit `src/figma_plugin/build.js`**: confirm every option passed to `esbuild.build(...)` is still valid under 0.28; reconcile any flagged changes from the changelog scan.
+- [x] **Audit `figma_plugin/build.js`**: confirm every option passed to `esbuild.build(...)` is still valid under 0.28; reconcile any flagged changes from the changelog scan.
 - [x] **Verify build output**: run `bun run plugin:build` and inspect the generated plugin bundle (size, entry shape) for unexpected diffs vs. the pre-bump output.
 - [x] **Verify**: Run the general verification steps.
 

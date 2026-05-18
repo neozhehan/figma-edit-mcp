@@ -255,16 +255,16 @@ Job permissions must include `id-token: write` so OIDC provenance attestation wo
 - **`Dockerfile`** (Q25) — **delete** [Dockerfile](../../Dockerfile) from the repo root. MCP servers run inside the host process (Claude Desktop, Cursor, Antigravity) via stdio; a containerized server is not a documented use case and the existing Dockerfile is clone-based, contradicting the NPM-first model. Audited 2026-05-12: no `.dockerignore` exists, `smithery.yaml` carries no Docker block (`dockerfile:` / `runtime: container`), and the repo has no `.github/` directory yet so there are no CI jobs that build or push an image. The only related cleanup is grepping the README for any container-deployment mentions; remove if found. The CHANGELOG `[1.5.0]` entry's "Cleanup" section notes the deletion.
 - **Duplicate Bun type packages** — [package.json](../../package.json) `devDependencies` lists both `@types/bun` and `bun-types`. Remove `bun-types` (superseded by `@types/bun`).
 
-### 2k. Move `src/figma_plugin/` → `figma_plugin/` (Q15)
+### 2k. Move `figma_plugin/` → `figma_plugin/` (Q15)
 
 Q15's decision: the plugin sources move to a top-level `figma_plugin/` directory so the NPM tarball ships the layout end users actually need (`node_modules/figma-edit-mcp/figma_plugin/manifest.json`), without any path-rename plumbing in `package.json#files`.
 
 Steps:
 
-- `git mv src/figma_plugin figma_plugin`.
-- Update `figma_plugin/build.js` (formerly `src/figma_plugin/build.js`) to emit `figma_plugin/code.js` directly — i.e., remove the intermediate `dist/` subdirectory under the plugin folder.
+- `git mv figma_plugin figma_plugin`.
+- Update `figma_plugin/build.js` (formerly `figma_plugin/build.js`) to emit `figma_plugin/code.js` directly — i.e., remove the intermediate `dist/` subdirectory under the plugin folder.
 - `manifest.json`'s `main` / `ui` paths stay as `code.js` / `ui.html` (already relative to the manifest, so no change needed).
-- Update every reference to `src/figma_plugin/...` across the repo: [README.md:181](../../README.md#L181) ("Select `figma_plugin/manifest.json`"), `scripts/integrate.sh`, `scripts/setup.sh`, `package.json` scripts (`plugin:build`, `plugin:watch`), `tsconfig.json` / path aliases, [CONTRIBUTING.draft.md](./CONTRIBUTING.draft.md) "Repository layout" section, and any AGENTS.md draft references.
+- Update every reference to `figma_plugin/...` across the repo: [README.md:181](../../README.md#L181) ("Select `figma_plugin/manifest.json`"), `scripts/integrate.sh`, `scripts/setup.sh`, `package.json` scripts (`plugin:build`, `plugin:watch`), `tsconfig.json` / path aliases, [CONTRIBUTING.draft.md](./CONTRIBUTING.draft.md) "Repository layout" section, and any AGENTS.md draft references.
 - After the move, the `files` array entry `"figma_plugin"` (Step 4a) ships the directory directly; no staging copy needed.
 - Confirm during Step 4c's tarball inspection that `package/figma_plugin/manifest.json`, `package/figma_plugin/code.js`, and `package/figma_plugin/ui.html` are all present.
 
@@ -289,7 +289,7 @@ The rewritten entry must cover, at minimum:
 - **Release:** first version published to NPM as `figma-edit-mcp`.
 - **Repository:** fork detachment, README rewrites (fork language, MCP host config snippets switched to `npx`, Hallucination Safeguards collapsed with link to `AGENTS.md`), repo-wide `fork` language sweep (Q20), topic tightening, Issues + Discussions enabled, MCP directory submissions.
 - **Packaging:** new metadata (`description` aligned with GitHub About text, `keywords`, `repository`, `homepage`, `bugs`, `author`, `license`, `engines`); removal of `main` and `module` fields (Q18); `prepublishOnly` script; expanded `files` array (`LICENSE`, `CHANGELOG.md`, `DESIGN_PHILOSOPHY.md`, `AGENTS.md`, `CLAUDE.md`, `figma_plugin/`); second bin `figma-edit-mcp-socket` for the WebSocket bridge (Q6); `--version` / `--help` / `--port` flags on both bins (Q14, Q29); tsup target bump to `node20`, ESM-only output with `dts: false` (Q17), shebang banner.
-- **Plugin layout:** moved `src/figma_plugin/` → top-level `figma_plugin/` (Q15). Plugin sources now live at the same path the NPM tarball ships them.
+- **Plugin layout:** moved `figma_plugin/` → top-level `figma_plugin/` (Q15). Plugin sources now live at the same path the NPM tarball ships them.
 - **Agent documentation:** `DRAGME.md` retired; replaced by `AGENTS.md` (canonical, authored as `AGENTS.draft.md` in `documentation/v1.5.0 - visibility_cleanup/`) and `CLAUDE.md` (`@AGENTS.md` import).
 - **Contributor experience:** `CONTRIBUTING.md` added at repo root; `bun integrate` default switched to emit `npx figma-edit-mcp` configs, with a new `--local` flag for clone-based workflows; new `--port` flag plumbed through `bun integrate`. `scripts/setup.sh` declared contributor-only with a header banner (Q24).
 - **CI & supply chain:** `.github/workflows/ci.yml` (install / test / build / `npm pack` / bin smoke test / link check on push & PR; conditional `npm publish --dry-run` on packaging-file changes); `.github/workflows/publish.yml` (tag-driven `npm publish --provenance` from CI, gated by a tag-vs-package.json version-match check); both workflows pinned to Bun `1.3.0` per Q30; NPM `auth-and-writes` 2FA enabled on the maintainer account.
@@ -439,7 +439,7 @@ After completing Sections 1–4, confirm each item:
 ### Cleanup & new files (Section 2)
 - [ ] `DRAGME.md` deleted; `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, and `.github/copilot-instructions.md` present at repo root; `CLAUDE.md` is exactly `@AGENTS.md`; `.cursorrules` and `.github/copilot-instructions.md` each contain a one-paragraph pointer to `AGENTS.md`; `AGENTS.md` was promoted from [AGENTS.draft.md](./AGENTS.draft.md) with `../../` → `./` link rewrites
 - [ ] `CONTRIBUTING.md` present at repo root (promoted from the draft) with `../../` → `./` link rewrites; markdown link checker green (Q16)
-- [ ] `src/figma_plugin/` moved to top-level `figma_plugin/`; all `src/figma_plugin/...` references updated (Q15)
+- [ ] `figma_plugin/` moved to top-level `figma_plugin/`; all `figma_plugin/...` references updated (Q15)
 - [ ] `tsup.config.ts` emits both `dist/server.js` and `dist/socket.js`, target = `node20`, shebang banner applied, `format: ['esm']`, `dts: false` (Q17)
 - [ ] `--version` / `--help` / `--port` work on both bins; `--version` exits without opening transports (Q14, Q29)
 - [ ] `scripts/integrate.sh` default emits `npx`-based config; `--local` flag emits the clone-based template; `--port` flag plumbed through (Q29)

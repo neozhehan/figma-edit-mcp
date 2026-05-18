@@ -303,15 +303,15 @@ The figma-edit-mcp runtime has three components, but the current `files: ["dist"
 > **✅ Decision (2026-05-12): Option A — move plugin sources to a top-level `figma_plugin/`.**
 >
 > **What to ship:**
-> - Move `src/figma_plugin/` → `figma_plugin/` at the repo root.
-> - Update [src/figma_plugin/build.js](../../src/figma_plugin/build.js) (now `figma_plugin/build.js`) to emit `figma_plugin/code.js` — i.e., remove the intermediate `dist/` subdirectory under the plugin folder.
+> - Move `figma_plugin/` → `figma_plugin/` at the repo root.
+> - Update [figma_plugin/build.js](../../figma_plugin/build.js) (now `figma_plugin/build.js`) to emit `figma_plugin/code.js` — i.e., remove the intermediate `dist/` subdirectory under the plugin folder.
 > - `manifest.json`'s `main` / `ui` paths stay as `code.js` / `ui.html` (already relative to the manifest, so no change needed).
-> - Update every reference to `src/figma_plugin/...` across the repo: [README.md:181](../../README.md#L181) ("Select `figma_plugin/manifest.json`"), `scripts/integrate.sh`, `scripts/setup.sh`, `package.json` scripts (`plugin:build`, `plugin:watch`), `tsconfig.json`/path aliases, CONTRIBUTING.draft.md "Repository layout" section, and any AGENTS.md draft references.
+> - Update every reference to `figma_plugin/...` across the repo: [README.md:181](../../README.md#L181) ("Select `figma_plugin/manifest.json`"), `scripts/integrate.sh`, `scripts/setup.sh`, `package.json` scripts (`plugin:build`, `plugin:watch`), `tsconfig.json`/path aliases, CONTRIBUTING.draft.md "Repository layout" section, and any AGENTS.md draft references.
 > - Confirm the v1.5.0 tarball contains `package/figma_plugin/manifest.json`, `package/figma_plugin/code.js`, and `package/figma_plugin/ui.html` after `npm pack` (already covered by Spec Step 4c's tarball inspection).
 >
 > **Rationale:** single source of truth with no copying, tarball is its own smallest possible size, and the NPM install path (`node_modules/figma-edit-mcp/figma_plugin/manifest.json`) becomes structurally identical to the clone path (`figma_plugin/manifest.json`). That symmetry simplifies AGENTS.md and CONTRIBUTING.md — one set of instructions covers both audiences. The cost — a one-time grep-and-replace across the repo — is paid in a release that is already touching every doc surface, so the marginal disruption is minimal. The departure from the `src/` convention is acceptable because the plugin is a separately-shipped artifact, not server source code; co-locating it with the published-tarball layout is more important than convention symmetry.
 >
-> **Applied in:** [spec.md](./spec.md) Section 2 (a new "Move `src/figma_plugin/` → `figma_plugin/`" step under cleanup), Step 4a (`files` array entry now matches the actual top-level directory; `figma_plugin/build.js` note about output path is satisfied by the move), and Step 4c (tarball inspection paths confirmed). README, integrate.sh, setup.sh, and the CONTRIBUTING/AGENTS drafts all need their `src/figma_plugin/` references updated as part of the move.
+> **Applied in:** [spec.md](./spec.md) Section 2 (a new "Move `figma_plugin/` → `figma_plugin/`" step under cleanup), Step 4a (`files` array entry now matches the actual top-level directory; `figma_plugin/build.js` note about output path is satisfied by the move), and Step 4c (tarball inspection paths confirmed). README, integrate.sh, setup.sh, and the CONTRIBUTING/AGENTS drafts all need their `figma_plugin/` references updated as part of the move.
 
 ---
 
@@ -568,7 +568,7 @@ The figma-edit-mcp runtime has three components, but the current `files: ["dist"
 >
 > **Rationale:** once `figma-edit-mcp-socket` is a published bin used by arbitrary downstream installs, port collisions become a real bug class — port `3055` is not a registered IANA port and is realistically going to clash with other dev tooling on at least some users' machines. Adding the flag at v1.5.0 is the right time: there are no published consumers yet, so the contract starts permissive. Deferring to v1.5.1 (Option B) is cheaper in scope but more disruptive once any downstream config (Smithery, MCP.so, Glama listings, user MCP host configs) has captured the hardcoded port — you've effectively versioned a port. Picking a less-collision-prone default (Option C) reduces frequency without fixing the underlying issue and still requires the flag eventually. The plumbing cost (~half day for socket + server + plugin + integrate.sh) is acceptable for a "first publish" release because the alternative is locking in the wrong contract on day one.
 >
-> **Applied in:** `src/socket.ts` (`--port` + env handling), [src/mcp_server/server.ts](../../src/mcp_server/server.ts) (matching `--port` + env, used when connecting to the bridge), [figma_plugin/](../../src/figma_plugin/) (configurable WebSocket port; UI field), [scripts/integrate.sh](../../scripts/integrate.sh) (Q8 templates accept `--port`), and the `--help` output added per Q14. [spec.md](./spec.md) Sections 2d, 2e, 2f, and 4a need to mention the new flag/env contract.
+> **Applied in:** `src/socket.ts` (`--port` + env handling), [src/mcp_server/server.ts](../../src/mcp_server/server.ts) (matching `--port` + env, used when connecting to the bridge), [figma_plugin/](../../figma_plugin/) (configurable WebSocket port; UI field), [scripts/integrate.sh](../../scripts/integrate.sh) (Q8 templates accept `--port`), and the `--help` output added per Q14. [spec.md](./spec.md) Sections 2d, 2e, 2f, and 4a need to mention the new flag/env contract.
 
 ---
 
@@ -682,7 +682,7 @@ The figma-edit-mcp runtime has three components, but the current `files: ["dist"
 | 12 | CI workflow | **Decided** — Option A: add minimal `.github/workflows/ci.yml` (install/test/build) in v1.5.0 |
 | 13 | GitHub Release body | **Decided** — Option A: install one-liner (`npx figma-edit-mcp`) prepended to the CHANGELOG entry |
 | 14 | Bin-resolution dry-run check | **Decided** — Option A: mandatory pre-publish smoke test (`npm install` packed tarball + `--version` on both bins) |
-| 15 | `figma_plugin/` tarball layout | **Decided** — Option A: move `src/figma_plugin/` → top-level `figma_plugin/`; update all references |
+| 15 | `figma_plugin/` tarball layout | **Decided** — Option A: move `figma_plugin/` → top-level `figma_plugin/`; update all references |
 | 16 | CONTRIBUTING.md relative-link rewrites on promotion | **Decided** — Option B: add markdown link checker to CI; manual fix gated by it |
 | 17 | tsup output formats — drop CJS / `dts` | **Decided** — Option A: `format: ['esm']`, `dts: false`; ESM-only bins |
 | 18 | `main` / `module` fields for CLI-only package | **Decided** — Option A: remove both fields; `bin` entries are the sole entry points |
@@ -711,9 +711,9 @@ Decisions Q1–Q32 are settled, but several doc surfaces were authored before la
 
 Largest delta. Authored against Q7 only; needs Q15, Q19, Q23, Q24, and Q29 applied before promotion to repo root.
 
-- **Repository layout block ([L18-30](./CONTRIBUTING.draft.md#L18-L30))** still shows `src/figma_plugin/`. Update to top-level `figma_plugin/` (Q15).
+- **Repository layout block ([L18-30](./CONTRIBUTING.draft.md#L18-L30))** still shows `figma_plugin/`. Update to top-level `figma_plugin/` (Q15).
 - **[L40](./CONTRIBUTING.draft.md#L40)** — `build:all` comment lists `dist/code.js`; post-Q15 this is `figma_plugin/code.js` (no intermediate `dist/` under the plugin folder).
-- **[L55](./CONTRIBUTING.draft.md#L55)** — "Select `src/figma_plugin/manifest.json`" → `figma_plugin/manifest.json` (Q15).
+- **[L55](./CONTRIBUTING.draft.md#L55)** — "Select `figma_plugin/manifest.json`" → `figma_plugin/manifest.json` (Q15).
 - **[L73](./CONTRIBUTING.draft.md#L73)** — hardcodes `ws://localhost:3055`; document `--port` flag and `FIGMA_EDIT_MCP_SOCKET_PORT` env var (Q29).
 - **Draft banner ([L3](./CONTRIBUTING.draft.md#L3))** still says "Move to the repo root … *if* that option is adopted." Q7 is decided — rewrite to mirror AGENTS.draft.md's banner ("Promote to repo root in the v1.5.0 release PR; apply `../../` → `./` link rewrite per Q16").
 - **Missing content blocks the spec promises this file contains (Spec §2c):**
@@ -733,7 +733,7 @@ One Q29 gap. Otherwise content-complete.
 Two small follow-throughs.
 
 - **Pre-existing test failures (Q30 follow-up).** Promoted to a formal requirement in Spec §2g.1 with named failures, fix guidance, and acceptance criteria. Resolved — verify on the release PR that all three pass.
-- **Plugin README reference ([spec.md:46](./spec.md#L46)).** Audited 2026-05-12: [src/figma_plugin/README.md](../../src/figma_plugin/README.md) exists and will move to `figma_plugin/README.md` after the Q15 path move. Spec reference is valid. Resolved — sweep this file for fork language per Q20 like any other shipped doc.
+- **Plugin README reference ([spec.md:46](./spec.md#L46)).** Audited 2026-05-12: [figma_plugin/README.md](../../figma_plugin/README.md) exists and will move to `figma_plugin/README.md` after the Q15 path move. Spec reference is valid. Resolved — sweep this file for fork language per Q20 like any other shipped doc.
 
 ### README.md
 

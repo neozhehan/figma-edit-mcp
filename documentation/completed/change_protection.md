@@ -22,19 +22,19 @@ Restrict the Figma Plugin to only allow modifications (writes) to a specific tar
 - `state.readOnly` (boolean): If true, NO edits allowed. (Derived if no scope is provided).
 - **Input**: A text field in the Figma Plugin UI (`ui.html`) where the user pastes a link to the node.
 - **Persistence**: Per user request, the value in the text field does NOT need to be saved (session-only).
-- **Communication**: The UI will parse the link, extract the `nodeId`, and send a message to `src/figma_plugin/src/main.js` to update the `state.scopeRootId`.
+- **Communication**: The UI will parse the link, extract the `nodeId`, and send a message to `figma_plugin/src/main.js` to update the `state.scopeRootId`.
 
 ### Validation Helper
 (Unchanged) `isNodeInScope(targetNodeId)` will check against the locked `scopeRootId`.
 
 ### Command Dispatcher Interception
-Modify the `handleCommand` switch statement in `src/figma_plugin/src/main.js`.
+Modify the `handleCommand` switch statement in `figma_plugin/src/main.js`.
 Before executing specific commands, run the validation.
 
 ## 2. Implementation Steps
 
 ### Step 1: Add Scope UI & Validation Loop
-Modify `src/figma_plugin/ui.html`:
+Modify `figma_plugin/ui.html`:
 *   Add Input: `id="scope-link-input"` above the Connect button.
 *   "Connect" Button State: Always **ENABLED**.
 *   Button Click Logic:
@@ -44,7 +44,7 @@ Modify `src/figma_plugin/ui.html`:
         *   If valid -> Connect with `scopeNodeId`.
         *   If invalid -> Show error, do not connect.
 
-Modify `src/figma_plugin/src/main.js`:
+Modify `figma_plugin/src/main.js`:
 *   Handle `validate-scope-link`:
     *   Parse Node ID from URL.
     *   `figma.getNodeById(id)`.
@@ -53,7 +53,7 @@ Modify `src/figma_plugin/src/main.js`:
 ### Step 2: Implement "Connect & Lock"
 *   Update `connectToServer` flow in UI:
     *   When clicking Connect, include `scopeNodeId` in the handshake or simple `postMessage({ type: 'set-scope', scopeNodeId: ... })` immediately before connecting.
-*   Update `src/figma_plugin/src/main.js` state:
+*   Update `figma_plugin/src/main.js` state:
     *   Handle connect message.
     *   Set `state.scopeRootId` if provided.
     *   Set `state.readOnly = true` if no scope provided (or specific flag).
@@ -104,10 +104,10 @@ Commands: `get_document_info`, `get_selection`, `get_nodes_info`.
 
 ## 5. Files to Change
 The following files will be modified to implement this feature:
-1.  **`src/figma_plugin/ui.html`**:
+1.  **`figma_plugin/ui.html`**:
     *   Add "Link to Selection" input field.
     *   Add validation event logic.
-2.  **`src/figma_plugin/src/main.js`**:
+2.  **`figma_plugin/src/main.js`**:
     *   Implement `validate-scope-link` handler.
     *   Manage scope state (`state.scopeRootId`).
     *   Implement `checkScopeAccess` validation logic.

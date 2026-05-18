@@ -26,7 +26,7 @@ describe("Phase 4 §3a (static): getConnectPayload handler never calls loadAllPa
     it("connectHandlers.ts source does not reference loadAllPagesAsync", async () => {
         const fs = await import("node:fs/promises");
         const src = await fs.readFile(
-            "src/figma_plugin/handlers/connectHandlers.ts",
+            "figma_plugin/handlers/connectHandlers.ts",
             "utf8",
         );
         expect(src).not.toMatch(/loadAllPagesAsync/);
@@ -38,7 +38,7 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
     beforeEach(async () => {
         const fs = await import("node:fs/promises");
         src = await fs.readFile(
-            "src/figma_plugin/handlers/connectHandlers.ts",
+            "figma_plugin/handlers/connectHandlers.ts",
             "utf8",
         );
     });

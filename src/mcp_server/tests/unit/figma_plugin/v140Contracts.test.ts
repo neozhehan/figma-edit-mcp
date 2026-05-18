@@ -32,17 +32,17 @@ if (!(globalThis as any).figma) {
     };
 }
 
-const mainMod: any = await import("../../../../../src/figma_plugin/src/main.js");
+const mainMod: any = await import("../../../../../figma_plugin/src/main.js");
 const realState: any = mainMod.getPluginState();
 function setState(next: { readOnly: boolean; scopeRootId: string | null }) {
     realState.readOnly = next.readOnly;
     realState.scopeRootId = next.scopeRootId;
 }
 
-const { getNodesInfo } = await import("../../../../../src/figma_plugin/handlers/nodeReaders.js");
-const { getComponents } = await import("../../../../../src/figma_plugin/handlers/componentHandlers.js");
-const { getVariables } = await import("../../../../../src/figma_plugin/handlers/variableHandlers.js");
-const { getConnectPayload } = await import("../../../../../src/figma_plugin/handlers/connectHandlers.js");
+const { getNodesInfo } = await import("../../../../../figma_plugin/handlers/nodeReaders.js");
+const { getComponents } = await import("../../../../../figma_plugin/handlers/componentHandlers.js");
+const { getVariables } = await import("../../../../../figma_plugin/handlers/variableHandlers.js");
+const { getConnectPayload } = await import("../../../../../figma_plugin/handlers/connectHandlers.js");
 
 // =============================================================================
 // A. outputSchema MUST NOT be passed in server.tool() for get_nodes_info
@@ -72,9 +72,9 @@ describe("Contract A — get_nodes_info MUST NOT register an outputSchema", () =
 
 describe("Contract B — every sendProgressUpdate call MUST be awaited", () => {
     const files = [
-        "src/figma_plugin/handlers/nodeReaders.ts",
-        "src/figma_plugin/handlers/componentHandlers.ts",
-        "src/figma_plugin/handlers/variableHandlers.ts",
+        "figma_plugin/handlers/nodeReaders.ts",
+        "figma_plugin/handlers/componentHandlers.ts",
+        "figma_plugin/handlers/variableHandlers.ts",
     ];
 
     for (const file of files) {
@@ -116,7 +116,7 @@ describe("Contract B — every sendProgressUpdate call MUST be awaited", () => {
 describe("Contract C — state.activeRequestId capture/clear in ui.html", () => {
     let src: string;
     beforeEach(() => {
-        src = readFileSync("src/figma_plugin/ui.html", "utf8");
+        src = readFileSync("figma_plugin/ui.html", "utf8");
     });
 
     it("captures message.id onto state.activeRequestId for inbound broadcast messages", () => {

@@ -11,10 +11,10 @@ This plan outlines the steps required to implement the enhancements detailed in 
     *   Modify `get_document_info` output schema (remove `children`).
     *   Add `get_page_info` tool definition.
 *   [x] **Test**: Create/Update unit tests in `tests/unit/tools/document.test.ts`
-*   [x] **Plugin**: Update [src/figma_plugin/handlers/nodeReaders.js](src/figma_plugin/handlers/nodeReaders.js)
+*   [x] **Plugin**: Update [figma_plugin/handlers/nodeReaders.js](figma_plugin/handlers/nodeReaders.js)
     *   Refactor `getDocumentInfo` to return only document metadata (all pages list).
     *   Implement `getPageInfo` to return page content.
-*   [x] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `figma_plugin/main.js`
     *   Add `get_page_info` to `handleCommand` switch.
 
 ### 2. Rename & Enhance Component Getter
@@ -24,10 +24,10 @@ This plan outlines the steps required to implement the enhancements detailed in 
     *   Add `get_components` tool definition (parameters: `filter`, `scope`).
     *   Remove `get_local_components`.
 *   [x] **Test**: Create/Update unit tests in `tests/unit/tools/components.test.ts`
-*   [x] **Plugin**: Update [src/figma_plugin/handlers/componentHandlers.js](src/figma_plugin/handlers/componentHandlers.js)
+*   [x] **Plugin**: Update [figma_plugin/handlers/componentHandlers.js](figma_plugin/handlers/componentHandlers.js)
     *   Implement `getComponents` with `scope` (default: 'current_page') and `filter` ('local'/'remote').
     *   Remove `getLocalComponents`.
-*   [x] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `figma_plugin/main.js`
     *   Add `get_components` to `handleCommand` switch.
     *   Remove `get_local_components` route.
 
@@ -38,9 +38,9 @@ This plan outlines the steps required to implement the enhancements detailed in 
     *   Update `create_connections` schema to accept `connectorId`.
     *   Remove redundant `set_default_connector`.
 *   [x] **Test**: Create/Update unit tests in `tests/unit/tools/prototyping.test.ts`
-*   [x] **Plugin**: Update [src/figma_plugin/handlers/connectorHandlers.js](src/figma_plugin/handlers/connectorHandlers.js)
+*   [x] **Plugin**: Update [figma_plugin/handlers/connectorHandlers.js](figma_plugin/handlers/connectorHandlers.js)
     *   Refactor `createConnections` to handle optional `connectorId` (set as default template).
-*   [x] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `figma_plugin/main.js`
     *   Update `create_connections` validation logic to check `connectorId`.
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName` are applied to `connectorId` (if provided).
 
@@ -53,10 +53,10 @@ This plan outlines the steps required to implement the enhancements detailed in 
     *   Add `set_text_style` tool definition with all optional styling parameters.
     *   Remove redundant individual text tools (`set_font_size`, `set_font_weight`, etc.).
 *   [x] **Test**: Create/Update unit tests in `tests/unit/tools/text.test.ts`
-*   [x] **Plugin**: Create/Update [src/figma_plugin/handlers/textHandlers.js](src/figma_plugin/handlers/textHandlers.js)
+*   [x] **Plugin**: Create/Update [figma_plugin/handlers/textHandlers.js](figma_plugin/handlers/textHandlers.js)
     *   Implement `setTextStyle` with conditional font loading.
     *   **Strict Handler**: Ensure missing parameters are treated as noops.
-*   [x] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `figma_plugin/main.js`
     *   Add `set_text_style` to `handleCommand` switch.
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName` are implemented.
 
@@ -67,10 +67,10 @@ This plan outlines the steps required to implement the enhancements detailed in 
     *   Add `set_auto_layout` tool definition.
     *   Remove redundant `set_layout_mode`, `set_padding`, etc.
 *   [x] **Test**: Create/Update unit tests in `tests/unit/tools/layout.test.ts`
-*   [x] **Plugin**: Create/Update [src/figma_plugin/handlers/layoutHandlers.js](src/figma_plugin/handlers/layoutHandlers.js)
+*   [x] **Plugin**: Create/Update [figma_plugin/handlers/layoutHandlers.js](figma_plugin/handlers/layoutHandlers.js)
     *   Implement `setAutoLayout`.
     *   **Strict Handler**: Ensure missing parameters are treated as noops.
-*   [x] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `figma_plugin/main.js`
     *   Add `set_auto_layout` to `handleCommand` switch.
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName` are implemented.
 
@@ -82,10 +82,10 @@ This plan outlines the steps required to implement the enhancements detailed in 
 *   [x] **Server**: Update [src/mcp_server/tools/creation.ts](src/mcp_server/tools/creation.ts)
     *   Display `create_ellipse` and `create_polygon_star` tools.
 *   [x] **Test**: Create/Update unit tests in `tests/unit/tools/creation.test.ts`
-*   [x] **Plugin**: Update [src/figma_plugin/handlers/nodeCreators.js](src/figma_plugin/handlers/nodeCreators.js)
+*   [x] **Plugin**: Update [figma_plugin/handlers/nodeCreators.js](figma_plugin/handlers/nodeCreators.js)
     *   Implement `createEllipse` (supports arcs/donuts).
     *   Implement `createPolygonStar` (unified polygon/star logic).
-*   [x] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `figma_plugin/main.js`
     *   Register new commands in switch.
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess` (on parent), and `verifyParentName` are implemented.
 
@@ -95,9 +95,9 @@ This plan outlines the steps required to implement the enhancements detailed in 
 *   [x] **Server**: Update [src/mcp_server/tools/modification.ts](src/mcp_server/tools/modification.ts)
     *   Add `group_nodes`, `ungroup_nodes`, `flatten_node`, `insert_child`.
 *   [x] **Test**: Create/Update unit tests in `tests/unit/tools/modification.test.ts`
-*   [x] **Plugin**: Create [src/figma_plugin/handlers/nodeModifiers.js](src/figma_plugin/handlers/nodeModifiers.js)
+*   [x] **Plugin**: Create [figma_plugin/handlers/nodeModifiers.js](figma_plugin/handlers/nodeModifiers.js)
     *   Implement logic for all 4 tools.
-*   [x] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `figma_plugin/main.js`
     *   Register commands.
     *   Add validation logic for `group_nodes` (ensure same parent).
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName`/`verifyParentName` are implemented for all inputs.
@@ -108,9 +108,9 @@ This plan outlines the steps required to implement the enhancements detailed in 
 *   [x] **Server**: Update [src/mcp_server/tools/components.ts](src/mcp_server/tools/components.ts)
     *   Add `create_component_set` tool with `properties` and `componentSetName`.
 *   [x] **Test**: Create/Update unit tests in `tests/unit/tools/components.test.ts`
-*   [x] **Plugin**: Update [src/figma_plugin/handlers/componentHandlers.js](src/figma_plugin/handlers/componentHandlers.js)
+*   [x] **Plugin**: Update [figma_plugin/handlers/componentHandlers.js](figma_plugin/handlers/componentHandlers.js)
     *   Implement `createComponentSet`.
     *   Add logic to auto-rename components based on `properties` and `propertyValues`.
-*   [x] **Plugin**: Update `src/figma_plugin/main.js`
+*   [x] **Plugin**: Update `figma_plugin/main.js`
     *   Add validation for property array length matching.
     *   **Validation**: Ensure `state.readOnly` check, `checkScopeAccess`, and `verifyNodeName` are applied to all input components and parent.

@@ -8,7 +8,7 @@ This document tracks suggested enhancements to the Figma Edit MCP plugin, based 
 
 ### Current Behavior
 
-The current `get_document_info` implementation in [nodeReaders.js:12-36](../src/figma_plugin/handlers/nodeReaders.js#L12-L36) only returns information about the **current page**:
+The current `get_document_info` implementation in [nodeReaders.js:12-36](../figma_plugin/handlers/nodeReaders.js#L12-L36) only returns information about the **current page**:
 
 ```javascript
 export async function getDocumentInfo() {
@@ -624,7 +624,7 @@ export async function insertChild(params) {
 
 ### Current Behavior
 
-The current `get_local_components` implementation in [componentHandlers.js:51-66](../src/figma_plugin/handlers/componentHandlers.js#L51-L66) returns ALL components without distinguishing local vs library components:
+The current `get_local_components` implementation in [componentHandlers.js:51-66](../figma_plugin/handlers/componentHandlers.js#L51-L66) returns ALL components without distinguishing local vs library components:
 
 ```javascript
 export async function getLocalComponents() {
@@ -872,8 +872,8 @@ export async function createComponentSet(params) {
 
 The current implementation uses two separate tools for creating connectors:
 
-1. **`set_default_connector`** ([connectorHandlers.js:174-259](../src/figma_plugin/handlers/connectorHandlers.js#L174-L259)) — Sets a connector node as the template, storing its ID in `figma.clientStorage`
-2. **`create_connections`** ([connectorHandlers.js:378-572](../src/figma_plugin/handlers/connectorHandlers.js#L378-L572)) — Retrieves the stored template, clones it for each connection
+1. **`set_default_connector`** ([connectorHandlers.js:174-259](../figma_plugin/handlers/connectorHandlers.js#L174-L259)) — Sets a connector node as the template, storing its ID in `figma.clientStorage`
+2. **`create_connections`** ([connectorHandlers.js:378-572](../figma_plugin/handlers/connectorHandlers.js#L378-L572)) — Retrieves the stored template, clones it for each connection
 
 This two-step workflow exists because Figma has no `createConnector()` API — connectors must be cloned from an existing template to preserve styling (stroke, endpoints, text style, etc.).
 

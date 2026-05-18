@@ -21,8 +21,8 @@
     "build": "tsup",
     "build:watch": "tsup --watch",
     "dev": "bun run build:watch",
-    "plugin:build": "node src/figma_plugin/build.js",
-    "plugin:watch": "node src/figma_plugin/build.js --watch",
+    "plugin:build": "node figma_plugin/build.js",
+    "plugin:watch": "node figma_plugin/build.js --watch",
     "build:all": "bun run build && bun run plugin:build",
     "pub:release": "bun run build && bun publish"
   },

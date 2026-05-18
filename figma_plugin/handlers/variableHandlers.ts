@@ -1,4 +1,4 @@
-// src/figma_plugin/handlers/variableHandlers.ts
+// figma_plugin/handlers/variableHandlers.ts
 import { sendProgressUpdate } from '../utils/progressUtils.js';
 
 
