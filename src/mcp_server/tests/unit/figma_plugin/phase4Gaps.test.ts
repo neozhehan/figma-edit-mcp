@@ -320,11 +320,11 @@ describe("Phase 4 §3a (direct invocation): getConnectPayload — page scope", (
             documentId: "doc-1",
             documentName: "Sample Doc",
             pageCount: 3,
-            descendantCount: 2,
             pages: [
                 {
                     pageId: "p2",
                     pageName: "Flow",
+                    descendantCount: 2,
                     children: [
                         { id: "f1", name: "Hero", type: "FRAME" },
                         { id: "f2", name: "Footer", type: "FRAME" },

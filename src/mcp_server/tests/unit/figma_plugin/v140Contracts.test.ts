@@ -249,7 +249,7 @@ describe("Contract F — v1.4.0 release notes file exists with required sections
     let notes: string;
     beforeEach(() => {
         notes = readFileSync(
-            "documentation/v1.4.0 - get_nodes_info_update/release_notes.md",
+            "documentation/completed/v1.4.0 - get_nodes_info_update/release_notes.md",
             "utf8",
         );
     });
