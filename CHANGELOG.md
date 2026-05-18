@@ -8,15 +8,36 @@
 
 ### Repository
 - Detached the repository from its upstream fork network so the project can be indexed by search engines and listed as a standalone project.
-- README acknowledgements rewritten to preserve credit without re-asserting fork status.
+- README rewrites and `fork` reference sweep.
 - GitHub topics tightened and engagement features (Issues, Discussions) enabled.
 - Submitted to MCP directories (Smithery, MCP.so, Glama, GitHub MCP Registry).
 
-### Packaging
-- `package.json` metadata expanded with `keywords`, `repository`, `homepage`, `bugs`, `author`, `license`, and `engines` to support NPM search and the npmjs.com package page.
-- `prepublishOnly` script added to guarantee a fresh `dist/` on every publish.
-- `files` array audited to ensure the README and any README-linked docs are included in the published tarball.
-- Removed development artifacts (`test_output.txt`) from the repository root.
+### Packaging & Build
+- `package.json` metadata expanded (`description`, `keywords`, `repository`, `homepage`, `bugs`, `author`, `license`, `engines`).
+- Removed `main` and `module` fields to optimize for binary distribution.
+- Added `prepublishOnly` script.
+- Expanded `files` array to ensure all necessary runtime and documentation files are distributed.
+- Exposed a second binary, `figma-edit-mcp-socket`, for the standalone WebSocket server implementation.
+- Added `--version`, `--help`, and `--port` CLI flags to both binaries.
+- Updated `tsup.config.ts` to target `node20`, emit ESM-only bundles, set `dts: false`, and automatically inject shebang banners (`#!/usr/bin/env node`).
+
+### Architecture & Developer Experience
+- Moved the Figma plugin source code layout from `src/figma_plugin` directly to the `figma_plugin` directory.
+- Agent documentation updated: `DRAGME.md` retired; new `AGENTS.md` and `CLAUDE.md` files added.
+- Added `CONTRIBUTING.md`.
+- Enhanced `bun integrate` with `--local` and `--port` flags.
+- Added a contributor-only banner warning on `scripts/setup.sh`.
+
+### CI/CD & Supply Chain
+- GitHub Actions rewritten: `ci.yml` and `publish.yml` pipelines established.
+- Pinned Bun to `v1.3.0` across environments for maximum stability.
+- Configured NPM 2FA requirement for secure publishing operations.
+
+### Cleanup
+- Swept development artifacts including `test_output.txt` and stale `v1.4.0` drafts.
+- Removed obsolete `Dockerfile` and `bun-types` dependencies.
+- Trimmed unused/obsolete `pub:release` scripts.
+- Cleaned up the `LICENSE` file by removing redundant prefixes.
 
 ## [1.4.0]
 ### Breaking changes
