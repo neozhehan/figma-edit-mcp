@@ -237,18 +237,18 @@ Edit [package.json](../../package.json):
 
 Create `.github/workflows/ci.yml`, triggered on `push` to `main` and on `pull_request`:
 
-- [ ] Checkout.
-- [ ] Setup Bun via `oven-sh/setup-bun@v2` with `bun-version: 1.3.0`.
-- [ ] `bun install --frozen-lockfile`.
-- [ ] `bun test`.
-- [ ] `bun run build:all`.
-- [ ] `npm pack`.
-- [ ] **Bin-resolution smoke test**: in a scratch directory, `npm install --no-save` the packed tarball, then run `npx figma-edit-mcp --version` and `npx figma-edit-mcp-socket --version`. Both must exit 0.
-- [ ] **Markdown link checker** (`lychee-action` or `gaurav-nelson/github-action-markdown-link-check`) against tracked `*.md` files at the repo root and under `documentation/`, with an ignore list for rate-limit-prone hosts.
+- [x] Checkout.
+- [x] Setup Bun via `oven-sh/setup-bun@v2` with `bun-version: 1.3.0`.
+- [x] `bun install --frozen-lockfile`.
+- [x] `bun test`.
+- [x] `bun run build:all`.
+- [x] `npm pack`.
+- [x] **Bin-resolution smoke test**: in a scratch directory, `npm install --no-save` the packed tarball, then run `npx figma-edit-mcp --version` and `npx figma-edit-mcp-socket --version`. Both must exit 0.
+- [x] **Markdown link checker** (`lychee-action` or `gaurav-nelson/github-action-markdown-link-check`) against tracked `*.md` files at the repo root and under `documentation/`, with an ignore list for rate-limit-prone hosts.
 
 Add a **second job** gated on `paths:` filter for `package.json`, `tsup.config.ts`, `figma_plugin/build.js`, and `scripts/integrate.sh`:
 
-- [ ] `npm publish --dry-run` — log tarball-contents listing for human review. Informational, no token, no side effects.
+- [x] `npm publish --dry-run` — log tarball-contents listing for human review. Informational, no token, no side effects.
 
 ---
 
