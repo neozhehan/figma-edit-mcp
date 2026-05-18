@@ -191,9 +191,9 @@ Edit [package.json](../../package.json):
 
 ## Phase 9 — README + repo-wide doc updates (Q7, Q9, Q20, Q21)
 
-- [ ] Confirm `git mv readme.md README.md` is staged (already `R` in `git status`); keep staged.
-- [ ] Edit [README.md](../../README.md):
-  - [ ] Add badges block at the very top:
+- [x] Confirm `git mv readme.md README.md` is staged (already `R` in `git status`); keep staged.
+- [x] Edit [README.md](../../README.md):
+  - [x] Add badges block at the very top:
 
     ```markdown
     [![npm version](https://img.shields.io/npm/v/figma-edit-mcp.svg)](https://www.npmjs.com/package/figma-edit-mcp)
@@ -201,28 +201,28 @@ Edit [package.json](../../package.json):
     [![CI](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml)
     ```
 
-  - [ ] At ~line 343, change `"This fork adds multiple layers of protection..."` → `"Figma Edit MCP adds multiple layers of protection..."`.
-  - [ ] At ~lines 389–390, replace `"This project is a fork of [grab/cursor-talk-to-figma-mcp]... Thank you to the original authors..."` with: `"Built on prior work by [sonnylazuardi](https://github.com/sonnylazuardi) and the contributors to [grab/cursor-talk-to-figma-mcp](https://github.com/grab/cursor-talk-to-figma-mcp). Thank you for the foundation this project builds on."`
-  - [ ] At [README.md:115](../../README.md#L115): replace `claude mcp add FigmaEdit bun run /path/to/figma-edit-mcp/dist/server.js` with `claude mcp add FigmaEdit npx figma-edit-mcp`.
-  - [ ] At ~lines 140–150 ("Manual Configuration" JSON block): replace clone-based command with `{ "command": "npx", "args": ["figma-edit-mcp"] }`.
-  - [ ] Replace all other surviving hits from `grep -n 'path/to/figma-edit-mcp' README.md` with the `npx` form.
-  - [ ] Append below the configuration section: `Running from a local clone? See [CONTRIBUTING.md](./CONTRIBUTING.md) for the --local workflow.` (Use `./`, not `../` — Q16.)
-  - [ ] At [README.md:341](../../README.md#L341), replace the ~50-line Hallucination Safeguards section with:
+  - [x] At ~line 343, change `"This fork adds multiple layers of protection..."` → `"Figma Edit MCP adds multiple layers of protection..."`.
+  - [x] At ~lines 389–390, replace `"This project is a fork of [grab/cursor-talk-to-figma-mcp]... Thank you to the original authors..."` with: `"Built on prior work by [sonnylazuardi](https://github.com/sonnylazuardi) and the contributors to [grab/cursor-talk-to-figma-mcp](https://github.com/grab/cursor-talk-to-figma-mcp). Thank you for the foundation this project builds on."`
+  - [x] At [README.md:115](../../README.md#L115): replace `claude mcp add FigmaEdit bun run /path/to/figma-edit-mcp/dist/server.js` with `claude mcp add FigmaEdit npx figma-edit-mcp`.
+  - [x] At ~lines 140–150 ("Manual Configuration" JSON block): replace clone-based command with `{ "command": "npx", "args": ["figma-edit-mcp"] }`.
+  - [x] Replace all other surviving hits from `grep -n 'path/to/figma-edit-mcp' README.md` with the `npx` form.
+  - [x] Append below the configuration section: `Running from a local clone? See [CONTRIBUTING.md](./CONTRIBUTING.md) for the --local workflow.` (Use `./`, not `../` — Q16.)
+  - [x] At [README.md:341](../../README.md#L341), replace the ~50-line Hallucination Safeguards section with:
 
     ```markdown
     ## Hallucination Safeguards
     The plugin enforces hard constraints (scope locking, name verification, batch validation) that AI agents cannot bypass. See [AGENTS.md](./AGENTS.md) for the full rules and error codes.
     ```
 
-- [ ] **Repo-wide `fork` language sweep** (Q20). Run:
+- [x] **Repo-wide `fork` language sweep** (Q20). Run:
 
   ```bash
   grep -rni 'fork' . --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git --exclude-dir=figma_plugin/dist
   ```
 
   Human-review every hit; update or remove phrasing that re-asserts fork status. Leave technical references (`os.fork`, `fork()` syscall) alone. Expect edits in [CHANGELOG.md](../../CHANGELOG.md), [DESIGN_PHILOSOPHY.md](../../DESIGN_PHILOSOPHY.md), [smithery.yaml](../../smithery.yaml), and `figma_plugin/README.md`.
-- [ ] **`smithery.yaml`**: change `bunx figma-edit-mcp` → `npx figma-edit-mcp`.
-- [ ] **LICENSE check** (Q21): confirm lines 3–4 are exactly:
+- [x] **`smithery.yaml`**: change `bunx figma-edit-mcp` → `npx figma-edit-mcp`.
+- [x] **LICENSE check** (Q21): confirm lines 3–4 are exactly:
 
   ```
   Copyright (c) 2025 sonnylazuardi
