@@ -1,12 +1,13 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/mcp_server/server.ts'],
-  format: ['cjs', 'esm'],
-  dts: true,
+  entry: { server: 'src/mcp_server/server.ts', socket: 'src/socket.ts' },
+  format: ['esm'],
+  dts: false,
   clean: true,
   outDir: 'dist',
-  target: 'node18',
+  target: 'node20',
+  banner: { js: '#!/usr/bin/env node' },
   sourcemap: true,
   minify: false,
   splitting: false,

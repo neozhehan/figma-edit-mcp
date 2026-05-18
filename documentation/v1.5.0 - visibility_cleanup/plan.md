@@ -69,17 +69,17 @@ All subsequent phases are commits on the release branch. Per Q27 the CHANGELOG `
 
 Edit [tsup.config.ts](../../tsup.config.ts):
 
-- [ ] Add `src/socket.ts` to the `entry` array so tsup emits `dist/socket.js`.
-- [ ] Change `format: ['cjs', 'esm']` → `format: ['esm']`.
-- [ ] Set `dts: false` (or remove the `dts` line entirely).
-- [ ] Bump `target` from `'node18'` → `'node20'` to match `engines.node`.
-- [ ] Add a `banner` block:
+- [x] Add `src/socket.ts` to the `entry` array so tsup emits `dist/socket.js`.
+- [x] Change `format: ['cjs', 'esm']` → `format: ['esm']`.
+- [x] Set `dts: false` (or remove the `dts` line entirely).
+- [x] Bump `target` from `'node18'` → `'node20'` to match `engines.node`.
+- [x] Add a `banner` block:
 
   ```ts
   banner: { js: '#!/usr/bin/env node' }
   ```
 
-- [ ] Run `bun run build:all`; confirm `dist/server.js` and `dist/socket.js` both exist, both begin with `#!/usr/bin/env node` on line 1, and no `*.cjs`, `*.d.ts`, or `*.d.cts` files are emitted under `dist/`.
+- [x] Run `bun run build:all`; confirm `dist/server.js` and `dist/socket.js` both exist, both begin with `#!/usr/bin/env node` on line 1, and no `*.cjs`, `*.d.ts`, or `*.d.cts` files are emitted under `dist/`.
 
 ---
 
