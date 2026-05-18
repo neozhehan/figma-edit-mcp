@@ -148,17 +148,17 @@ Edit [src/mcp_server/server.ts](../../src/mcp_server/server.ts) and `src/socket.
 
 Edit [package.json](../../package.json):
 
-- [ ] Bump `"version"`: `1.3.0` → `"1.5.0"`.
-- [ ] Set `"description"`: `"Connect AI assistants to Figma via MCP — Read, Create, & Modify designs programmatically"` (must match the GitHub About text verbatim per Q26).
-- [ ] Set `"keywords"`: `["mcp", "mcp-server", "figma", "figma-plugin", "model-context-protocol", "design-automation", "ai", "claude", "cursor"]`.
-- [ ] Set `"repository"`: `{ "type": "git", "url": "git+https://github.com/neozhehan/figma-edit-mcp.git" }`.
-- [ ] Set `"homepage"`: `"https://github.com/neozhehan/figma-edit-mcp#readme"`.
-- [ ] Set `"bugs"`: `{ "url": "https://github.com/neozhehan/figma-edit-mcp/issues" }`.
-- [ ] Set `"author"`: `{ "name": "Neo Product LLC", "email": "neo@neo.works", "url": "https://www.linkedin.com/in/zhehanneo/" }`.
-- [ ] Set `"license"`: `"MIT"`.
-- [ ] Set `"engines"`: `{ "node": ">=20", "bun": ">=1.3.0" }`.
-- [ ] **Remove `"main"` and `"module"`** entirely (Q18).
-- [ ] Set `"bin"`:
+- [x] Bump `"version"`: `1.3.0` → `"1.5.0"`.
+- [x] Set `"description"`: `"Connect AI assistants to Figma via MCP — Read, Create, & Modify designs programmatically"` (must match the GitHub About text verbatim per Q26).
+- [x] Set `"keywords"`: `["mcp", "mcp-server", "figma", "figma-plugin", "model-context-protocol", "design-automation", "ai", "claude", "cursor"]`.
+- [x] Set `"repository"`: `{ "type": "git", "url": "git+https://github.com/neozhehan/figma-edit-mcp.git" }`.
+- [x] Set `"homepage"`: `"https://github.com/neozhehan/figma-edit-mcp#readme"`.
+- [x] Set `"bugs"`: `{ "url": "https://github.com/neozhehan/figma-edit-mcp/issues" }`.
+- [x] Set `"author"`: `{ "name": "Neo Product LLC", "email": "neo@neo.works", "url": "https://www.linkedin.com/in/zhehanneo/" }`.
+- [x] Set `"license"`: `"MIT"`.
+- [x] Set `"engines"`: `{ "node": ">=20", "bun": ">=1.3.0" }`.
+- [x] **Remove `"main"` and `"module"`** entirely (Q18).
+- [x] Set `"bin"`:
 
   ```json
   "bin": {
@@ -167,7 +167,7 @@ Edit [package.json](../../package.json):
   }
   ```
 
-- [ ] Set `"files"`:
+- [x] Set `"files"`:
 
   ```json
   "files": [
@@ -183,9 +183,9 @@ Edit [package.json](../../package.json):
   ]
   ```
 
-- [ ] Add `"prepublishOnly": "bun run build:all"`.
-- [ ] **Delete the `"pub:release"` script entry** entirely (Q32).
-- [ ] Remove `"bun-types"` from `devDependencies` (duplicated by `@types/bun`).
+- [x] Add `"prepublishOnly": "bun run build:all"`.
+- [x] **Delete the `"pub:release"` script entry** entirely (Q32).
+- [x] Remove `"bun-types"` from `devDependencies` (duplicated by `@types/bun`).
 
 ---
 

@@ -1,17 +1,52 @@
 {
   "name": "figma-edit-mcp",
-  "description": "Figma Edit MCP - Connect AI coding assistants to Figma via Model Context Protocol",
-  "version": "1.3.0",
-  "module": "dist/server.js",
-  "main": "dist/server.js",
+  "version": "1.5.0",
+  "description": "Connect AI assistants to Figma via MCP — Read, Create, & Modify designs programmatically",
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "figma",
+    "figma-plugin",
+    "model-context-protocol",
+    "design-automation",
+    "ai",
+    "claude",
+    "cursor"
+  ],
+  "homepage": "https://github.com/neozhehan/figma-edit-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/neozhehan/figma-edit-mcp/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neozhehan/figma-edit-mcp.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Neo Product LLC",
+    "email": "neo@neo.works",
+    "url": "https://www.linkedin.com/in/zhehanneo/"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20",
+    "bun": ">=1.3.0"
+  },
   "bin": {
-    "figma-edit-mcp": "dist/server.js"
+    "figma-edit-mcp": "dist/server.js",
+    "figma-edit-mcp-socket": "dist/socket.js"
   },
   "files": [
     "dist",
-    "README.md"
+    "figma_plugin",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "DESIGN_PHILOSOPHY.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".cursorrules"
   ],
-  "type": "module",
   "scripts": {
     "test": "bun test src/mcp_server/tests",
     "start": "bun run dist/server.js",
@@ -24,20 +59,19 @@
     "plugin:build": "node figma_plugin/build.js",
     "plugin:watch": "node figma_plugin/build.js --watch",
     "build:all": "bun run build && bun run plugin:build",
-    "pub:release": "bun run build && bun publish"
-  },
-  "devDependencies": {
-    "@figma/plugin-typings": "1.125.0",
-    "@types/bun": "1.3.13",
-    "bun-types": "1.3.13",
-    "esbuild": "0.28.0",
-    "tsup": "8.5.1",
-    "typescript": "6.0.3"
+    "prepublishOnly": "bun run build:all"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
     "uuid": "14.0.0",
     "ws": "8.20.0",
     "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "1.125.0",
+    "@types/bun": "1.3.13",
+    "esbuild": "0.28.0",
+    "tsup": "8.5.1",
+    "typescript": "6.0.3"
   }
 }
