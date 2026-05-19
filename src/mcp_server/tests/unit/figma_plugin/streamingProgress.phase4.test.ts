@@ -87,7 +87,7 @@ describe("Phase 4 §2: getPagesInfo progress event streaming", () => {
         });
         (globalThis as any).figma = mockEnv.figma;
         const mod = await import(
-            "../../../../figma_plugin/handlers/nodeReaders.js?phase4-streaming"
+            "../../../../../figma_plugin/handlers/nodeReaders.js?phase4-streaming"
         );
         getPagesInfo = mod.getPagesInfo;
     });
@@ -176,7 +176,7 @@ describe("Phase 4 §2a: sendProgressUpdate callers await correctly", () => {
         const fs = await import("node:fs/promises");
         const path = await import("node:path");
 
-        const handlersDir = "src/figma_plugin/handlers";
+        const handlersDir = "figma_plugin/handlers";
         const entries = await fs.readdir(handlersDir);
         const tsFiles = entries.filter((e) => e.endsWith(".ts"));
 
@@ -201,7 +201,7 @@ describe("Phase 4 §2a: sendProgressUpdate callers await correctly", () => {
     it("sendProgressUpdate is declared async in progressUtils.ts", async () => {
         const fs = await import("node:fs/promises");
         const src = await fs.readFile(
-            "src/figma_plugin/utils/progressUtils.ts",
+            "figma_plugin/utils/progressUtils.ts",
             "utf8",
         );
         expect(src).toMatch(/export\s+async\s+function\s+sendProgressUpdate/);
@@ -210,7 +210,7 @@ describe("Phase 4 §2a: sendProgressUpdate callers await correctly", () => {
     it("sendProgressUpdate includes the setTimeout(fn, 0) yield after postMessage", async () => {
         const fs = await import("node:fs/promises");
         const src = await fs.readFile(
-            "src/figma_plugin/utils/progressUtils.ts",
+            "figma_plugin/utils/progressUtils.ts",
             "utf8",
         );
         // The postMessage call must come before the setTimeout yield
@@ -236,7 +236,7 @@ describe("Phase 4 §2b: getPagesInfo never calls figma.loadAllPagesAsync()", () 
         });
         (globalThis as any).figma = mockEnv.figma;
         const mod = await import(
-            "../../../../figma_plugin/handlers/nodeReaders.js?phase4-2b-noargs"
+            "../../../../../figma_plugin/handlers/nodeReaders.js?phase4-2b-noargs"
         );
         await mod.getPagesInfo();
         expect(mockEnv.getLoadAllPagesAsyncCalls()).toBe(0);
@@ -249,7 +249,7 @@ describe("Phase 4 §2b: getPagesInfo never calls figma.loadAllPagesAsync()", () 
         });
         (globalThis as any).figma = mockEnv.figma;
         const mod = await import(
-            "../../../../figma_plugin/handlers/nodeReaders.js?phase4-2b-single"
+            "../../../../../figma_plugin/handlers/nodeReaders.js?phase4-2b-single"
         );
         await mod.getPagesInfo({ pageIds: ["p1"] });
         expect(mockEnv.getLoadAllPagesAsyncCalls()).toBe(0);
@@ -266,7 +266,7 @@ describe("Phase 4 §2b: getPagesInfo never calls figma.loadAllPagesAsync()", () 
         });
         (globalThis as any).figma = mockEnv.figma;
         const mod = await import(
-            "../../../../figma_plugin/handlers/nodeReaders.js?phase4-2b-multi"
+            "../../../../../figma_plugin/handlers/nodeReaders.js?phase4-2b-multi"
         );
         await mod.getPagesInfo({ pageIds: ["p1", "p2", "p3"] });
         expect(mockEnv.getLoadAllPagesAsyncCalls()).toBe(0);
@@ -279,7 +279,7 @@ describe("Phase 4 §2b: getPagesInfo never calls figma.loadAllPagesAsync()", () 
         });
         (globalThis as any).figma = mockEnv.figma;
         const mod = await import(
-            "../../../../figma_plugin/handlers/nodeReaders.js?phase4-2b-missing"
+            "../../../../../figma_plugin/handlers/nodeReaders.js?phase4-2b-missing"
         );
         await mod.getPagesInfo({ pageIds: ["p1", "MISSING", "ALSO_MISSING"] });
         expect(mockEnv.getLoadAllPagesAsyncCalls()).toBe(0);
@@ -295,7 +295,7 @@ describe("Phase 4 §2b: getPagesInfo never calls figma.loadAllPagesAsync()", () 
         const mockEnv = makeMockFigma({ pages });
         (globalThis as any).figma = mockEnv.figma;
         const mod = await import(
-            "../../../../figma_plugin/handlers/nodeReaders.js?phase4-2b-100"
+            "../../../../../figma_plugin/handlers/nodeReaders.js?phase4-2b-100"
         );
         const ids = pages.map((p) => p.id);
         await mod.getPagesInfo({ pageIds: ids });

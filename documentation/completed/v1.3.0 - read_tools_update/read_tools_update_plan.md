@@ -14,7 +14,7 @@ The implementation is broken down into four distinct phases to ensure stability 
 
 The following are deliberately excluded from this release. Each one is either filed as a follow-up or documented as a constraint that downstream code must work around:
 
-- **`get_nodes_info` response shape stays unchanged.** The handler at [src/figma_plugin/handlers/nodeReaders.ts](../../src/figma_plugin/handlers/nodeReaders.ts) and the tool registration in [src/mcp_server/tools/document.ts](../../src/mcp_server/tools/document.ts) are NOT modified beyond what's required to keep them compiling after the rest of v1.3.0 lands. Clients using `get_nodes_info()` (no args) as the Node-scope refresh path receive today's `{ nodeId, parentId, document }[]` shape, NOT the Change 1 Node-scope `node` block. Aligning the two shapes is a follow-up release — bundling it here would expand the breaking-change surface and delay the connect-flow work. See the "Out of scope (follow-up)" section in [read_tools_update.md](read_tools_update.md).
+- **`get_nodes_info` response shape stays unchanged.** The handler at [figma_plugin/handlers/nodeReaders.ts](../../figma_plugin/handlers/nodeReaders.ts) and the tool registration in [src/mcp_server/tools/document.ts](../../src/mcp_server/tools/document.ts) are NOT modified beyond what's required to keep them compiling after the rest of v1.3.0 lands. Clients using `get_nodes_info()` (no args) as the Node-scope refresh path receive today's `{ nodeId, parentId, document }[]` shape, NOT the Change 1 Node-scope `node` block. Aligning the two shapes is a follow-up release — bundling it here would expand the breaking-change surface and delay the connect-flow work. See the "Out of scope (follow-up)" section in [read_tools_update.md](read_tools_update.md).
 - **`getComponents` streaming rewrite** — already filed as a follow-up; see the same section in the spec.
 - **Write-side `figma.currentPage` reliance** — the read tools no longer surface the current-page concept, but write-side handlers continue to use `figma.currentPage` internally. That cleanup is a separate release.
 - **MCP-first connect support** — today's design requires the plugin to join the channel before the MCP server. A "MCP joins, then plugin opens" flow would need a hold-open queue and is not in v1.3.0.
@@ -26,7 +26,7 @@ The following are deliberately excluded from this release. Each one is either fi
 **Objective**: Ensure the UI bridge can handle async progress events correctly without blocking or coalescing, which is a precondition for the streaming pattern.
 
 ### [x] 1. Make `sendProgressUpdate` Async
-- **File**: `src/figma_plugin/utils/progressUtils.ts` ([line 65](../../src/figma_plugin/utils/progressUtils.ts#L65))
+- **File**: `figma_plugin/utils/progressUtils.ts` ([line 65](../../figma_plugin/utils/progressUtils.ts#L65))
 - **Action**: Change the `sendProgressUpdate` function to be `async`.
 - **Implementation**:
   - Immediately after the `figma.ui.postMessage(...)` call, add `await new Promise(r => setTimeout(r, 0));`.
@@ -35,25 +35,25 @@ The following are deliberately excluded from this release. Each one is either fi
 ### [x] 1a. Update All Existing `sendProgressUpdate` Callers to `await`
 - **Action**: Once `sendProgressUpdate` becomes `async`, every call site must be `await`ed (and its enclosing function made `async` if it isn't already). Without this, the trailing `setTimeout(0)` flush is bypassed — call sites move on without yielding and progress events coalesce, defeating the whole point of step 1.
 - **Files & known call sites** (grep `sendProgressUpdate(` to confirm — list as of writing):
-  - `src/figma_plugin/handlers/annotationHandlers.ts`
-  - `src/figma_plugin/handlers/connectorHandlers.ts`
-  - `src/figma_plugin/handlers/nodeModifiers.ts`
-  - `src/figma_plugin/handlers/componentHandlers.ts`
-  - `src/figma_plugin/handlers/textHandlers.ts` (if it calls it — verify with grep)
+  - `figma_plugin/handlers/annotationHandlers.ts`
+  - `figma_plugin/handlers/connectorHandlers.ts`
+  - `figma_plugin/handlers/nodeModifiers.ts`
+  - `figma_plugin/handlers/componentHandlers.ts`
+  - `figma_plugin/handlers/textHandlers.ts` (if it calls it — verify with grep)
 - **Implementation**:
   - For each call site: prepend `await`, ensure the enclosing function is `async`, ensure the call site's caller correctly awaits the now-async chain.
   - Watch for fire-and-forget patterns (`sendProgressUpdate(...).catch(...)` style) — the migration intent is sequential `await`, NOT background dispatch.
 - **Verification**: TypeScript `strictNullChecks` + `noImplicitAny` won't catch missing `await` on a now-Promise-returning function. Run a grep at the end of the change to confirm zero unawaited `sendProgressUpdate(` call sites remain.
 
 ### [x] 2. Implement `activeRequestId` Capture in UI Bridge
-- **File**: `src/figma_plugin/ui.html` ([command-handling section, lines 779-855 area](../../src/figma_plugin/ui.html#L779))
+- **File**: `figma_plugin/ui.html` ([command-handling section, lines 779-855 area](../../figma_plugin/ui.html#L779))
 - **Action**: Ensure `state.activeRequestId` is set on every inbound MCP request and read by the outbound `command_progress` → `progress_update` forwarder.
 - **Implementation**:
   - **Inbound capture**: when the UI receives a WebSocket message of `type === "broadcast"` carrying a `message.command` and `message.id`, store `state.activeRequestId = message.id` *before* posting the request to the plugin via `parent.postMessage(...)`.
   - **Outbound tagging**: in the `command_progress` handler that forwards to the WebSocket as `progress_update`, ensure the outgoing payload's `id` field is `state.activeRequestId`. Today the forwarder relies on whatever id the plugin tags into the progress event; with this change it pins the id to the active request even if the plugin's `commandId` (from `generateCommandId`) drifts.
   - **Clear on completion**: reset `state.activeRequestId = null` when the `command-result` / `command-error` is dispatched back to the WebSocket. This keeps a stale id from latching onto unrelated progress events emitted between requests.
 - **Reasoning**: Without this, concurrent read requests can cross-wire — progress events from request B can be tagged as request A on the server side, and the inactivity-timeout reset at [figma-client.ts:138-158](../../src/mcp_server/figma-client.ts#L138) would refresh the wrong pending request.
-- **Concurrency note**: today's plugin `state.commandQueue` ([main.ts:186](../../src/figma_plugin/src/main.ts#L186)) serializes execution, so in practice only one request is active at a time. The `activeRequestId` fix is correctness insurance for the moment that serialization changes.
+- **Concurrency note**: today's plugin `state.commandQueue` ([main.ts:186](../../figma_plugin/src/main.ts#L186)) serializes execution, so in practice only one request is active at a time. The `activeRequestId` fix is correctness insurance for the moment that serialization changes.
 
 ---
 
@@ -66,11 +66,11 @@ The following are deliberately excluded from this release. Each one is either fi
   - Delete the `server.tool("get_document_info", ...)` block.
 - **File**: `src/mcp_server/figma-client.ts`
   - Remove `"get_document_info"` from the `FigmaCommand` union.
-- **File**: `src/figma_plugin/src/main.ts`
+- **File**: `figma_plugin/src/main.ts`
   - Remove the `case "get_document_info":` branch and its associated import.
-- **File**: `src/figma_plugin/handlers/nodeReaders.ts`
+- **File**: `figma_plugin/handlers/nodeReaders.ts`
   - Delete the `getDocumentInfo` function.
-- **File**: `src/figma_plugin/handlers/index.ts`
+- **File**: `figma_plugin/handlers/index.ts`
   - Remove the `getDocumentInfo` export.
 - **File**: `src/mcp_server/tests/unit/tools/document.test.ts`
   - Delete all unit tests testing `get_document_info`.
@@ -87,9 +87,9 @@ The following are deliberately excluded from this release. Each one is either fi
   - **Soft-limit enforcement: NONE.** The 25-id figure is description-only. Implementation MUST NOT cap, truncate, warn, log, or emit telemetry on oversize input. The handler accepts arrays of any length and processes them sequentially; the streaming progress events are what keep large calls alive. If a future PR proposes adding a runtime warning or cap, it needs its own design pass — point to this line.
 - **File**: `src/mcp_server/figma-client.ts`
   - Update the `FigmaCommand` union to `"get_pages_info"`.
-- **File**: `src/figma_plugin/src/main.ts`
+- **File**: `figma_plugin/src/main.ts`
   - Rename the switch case to `"get_pages_info"`.
-- **File**: `src/figma_plugin/handlers/nodeReaders.ts`
+- **File**: `figma_plugin/handlers/nodeReaders.ts`
   - Rename `getPageInfo` to `getPagesInfo`.
   - **Implementation Logic**:
     - **No arguments / Empty array**: Iterate over `figma.root.children` and return `{ documentId, documentName, pageCount, pages: [{ pageId, pageName }] }`. **Must NOT call `loadAsync()` or `loadAllPagesAsync()`**.
@@ -115,7 +115,7 @@ The following are deliberately excluded from this release. Each one is either fi
       - `pages` reflects the deduped input order — `pages[i].pageId === orderedIds[k]` where `orderedIds[k]` is the i-th resolvable id.
       - `missingPageIds` lists unresolved ids in the order they first appeared in the input.
       - Progress events fire in the same iteration order, so `processedItems` at event N equals the count of items processed up to and including the N-th iteration.
-- **File**: `src/figma_plugin/handlers/index.ts`
+- **File**: `figma_plugin/handlers/index.ts`
   - Update export to `getPagesInfo`.
 
 ### [x] 3. Removed-Fields Search-and-Replace Pass
@@ -164,9 +164,9 @@ The connect payload is assembled by the MCP server's `join_channel` tool in two 
 The MCP server wraps the plugin's response with the `status` / `channel` envelope before returning it. Partial success ("joined but no scope") is not a valid state — leg 2 failures clear `currentChannel` and return the Change 1 error envelope.
 
 ### [x] 1. Add the `get_connect_payload` Plugin Command
-- **File**: `src/figma_plugin/handlers/connectHandlers.ts` (new file)
+- **File**: `figma_plugin/handlers/connectHandlers.ts` (new file)
   - Export an async `getConnectPayload()` handler. No params.
-  - Branch on `state.readOnly` and `state.scopeRootId` (read from the module-level `state` in [main.ts](../../src/figma_plugin/src/main.ts), or refactor into a small accessor — implementer's call).
+  - Branch on `state.readOnly` and `state.scopeRootId` (read from the module-level `state` in [main.ts](../../figma_plugin/src/main.ts), or refactor into a small accessor — implementer's call).
   - **Read-Only branch** (`state.readOnly === true`):
     - Return `{ editableScopeType: "readonly", documentId, documentName, pageCount, pages: [{ pageId, pageName }] }` by mapping `figma.root.children` directly. **No `loadAsync()`**.
   - **Page-Scope branch** (`scopeRootId` resolves to a `PAGE` node):
@@ -181,9 +181,9 @@ The MCP server wraps the plugin's response with the `status` / `channel` envelop
     - `SCOPE_INVALID` if the resolved node has no `PAGE` ancestor (orphaned node), or the scope state is otherwise unrecognizable.
     - `DOCUMENT_LOAD_FAILED` if any `loadAsync()` rejects — wrap in try/catch.
     - `UNKNOWN_ERROR` as catch-all with the underlying message appended.
-- **File**: `src/figma_plugin/handlers/index.ts`
+- **File**: `figma_plugin/handlers/index.ts`
   - Export `getConnectPayload`.
-- **File**: `src/figma_plugin/src/main.ts`
+- **File**: `figma_plugin/src/main.ts`
   - Add `import { getConnectPayload } from '../handlers/connectHandlers.js'`.
   - Add `case "get_connect_payload": return await getConnectPayload();` to the `handleCommand` switch.
 - **File**: `src/mcp_server/figma-client.ts`
@@ -214,18 +214,18 @@ The MCP server wraps the plugin's response with the `status` / `channel` envelop
 
 ### [x] 3. Wire Socket-Side `CHANNEL_NOT_FOUND` Detection
 - **File**: `src/mcp_server/figma-client.ts`
-  - **Tag MCP joins.** Update `joinChannel` ([line 223](../../src/mcp_server/figma-client.ts#L223)) so the join request includes `clientType: "mcp"`. The plugin's existing join (sent from [src/figma_plugin/ui.html](../../src/figma_plugin/ui.html)) stays unchanged — absence of `clientType` is treated as a plugin join, which keeps older plugin builds working without modification.
+  - **Tag MCP joins.** Update `joinChannel` ([line 223](../../src/mcp_server/figma-client.ts#L223)) so the join request includes `clientType: "mcp"`. The plugin's existing join (sent from [figma_plugin/ui.html](../../figma_plugin/ui.html)) stays unchanged — absence of `clientType` is treated as a plugin join, which keeps older plugin builds working without modification.
   - **Recognize `join_error` acks.** In the `ws.on("message", ...)` handler ([lines 126-200](../../src/mcp_server/figma-client.ts#L126)), branch on `json.type === "join_error"` before the generic response path. Look up the pending request by `json.id`, reject with a tagged error (e.g. `Object.assign(new Error(json.message), { joinErrorCode: json.code })`), and delete the request entry. The tool layer reads `joinErrorCode` to decide which Change 1 `errorCode` to surface.
   - **Map timeouts and drops.** A pending join request that hits its `sendCommandToFigma` timeout maps to `CHANNEL_JOIN_FAILED`. A `ws.on("close", ...)` rejection ([line 206](../../src/mcp_server/figma-client.ts#L206)) of a still-pending join maps to `PLUGIN_DISCONNECTED`. Both can be distinguished by the existing rejection messages plus the `joinErrorCode` absence.
 - **File**: `src/socket.ts` ([line 67](../../src/socket.ts#L67))
   - **Detect lone-MCP joins.** In the `data.type === "join"` branch, before adding the joiner to the channel, check `data.clientType === "mcp"`. If so, look at the channel's existing membership: `channels.get(channelName)?.size ?? 0`. If zero, the channel has no plugin attached — reply with `{ type: "join_error", code: "CHANNEL_NOT_FOUND", id: data.id, message: "Channel '<name>' was not found. Verify the channel name and that the Figma plugin is running and connected." }` and `return` without registering the client. Do NOT auto-create the channel for MCP joins.
   - **Plugin joins unchanged.** When `clientType` is absent or `"plugin"`, retain today's behavior (auto-create channel if missing, register the client, send the existing system ack at lines 89-102). This keeps the plugin's join path identical to current production.
   - **Race note.** This intentionally requires the plugin to join first. That matches the current UX (plugin opens → user copies channel name → MCP server joins). If we later want to support "MCP joins, then plugin opens," it'd need a different design (e.g. a hold-open queue), which is out of scope.
-- **File**: `src/figma_plugin/ui.html`
+- **File**: `figma_plugin/ui.html`
   - **No change required.** The plugin's join request continues to omit `clientType` and is treated as a plugin join by the socket server.
 
 ### [x] 4. Map Plugin-Side `SCOPE_DELETED` to a Structured Code
-- **File**: `src/figma_plugin/src/main.ts` ([line 85](../../src/figma_plugin/src/main.ts#L85))
+- **File**: `figma_plugin/src/main.ts` ([line 85](../../figma_plugin/src/main.ts#L85))
 - **Action**: Today `checkScopeAccess` throws a free-text error. Leave that behavior alone for write paths, but in `getConnectPayload`, perform the same scope-existence check first and return `{ errorCode: "SCOPE_DELETED", errorMessage: ... }` as a structured value rather than letting it propagate as a thrown string.
 
 ---

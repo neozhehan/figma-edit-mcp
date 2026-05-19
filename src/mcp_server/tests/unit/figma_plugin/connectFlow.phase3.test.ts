@@ -27,7 +27,7 @@ describe("Phase 3.1 (static): getConnectPayload handler — branches present", (
     beforeEach(async () => {
         const fs = await import("node:fs/promises");
         src = await fs.readFile(
-            "src/figma_plugin/handlers/connectHandlers.ts",
+            "figma_plugin/handlers/connectHandlers.ts",
             "utf8",
         );
     });
@@ -93,7 +93,7 @@ describe("Phase 3.1 (static): handler is registered in main.ts switch and export
     it("main.ts has a 'get_connect_payload' case calling getConnectPayload()", async () => {
         const fs = await import("node:fs/promises");
         const src = await fs.readFile(
-            "src/figma_plugin/src/main.ts",
+            "figma_plugin/src/main.ts",
             "utf8",
         );
         expect(src).toMatch(/case\s+["']get_connect_payload["']/);
@@ -106,7 +106,7 @@ describe("Phase 3.1 (static): handler is registered in main.ts switch and export
     it("handlers/index.ts exports getConnectPayload", async () => {
         const fs = await import("node:fs/promises");
         const src = await fs.readFile(
-            "src/figma_plugin/handlers/index.ts",
+            "figma_plugin/handlers/index.ts",
             "utf8",
         );
         expect(src).toMatch(/getConnectPayload/);

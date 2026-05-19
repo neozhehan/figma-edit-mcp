@@ -25,24 +25,22 @@ import { describe, it, expect, beforeEach, mock } from "bun:test";
 // Idempotent setup: if globalThis.figma is already set (componentHandlers
 // ran first in full-suite mode), keep it. If we're running this file in
 // isolation, install a minimal stub so main.ts can evaluate without throwing.
-if (!(globalThis as any).figma) {
-    (globalThis as any).__html__ = "<html></html>";
-    (globalThis as any).figma = {
-        showUI: () => {},
-        ui: { onmessage: null, postMessage: () => {} },
-        on: () => {},
-        notify: () => {},
-        closePlugin: () => {},
-        clientStorage: { setAsync: async () => {} },
-        getNodeByIdAsync: async () => null,
-        currentPage: { selection: [], children: [] },
-        root: { id: "doc-stub", name: "Stub", children: [] },
-        mixed: Symbol("mixed"),
-        loadAllPagesAsync: async () => {},
-    };
-}
+(globalThis as any).__html__ = "<html></html>";
+(globalThis as any).figma = {
+    showUI: () => {},
+    ui: { onmessage: null, postMessage: () => {} },
+    on: () => {},
+    notify: () => {},
+    closePlugin: () => {},
+    clientStorage: { setAsync: async () => {} },
+    getNodeByIdAsync: async () => null,
+    currentPage: { selection: [], children: [] },
+    root: { id: "doc-stub", name: "Stub", children: [] },
+    mixed: Symbol("mixed"),
+    loadAllPagesAsync: async () => {},
+};
 
-const mainMod: any = await import("../../../../figma_plugin/src/main.js");
+const mainMod: any = await import("../../../../../figma_plugin/src/main.js");
 const realState: any = mainMod.getPluginState();
 
 function setState(next: { readOnly: boolean; scopeRootId: string | null }) {
@@ -145,7 +143,7 @@ describe("Phase 4 §2 + §2a: getPagesInfo emits interleaved postMessage / setTi
 
         try {
             const mod = await import(
-                "../../../../figma_plugin/handlers/nodeReaders.js"
+                "../../../../../figma_plugin/handlers/nodeReaders.js"
             );
             await mod.getPagesInfo({
                 commandId: "cmd-yield",
@@ -252,6 +250,7 @@ function makeFigmaForConnect(opts: {
                 loadAllCalls += 1;
             },
             ui: { postMessage: () => {} },
+            showUI: () => {},
         },
         byId,
         loadCalls,
@@ -261,7 +260,7 @@ function makeFigmaForConnect(opts: {
 
 async function callConnectPayload(): Promise<any> {
     const mod = await import(
-        "../../../../figma_plugin/handlers/connectHandlers.js"
+        "../../../../../figma_plugin/handlers/connectHandlers.js"
     );
     return mod.getConnectPayload();
 }

@@ -1,5 +1,9 @@
 # Figma Edit MCP
 
+[![npm version](https://img.shields.io/npm/v/figma-edit-mcp.svg)](https://www.npmjs.com/package/figma-edit-mcp)
+[![npm downloads](https://img.shields.io/npm/dm/figma-edit-mcp.svg)](https://www.npmjs.com/package/figma-edit-mcp)
+[![CI](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml)
+
 Connect AI assistants to Figma via Model Context Protocol to read designs, create and modify elements, and manage design systems programmatically. 
   
 This plugin empowers your AI assistant to become a Figma assistant, executing design updates **Safer**, **Cleaner**, and **Faster** than a human ever could.
@@ -24,7 +28,7 @@ This plugin allows you as a Designer to focus purely on creative decision-making
 ## Project Structure
 
 - `src/mcp_server/` — TypeScript MCP server implementing 40+ Figma tools
-- `src/figma_plugin/` — Figma plugin with a modular handler architecture
+- `figma_plugin/` — Figma plugin with a modular handler architecture
 - `src/socket.ts` — WebSocket server that bridges communication between the MCP server and the Figma plugin
 
 ## Quick Start
@@ -112,10 +116,8 @@ Select option `4`. Configuration is created at `~/Library/Application Support/Cl
 Select option `5` to see the CLI command, then run it in your terminal:
 
 ```bash
-claude mcp add FigmaEdit bun run /path/to/figma-edit-mcp/dist/server.js
+claude mcp add FigmaEdit npx figma-edit-mcp
 ```
-
-Replace `/path/to/figma-edit-mcp` with your actual installation path.
 
 ### LM Studio
 
@@ -139,12 +141,14 @@ If you prefer manual setup, add the following to your MCP config file:
 {
   "mcpServers": {
     "FigmaEdit": {
-      "command": "bun",
-      "args": ["run", "/path/to/figma-edit-mcp/dist/server.js"]
+      "command": "npx",
+      "args": ["figma-edit-mcp"]
     }
   }
 }
 ```
+
+Running from a local clone? See [CONTRIBUTING.md](./CONTRIBUTING.md) for the --local workflow.
 
 ---
 
@@ -178,7 +182,7 @@ bun socket
 
 1. In Figma, go to Plugins > Development > New Plugin
 2. Choose "Link existing plugin"
-3. Select the `src/figma_plugin/manifest.json` file
+3. Select the `figma_plugin/manifest.json` file
 4. The plugin should now be available in your Figma development plugins
 
 ---
@@ -340,32 +344,7 @@ Built-in prompts guide complex multi-step design tasks:
 
 ## Hallucination Safeguards
 
-This fork adds multiple layers of protection against AI hallucination damage. These safeguards are enforced inside the Figma plugin at execution time and cannot be bypassed by the MCP server or the AI agent.
-
-### Scope Restriction
-
-Editable scope is locked when the plugin connects.  
-If you paste a HTTP link to a specific Page/Layer, your AI assistant or agent will only be able to make changes to that Page/Layer or its child layers.  
-If you do **NOT** provide a HTTP link to a specific Page/Layer, your AI assistant or agent will **NOT** be able to make any changes to the designs in the current Figma file.    
-Every write operation is checked against this scope before it runs — anything outside the locked scope is denied outright.
-
-| Mode | Effect |
-|---|---|
-| Link provided | Writes allowed only within that node and its descendants |
-| No link (default) | All writes denied; reads always permitted |
-
-### Node Name Verification
-
-Every write tool requires the AI to supply the expected name of the target node (`nodeName`), or the parent node (`parentNodeName` for creation tools).  
-The plugin resolves the actual name by ID and compares it before executing. A mismatch is rejected with an error that directs the agent to refresh its context.
-
-This catches the most common hallucination failure mode: an AI confidently operating on a stale or fabricated node ID that no longer points to the intended target.
-
-| Parameter | Used by |
-|---|---|
-| `nodeName` | All single-node modification tools (17 tools) |
-| `parentNodeName` | All creation tools (4 tools) |
-| Per-item `nodeName` | All multi-node batch tools (6 tools) |
+The plugin enforces hard constraints (scope locking, name verification, batch validation) that AI agents cannot bypass. See [AGENTS.md](./AGENTS.md) for the full rules and error codes.
 
 ---
 
@@ -386,8 +365,7 @@ Node IDs copied from Figma URLs use dashes (`20485-41`), but the plugin API expe
 
 ## Acknowledgements
 
-This project is a fork of [grab/cursor-talk-to-figma-mcp](https://github.com/grab/cursor-talk-to-figma-mcp) by [sonnylazuardi](https://github.com/sonnylazuardi).  
-Thank you to the original authors and contributors for the foundation this project builds on.
+Built on prior work by [sonnylazuardi](https://github.com/sonnylazuardi) and the contributors to [grab/cursor-talk-to-figma-mcp](https://github.com/grab/cursor-talk-to-figma-mcp). Thank you for the foundation this project builds on.
 
 Thanks to [@dusskapark](https://github.com/dusskapark) for the following contributions:
 
@@ -400,5 +378,5 @@ Thanks to [@dusskapark](https://github.com/dusskapark) for the following contrib
 
 The MIT License (MIT)
 
-Copyright (c) 2025 Github User sonnylazuardi  
+Copyright (c) 2025 sonnylazuardi  
 Copyright (c) 2026 Neo Product LLC

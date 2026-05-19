@@ -1,4 +1,7 @@
 import { Server, ServerWebSocket } from "bun";
+import { parseCliArgs } from "./cli.js";
+
+const { port } = parseCliArgs("figma-edit-mcp-socket");
 
 // Store clients by channel
 const channels = new Map<string, Set<ServerWebSocket<any>>>();
@@ -17,7 +20,7 @@ function handleConnection(ws: ServerWebSocket<any>) {
 }
 
 const server = Bun.serve({
-  port: 3055,
+  port: port,
   // uncomment this to allow connections in windows wsl
   // hostname: "0.0.0.0",
   fetch(req: Request, server: Server) {

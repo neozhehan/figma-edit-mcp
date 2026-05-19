@@ -34,7 +34,7 @@ describe("Phase 1.1: sendProgressUpdate is async with yield", () => {
 
     it("returns a Promise (function is declared async)", async () => {
         const { sendProgressUpdate } = await import(
-            "../../../../figma_plugin/utils/progressUtils.js"
+            "../../../../../figma_plugin/utils/progressUtils.js"
         );
         const result = sendProgressUpdate(
             "cmd_test",
@@ -51,7 +51,7 @@ describe("Phase 1.1: sendProgressUpdate is async with yield", () => {
 
     it("calls figma.ui.postMessage with the update payload", async () => {
         const { sendProgressUpdate } = await import(
-            "../../../../figma_plugin/utils/progressUtils.js"
+            "../../../../../figma_plugin/utils/progressUtils.js"
         );
         await sendProgressUpdate(
             "cmd_x",
@@ -70,7 +70,7 @@ describe("Phase 1.1: sendProgressUpdate is async with yield", () => {
 
     it("schedules setTimeout(_, 0) AFTER postMessage to flush UI thread", async () => {
         const { sendProgressUpdate } = await import(
-            "../../../../figma_plugin/utils/progressUtils.js"
+            "../../../../../figma_plugin/utils/progressUtils.js"
         );
         await sendProgressUpdate("c", "t", "in_progress", 0.5, 4, 2, "m");
         // The async yield must have scheduled at least one setTimeout(0) after postMessage.
@@ -79,7 +79,7 @@ describe("Phase 1.1: sendProgressUpdate is async with yield", () => {
 
     it("yields to the event loop between postMessages on consecutive calls", async () => {
         const { sendProgressUpdate } = await import(
-            "../../../../figma_plugin/utils/progressUtils.js"
+            "../../../../../figma_plugin/utils/progressUtils.js"
         );
         // Schedule a microtask "marker" between two awaits — if the yield is real,
         // a setImmediate-style task scheduled between awaits will run between the
@@ -108,10 +108,10 @@ describe("Phase 1.1a: callers await sendProgressUpdate", () => {
         // strictness alone won't catch missing awaits.
         const fs = await import("node:fs/promises");
         const files = [
-            "src/figma_plugin/handlers/annotationHandlers.ts",
-            "src/figma_plugin/handlers/connectorHandlers.ts",
-            "src/figma_plugin/handlers/nodeModifiers.ts",
-            "src/figma_plugin/handlers/textHandlers.ts",
+            "figma_plugin/handlers/annotationHandlers.ts",
+            "figma_plugin/handlers/connectorHandlers.ts",
+            "figma_plugin/handlers/nodeModifiers.ts",
+            "figma_plugin/handlers/textHandlers.ts",
         ];
         const offenders: string[] = [];
         for (const path of files) {
@@ -139,7 +139,7 @@ describe("Phase 1.2: ui.html activeRequestId wiring", () => {
 
     beforeEach(async () => {
         const fs = await import("node:fs/promises");
-        html = await fs.readFile("src/figma_plugin/ui.html", "utf8");
+        html = await fs.readFile("figma_plugin/ui.html", "utf8");
     });
 
     it("declares activeRequestId in state", () => {

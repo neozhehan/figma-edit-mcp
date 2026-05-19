@@ -8,7 +8,7 @@ This plan outlines the step-by-step tasks to implement the v1.4.0 update for `ge
 
 ## Phase 0: Infrastructure & Constants
 
-- [x] **0.1 — Define Property Safe-List Constant**: Create a central `SAFE_LIST_PROPERTIES: ReadonlySet<string>` constant in `src/figma_plugin/utils/nodeUtils.ts` (or co-located with the handler). Enumerate all categories from spec §Safe-list properties: identity & structure, visibility, geometry & transform, auto-layout, constraints, corner radius, fills & strokes, effects, text, component/instance, prototyping, variables, export & dev metadata. This SAME constant is used to classify both `properties` array items AND `filter` dictionary keys.
+- [x] **0.1 — Define Property Safe-List Constant**: Create a central `SAFE_LIST_PROPERTIES: ReadonlySet<string>` constant in `figma_plugin/utils/nodeUtils.ts` (or co-located with the handler). Enumerate all categories from spec §Safe-list properties: identity & structure, visibility, geometry & transform, auto-layout, constraints, corner radius, fills & strokes, effects, text, component/instance, prototyping, variables, export & dev metadata. This SAME constant is used to classify both `properties` array items AND `filter` dictionary keys.
 - [x] **0.2 — Shared TypeScript Types**: Define types for the new response shapes:
     - `PathTuple = [type: string, id: string, name: string]` (named-tuple per spec §Schema implementation note).
     - `ChildEntry = { id: string; name: string; type: string; children: ChildEntry[]; descendantCount?: number; properties?: Record<string, unknown> }` — `descendantCount` is `optional` (present only on `maxDepth` boundary nodes; absent on interior descendants). `properties` is `optional` (present only when the request `properties` array is non-empty).
@@ -27,7 +27,7 @@ Verify new types, Zod schemas, and utility functions compile cleanly before buil
 
 ### 1.1 — Core Handler Structure
 
-- [x] **Rewrite `getNodesInfo`** in `src/figma_plugin/handlers/nodeReaders.ts` (starting at line ~133). Accept new parameters: `nodeIds`, `properties`, `filter`, `maxDepth` (optional, default `undefined` = unlimited).
+- [x] **Rewrite `getNodesInfo`** in `figma_plugin/handlers/nodeReaders.ts` (starting at line ~133). Accept new parameters: `nodeIds`, `properties`, `filter`, `maxDepth` (optional, default `undefined` = unlimited).
 - [x] **Preserve `getNodeByIdAsync` resolution** — the existing `Promise.all(nodeIds.map(figma.getNodeByIdAsync))` pattern is already compliant with the "MUST NOT call `loadAllPagesAsync()`" rule (spec §Loading rule 1). Keep it.
 - [x] **Input deduplication and ordering**: Deduplicate `nodeIds` first-occurrence. `nodes[i]` corresponds to the i-th resolvable id in the deduped input. `missingNodeIds` lists unresolved ids in the order they first appeared in the deduped input (spec §Ordering and deduplication).
 - [x] **Missing nodes accumulator**: Nodes where `figma.getNodeByIdAsync(id)` returns `null` (not found, different document, unreachable) are added to `missingNodeIds`. The call does NOT fail — this is silent-skip (spec §Missing nodes).
@@ -38,7 +38,7 @@ Verify new types, Zod schemas, and utility functions compile cleanly before buil
 
 - [x] **Empty-args dispatch**: `get_nodes_info()` with no/empty `nodeIds` is treated as a single-id call where the id is the editable-scope id captured at connect time. Route through the SAME handler path as a single-id call (do NOT short-circuit to a no-streaming branch — a `PAGE`-scoped editable will block the sandbox without progress events).
 - [x] **Read-only mode**: Return `{ nodes: [] }` immediately with no plugin work — no resolution, no streaming, no events.
-- [x] **Update empty-args dispatch** in `src/figma_plugin/src/main.ts` (line ~480-491) to use the new envelope shape and route through the unified handler path.
+- [x] **Update empty-args dispatch** in `figma_plugin/src/main.ts` (line ~480-491) to use the new envelope shape and route through the unified handler path.
 
 ### 1.3 — Recursive Children Walk
 
@@ -98,11 +98,11 @@ Verify new types, Zod schemas, and utility functions compile cleanly before buil
 - [x] **Empty-args calls**: Treated as single-id — inherits all single-id streaming rules. A `PAGE`-scoped editable is the worst case and MUST emit progress events.
 - [x] **Bookend events**: EVERY call shape (multi-id, single-id, empty-args) must emit `started` and `completed` events. Read-only mode is the only exception.
 - [x] **`await` on every `sendProgressUpdate`**: A missed `await` silently bypasses the flush and reintroduces the coalescing bug. Every handler MUST be `async` and MUST `await` every call.
-- [x] **Verify `state.activeRequestId` capture**: Confirm the v1.3.0 `state.activeRequestId` in `src/figma_plugin/ui.html` is intact — `message.id` captured from inbound `broadcast` messages, pinned onto outbound `progress_update` payloads, cleared on `command-result` / `command-error`. Without it, concurrent read requests can have progress events mis-correlated.
+- [x] **Verify `state.activeRequestId` capture**: Confirm the v1.3.0 `state.activeRequestId` in `figma_plugin/ui.html` is intact — `message.id` captured from inbound `broadcast` messages, pinned onto outbound `progress_update` payloads, cleared on `command-result` / `command-error`. Without it, concurrent read requests can have progress events mis-correlated.
 
 ### 2.2 — `get_components` Optimization
 
-- [x] **Remove `figma.loadAllPagesAsync()`** from `src/figma_plugin/handlers/componentHandlers.ts` (line ~60-64).
+- [x] **Remove `figma.loadAllPagesAsync()`** from `figma_plugin/handlers/componentHandlers.ts` (line ~60-64).
 - [x] **Implement page-by-page iteration** for `scope: 'document'`: `for (const page of figma.root.children)` → `await page.loadAsync()` → `page.findAllWithCriteria({ types: ["COMPONENT"] })` → apply `filter` → accumulate → emit `sendProgressUpdate` (`{ pagesProcessed, pagesTotal, componentsFound }`) → `await new Promise(r => setTimeout(r, 0))`.
 - [x] **Bookend with `started` / `completed` events**.
 - [x] **`scope: 'current_page'` is unchanged** — single-pass, no progress emission, no `setTimeout(0)` yield.
@@ -110,7 +110,7 @@ Verify new types, Zod schemas, and utility functions compile cleanly before buil
 
 ### 2.3 — `get_variables` Optimization
 
-- [x] **Add streaming for `includeConsumers: 'document'`** in `src/figma_plugin/handlers/variableHandlers.ts` (line ~369-386): wrap the existing page loop with `sendProgressUpdate` per iteration (`{ pagesProcessed, pagesTotal, consumersFound }`) + trailing `await new Promise(r => setTimeout(r, 0))`.
+- [x] **Add streaming for `includeConsumers: 'document'`** in `figma_plugin/handlers/variableHandlers.ts` (line ~369-386): wrap the existing page loop with `sendProgressUpdate` per iteration (`{ pagesProcessed, pagesTotal, consumersFound }`) + trailing `await new Promise(r => setTimeout(r, 0))`.
 - [x] **Bookend with `started` / `completed` events**.
 - [x] **`findStyleConsumers` / `findAliasConsumers` stay outside** the streamed loop, run concurrently as today.
 - [x] **`includeConsumers: 'current_page'`** is single-page, does not stream. Lookup/discovery modes (no `variableId`, or no `includeConsumers`) are unchanged.
@@ -125,7 +125,7 @@ Phases 1+2 rewrite the plugin handler and add streaming. Verify the plugin compi
 
 ### 3.1 — Connect Payload Update
 
-- [x] **Update `getConnectPayload`** in `src/figma_plugin/handlers/connectHandlers.ts`:
+- [x] **Update `getConnectPayload`** in `figma_plugin/handlers/connectHandlers.ts`:
     - Replace `parentNodeId` / `parentNodeName` / `parentNodeType` / `containingPageId` / `containingPageName` with the `path` array (reuse `buildPathArray` from Phase 0).
     - Add `descendantCount` to **both** page-scope and node-scope payloads (computed via `countDescendants()`).
     - **Read-only mode does NOT include `descendantCount`** — pages are not loaded, forcing `loadAsync` on every page would defeat the cheap discovery contract.
@@ -184,17 +184,17 @@ MCP server registration is now aligned with the plugin handler. Both sides compi
 ### 5.1 — Remove `scan_text_nodes`
 
 - [x] Delete tool registration (`server.tool("scan_text_nodes", ...)`) at `src/mcp_server/tools/text.ts` (line ~281-358).
-- [x] Delete plugin handler (`scanTextNodes` export) from `src/figma_plugin/handlers/textHandlers.ts` and any internal helpers that only serve `scan_text_nodes`.
-- [x] Remove dispatch case (`case "scan_text_nodes"`) at `src/figma_plugin/src/main.ts` (line ~498-499).
-- [x] Remove `scanTextNodes` import at `src/figma_plugin/src/main.ts` (line ~33).
+- [x] Delete plugin handler (`scanTextNodes` export) from `figma_plugin/handlers/textHandlers.ts` and any internal helpers that only serve `scan_text_nodes`.
+- [x] Remove dispatch case (`case "scan_text_nodes"`) at `figma_plugin/src/main.ts` (line ~498-499).
+- [x] Remove `scanTextNodes` import at `figma_plugin/src/main.ts` (line ~33).
 - [x] Remove test cases for `scan_text_nodes` in `src/mcp_server/tests/unit/tools/text.test.ts` (lines ~40, 80-93).
 
 ### 5.2 — Remove `scan_nodes_by_types`
 
 - [x] Delete tool registration (`server.tool("scan_nodes_by_types", ...)`) at `src/mcp_server/tools/document.ts` (line ~86-160).
-- [x] Delete plugin handler (`scanNodesByTypes` export) from `src/figma_plugin/handlers/annotationHandlers.ts`. Verify remaining annotation handlers (`getAnnotations`, `setMultipleAnnotations`) do not depend on it.
-- [x] Remove dispatch case (`case "scan_nodes_by_types"`) at `src/figma_plugin/src/main.ts` (line ~502-503).
-- [x] Remove `scanNodesByTypes` import at `src/figma_plugin/src/main.ts` (line ~34).
+- [x] Delete plugin handler (`scanNodesByTypes` export) from `figma_plugin/handlers/annotationHandlers.ts`. Verify remaining annotation handlers (`getAnnotations`, `setMultipleAnnotations`) do not depend on it.
+- [x] Remove dispatch case (`case "scan_nodes_by_types"`) at `figma_plugin/src/main.ts` (line ~502-503).
+- [x] Remove `scanNodesByTypes` import at `figma_plugin/src/main.ts` (line ~34).
 
 ### 5.3 — Update Prompts
 

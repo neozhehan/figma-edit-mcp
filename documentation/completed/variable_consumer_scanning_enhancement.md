@@ -29,7 +29,7 @@ The consumer scan and deletion are separate operations with no locking mechanism
 
 ### Plugin Handlers
 
-#### [MODIFY] [variableHandlers.ts](src/figma_plugin/handlers/variableHandlers.ts)
+#### [MODIFY] [variableHandlers.ts](figma_plugin/handlers/variableHandlers.ts)
 
 **Phase 1A — Style Consumer Scanning**
 
@@ -132,7 +132,7 @@ When deleting by `collectionId`, all variables in the collection are being delet
 
 **Phase 2 — Support Resolving Style Consumers (Update Style)**
 
-#### [MODIFY] [styleHandlers.ts](src/figma_plugin/handlers/styleHandlers.ts)
+#### [MODIFY] [styleHandlers.ts](figma_plugin/handlers/styleHandlers.ts)
 
 Extend the existing `createStyle` handler to also handle updating existing styles:
 1. Accept an optional `styleId` parameter.
@@ -171,7 +171,7 @@ The handler supports a unified `bindVariables` parameter — a map of field name
 
 **PAINT styles** require special handling: the Figma API uses `figma.variables.setBoundVariableForPaint(paint, field, variable)` rather than `style.setBoundVariable()`. The handler operates on the first paint in the paints array.
 
-#### [MODIFY] [main.ts](src/figma_plugin/src/main.ts)
+#### [MODIFY] [main.ts](figma_plugin/src/main.ts)
 Rename the command dispatch case from `"create_style"` to `"manage_style"` and pass through `styleId` and `bindVariables` to the handler.
 
 ---
@@ -210,7 +210,7 @@ The test matrix for Phase 3 significantly expands the verification surface area.
 
 *AI Fixing Capabilities (update_reactions)*:
 If the AI detects that a prototype is consuming a to-be-deleted variable, it needs a tool to fix it. We need to build an `update_reactions` feature that can modify `node.reactions`.
-1. **Plugin Handler (`src/figma_plugin/handlers/prototypingHandlers.ts`)**: Create an `updateReactions` handler that accepts a `nodeId` and a reactions payload.
+1. **Plugin Handler (`figma_plugin/handlers/prototypingHandlers.ts`)**: Create an `updateReactions` handler that accepts a `nodeId` and a reactions payload.
 2. **MCP Server Tool (`src/mcp_server/tools/prototyping.ts`)**: Expose an `update_reactions` tool.
 
 **Decision: Wholesale replacement with Zod validation (Option C).**
@@ -229,7 +229,7 @@ The `update_reactions` tool will accept a full `reactions` array (`{ nodeId: str
 
 - **Rename `create_style` to `manage_style`**. Update the tool name in all three locations:
   1. MCP tool registration in [styling.ts](src/mcp_server/tools/styling.ts) — tool name and description
-  2. Plugin command dispatch in [main.ts](src/figma_plugin/src/main.ts) — `case "create_style"` → `case "manage_style"`
+  2. Plugin command dispatch in [main.ts](figma_plugin/src/main.ts) — `case "create_style"` → `case "manage_style"`
   3. Any system prompts or agent instructions that reference `create_style` by name
 - Add an optional `styleId` property to the input schema (`z.string().optional()`).
 - Add an optional `bindVariables` property to the input schema (`z.record(z.string(), z.string().nullable()).optional()`) — map of field names to variable IDs (bind) or null (unbind).
@@ -254,7 +254,7 @@ No schema changes needed — the plugin handler controls the response shape.
 
 After modifying `variableHandlers.ts` and `styleHandlers.ts`, the plugin must be rebuilt:
 ```bash
-cd src/figma_plugin && npm run build
+cd figma_plugin && npm run build
 ```
 
 ---

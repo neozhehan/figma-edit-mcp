@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -15,11 +15,11 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
+import { parseCliArgs } from "../cli.js";
+
 // Add command line argument parsing
-const args = process.argv.slice(2);
-const serverArg = args.find(arg => arg.startsWith('--server='));
-const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
-const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${serverUrl}`;
+const { port } = parseCliArgs("figma-edit-mcp");
+const WS_URL = `ws://localhost:${port}`;
 setFigmaServerUrl(WS_URL);
 
 // Register all tools

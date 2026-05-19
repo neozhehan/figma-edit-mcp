@@ -16,29 +16,27 @@ import { describe, it, expect, beforeEach } from "bun:test";
 //   - connect-flow consistency snapshot
 //   - get_pages_info descendantCount with/without pageIds
 
-if (!(globalThis as any).figma) {
-    (globalThis as any).__html__ = "<html></html>";
-    (globalThis as any).figma = {
-        showUI: () => { },
-        ui: { onmessage: null, postMessage: () => { } },
-        on: () => { },
-        notify: () => { },
-        closePlugin: () => { },
-        clientStorage: { setAsync: async () => { } },
-        getNodeByIdAsync: async () => null,
-        currentPage: { selection: [], children: [] },
-        root: { id: "doc-stub", name: "Stub", children: [] },
-        mixed: Symbol("mixed"),
-        loadAllPagesAsync: async () => { },
-    };
-}
+(globalThis as any).__html__ = "<html></html>";
+(globalThis as any).figma = {
+    showUI: () => { },
+    ui: { onmessage: null, postMessage: () => { } },
+    on: () => { },
+    notify: () => { },
+    closePlugin: () => { },
+    clientStorage: { setAsync: async () => { } },
+    getNodeByIdAsync: async () => null,
+    currentPage: { selection: [], children: [] },
+    root: { id: "doc-stub", name: "Stub", children: [] },
+    mixed: Symbol("mixed"),
+    loadAllPagesAsync: async () => { },
+};
 
 // Use dynamic imports — static imports get hoisted above the figma-stub setup
 // above, which causes main.ts to throw at module-load (it calls figma.showUI).
-const mainMod: any = await import("../../../../../src/figma_plugin/src/main.js");
+const mainMod: any = await import("../../../../../figma_plugin/src/main.js");
 const realState: any = mainMod.getPluginState();
-const { getNodesInfo, getPagesInfo } = await import("../../../../../src/figma_plugin/handlers/nodeReaders.js");
-const { getConnectPayload } = await import("../../../../../src/figma_plugin/handlers/connectHandlers.js");
+const { getNodesInfo, getPagesInfo } = await import("../../../../../figma_plugin/handlers/nodeReaders.js");
+const { getConnectPayload } = await import("../../../../../figma_plugin/handlers/connectHandlers.js");
 function setState(next: { readOnly: boolean; scopeRootId: string | null }) {
     realState.readOnly = next.readOnly;
     realState.scopeRootId = next.scopeRootId;
@@ -443,7 +441,7 @@ describe("Phase 6.2 — empty-args dispatch + read-only short-circuit (static so
     let src: string;
     beforeEach(async () => {
         const fs = await import("node:fs/promises");
-        src = await fs.readFile("src/figma_plugin/src/main.ts", "utf8");
+        src = await fs.readFile("figma_plugin/src/main.ts", "utf8");
     });
 
     it("get_nodes_info dispatch substitutes the scope id when nodeIds is empty/missing", () => {

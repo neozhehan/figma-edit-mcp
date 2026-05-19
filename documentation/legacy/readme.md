@@ -14,7 +14,7 @@ https://github.com/user-attachments/assets/129a14d2-ed73-470f-9a4c-2240b2a4885c
 ## Project Structure
 
 - `src/mcp_server/` - TypeScript MCP server for Figma integration
-- `src/figma_plugin/` - Figma plugin for communicating with AI assistants
+- `figma_plugin/` - Figma plugin for communicating with AI assistants
 - `src/socket.ts` - WebSocket server that facilitates communication between the MCP server and Figma plugin
 
 ## Quick Start
@@ -176,7 +176,7 @@ bun socket
 
 1. In Figma, go to Plugins > Development > New Plugin
 2. Choose "Link existing plugin"
-3. Select the `src/figma_plugin/manifest.json` file
+3. Select the `figma_plugin/manifest.json` file
 4. The plugin should now be available in your Figma development plugins
 
 ---

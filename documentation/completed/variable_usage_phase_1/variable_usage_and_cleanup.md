@@ -153,7 +153,7 @@ server.tool(
 
 ### Plugin Handler
 
-#### [MODIFY] [variableHandlers.ts](file:///src/figma_plugin/handlers/variableHandlers.ts)
+#### [MODIFY] [variableHandlers.ts](file:///figma_plugin/handlers/variableHandlers.ts)
 
 **Changes to `getVariables`:**
 
@@ -302,7 +302,7 @@ export async function deleteVariables(params: any) {
 }
 ```
 
-#### [MODIFY] [main.ts](file:///src/figma_plugin/src/main.ts)
+#### [MODIFY] [main.ts](file:///figma_plugin/src/main.ts)
 
 1. **Import** `deleteVariables` from `variableHandlers.js`.
 2. **Add dispatch case** for `delete_variables`:
@@ -425,8 +425,8 @@ it("delete_variables should call sendCommandToFigma with variableIds", async () 
 
 2. **Stale file-path comment** at line 1 of `variableHandlers.ts`:
    ```diff
-   -// src/figma_plugin/handlers/variableHandlers.js
-   +// src/figma_plugin/handlers/variableHandlers.ts
+   -// figma_plugin/handlers/variableHandlers.js
+   +// figma_plugin/handlers/variableHandlers.ts
    ```
 
 3. **Remove unused import** in `variableHandlers.ts`:

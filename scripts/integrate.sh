@@ -7,8 +7,54 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_DIR="$( dirname "$SCRIPT_DIR" )"
 
-# MCP configuration JSON - uses local installation
-MCP_CONFIG="{\"FigmaEdit\":{\"command\":\"bun\",\"args\":[\"run\",\"$PROJECT_DIR/dist/server.js\"]}}"
+# Parse arguments
+LOCAL_MODE=false
+PORT_ARG=""
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --local)
+            LOCAL_MODE=true
+            shift
+            ;;
+        --port)
+            PORT_ARG="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: ./integrate.sh [options]"
+            echo "Options:"
+            echo "  --local     Use local repository clone (bun run dist/server.js) instead of npx figma-edit-mcp"
+            echo "  --port <n>  Specify a custom port for the WebSocket bridge"
+            echo "  -h, --help  Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown parameter passed: $1"
+            echo "Use --help for usage."
+            exit 1
+            ;;
+    esac
+done
+
+if [ "$LOCAL_MODE" = true ]; then
+    CMD="bun"
+    if [ -n "$PORT_ARG" ]; then
+        ARGS="[\"run\", \"$PROJECT_DIR/dist/server.js\", \"--port\", \"$PORT_ARG\"]"
+    else
+        ARGS="[\"run\", \"$PROJECT_DIR/dist/server.js\"]"
+    fi
+else
+    CMD="npx"
+    if [ -n "$PORT_ARG" ]; then
+        ARGS="[\"figma-edit-mcp\", \"--port\", \"$PORT_ARG\"]"
+    else
+        ARGS="[\"figma-edit-mcp\"]"
+    fi
+fi
+
+# MCP configuration JSON
+MCP_CONFIG="{\"FigmaEdit\":{\"command\":\"$CMD\",\"args\":$ARGS}}"
 
 echo "🤖 Figma Edit MCP Integration"
 echo "========================================"
@@ -188,7 +234,15 @@ show_claude_code_instructions() {
     echo "📦 Claude Code CLI Instructions:"
     echo "To install for Claude Code for the Current Project, run the following command in your terminal:"
     echo ""
-    echo "  claude mcp add FigmaEdit bun run $PROJECT_DIR/dist/server.js"
+    if [ "$LOCAL_MODE" = true ]; then
+        CLAUDE_CMD="bun run $PROJECT_DIR/dist/server.js"
+    else
+        CLAUDE_CMD="npx figma-edit-mcp"
+    fi
+    if [ -n "$PORT_ARG" ]; then
+        CLAUDE_CMD="$CLAUDE_CMD --port $PORT_ARG"
+    fi
+    echo "  claude mcp add FigmaEdit $CLAUDE_CMD"
     echo ""
     echo "After running the command above, Claude Code will be ready to use."
 }
@@ -199,7 +253,7 @@ show_lm_studio_instructions() {
     echo "📦 LM Studio Instructions:"
     
     # Extract inner config for LM Studio deeplink
-    LM_STUDIO_CONFIG="{\"command\":\"bun\",\"args\":[\"run\",\"$PROJECT_DIR/dist/server.js\"]}"
+    LM_STUDIO_CONFIG="{\"command\":\"$CMD\",\"args\":$ARGS}"
     
     # Try node first, then python3 for base64 URL encoding
     if command -v node >/dev/null 2>&1; then

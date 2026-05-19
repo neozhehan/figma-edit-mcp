@@ -1,6 +1,6 @@
 # Plan Review: v1.3.0 Read Tools Update
 
-Review of [read_tools_update_plan.md](read_tools_update_plan.md) against [read_tools_update.md](read_tools_update.md), [read_tools_update_recommendation.md](read_tools_update_recommendation.md), and the current implementation in [src/mcp_server/tools/document.ts](../../src/mcp_server/tools/document.ts), [src/figma_plugin/handlers/nodeReaders.ts](../../src/figma_plugin/handlers/nodeReaders.ts), [src/figma_plugin/src/main.ts](../../src/figma_plugin/src/main.ts), [src/mcp_server/figma-client.ts](../../src/mcp_server/figma-client.ts), and [src/socket.ts](../../src/socket.ts).
+Review of [read_tools_update_plan.md](read_tools_update_plan.md) against [read_tools_update.md](read_tools_update.md), [read_tools_update_recommendation.md](read_tools_update_recommendation.md), and the current implementation in [src/mcp_server/tools/document.ts](../../src/mcp_server/tools/document.ts), [figma_plugin/handlers/nodeReaders.ts](../../figma_plugin/handlers/nodeReaders.ts), [figma_plugin/src/main.ts](../../figma_plugin/src/main.ts), [src/mcp_server/figma-client.ts](../../src/mcp_server/figma-client.ts), and [src/socket.ts](../../src/socket.ts).
 
 ## Missing tasks
 
@@ -12,8 +12,8 @@ Review of [read_tools_update_plan.md](read_tools_update_plan.md) against [read_t
 2. **Specify the `state.activeRequestId` task concretely.**
    "Audit and implement" is too thin. Pin down:
    - Which incoming WebSocket message types carry the request id.
-   - Where in [src/figma_plugin/ui.html](../../src/figma_plugin/ui.html) it gets stored on `state`.
-   - How the existing `command_progress` → `progress_update` forwarder ([ui.html:779-799](../../src/figma_plugin/ui.html#L779)) reads it.
+   - Where in [figma_plugin/ui.html](../../figma_plugin/ui.html) it gets stored on `state`.
+   - How the existing `command_progress` → `progress_update` forwarder ([ui.html:779-799](../../figma_plugin/ui.html#L779)) reads it.
 
    Without this the task is unactionable.
 
@@ -28,7 +28,7 @@ Review of [read_tools_update_plan.md](read_tools_update_plan.md) against [read_t
    Grep for `childCount`, `currentPageId`, `currentPageName`, `isCurrent`, and `type: "DOCUMENT"` across `src/`, `CLAUDE.md`, README, and any prompt/description strings in tool registrations. Plan only lists the `getDocumentInfo` callsite.
 
 6. **Verify `get_nodes_info()` empty-args path still resolves to the editable scope node.**
-   Spec relies on it for node-scope refresh ([main.ts:481-482](../../src/figma_plugin/src/main.ts#L481)). Add a regression test so the rename work doesn't break it.
+   Spec relies on it for node-scope refresh ([main.ts:481-482](../../figma_plugin/src/main.ts#L481)). Add a regression test so the rename work doesn't break it.
 
 7. **Bump version (`package.json` → 1.3.0) and update CHANGELOG / release notes.**
    Mentioned in spec ("Document under Breaking changes") but not as a discrete task in the plan.
@@ -38,7 +38,7 @@ Review of [read_tools_update_plan.md](read_tools_update_plan.md) against [read_t
 8. **Design the plugin → server scope-payload command.**
    The MCP server can't construct the Change 1 payload by itself; the editable scope (`state.scopeRootId`, `state.readOnly`) lives in the plugin. The plan says "Connection handler in server and plugin" without specifying:
    - Name of the new plugin command (e.g. `get_connect_payload`).
-   - Its addition to the `FigmaCommand` union in [figma-client.ts](../../src/mcp_server/figma-client.ts) and its switch case in [main.ts](../../src/figma_plugin/src/main.ts).
+   - Its addition to the `FigmaCommand` union in [figma-client.ts](../../src/mcp_server/figma-client.ts) and its switch case in [main.ts](../../figma_plugin/src/main.ts).
    - The handler module/file (new file in `handlers/`?).
    - How `join_channel` in [tools/document.ts:202-267](../../src/mcp_server/tools/document.ts#L202) orchestrates: `joinChannel(...)` → call new command → return JSON content (replacing the current prose template at lines 233–244).
 
@@ -48,7 +48,7 @@ Review of [read_tools_update_plan.md](read_tools_update_plan.md) against [read_t
 10. **Define how each `errorCode` is detected and surfaced.**
     Spec lists 7 codes; plan just lists the names again. The hard part is detection wiring:
     - `CHANNEL_NOT_FOUND` vs `CHANNEL_JOIN_FAILED` — currently [socket.ts:67](../../src/socket.ts#L67) accepts any join blindly. Need either a server-side check (does the channel have a plugin attached?) or a timeout heuristic.
-    - `SCOPE_DELETED` — currently thrown as a string error at [main.ts:85](../../src/figma_plugin/src/main.ts#L85); needs to be surfaced as a structured `errorCode`, not free-text.
+    - `SCOPE_DELETED` — currently thrown as a string error at [main.ts:85](../../figma_plugin/src/main.ts#L85); needs to be surfaced as a structured `errorCode`, not free-text.
     - `PLUGIN_DISCONNECTED` — needs a path that distinguishes mid-handshake disconnect from a steady-state one.
     - `UNKNOWN_ERROR` — what error is appended? Plan should pick a format.
 
@@ -74,7 +74,7 @@ Review of [read_tools_update_plan.md](read_tools_update_plan.md) against [read_t
 ## Open questions to resolve before implementation
 
 - **Q1 (blocks Phase 3):** What is the name and shape of the new plugin command that returns the editable-scope payload? Without this answer, Phase 3 cannot be sequenced.
-  - **Recommendation:** Add a single plugin command `get_connect_payload` (no params). Its return type is a discriminated union keyed on `editableScopeType` matching the three success shapes in Change 1 (minus the envelope fields `status` / `channel`, which the MCP server adds when forwarding to the client). Errors that originate inside the plugin (e.g. `SCOPE_DELETED`, `SCOPE_INVALID`, `DOCUMENT_LOAD_FAILED`) surface as a structured `{ errorCode, errorMessage }` return — *not* a thrown string — so the MCP server can map them straight into the Change 1 error envelope without parsing prose. Lives in a new `handlers/connectHandlers.ts` (keeps it out of `nodeReaders.ts`, which is being trimmed). Adding the command to the `FigmaCommand` union, the switch in [main.ts](../../src/figma_plugin/src/main.ts), and the handler export in [handlers/index.ts](../../src/figma_plugin/handlers/index.ts) becomes a concrete checklist instead of a TBD.
+  - **Recommendation:** Add a single plugin command `get_connect_payload` (no params). Its return type is a discriminated union keyed on `editableScopeType` matching the three success shapes in Change 1 (minus the envelope fields `status` / `channel`, which the MCP server adds when forwarding to the client). Errors that originate inside the plugin (e.g. `SCOPE_DELETED`, `SCOPE_INVALID`, `DOCUMENT_LOAD_FAILED`) surface as a structured `{ errorCode, errorMessage }` return — *not* a thrown string — so the MCP server can map them straight into the Change 1 error envelope without parsing prose. Lives in a new `handlers/connectHandlers.ts` (keeps it out of `nodeReaders.ts`, which is being trimmed). Adding the command to the `FigmaCommand` union, the switch in [main.ts](../../figma_plugin/src/main.ts), and the handler export in [handlers/index.ts](../../figma_plugin/handlers/index.ts) becomes a concrete checklist instead of a TBD.
   - **Resolution:** Accepted (Option C — separate plugin command, two-leg connect). Alternatives considered: Option A (socket server caches plugin scope) and Option B (socket server defers join ack until plugin replies). Both rejected because they push domain knowledge into [src/socket.ts](../../src/socket.ts), which is currently a dumb relay; conflate transport-layer and plugin-layer error vocabularies in a single ack; and require socket + plugin to upgrade in lockstep. Option C keeps the layers separate, lets the Change 1 error codes split cleanly along the two legs, and produces a reusable command that can be re-invoked for future refresh paths. Spec updated under "Connect-flow mechanics" in [read_tools_update.md](read_tools_update.md); plan steps for the new command, the rewritten `join_channel` tool, the socket-side `CHANNEL_NOT_FOUND` detection, and the structured `SCOPE_DELETED` mapping are added to Phase 3 of [read_tools_update_plan.md](read_tools_update_plan.md).
 
 - **Q2 (blocks Phase 3):** Is `CHANNEL_NOT_FOUND` going to be detected server-side in [socket.ts](../../src/socket.ts) (requires changing the socket protocol) or via a join-ack timeout heuristic in [figma-client.ts](../../src/mcp_server/figma-client.ts)? Different effort, different risk.

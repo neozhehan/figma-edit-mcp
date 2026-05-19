@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# ------------------------------------------------------------
+# Contributor-only setup script.
+# End users should run `npx figma-edit-mcp` instead.
+# See CONTRIBUTING.md for the local-development workflow.
+# ------------------------------------------------------------
+
 # Setup script for Figma Edit MCP
 # Installs dependencies and builds the MCP server
 

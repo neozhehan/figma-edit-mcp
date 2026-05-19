@@ -52,9 +52,9 @@ Uninstalling `ts-morph`, 5 minor dev-dep bumps, and `ws` all landed in one verif
 - **Phase 1d** — `esbuild` is removed from the safe-minors group entirely and tracked separately (see Item 6).
 
 ### 6. ~~`esbuild 0.27 → 0.28` is not a safe minor~~ ✅ Resolved
-esbuild's stated policy treats every 0.x bump as potentially breaking. It drives [src/figma_plugin/build.js](../../src/figma_plugin/build.js) and shouldn't be lumped with patch-level updates without a changelog scan.
+esbuild's stated policy treats every 0.x bump as potentially breaking. It drives [figma_plugin/build.js](../../figma_plugin/build.js) and shouldn't be lumped with patch-level updates without a changelog scan.
 
-**Resolution:** `esbuild` has been promoted to its own top-level **Phase 2** in [package_update_plan.md](package_update_plan.md), with explicit tasks for a pre-bump changelog scan, an audit of `src/figma_plugin/build.js` against any API changes, and a post-bump inspection of the generated plugin bundle. Subsequent phases were renumbered: TypeScript → Phase 3, UUID → Phase 4, Zod + MCP SDK → Phase 5.
+**Resolution:** `esbuild` has been promoted to its own top-level **Phase 2** in [package_update_plan.md](package_update_plan.md), with explicit tasks for a pre-bump changelog scan, an audit of `figma_plugin/build.js` against any API changes, and a post-bump inspection of the generated plugin bundle. Subsequent phases were renumbered: TypeScript → Phase 3, UUID → Phase 4, Zod + MCP SDK → Phase 5.
 
 ### 7. ~~TypeScript 6 may break tooling indirectly~~ ✅ Resolved
 Phase 3 originally only checked for code-level type errors. It now also covers tooling-level breakage.

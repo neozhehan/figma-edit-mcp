@@ -14,8 +14,8 @@ This report analyzes the gap between the Figma Plugin API's prototype capabiliti
 
 | Tool | Purpose | File |
 |---|---|---|
-| `get_reactions` | Recursively scans nodes for prototype reactions, filters out `CHANGE_TO`, returns results with hierarchy metadata | `src/figma_plugin/handlers/connectorHandlers.ts` → `getReactions()` |
-| `create_connections` | Creates visual FigJam connector lines between nodes by cloning a template connector. Also manages default connector storage | `src/figma_plugin/handlers/connectorHandlers.ts` → `createConnections()` |
+| `get_reactions` | Recursively scans nodes for prototype reactions, filters out `CHANGE_TO`, returns results with hierarchy metadata | `figma_plugin/handlers/connectorHandlers.ts` → `getReactions()` |
+| `create_connections` | Creates visual FigJam connector lines between nodes by cloning a template connector. Also manages default connector storage | `figma_plugin/handlers/connectorHandlers.ts` → `createConnections()` |
 
 ### Prompts
 

@@ -1,6 +1,6 @@
 # Read Tools Update — Review Recommendations
 
-Review of [read_tools_update.md](read_tools_update.md) against the current implementation in [src/mcp_server/tools/document.ts](../../src/mcp_server/tools/document.ts), [src/figma_plugin/handlers/nodeReaders.ts](../../src/figma_plugin/handlers/nodeReaders.ts), and [src/figma_plugin/src/main.ts](../../src/figma_plugin/src/main.ts).
+Review of [read_tools_update.md](read_tools_update.md) against the current implementation in [src/mcp_server/tools/document.ts](../../src/mcp_server/tools/document.ts), [figma_plugin/handlers/nodeReaders.ts](../../figma_plugin/handlers/nodeReaders.ts), and [figma_plugin/src/main.ts](../../figma_plugin/src/main.ts).
 
 ## Resolved in the latest revision
 
@@ -51,13 +51,13 @@ This codebase is downstream of grab/cursor-talk-to-figma-mcp and has **partially
 |---|---|---|
 | Server-side `progress_update` handler that resets inactivity timeout | ✅ Present (60 s reset window after each progress event) | [src/mcp_server/figma-client.ts:138-158](../../src/mcp_server/figma-client.ts#L138) |
 | `socket.ts` forwarding progress between peers | ✅ Effectively present (server receives them) | [src/socket.ts](../../src/socket.ts) |
-| UI bridge `command_progress` → `progress_update` to server | ✅ Present | [src/figma_plugin/ui.html:779-799,855](../../src/figma_plugin/ui.html#L779) |
-| `sendProgressUpdate` utility | ✅ Present | [src/figma_plugin/utils/progressUtils.ts](../../src/figma_plugin/utils/progressUtils.ts) |
+| UI bridge `command_progress` → `progress_update` to server | ✅ Present | [figma_plugin/ui.html:779-799,855](../../figma_plugin/ui.html#L779) |
+| `sendProgressUpdate` utility | ✅ Present | [figma_plugin/utils/progressUtils.ts](../../figma_plugin/utils/progressUtils.ts) |
 
 What's still missing (and matters for v1.3.0):
 
-1. **`sendProgressUpdate` is synchronous** — no `await setTimeout(0)` after `figma.ui.postMessage()` ([progressUtils.ts:65](../../src/figma_plugin/utils/progressUtils.ts#L65)). PR #153's headline fix. Without it, the Figma sandbox doesn't flush the message before the next chunk runs, so the UI still freezes and progress events get coalesced — defeating the server's inactivity reset.
-2. **Read handlers don't emit progress** — `sendProgressUpdate` is used in write-side handlers (`annotationHandlers`, `connectorHandlers`, `nodeModifiers`) but **not** in `nodeReaders.ts`. Today's `getDocumentInfo` does a single `figma.loadAllPagesAsync()` ([nodeReaders.ts:13](../../src/figma_plugin/handlers/nodeReaders.ts#L13)) with no progress and no chunking — the exact pattern PR #153 replaced.
+1. **`sendProgressUpdate` is synchronous** — no `await setTimeout(0)` after `figma.ui.postMessage()` ([progressUtils.ts:65](../../figma_plugin/utils/progressUtils.ts#L65)). PR #153's headline fix. Without it, the Figma sandbox doesn't flush the message before the next chunk runs, so the UI still freezes and progress events get coalesced — defeating the server's inactivity reset.
+2. **Read handlers don't emit progress** — `sendProgressUpdate` is used in write-side handlers (`annotationHandlers`, `connectorHandlers`, `nodeModifiers`) but **not** in `nodeReaders.ts`. Today's `getDocumentInfo` does a single `figma.loadAllPagesAsync()` ([nodeReaders.ts:13](../../figma_plugin/handlers/nodeReaders.ts#L13)) with no progress and no chunking — the exact pattern PR #153 replaced.
 3. **`activeRequestId` capture in ui.html** — `state.activeRequestId` is not set from incoming MCP requests. Without it, a concurrent read mid-flight can have its progress events mis-correlated.
 
 #### Mapping v1.3.0 entry points to the right strategy
@@ -72,7 +72,7 @@ What's still missing (and matters for v1.3.0):
 
 #### Concrete recommendations for the spec
 
-1. **Make `sendProgressUpdate` async with the trailing flush.** One-line change in [progressUtils.ts:65](../../src/figma_plugin/utils/progressUtils.ts#L65), but it's a precondition for any streaming pattern to actually work. Apply once; every long-running handler in the repo benefits.
+1. **Make `sendProgressUpdate` async with the trailing flush.** One-line change in [progressUtils.ts:65](../../figma_plugin/utils/progressUtils.ts#L65), but it's a precondition for any streaming pattern to actually work. Apply once; every long-running handler in the repo benefits.
 
 2. **Mandate the streaming pattern for `get_pages_info({ pageIds })` when N is large.** Suggested spec language:
    > When `get_pages_info` is called with `pageIds.length > 1`, the plugin SHOULD emit `command_progress` events (`started` → `in_progress` per page → `completed`) so the MCP server can keep its inactivity timeout fresh. Implementations MUST `await` a yield (e.g. `setTimeout(0)`) after each `figma.ui.postMessage` so the sandbox flushes UI messages between iterations.

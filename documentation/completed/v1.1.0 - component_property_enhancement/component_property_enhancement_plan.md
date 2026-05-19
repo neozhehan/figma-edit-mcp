@@ -37,15 +37,15 @@ This document breaks down the implementation of the Component Property Enhanceme
    - **Action:** In the tool handler for `get_nodes_info`, update the Figma command to include fields: `sendCommandToFigma("get_nodes_info", { nodeIds, fields })`.
 
 5. **Forward `fields` inside the Plugin Dispatcher**
-   - **File:** `src/figma_plugin/src/main.ts`
+   - **File:** `figma_plugin/src/main.ts`
    - **Action:** In `case "get_nodes_info"`, update the function call to pass fields: `getNodesInfo(params.nodeIds, params.fields)`. Make sure to also pass `fields` in the implicit scope-root fallback path.
 
 6. **Update Plugin Handler Signatures**
-   - **File:** `src/figma_plugin/handlers/nodeReaders.ts`
+   - **File:** `figma_plugin/handlers/nodeReaders.ts`
    - **Action:** Update the `getNodesInfo` signature to accept `fields` and pass it down to `filterFigmaNode`.
 
 7. **Implement Dynamic Field Filtering**
-   - **File:** `src/figma_plugin/utils/nodeUtils.ts`
+   - **File:** `figma_plugin/utils/nodeUtils.ts`
    - **Action:** Update `filterFigmaNode(node, fields)` logic:
      - Automatically include `id`, `name`, and `type` for every node.
      - Unconditionally recurse into `children` for structural completeness.
@@ -67,7 +67,7 @@ This document breaks down the implementation of the Component Property Enhanceme
     > All new test files live under `src/mcp_server/tests/unit/figma_plugin/`, which mirrors the plugin tree but reuses the existing `bun:test` infrastructure. Plugin functions are imported via relative paths (`../../../../../figma_plugin/...`); for handlers that touch the `figma` global, mock it on `globalThis` in `beforeEach`.
 
     **(a) `filterFigmaNode` unit tests** — **File:** `src/mcp_server/tests/unit/figma_plugin/nodeUtils.test.ts` (new file)
-    - `filterFigmaNode` is a pure function operating on plain `JSON_REST_V1` data — no `figma` global mock is required. Import it directly from `src/figma_plugin/utils/nodeUtils.ts`.
+    - `filterFigmaNode` is a pure function operating on plain `JSON_REST_V1` data — no `figma` global mock is required. Import it directly from `figma_plugin/utils/nodeUtils.ts`.
     - Add tests covering:
       - **Positive hits:** when fields like `["fills", "componentProperties"]` are requested and present on the node, they are correctly extracted into the output.
       - **Silent dropping of absent fields:** requesting a field that doesn't exist on the node (e.g., `componentPropertyDefinitions` on a regular FRAME) is omitted from output without error.
@@ -91,11 +91,11 @@ This document breaks down the implementation of the Component Property Enhanceme
     - **Action:** Add `set_component_instance_property` schema including `nodeId`, `nodeName`, `propertyName`, and `value` (`string | boolean`). Include clear descriptions for `value` when dealing with `INSTANCE_SWAP` keys.
 
 12. **Route Command with Security Gates**
-    - **File:** `src/figma_plugin/src/main.ts`
+    - **File:** `figma_plugin/src/main.ts`
     - **Action:** Add `case "set_component_instance_property"`. Precede dispatch with security checks: `state.readOnly`, `checkScopeAccess`, and `verifyNodeName`.
 
 13. **Implement Plugin Handler**
-    - **File:** `src/figma_plugin/handlers/componentHandlers.ts`
+    - **File:** `figma_plugin/handlers/componentHandlers.ts`
     - **Action:** Create `setComponentInstanceProperty`.
     - Look up the node by `nodeId` and **verify `node.type === "INSTANCE"`**; throw a clear error if the node is missing or not an instance.
     - Retrieve `instance.componentProperties`. Match the incoming human-readable `propertyName` against the keys to resolve the exact qualified name (e.g., `"Show Icon#5:0"`).
@@ -131,11 +131,11 @@ This document breaks down the implementation of the Component Property Enhanceme
       - `preferredValues` (`Array<{ type: "COMPONENT" | "COMPONENT_SET", key: string }>`, optional) — preferred values for `INSTANCE_SWAP` properties during `ADD` or `EDIT`. Each entry must be a `{ type, key }` object — `key` is the library key (`component.key`). Bare strings are rejected by the Figma plugin API.
 
 16. **Route Command with Security Gates**
-    - **File:** `src/figma_plugin/src/main.ts`
+    - **File:** `figma_plugin/src/main.ts`
     - **Action:** Add `case "manage_component_property"`. Precede dispatch with security checks: `state.readOnly`, `checkScopeAccess`, and `verifyNodeName`.
 
 17. **Implement Plugin Handler**
-    - **File:** `src/figma_plugin/handlers/componentHandlers.ts`
+    - **File:** `figma_plugin/handlers/componentHandlers.ts`
     - **Action:** Create `manageComponentProperty`.
     - For **ADD**: Pre-validate that `propertyName` doesn't exist in `node.componentPropertyDefinitions`. Call `node.addComponentProperty(propertyName, propertyType, defaultValue, { preferredValues })`.
     - For **EDIT**: Match the human-readable `propertyName` in `node.componentPropertyDefinitions` to resolve the qualified name. Call `node.editComponentProperty(qualifiedName, { name: newPropertyName, defaultValue: newDefaultValue, preferredValues })`.

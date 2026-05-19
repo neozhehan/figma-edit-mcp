@@ -8,9 +8,9 @@ Currently, `get_nodes_info` returns a large amount of hardcoded styling and stru
 
 > **File locations** (note: despite this being part of the component-property enhancement, `get_nodes_info` lives with the document tools, not the component tools):
 > - MCP tool registration: [src/mcp_server/tools/document.ts:74](../src/mcp_server/tools/document.ts#L74)
-> - Plugin command dispatch: [src/figma_plugin/src/main.ts:461-472](../src/figma_plugin/src/main.ts#L461-L472) (`case "get_nodes_info"`)
-> - Plugin handler: `getNodesInfo` in [src/figma_plugin/handlers/nodeReaders.ts:92](../src/figma_plugin/handlers/nodeReaders.ts#L92)
-> - Filter function: `filterFigmaNode` in [src/figma_plugin/utils/nodeUtils.ts:12](../src/figma_plugin/utils/nodeUtils.ts#L12)
+> - Plugin command dispatch: [figma_plugin/src/main.ts:461-472](../figma_plugin/src/main.ts#L461-L472) (`case "get_nodes_info"`)
+> - Plugin handler: `getNodesInfo` in [figma_plugin/handlers/nodeReaders.ts:92](../figma_plugin/handlers/nodeReaders.ts#L92)
+> - Filter function: `filterFigmaNode` in [figma_plugin/utils/nodeUtils.ts:12](../figma_plugin/utils/nodeUtils.ts#L12)
 
 **Behavior Requirements:**
 - The `get_nodes_info` MCP tool must accept an optional `fields` array of strings. **Crucially, these field names must exactly match the keys present in the `JSON_REST_V1` node export format**, as that is the source of truth for the returned data. Supported fields include:
@@ -35,9 +35,9 @@ The `fields` parameter must flow from MCP client → MCP server → WebSocket �
 
 1. **MCP tool schema** ([src/mcp_server/tools/document.ts:74](../src/mcp_server/tools/document.ts#L74)) — add the optional `fields: z.array(z.string()).optional()` zod definition alongside `nodeIds`.
 2. **MCP-to-plugin command** (same file, around line 87) — change `sendCommandToFigma("get_nodes_info", { nodeIds })` to `sendCommandToFigma("get_nodes_info", { nodeIds, fields })` so the value is forwarded over the wire.
-3. **Plugin command dispatch** ([src/figma_plugin/src/main.ts:461-472](../src/figma_plugin/src/main.ts#L461-L472)) — the `case "get_nodes_info"` branch currently calls `getNodesInfo(params.nodeIds)`, dropping `fields`. Change to pass `fields` through (e.g., `getNodesInfo(params.nodeIds, params.fields)`). Also forward `fields` for the implicit scope-root call (`getNodesInfo([state.scopeRootId], params?.fields)`).
-4. **Plugin handler signature** ([src/figma_plugin/handlers/nodeReaders.ts:92](../src/figma_plugin/handlers/nodeReaders.ts#L92)) — extend `getNodesInfo(nodeIds)` to `getNodesInfo(nodeIds, fields)` and forward `fields` into each `filterFigmaNode(...)` call.
-5. **Filter function signature** ([src/figma_plugin/utils/nodeUtils.ts:12](../src/figma_plugin/utils/nodeUtils.ts#L12)) — extend `filterFigmaNode(node)` to `filterFigmaNode(node, fields)`, replace the hardcoded property selection with a fields-driven include list, and pass `fields` through to recursive `children` calls.
+3. **Plugin command dispatch** ([figma_plugin/src/main.ts:461-472](../figma_plugin/src/main.ts#L461-L472)) — the `case "get_nodes_info"` branch currently calls `getNodesInfo(params.nodeIds)`, dropping `fields`. Change to pass `fields` through (e.g., `getNodesInfo(params.nodeIds, params.fields)`). Also forward `fields` for the implicit scope-root call (`getNodesInfo([state.scopeRootId], params?.fields)`).
+4. **Plugin handler signature** ([figma_plugin/handlers/nodeReaders.ts:92](../figma_plugin/handlers/nodeReaders.ts#L92)) — extend `getNodesInfo(nodeIds)` to `getNodesInfo(nodeIds, fields)` and forward `fields` into each `filterFigmaNode(...)` call.
+5. **Filter function signature** ([figma_plugin/utils/nodeUtils.ts:12](../figma_plugin/utils/nodeUtils.ts#L12)) — extend `filterFigmaNode(node)` to `filterFigmaNode(node, fields)`, replace the hardcoded property selection with a fields-driven include list, and pass `fields` through to recursive `children` calls.
 
 **Migrate `join_channel` to request useful initial-connection fields:**
 
@@ -66,7 +66,7 @@ Removal scope:
 
 **Delete the orphaned `rgbaToHex` utility:**
 
-The server-side `rgbaToHex` is dead code: its only consumer was the previously-deleted `filterFigmaNode`, and the plugin uses its own copy in [src/figma_plugin/utils/colorUtils.ts](../src/figma_plugin/utils/colorUtils.ts). Three concrete removals:
+The server-side `rgbaToHex` is dead code: its only consumer was the previously-deleted `filterFigmaNode`, and the plugin uses its own copy in [figma_plugin/utils/colorUtils.ts](../figma_plugin/utils/colorUtils.ts). Three concrete removals:
 
 1. Delete the `rgbaToHex` function definition at [src/mcp_server/utils.ts:31-43](../src/mcp_server/utils.ts#L31-L43).
 2. Remove `rgbaToHex` from the import statement at [src/mcp_server/tests/utils.test.ts:1](../src/mcp_server/tests/utils.test.ts#L1) (leave `normalizeNodeId` and `normalizeNodeIds`).
@@ -128,7 +128,7 @@ A new tool focused on defining, editing, and deleting component properties on Ma
 
 To maintain the high test coverage of the codebase, add unit tests for all new and modified functionality:
 
-- **`get_nodes_info` fields filtering** (e.g., `src/figma_plugin/utils/nodeUtils.test.ts`):
+- **`get_nodes_info` fields filtering** (e.g., `figma_plugin/utils/nodeUtils.test.ts`):
   - Test for positive hits (requested fields are correctly extracted).
   - Test silent dropping of missing fields on nodes that do not possess them.
   - Test mandatory inclusion of `id`, `name`, `type`, and unconditional recursion into `children`.
@@ -138,12 +138,12 @@ To maintain the high test coverage of the codebase, add unit tests for all new a
     - **[document.test.ts:101](../src/mcp_server/tests/unit/tools/document.test.ts#L101)** — currently `expect(sendCommandToFigma).toHaveBeenCalledWith("get_nodes_info", {})`. Update to expect `{ fields: ["absoluteBoundingBox", "layoutMode"] }` to match the migrated `join_channel` discovery call.
   - **Add a new positive assertion** that explicitly verifies `fields` is forwarded when supplied — e.g., call the tool with `{ nodeIds: ["node-1"], fields: ["fills", "componentProperties"] }` and assert `sendCommandToFigma` was called with that exact payload. This guards against future regressions where someone re-introduces the parameter-dropping bug at any of the five plumbing layers.
 
-- **`set_component_instance_property` tool** (e.g., `src/figma_plugin/handlers/componentHandlers.test.ts`):
+- **`set_component_instance_property` tool** (e.g., `figma_plugin/handlers/componentHandlers.test.ts`):
   - Test successful value updates for various property types.
   - Test that an invalid/missing `propertyName` throws a structured error.
   - Verify that the standard security gates (`readOnly`, `checkScopeAccess`, `verifyNodeName`) correctly block unauthorized calls.
 
-- **`manage_component_property` tool** (e.g., `src/figma_plugin/handlers/componentHandlers.test.ts`):
+- **`manage_component_property` tool** (e.g., `figma_plugin/handlers/componentHandlers.test.ts`):
   - Test `ADD` operation (including pre-validation to reject duplicate property names).
   - Test `EDIT` operation (including pre-validation to throw on missing properties, and verifying updates to name, defaultValue, and preferredValues).
   - Test `DELETE` operation (including pre-validation to throw on missing properties).
