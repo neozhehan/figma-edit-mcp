@@ -426,40 +426,40 @@ The install one-liner converts traffic arriving from Smithery/MCP.so/Glama listi
 After completing Sections 1–4, confirm each item:
 
 ### Visibility (Section 1)
-- [ ] `view-source:https://github.com/neozhehan/figma-edit-mcp` no longer contains `<meta name="robots" content="noindex">`
-- [ ] Page no longer shows "forked from grab/cursor-talk-to-figma-mcp" under the repo name
-- [ ] `meta-octolytics-dimension-repository_is_fork` in the HTML is `false`
-- [ ] All four README edits from Step 1b have landed (two fork-language, the `npx` config snippets, and the Hallucination Safeguards collapse)
-- [ ] Repo-wide `fork` language sweep (Q20) completed; no remaining fork-status assertions in shipped docs (CHANGELOG, DESIGN_PHILOSOPHY.md, smithery.yaml, plugin README)
-- [ ] LICENSE retains both `Copyright (c) 2025 sonnylazuardi` and `Copyright (c) 2026 Neo Product LLC` lines (Q21)
-- [ ] `package.json#description` matches the GitHub About text verbatim (Q26)
-- [ ] NPM + CI badges render on the GitHub README
-- [ ] `site:github.com/neozhehan/figma-edit-mcp` returns results on Google within ~7 days
+- [x] `view-source:https://github.com/neozhehan/figma-edit-mcp` no longer contains `<meta name="robots" content="noindex">`
+- [x] Page no longer shows "forked from grab/cursor-talk-to-figma-mcp" under the repo name
+- [x] `meta-octolytics-dimension-repository_is_fork` in the HTML is `false`
+- [x] All four README edits from Step 1b have landed (two fork-language, the `npx` config snippets, and the Hallucination Safeguards collapse)
+- [x] Repo-wide `fork` language sweep (Q20) completed; no remaining fork-status assertions in shipped docs (CHANGELOG, DESIGN_PHILOSOPHY.md, smithery.yaml, plugin README)
+- [x] LICENSE retains both `Copyright (c) 2025 sonnylazuardi` and `Copyright (c) 2026 Neo Product LLC` lines (Q21)
+- [x] `package.json#description` matches the GitHub About text verbatim (Q26)
+- [x] NPM + CI badges render on the GitHub README
+- [x] `site:github.com/neozhehan/figma-edit-mcp` returns results on Google within ~7 days
 
 ### Cleanup & new files (Section 2)
-- [ ] `DRAGME.md` deleted; `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, and `.github/copilot-instructions.md` present at repo root; `CLAUDE.md` is exactly `@AGENTS.md`; `.cursorrules` and `.github/copilot-instructions.md` each contain a one-paragraph pointer to `AGENTS.md`; `AGENTS.md` was promoted from [AGENTS.draft.md](./AGENTS.draft.md) with `../../` → `./` link rewrites
-- [ ] `CONTRIBUTING.md` present at repo root (promoted from the draft) with `../../` → `./` link rewrites; markdown link checker green (Q16)
-- [ ] `figma_plugin/` moved to top-level `figma_plugin/`; all `figma_plugin/...` references updated (Q15)
-- [ ] `tsup.config.ts` emits both `dist/server.js` and `dist/socket.js`, target = `node20`, shebang banner applied, `format: ['esm']`, `dts: false` (Q17)
-- [ ] `--version` / `--help` / `--port` work on both bins; `--version` exits without opening transports (Q14, Q29)
-- [ ] `scripts/integrate.sh` default emits `npx`-based config; `--local` flag emits the clone-based template; `--port` flag plumbed through (Q29)
-- [ ] `scripts/setup.sh` carries the contributor-only header banner (Q24)
-- [ ] `.github/workflows/ci.yml` runs install/test/build/`npm pack`/bin smoke test/link check on push and PR; `npm publish --dry-run` job runs on packaging-file changes; pinned to Bun `1.3.0`; badge is green (Q12, Q16, Q22, Q30, Q31)
-- [ ] Three pre-existing test failures (Contract F × 2, Phase 4 §3a) fixed before tagging — CI is green on main (Q30 follow-up)
-- [ ] `.github/workflows/publish.yml` triggers on `v*` tags, runs the tag-vs-package.json version check first, then the smoke test, then `npm publish --provenance`; pinned to Bun `1.3.0` (Q11, Q19, Q30)
-- [ ] `smithery.yaml` uses `npx figma-edit-mcp`; `Dockerfile` and any related artifacts deleted (Q25); `bun-types` removed from devDependencies
-- [ ] `pub:release` script deleted from `package.json` (Q32)
+- [x] `DRAGME.md` deleted; `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, and `.github/copilot-instructions.md` present at repo root; `CLAUDE.md` is exactly `@AGENTS.md`; `.cursorrules` and `.github/copilot-instructions.md` each contain a one-paragraph pointer to `AGENTS.md`; `AGENTS.md` was promoted from [AGENTS.draft.md](./AGENTS.draft.md) with `../../` → `./` link rewrites
+- [x] `CONTRIBUTING.md` present at repo root (promoted from the draft) with `../../` → `./` link rewrites; markdown link checker green (Q16)
+- [x] `figma_plugin/` moved to top-level `figma_plugin/`; all `figma_plugin/...` references updated (Q15)
+- [x] `tsup.config.ts` emits both `dist/server.js` and `dist/socket.js`, target = `node20`, shebang banner applied, `format: ['esm']`, `dts: false` (Q17)
+- [x] `--version` / `--help` / `--port` work on both bins; `--version` exits without opening transports (Q14, Q29)
+- [x] `scripts/integrate.sh` default emits `npx`-based config; `--local` flag emits the clone-based template; `--port` flag plumbed through (Q29)
+- [x] `scripts/setup.sh` carries the contributor-only header banner (Q24)
+- [x] `.github/workflows/ci.yml` runs install/test/build/`npm pack`/bin smoke test/link check on push and PR; `npm publish --dry-run` job runs on packaging-file changes; pinned to Bun `1.3.0`; badge is green (Q12, Q16, Q22, Q30, Q31)
+- [x] Three pre-existing test failures (Contract F × 2, Phase 4 §3a) fixed before tagging — CI is green on main (Q30 follow-up)
+- [x] `.github/workflows/publish.yml` triggers on `v*` tags, runs the tag-vs-package.json version check first, then the smoke test, then `npm publish --provenance`; pinned to Bun `1.3.0` (Q11, Q19, Q30)
+- [x] `smithery.yaml` uses `npx figma-edit-mcp`; `Dockerfile` and any related artifacts deleted (Q25); `bun-types` removed from devDependencies
+- [x] `pub:release` script deleted from `package.json` (Q32)
 
 ### Publish (Sections 3–4)
-- [ ] CHANGELOG `[1.5.0]` rewrite is commit #1 of the release PR (Q27); every bullet maps to a diff entry
-- [ ] CHANGELOG entries for `[1.4.0]` and `[1.5.0]` match the requirements in Section 3 (full Section 3c bullet list mapped to diff)
-- [ ] `package.json` has the correct version, both bins, full metadata, and **no** `main` / `module` / `pub:release` entries (Q18, Q32 acceptance)
-- [ ] `npm pack` tarball inspection passed (every Step 4c bullet checked, including the negative-presence checks for `*.cjs` / `*.d.ts`)
-- [ ] Bin-resolution smoke test passed for both `figma-edit-mcp` and `figma-edit-mcp-socket`, including `--port 4000 --help` acceptance
-- [ ] NPM `auth-and-writes` 2FA active on the publishing account; `NPM_TOKEN` configured in GitHub Actions secrets
-- [ ] `v1.5.0` git tag pushed; tag-vs-version check passed (Q19); `publish.yml` workflow succeeded
-- [ ] npmjs.com package page shows the README with working internal links and the green Provenance badge
-- [ ] GitHub Release for `v1.5.0` published with the Step 4e body format
+- [x] CHANGELOG `[1.5.0]` rewrite is commit #1 of the release PR (Q27); every bullet maps to a diff entry
+- [x] CHANGELOG entries for `[1.4.0]` and `[1.5.0]` match the requirements in Section 3 (full Section 3c bullet list mapped to diff)
+- [x] `package.json` has the correct version, both bins, full metadata, and **no** `main` / `module` / `pub:release` entries (Q18, Q32 acceptance)
+- [x] `npm pack` tarball inspection passed (every Step 4c bullet checked, including the negative-presence checks for `*.cjs` / `*.d.ts`)
+- [x] Bin-resolution smoke test passed for both `figma-edit-mcp` and `figma-edit-mcp-socket`, including `--port 4000 --help` acceptance
+- [x] NPM `auth-and-writes` 2FA active on the publishing account; `NPM_TOKEN` configured in GitHub Actions secrets
+- [x] `v1.5.0` git tag pushed; tag-vs-version check passed (Q19); `publish.yml` workflow succeeded
+- [x] npmjs.com package page shows the README with working internal links and the green Provenance badge
+- [x] GitHub Release for `v1.5.0` published with the Step 4e body format
 
 ### Discovery (Section 1g, post-publish)
 - [ ] Smithery, MCP.so, Glama, GitHub MCP Registry submissions accepted

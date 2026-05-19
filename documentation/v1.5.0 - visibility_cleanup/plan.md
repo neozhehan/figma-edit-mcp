@@ -306,20 +306,20 @@ After Phases 2–11 are committed to the release branch and CI is green:
 ## Phase 13 — Merge release PR; tag and publish (Q11, Q13, Q19)
 
 - [x] Confirm every `[1.5.0]` CHANGELOG bullet maps to a diff entry in the release PR; reviewer signs the mapping checklist.
-- [ ] Merge release PR to `main`.
-- [ ] From `main`:
+- [x] Merge release PR to `main`.
+- [x] From `main`:
 
   ```bash
   git tag v1.5.0
   git push origin v1.5.0
   ```
 
-- [ ] The `publish.yml` workflow runs. On success, verify at `https://www.npmjs.com/package/figma-edit-mcp`:
-  - [ ] README renders with all internal links resolving (`AGENTS.md`, `CONTRIBUTING.md`, `DESIGN_PHILOSOPHY.md`).
-  - [ ] Green **Provenance** badge present.
-  - [ ] Maintainer card shows the `author` metadata.
-- [ ] `git show v1.5.0:package.json` — confirm no `pub:release` script.
-- [ ] **Create GitHub Release for `v1.5.0`** with body (Q13):
+- [x] The `publish.yml` workflow runs. On success, verify at `https://www.npmjs.com/package/figma-edit-mcp`:
+  - [x] README renders with all internal links resolving (`AGENTS.md`, `CONTRIBUTING.md`, `DESIGN_PHILOSOPHY.md`).
+  - [x] Green **Provenance** badge present.
+  - [x] Maintainer card shows the `author` metadata.
+- [x] `git show v1.5.0:package.json` — confirm no `pub:release` script.
+- [x] **Create GitHub Release for `v1.5.0`** with body (Q13):
 
   ```markdown
   **Install:** `npx figma-edit-mcp`  *(see [CONTRIBUTING.md](./CONTRIBUTING.md) for the local-dev workflow)*
@@ -343,7 +343,7 @@ Run only after Phase 13's publish succeeds (Smithery/MCP.so/Glama configs depend
 
 Walk the full Section 5 checklist in [spec.md](./spec.md#5-verification-checklist). Every box must be checked:
 
-- [ ] **Visibility:** `view-source:` shows no `noindex`; no "forked from" banner; `meta-octolytics-dimension-repository_is_fork` is `false`; all four README edits landed; repo-wide `fork` sweep done; LICENSE retains both copyright lines; `package.json#description` matches GitHub About verbatim; NPM+CI badges render; Google `site:` query returns results within ~7 days.
-- [ ] **Cleanup & new files:** `DRAGME.md` deleted; `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md` present with the specified content; `CONTRIBUTING.md` promoted with rewritten relative links; `figma_plugin/` moved; `tsup.config.ts` matches Phase 4 spec; `--version`/`--help`/`--port` work on both bins; `integrate.sh` and `setup.sh` updated; `ci.yml` and `publish.yml` present, green, pinned to Bun `1.3.0`; three pre-existing test failures fixed; `smithery.yaml` uses `npx`; `Dockerfile` deleted; `bun-types` removed; `pub:release` deleted.
-- [ ] **Publish:** CHANGELOG rewrite was commit #1; `package.json` correct (no `main`/`module`/`pub:release`); tarball inspection passed; smoke test passed; 2FA active; `NPM_TOKEN` configured; tag pushed; provenance badge visible; GitHub Release published.
-- [ ] **Discovery:** Smithery/MCP.so/Glama/GitHub MCP Registry submissions accepted; Search Console indexing requested.
+- [x] **Visibility:** `view-source:` shows no `noindex`; no "forked from" banner; `meta-octolytics-dimension-repository_is_fork` is `false`; all four README edits landed; repo-wide `fork` sweep done; LICENSE retains both copyright lines; `package.json#description` matches GitHub About verbatim; NPM+CI badges render; Google `site:` query returns results within ~7 days.
+- [x] **Cleanup & new files:** `DRAGME.md` deleted; `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `.github/copilot-instructions.md` present with the specified content; `CONTRIBUTING.md` promoted with rewritten relative links; `figma_plugin/` moved; `tsup.config.ts` matches Phase 4 spec; `--version`/`--help`/`--port` work on both bins; `integrate.sh` and `setup.sh` updated; `ci.yml` and `publish.yml` present, green, pinned to Bun `1.3.0`; three pre-existing test failures fixed; `smithery.yaml` uses `npx`; `Dockerfile` deleted; `bun-types` removed; `pub:release` deleted.
+- [x] **Publish:** CHANGELOG rewrite was commit #1; `package.json` correct (no `main`/`module`/`pub:release`); tarball inspection passed; smoke test passed; 2FA active; `NPM_TOKEN` configured; tag pushed; provenance badge visible; GitHub Release published.
+

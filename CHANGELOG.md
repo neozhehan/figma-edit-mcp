@@ -22,7 +22,7 @@
 - Updated `tsup.config.ts` to target `node20`, emit ESM-only bundles, set `dts: false`, and automatically inject shebang banners (`#!/usr/bin/env node`).
 
 ### Architecture & Developer Experience
-- Moved the Figma plugin source code layout from `figma_plugin` directly to the `figma_plugin` directory.
+- Moved the Figma plugin source code layout from `src/figma_plugin` to the `figma_plugin` directory.
 - Agent documentation updated: `DRAGME.md` retired; new `AGENTS.md` and `CLAUDE.md` files added.
 - Added `CONTRIBUTING.md`.
 - Enhanced `bun integrate` with `--local` and `--port` flags.
