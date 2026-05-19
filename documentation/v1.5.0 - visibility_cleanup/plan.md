@@ -280,15 +280,15 @@ Create `.github/workflows/publish.yml`, triggered on `v*` tag pushes. Job permis
 
 After Phases 2–11 are committed to the release branch and CI is green:
 
-- [ ] Locally: `bun run build:all`.
-- [ ] `npm pack`.
-- [ ] `tar -tzf figma-edit-mcp-1.5.0.tgz`. Confirm presence of:
-  - [ ] `package/dist/server.js` and `package/dist/socket.js`, both with `#!/usr/bin/env node` on line 1.
-  - [ ] `package/figma_plugin/manifest.json`, `package/figma_plugin/code.js`, `package/figma_plugin/ui.html`.
-  - [ ] `package/README.md` (correct case), `package/LICENSE`, `package/CHANGELOG.md`, `package/DESIGN_PHILOSOPHY.md`, `package/AGENTS.md`, `package/CLAUDE.md`, `package/.cursorrules`.
-  - [ ] `package/package.json` with `version: 1.5.0`, both bins, full metadata; **no `main`, no `module`, no `pub:release`**.
-  - [ ] **No `*.cjs`, `*.cjs.map`, `*.d.ts`, or `*.d.cts` files anywhere under `package/dist/`**.
-- [ ] Bin-resolution smoke test:
+- [x] Locally: `bun run build:all`.
+- [x] `npm pack`.
+- [x] `tar -tzf figma-edit-mcp-1.5.0.tgz`. Confirm presence of:
+  - [x] `package/dist/server.js` and `package/dist/socket.js`, both with `#!/usr/bin/env node` on line 1.
+  - [x] `package/figma_plugin/manifest.json`, `package/figma_plugin/code.js`, `package/figma_plugin/ui.html`.
+  - [x] `package/README.md` (correct case), `package/LICENSE`, `package/CHANGELOG.md`, `package/DESIGN_PHILOSOPHY.md`, `package/AGENTS.md`, `package/CLAUDE.md`, `package/.cursorrules`.
+  - [x] `package/package.json` with `version: 1.5.0`, both bins, full metadata; **no `main`, no `module`, no `pub:release`**.
+  - [x] **No `*.cjs`, `*.cjs.map`, `*.d.ts`, or `*.d.cts` files anywhere under `package/dist/`**.
+- [x] Bin-resolution smoke test:
 
   ```bash
   mkdir /tmp/figma-edit-mcp-smoketest && cd /tmp/figma-edit-mcp-smoketest
@@ -305,7 +305,7 @@ After Phases 2–11 are committed to the release branch and CI is green:
 
 ## Phase 13 — Merge release PR; tag and publish (Q11, Q13, Q19)
 
-- [ ] Confirm every `[1.5.0]` CHANGELOG bullet maps to a diff entry in the release PR; reviewer signs the mapping checklist.
+- [x] Confirm every `[1.5.0]` CHANGELOG bullet maps to a diff entry in the release PR; reviewer signs the mapping checklist.
 - [ ] Merge release PR to `main`.
 - [ ] From `main`:
 

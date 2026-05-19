@@ -2,7 +2,7 @@
   "name": "Figma Edit MCP Plugin",
   "id": "1600027898205660796",
   "api": "1.0.0",
-  "main": "dist/code.js",
+  "main": "code.js",
   "ui": "ui.html",
   "editorType": [
     "figma",
