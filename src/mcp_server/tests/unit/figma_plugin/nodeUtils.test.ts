@@ -4,7 +4,7 @@ import {
     buildPathArray,
     countDescendants,
     SAFE_LIST_PROPERTIES,
-} from "../../../../figma_plugin/utils/nodeUtils.js";
+} from "../../../../../figma_plugin/utils/nodeUtils.js";
 
 describe("filterFigmaNode", () => {
     it("should return null for VECTOR nodes", () => {

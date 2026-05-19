@@ -137,7 +137,7 @@ describe("Phase 2.2: getPagesInfo handler — no-args / empty array path", () =>
         (globalThis as any).figma = mockEnv.figma;
         // Bust the module cache so the handler picks up the fresh figma global.
         const mod = await import(
-            "../../../../figma_plugin/handlers/nodeReaders.js?phase2-noargs"
+            "../../../../../figma_plugin/handlers/nodeReaders.js?phase2-noargs"
         );
         getPagesInfo = mod.getPagesInfo;
     });
@@ -238,7 +238,7 @@ describe("Phase 2.2: getPagesInfo handler — pageIds path (dedupe + ordering + 
         });
         (globalThis as any).figma = mockEnv.figma;
         const mod = await import(
-            "../../../../figma_plugin/handlers/nodeReaders.js?phase2-ids"
+            "../../../../../figma_plugin/handlers/nodeReaders.js?phase2-ids"
         );
         getPagesInfo = mod.getPagesInfo;
     });
@@ -353,7 +353,7 @@ describe("Phase 2.2: getPagesInfo soft-limit non-enforcement", () => {
 
         try {
             const mod = await import(
-                "../../../../figma_plugin/handlers/nodeReaders.js?phase2-100"
+                "../../../../../figma_plugin/handlers/nodeReaders.js?phase2-100"
             );
             const ids = pages.map((p) => p.id);
             const result = await mod.getPagesInfo({ pageIds: ids });
@@ -383,7 +383,7 @@ describe("Phase 2.2: getPagesInfo progress event streaming (commandId path)", ()
         });
         (globalThis as any).figma = mockEnv.figma;
         const mod = await import(
-            "../../../../figma_plugin/handlers/nodeReaders.js?phase2-progress"
+            "../../../../../figma_plugin/handlers/nodeReaders.js?phase2-progress"
         );
         getPagesInfo = mod.getPagesInfo;
     });
@@ -493,10 +493,10 @@ describe("Phase 2.3: removed-fields sweep", () => {
 });
 
 describe("Phase 2.4: version + changelog", () => {
-    it("package.json version is 1.3.0", async () => {
+    it("package.json version is 1.5.0", async () => {
         const fs = await import("node:fs/promises");
         const pkg = JSON.parse(await fs.readFile("package.json", "utf8"));
-        expect(pkg.version).toBe("1.3.0");
+        expect(pkg.version).toBe("1.5.0");
     });
 
     it("CHANGELOG.md has a [1.3.0] section listing the breaking changes", async () => {

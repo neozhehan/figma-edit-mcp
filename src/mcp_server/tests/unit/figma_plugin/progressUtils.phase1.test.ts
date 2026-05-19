@@ -34,7 +34,7 @@ describe("Phase 1.1: sendProgressUpdate is async with yield", () => {
 
     it("returns a Promise (function is declared async)", async () => {
         const { sendProgressUpdate } = await import(
-            "../../../../figma_plugin/utils/progressUtils.js"
+            "../../../../../figma_plugin/utils/progressUtils.js"
         );
         const result = sendProgressUpdate(
             "cmd_test",
@@ -51,7 +51,7 @@ describe("Phase 1.1: sendProgressUpdate is async with yield", () => {
 
     it("calls figma.ui.postMessage with the update payload", async () => {
         const { sendProgressUpdate } = await import(
-            "../../../../figma_plugin/utils/progressUtils.js"
+            "../../../../../figma_plugin/utils/progressUtils.js"
         );
         await sendProgressUpdate(
             "cmd_x",
@@ -70,7 +70,7 @@ describe("Phase 1.1: sendProgressUpdate is async with yield", () => {
 
     it("schedules setTimeout(_, 0) AFTER postMessage to flush UI thread", async () => {
         const { sendProgressUpdate } = await import(
-            "../../../../figma_plugin/utils/progressUtils.js"
+            "../../../../../figma_plugin/utils/progressUtils.js"
         );
         await sendProgressUpdate("c", "t", "in_progress", 0.5, 4, 2, "m");
         // The async yield must have scheduled at least one setTimeout(0) after postMessage.
@@ -79,7 +79,7 @@ describe("Phase 1.1: sendProgressUpdate is async with yield", () => {
 
     it("yields to the event loop between postMessages on consecutive calls", async () => {
         const { sendProgressUpdate } = await import(
-            "../../../../figma_plugin/utils/progressUtils.js"
+            "../../../../../figma_plugin/utils/progressUtils.js"
         );
         // Schedule a microtask "marker" between two awaits — if the yield is real,
         // a setImmediate-style task scheduled between awaits will run between the

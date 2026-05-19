@@ -42,7 +42,7 @@ if (!(globalThis as any).figma) {
     };
 }
 
-const mainMod: any = await import("../../../../figma_plugin/src/main.js");
+const mainMod: any = await import("../../../../../figma_plugin/src/main.js");
 const realState: any = mainMod.getPluginState();
 
 function setState(next: { readOnly: boolean; scopeRootId: string | null }) {
@@ -145,7 +145,7 @@ describe("Phase 4 §2 + §2a: getPagesInfo emits interleaved postMessage / setTi
 
         try {
             const mod = await import(
-                "../../../../figma_plugin/handlers/nodeReaders.js"
+                "../../../../../figma_plugin/handlers/nodeReaders.js"
             );
             await mod.getPagesInfo({
                 commandId: "cmd-yield",
@@ -261,7 +261,7 @@ function makeFigmaForConnect(opts: {
 
 async function callConnectPayload(): Promise<any> {
     const mod = await import(
-        "../../../../figma_plugin/handlers/connectHandlers.js"
+        "../../../../../figma_plugin/handlers/connectHandlers.js"
     );
     return mod.getConnectPayload();
 }
