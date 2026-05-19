@@ -16,22 +16,20 @@ import { describe, it, expect, beforeEach } from "bun:test";
 //   - connect-flow consistency snapshot
 //   - get_pages_info descendantCount with/without pageIds
 
-if (!(globalThis as any).__html__) (globalThis as any).__html__ = "<html></html>";
-if (!(globalThis as any).figma) {
-    (globalThis as any).figma = {
-        showUI: () => { },
-        ui: { onmessage: null, postMessage: () => { } },
-        on: () => { },
-        notify: () => { },
-        closePlugin: () => { },
-        clientStorage: { setAsync: async () => { } },
-        getNodeByIdAsync: async () => null,
-        currentPage: { selection: [], children: [] },
-        root: { id: "doc-stub", name: "Stub", children: [] },
-        mixed: Symbol("mixed"),
-        loadAllPagesAsync: async () => { },
-    };
-}
+(globalThis as any).__html__ = "<html></html>";
+(globalThis as any).figma = {
+    showUI: () => { },
+    ui: { onmessage: null, postMessage: () => { } },
+    on: () => { },
+    notify: () => { },
+    closePlugin: () => { },
+    clientStorage: { setAsync: async () => { } },
+    getNodeByIdAsync: async () => null,
+    currentPage: { selection: [], children: [] },
+    root: { id: "doc-stub", name: "Stub", children: [] },
+    mixed: Symbol("mixed"),
+    loadAllPagesAsync: async () => { },
+};
 
 // Use dynamic imports — static imports get hoisted above the figma-stub setup
 // above, which causes main.ts to throw at module-load (it calls figma.showUI).

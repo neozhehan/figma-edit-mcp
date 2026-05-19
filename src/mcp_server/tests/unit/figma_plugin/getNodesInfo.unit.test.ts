@@ -10,22 +10,20 @@ import { describe, it, expect, beforeEach } from "bun:test";
 // Idempotent global setup: keep an existing figma global if a sibling test
 // file installed one; otherwise install a minimal stub.
 
-if (!(globalThis as any).__html__) (globalThis as any).__html__ = "<html></html>";
-if (!(globalThis as any).figma) {
-    (globalThis as any).figma = {
-        showUI: () => { },
-        ui: { onmessage: null, postMessage: () => { } },
-        on: () => { },
-        notify: () => { },
-        closePlugin: () => { },
-        clientStorage: { setAsync: async () => { } },
-        getNodeByIdAsync: async () => null,
-        currentPage: { selection: [], children: [] },
-        root: { id: "doc-stub", name: "Stub", children: [] },
-        mixed: Symbol("mixed"),
-        loadAllPagesAsync: async () => { },
-    };
-}
+(globalThis as any).__html__ = "<html></html>";
+(globalThis as any).figma = {
+    showUI: () => { },
+    ui: { onmessage: null, postMessage: () => { } },
+    on: () => { },
+    notify: () => { },
+    closePlugin: () => { },
+    clientStorage: { setAsync: async () => { } },
+    getNodeByIdAsync: async () => null,
+    currentPage: { selection: [], children: [] },
+    root: { id: "doc-stub", name: "Stub", children: [] },
+    mixed: Symbol("mixed"),
+    loadAllPagesAsync: async () => { },
+};
 
 import { getNodesInfo } from "../../../../../figma_plugin/handlers/nodeReaders.js";
 

@@ -15,22 +15,20 @@ import { readFileSync } from "node:fs";
 //   K. get_variables document/current_page streaming behavior.
 //   L. Connect payload in read-only mode does NOT include descendantCount.
 
-if (!(globalThis as any).__html__) (globalThis as any).__html__ = "<html></html>";
-if (!(globalThis as any).figma) {
-    (globalThis as any).figma = {
-        showUI: () => { },
-        ui: { onmessage: null, postMessage: () => { } },
-        on: () => { },
-        notify: () => { },
-        closePlugin: () => { },
-        clientStorage: { setAsync: async () => { } },
-        getNodeByIdAsync: async () => null,
-        currentPage: { selection: [], children: [] },
-        root: { id: "doc-stub", name: "Stub", children: [] },
-        mixed: Symbol("mixed"),
-        loadAllPagesAsync: async () => { },
-    };
-}
+(globalThis as any).__html__ = "<html></html>";
+(globalThis as any).figma = {
+    showUI: () => { },
+    ui: { onmessage: null, postMessage: () => { } },
+    on: () => { },
+    notify: () => { },
+    closePlugin: () => { },
+    clientStorage: { setAsync: async () => { } },
+    getNodeByIdAsync: async () => null,
+    currentPage: { selection: [], children: [] },
+    root: { id: "doc-stub", name: "Stub", children: [] },
+    mixed: Symbol("mixed"),
+    loadAllPagesAsync: async () => { },
+};
 
 const mainMod: any = await import("../../../../../figma_plugin/src/main.js");
 const realState: any = mainMod.getPluginState();
