@@ -252,6 +252,7 @@ function makeFigmaForConnect(opts: {
                 loadAllCalls += 1;
             },
             ui: { postMessage: () => {} },
+            showUI: () => {},
         },
         byId,
         loadCalls,

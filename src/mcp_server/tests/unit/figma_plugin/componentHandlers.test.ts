@@ -38,7 +38,7 @@ const gateFigma = makeGateFigma();
 
 // Import main.ts dynamically after globals are in place; main.ts assigns
 // gateFigma.ui.onmessage = handler at module load.
-await import("../../../../../figma_plugin/src/main.js");
+await import("../../../../../figma_plugin/src/main.js?scope=componentHandlers");
 const gateOnMessage = gateFigma.ui.onmessage as (msg: any) => Promise<void> | void;
 
 describe("Component Handlers", () => {
