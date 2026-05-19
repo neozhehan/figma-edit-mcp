@@ -66,4 +66,4 @@ For the full specification, see [get_nodes_info_update_spec.md](./documentation/
 - \`get_pages_info\` streaming with progress events.
 - Structured connect-flow error codes (\`CHANNEL_NOT_FOUND\` / \`CHANNEL_JOIN_FAILED\` / \`PLUGIN_DISCONNECTED\` / \`SCOPE_DELETED\` / \`SCOPE_INVALID\` / \`DOCUMENT_LOAD_FAILED\` / \`UNKNOWN_ERROR\`).
 
-For the full specification, see [read_tools_update.md](./documentation/v1.3.0%20-%20read_tools_update/read_tools_update.md).
+For the full specification, see [read_tools_update.md](./documentation/completed/v1.3.0%20-%20read_tools_update/read_tools_update.md).
