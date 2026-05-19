@@ -15,8 +15,8 @@ import { readFileSync } from "node:fs";
 //   K. get_variables document/current_page streaming behavior.
 //   L. Connect payload in read-only mode does NOT include descendantCount.
 
+if (!(globalThis as any).__html__) (globalThis as any).__html__ = "<html></html>";
 if (!(globalThis as any).figma) {
-    (globalThis as any).__html__ = "<html></html>";
     (globalThis as any).figma = {
         showUI: () => { },
         ui: { onmessage: null, postMessage: () => { } },

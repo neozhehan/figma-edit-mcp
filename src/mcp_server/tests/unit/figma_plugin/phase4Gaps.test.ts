@@ -25,8 +25,8 @@ import { describe, it, expect, beforeEach, mock } from "bun:test";
 // Idempotent setup: if globalThis.figma is already set (componentHandlers
 // ran first in full-suite mode), keep it. If we're running this file in
 // isolation, install a minimal stub so main.ts can evaluate without throwing.
+if (!(globalThis as any).__html__) (globalThis as any).__html__ = "<html></html>";
 if (!(globalThis as any).figma) {
-    (globalThis as any).__html__ = "<html></html>";
     (globalThis as any).figma = {
         showUI: () => {},
         ui: { onmessage: null, postMessage: () => {} },

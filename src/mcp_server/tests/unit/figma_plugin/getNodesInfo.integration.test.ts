@@ -16,8 +16,8 @@ import { describe, it, expect, beforeEach } from "bun:test";
 //   - connect-flow consistency snapshot
 //   - get_pages_info descendantCount with/without pageIds
 
+if (!(globalThis as any).__html__) (globalThis as any).__html__ = "<html></html>";
 if (!(globalThis as any).figma) {
-    (globalThis as any).__html__ = "<html></html>";
     (globalThis as any).figma = {
         showUI: () => { },
         ui: { onmessage: null, postMessage: () => { } },

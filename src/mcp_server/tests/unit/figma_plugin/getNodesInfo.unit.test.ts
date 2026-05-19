@@ -10,8 +10,8 @@ import { describe, it, expect, beforeEach } from "bun:test";
 // Idempotent global setup: keep an existing figma global if a sibling test
 // file installed one; otherwise install a minimal stub.
 
+if (!(globalThis as any).__html__) (globalThis as any).__html__ = "<html></html>";
 if (!(globalThis as any).figma) {
-    (globalThis as any).__html__ = "<html></html>";
     (globalThis as any).figma = {
         showUI: () => { },
         ui: { onmessage: null, postMessage: () => { } },
