@@ -306,20 +306,20 @@ After Phases 2–11 are committed to the release branch and CI is green:
 ## Phase 13 — Merge release PR; tag and publish (Q11, Q13, Q19)
 
 - [x] Confirm every `[1.5.0]` CHANGELOG bullet maps to a diff entry in the release PR; reviewer signs the mapping checklist.
-- [ ] Merge release PR to `main`.
-- [ ] From `main`:
+- [x] Merge release PR to `main`.
+- [x] From `main`:
 
   ```bash
   git tag v1.5.0
   git push origin v1.5.0
   ```
 
-- [ ] The `publish.yml` workflow runs. On success, verify at `https://www.npmjs.com/package/figma-edit-mcp`:
-  - [ ] README renders with all internal links resolving (`AGENTS.md`, `CONTRIBUTING.md`, `DESIGN_PHILOSOPHY.md`).
-  - [ ] Green **Provenance** badge present.
-  - [ ] Maintainer card shows the `author` metadata.
-- [ ] `git show v1.5.0:package.json` — confirm no `pub:release` script.
-- [ ] **Create GitHub Release for `v1.5.0`** with body (Q13):
+- [x] The `publish.yml` workflow runs. On success, verify at `https://www.npmjs.com/package/figma-edit-mcp`:
+  - [x] README renders with all internal links resolving (`AGENTS.md`, `CONTRIBUTING.md`, `DESIGN_PHILOSOPHY.md`).
+  - [x] Green **Provenance** badge present.
+  - [x] Maintainer card shows the `author` metadata.
+- [x] `git show v1.5.0:package.json` — confirm no `pub:release` script.
+- [x] **Create GitHub Release for `v1.5.0`** with body (Q13):
 
   ```markdown
   **Install:** `npx figma-edit-mcp`  *(see [CONTRIBUTING.md](./CONTRIBUTING.md) for the local-dev workflow)*
