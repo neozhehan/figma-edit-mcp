@@ -256,8 +256,8 @@ Add a **second job** gated on `paths:` filter for `package.json`, `tsup.config.t
 
 Create `.github/workflows/publish.yml`, triggered on `v*` tag pushes. Job permissions: `id-token: write`, `contents: read`.
 
-- [ ] Checkout.
-- [ ] **Tag-vs-version check (runs first, before any other step):**
+- [x] Checkout.
+- [x] **Tag-vs-version check (runs first, before any other step):**
 
   ```yaml
   - name: Verify tag matches package.json version
@@ -267,12 +267,12 @@ Create `.github/workflows/publish.yml`, triggered on `v*` tag pushes. Job permis
       [ "$pkg_version" = "$tag_version" ] || { echo "Mismatch: package.json=$pkg_version tag=$tag_version"; exit 1; }
   ```
 
-- [ ] Setup Node 20 with `registry-url: https://registry.npmjs.org`.
-- [ ] Setup Bun via `oven-sh/setup-bun@v2` with `bun-version: 1.3.0`.
-- [ ] `bun install --frozen-lockfile`.
-- [ ] `bun run build:all`.
-- [ ] Run the bin-resolution smoke test (same as Phase 10) against the freshly packed tarball.
-- [ ] `npm publish --provenance --access public` using `NPM_TOKEN` from secrets.
+- [x] Setup Node 20 with `registry-url: https://registry.npmjs.org`.
+- [x] Setup Bun via `oven-sh/setup-bun@v2` with `bun-version: 1.3.0`.
+- [x] `bun install --frozen-lockfile`.
+- [x] `bun run build:all`.
+- [x] Run the bin-resolution smoke test (same as Phase 10) against the freshly packed tarball.
+- [x] `npm publish --provenance --access public` using `NPM_TOKEN` from secrets.
 
 ---
 
