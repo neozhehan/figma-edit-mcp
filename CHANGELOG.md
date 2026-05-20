@@ -2,6 +2,16 @@
 
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
+## [1.5.1]
+### CLI & Socket Enhancements
+- Added support for the `--host` CLI flag and `FIGMA_EDIT_MCP_SOCKET_HOST` environment variable to configure the WebSocket bridge's bound hostname (enables WSL and remote connections).
+- Updated WebSocket bridge logs to output the bound hostname and port dynamically.
+
+### Documentation & Quick Start
+- Overhauled `README.md` to prioritize NPM-first/registry-based consumption via `npx` / `npm install`.
+- Moved local contributor setup instructions and clone-specific workflows to `CONTRIBUTING.md`.
+- Updated the Windows + WSL guide to leverage the new `--host` binding option.
+
 ## [1.5.0]
 ### Release
 - First release published to NPM as [`figma-edit-mcp`](https://www.npmjs.com/package/figma-edit-mcp).

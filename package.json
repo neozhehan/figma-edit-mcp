@@ -1,6 +1,6 @@
 {
   "name": "figma-edit-mcp",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Read, create, and modify Figma designs programmatically via MCP, empowering AI to execute Figma changes safer, cleaner, and faster.",
   "keywords": [
     "mcp",

@@ -25,109 +25,86 @@ This plugin allows you as a Designer to focus purely on creative decision-making
 - Claude Desktop (Chat, Cowork & Code)
 - LM Studio
 
-## Project Structure
-
-- `src/mcp_server/` — TypeScript MCP server implementing 40+ Figma tools
-- `figma_plugin/` — Figma plugin with a modular handler architecture
-- `src/socket.ts` — WebSocket server that bridges communication between the MCP server and the Figma plugin
-
 ## Quick Start
 
-### 1. Install Prerequisites
+The quickest way to run Figma Edit MCP is directly from the NPM registry. You do **not** need to clone this repository.
+
+### 1. Configure your AI assistant
+
+Add the server to your AI assistant's MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "FigmaEdit": {
+      "command": "npx",
+      "args": ["-y", "figma-edit-mcp"]
+    }
+  }
+}
+```
+
+The config file location depends on your host — see [Integration-Specific Setup](#integration-specific-setup) below. Bun users can substitute `bunx` for `npx`; both resolve the same package.
+
+### 2. Start the WebSocket bridge
+
+In a terminal, start the bridge that connects the MCP server to the Figma plugin. Keep this terminal running:
 
 ```bash
-# Install Bun
-curl -fsSL https://bun.sh/install | bash
+npx figma-edit-mcp-socket
 ```
 
-### 2. Setup (Install & Build)
+### 3. Install the Figma plugin
+
+The Figma plugin ships inside the NPM package. Install the package once to materialize the plugin files on disk:
 
 ```bash
-bun setup
+# In any directory of your choosing (e.g., ~/figma-edit-mcp/)
+npm install figma-edit-mcp
 ```
 
-This installs dependencies and builds both the MCP server and the Figma plugin.
+Then in the Figma desktop app:
 
-### 3. Configure Integration
+1. Open **Plugins → Development → Import plugin from manifest…**
+2. Select `node_modules/figma-edit-mcp/figma_plugin/manifest.json` from the directory above.
 
-```bash
-bun integrate
-```
+The plugin is now available under Plugins → Development in any Figma file.
 
-You'll see an interactive menu:
+---
 
-```
-🤖 Figma Edit MCP Integration
-========================================
-
-Select an integration to configure:
-
-  1) Google Antigravity
-  2) Visual Studio Code (GitHub Copilot)
-  3) Cursor
-  4) Claude Desktop
-  5) Claude Code (Command Line, Visual Studio Code, Google Antigravity)
-  6) LM Studio
-
-  q) Quit
-
-Enter your choice:
-```
-
-### 4. Start WebSocket Server
-
-```bash
-bun socket
-```
-
-Keep this terminal running. The WebSocket server bridges communication between your AI assistant and the Figma plugin.
-
-### 5. Install Figma Plugin
-
-Install from [install locally](#figma-plugin-local-install)
+*Running from a local clone? See [CONTRIBUTING.md](./CONTRIBUTING.md) for the contributor-only `--local` development workflow.*
 
 ---
 
 ## Integration-Specific Setup
 
-Run `bun integrate` and select the appropriate option:
+Paste the JSON snippet from the Quick Start into your host's MCP config file:
 
-### Google Antigravity
-
-Select option `1`. Configuration is created at `~/.gemini/antigravity/mcp_config.json`. Restart Antigravity to load the MCP server — tools are then automatically available.
-
-### VS Code / GitHub Copilot
-
-1. Requires VS Code 1.102+ with Copilot
-2. Enable Agent Mode in Copilot settings
-3. Select option `2` (creates `~/Library/Application Support/Code/User/mcp.json`)
-4. Use `@workspace` or agent mode to access MCP tools
-
-### Cursor
-
-Select option `3`. Configuration is created at `~/.cursor/mcp.json`.
-
-### Claude Desktop (Chat, Cowork & Code)
-
-Select option `4`. Configuration is created at `~/Library/Application Support/Claude/claude_desktop_config.json`.
-
-### Claude Code (VS Code & CLI)
-
-Select option `5` to see the CLI command, then run it in your terminal:
-
-```bash
-claude mcp add FigmaEdit npx figma-edit-mcp
-```
-
-### LM Studio
-
-Select option `6` to see instructions and an intelligent deeplink. You can either click the deeplink to install with one click, or use the provided JSON snippet to manually edit your `mcp.json` configuration in LM Studio's Developer tab.
+| Integration | Config File Location | Notes |
+|---|---|---|
+| Cursor | `~/.cursor/mcp.json` | Restart Cursor after editing |
+| VS Code / GitHub Copilot | `~/Library/Application Support/Code/User/mcp.json` | Requires VS Code 1.102+ with Copilot; enable Agent Mode |
+| Google Antigravity | `~/.gemini/antigravity/mcp_config.json` | Restart Antigravity to load |
+| Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` | — |
+| Claude Code (CLI / VS Code) | run `claude mcp add FigmaEdit npx figma-edit-mcp` | No file edit needed |
+| LM Studio | edit `mcp.json` via the Developer tab | Or use a deeplink, if provided |
 
 ---
 
 ## Manual Configuration
 
-If you prefer manual setup, add the following to your MCP config file:
+If you prefer to edit your host's MCP config directly, paste this snippet into the appropriate config file:
+
+```json
+{
+  "mcpServers": {
+    "FigmaEdit": {
+      "command": "npx",
+      "args": ["-y", "figma-edit-mcp"]
+    }
+  }
+}
+```
 
 | Integration | Config File Location |
 |---|---|
@@ -137,85 +114,36 @@ If you prefer manual setup, add the following to your MCP config file:
 | Claude Desktop | `~/Library/Application Support/Claude/claude_desktop_config.json` |
 | LM Studio | Use the in-app editor (via Developer tab) or edit `mcp.json` |
 
-```json
-{
-  "mcpServers": {
-    "FigmaEdit": {
-      "command": "npx",
-      "args": ["figma-edit-mcp"]
-    }
-  }
-}
-```
-
-Running from a local clone? See [CONTRIBUTING.md](./CONTRIBUTING.md) for the --local workflow.
+Running from a local clone? See [CONTRIBUTING.md](./CONTRIBUTING.md) for the `--local` workflow.
 
 ---
 
-## Development Setup
+## Contributing
 
-### Building from Source
-
-```bash
-# Install dependencies
-bun install
-
-# Build the MCP server
-bun run build
-
-# Watch mode for development
-bun run dev
-
-# Build both MCP server and Figma plugin
-bun run build:all
-```
-
-### WebSocket Server
-
-Start the WebSocket server (required for Figma plugin communication):
-
-```bash
-bun socket
-```
-
-### Figma Plugin (Local Install)
-
-1. In Figma, go to Plugins > Development > New Plugin
-2. Choose "Link existing plugin"
-3. Select the `figma_plugin/manifest.json` file
-4. The plugin should now be available in your Figma development plugins
+For local development — building from source, running the bridge from a clone, and the `--local` integrate workflow — see [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ---
 
 ## Windows + WSL Guide
 
-1. Install Bun via PowerShell
+To allow Figma (running on Windows) to connect to the bridge (running inside WSL), the bridge needs to listen on `0.0.0.0` instead of `localhost`:
 
 ```bash
-powershell -c "irm bun.sh/install.ps1|iex"
+npx figma-edit-mcp-socket --host 0.0.0.0
+# or via environment variable:
+FIGMA_EDIT_MCP_SOCKET_HOST=0.0.0.0 npx figma-edit-mcp-socket
 ```
 
-2. Uncomment the hostname `0.0.0.0` in `src/socket.ts`
-
-```typescript
-// uncomment this to allow connections in windows wsl
-hostname: "0.0.0.0",
-```
-
-3. Start the WebSocket server
-
-```bash
-bun socket
-```
+Then point the Figma plugin's WebSocket address at your WSL instance's IP.
 
 ---
 
 ## Usage
 
-1. Start the WebSocket server (`bun socket`)
-2. Install the MCP server in your AI coding assistant (`bun integrate`)
-3. Open Figma and run the Figma Edit MCP Plugin
-4. Join a channel using the `join_channel` tool to establish communication
+1. Start the WebSocket bridge: `npx figma-edit-mcp-socket`
+2. Configure the MCP server in your AI assistant (see [Integration-Specific Setup](#integration-specific-setup))
+3. Open Figma and launch the Figma Edit MCP plugin from Plugins → Development
+4. Use the `join_channel` MCP tool to establish communication
 5. Use your AI assistant to interact with Figma via the available MCP tools
 
 ---
