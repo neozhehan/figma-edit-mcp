@@ -13,7 +13,7 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Verify tag matches package.json version
         run: |
@@ -22,7 +22,7 @@ jobs:
           [ "$pkg_version" = "$tag_version" ] || { echo "Mismatch: package.json=$pkg_version tag=$tag_version"; exit 1; }
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
