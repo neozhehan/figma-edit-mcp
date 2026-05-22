@@ -1,0 +1,20 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.neozhehan/figma-edit-mcp",
+  "description": "Programmatically read, create, and modify Figma designs via MCP.",
+  "repository": {
+    "url": "https://github.com/neozhehan/figma-edit-mcp",
+    "source": "github"
+  },
+  "version": "1.5.2",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "figma-edit-mcp",
+      "version": "1.5.2",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}
