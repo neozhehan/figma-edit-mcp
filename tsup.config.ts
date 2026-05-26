@@ -7,10 +7,10 @@ export default defineConfig({
   clean: true,
   outDir: 'dist',
   target: 'node20',
-  banner: { js: '#!/usr/bin/env node' },
+  banner: { js: '#!/usr/bin/env node\nimport { createRequire as __cr } from "module";\nconst require = __cr(import.meta.url);' },
   sourcemap: true,
   minify: false,
   splitting: false,
   bundle: true,
-  noExternal: [/.*/],
+  noExternal: ['@modelcontextprotocol/sdk', 'uuid', 'ws', 'zod'],
 }); 
