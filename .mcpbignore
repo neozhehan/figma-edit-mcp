@@ -1,0 +1,18 @@
+# Exclude development dependencies and source code
+node_modules/
+src/
+test/
+figma_plugin/
+scratch/
+.git/
+.github/
+.vscode/
+.claude/
+*.tgz
+documentation/
+scripts/
+bun.lock
+tsconfig.json
+tsup.config.ts
+*.mcpb
+*.bak

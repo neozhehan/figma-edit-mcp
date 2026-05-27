@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
-      contents: read
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -41,6 +41,11 @@ jobs:
       - name: Build all
         run: bun run build:all
 
+      - name: Create MCPB Bundle
+        run: |
+          npx @anthropic-ai/mcpb pack . figma-edit-mcp.mcpb
+          npx @anthropic-ai/mcpb clean figma-edit-mcp.mcpb
+
       - name: Pack
         run: npm pack
 
@@ -55,3 +60,13 @@ jobs:
 
       - name: Publish to NPM
         run: npm publish --provenance --access public
+
+      - name: Create GitHub Release and Upload Bundle
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            figma-edit-mcp.mcpb
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true

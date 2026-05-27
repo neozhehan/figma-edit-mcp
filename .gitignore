@@ -6,3 +6,6 @@ docs/
 src/figma_plugin/dist/
 .DS_Store
 
+
+*.mcpb
+scratch/
