@@ -85,8 +85,12 @@ jobs:
           mkdir scratch
           cd scratch
           npm init -y
-          # Install ws alongside the package so smoke-socket.mjs can require it.
-          npm install --no-save ../figma-edit-mcp-*.tgz ws@8
+          # Install in two passes: npm 11 (bundled with Node 24+) silently
+          # re-resolves a local tarball spec against the registry when another
+          # registry spec is on the same install line, which would install the
+          # latest published figma-edit-mcp instead of the local tarball.
+          npm install --no-save ws@8
+          npm install --no-save ../figma-edit-mcp-*.tgz
 
       - name: Bin --version (Node only)
         shell: bash
