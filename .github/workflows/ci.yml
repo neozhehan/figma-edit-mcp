@@ -39,6 +39,14 @@ jobs:
           npx figma-edit-mcp --version
           npx figma-edit-mcp-socket --version
 
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-tarball
+          path: figma-edit-mcp-*.tgz
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Markdown Link Check
         uses: lycheeverse/lychee-action@v2
         with:
@@ -46,6 +54,56 @@ jobs:
             --accept 200..204,403,429
             --exclude-loopback
             '*.md'
+
+  node-smoke:
+    needs: build-and-test
+    name: node-smoke (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 22]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Download tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: package-tarball
+          path: .
+
+      - name: Install tarball into scratch
+        shell: bash
+        run: |
+          mkdir scratch
+          cd scratch
+          npm init -y
+          # Install ws alongside the package so smoke-socket.mjs can require it.
+          npm install --no-save ../figma-edit-mcp-*.tgz ws@8
+
+      - name: Bin --version (Node only)
+        shell: bash
+        working-directory: scratch
+        run: |
+          npx figma-edit-mcp --version
+          npx figma-edit-mcp-socket --version
+
+      - name: Socket boot smoke test
+        shell: bash
+        working-directory: scratch
+        run: node ../scripts/smoke-socket.mjs
+
+      - name: MCP server boot smoke test
+        shell: bash
+        working-directory: scratch
+        run: node ../scripts/smoke-mcp.mjs
 
   changes:
     runs-on: ubuntu-latest
