@@ -84,13 +84,23 @@ jobs:
         run: |
           mkdir scratch
           cd scratch
-          npm init -y
-          # Install in two passes: npm 11 (bundled with Node 24+) silently
-          # re-resolves a local tarball spec against the registry when another
-          # registry spec is on the same install line, which would install the
-          # latest published figma-edit-mcp instead of the local tarball.
-          npm install --no-save ws@8
-          npm install --no-save ../figma-edit-mcp-*.tgz
+          # Write both deps into package.json and install in one pass.
+          # Two separate --no-save installs would prune each other; a single
+          # mixed-spec --no-save install confuses npm 11 into re-resolving the
+          # local tarball from the registry.
+          TARBALL=$(ls ../figma-edit-mcp-*.tgz)
+          cat > package.json <<EOF
+          {
+            "name": "scratch",
+            "version": "1.0.0",
+            "private": true,
+            "dependencies": {
+              "figma-edit-mcp": "file:$TARBALL",
+              "ws": "^8"
+            }
+          }
+          EOF
+          npm install
 
       - name: Bin --version (Node only)
         shell: bash
