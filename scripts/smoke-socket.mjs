@@ -9,9 +9,13 @@
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { createRequire } from "node:module";
 
-const require = createRequire(import.meta.url);
+// Anchor require() to the cwd (the scratch dir set up by CI), not this script's
+// location, so it resolves `ws` from the project under test rather than from
+// whatever happens to be installed alongside the repo.
+const require = createRequire(pathToFileURL(resolve(process.cwd(), "package.json")));
 const WebSocket = require("ws");
 
 const socketBin = resolve(process.cwd(), "node_modules", "figma-edit-mcp", "dist", "socket.js");
