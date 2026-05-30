@@ -2,6 +2,11 @@
 
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
+## [1.5.3]
+### CLI & Socket Bugfixes
+- Rewrote WebSocket server in `src/socket.ts` to run on native Node.js HTTP and `ws` instead of `Bun.serve`, removing the dependency on Bun runtime for standard users.
+- Updated `npx` socket server instructions in `README.md` to use `-y` and `--package figma-edit-mcp` so secondary binaries can be resolved directly from the registry without 404 errors.
+
 ## [1.5.2]
 ### Registry Integration
 - Added required `mcpName` field to `package.json` to enable successful verification when publishing to the official Model Context Protocol registry.

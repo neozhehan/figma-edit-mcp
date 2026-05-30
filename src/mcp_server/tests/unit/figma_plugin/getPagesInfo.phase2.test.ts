@@ -493,10 +493,10 @@ describe("Phase 2.3: removed-fields sweep", () => {
 });
 
 describe("Phase 2.4: version + changelog", () => {
-    it("package.json version is 1.5.2", async () => {
+    it("package.json version is 1.5.3", async () => {
         const fs = await import("node:fs/promises");
         const pkg = JSON.parse(await fs.readFile("package.json", "utf8"));
-        expect(pkg.version).toBe("1.5.2");
+        expect(pkg.version).toBe("1.5.3");
     });
 
     it("CHANGELOG.md has a [1.3.0] section listing the breaking changes", async () => {

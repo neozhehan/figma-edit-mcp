@@ -1,13 +1,37 @@
-import { Server, ServerWebSocket } from "bun";
+import { createServer } from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import { parseCliArgs } from "./cli.js";
 
 const { port, host } = parseCliArgs("figma-edit-mcp-socket");
 
 // Store clients by channel
-const channels = new Map<string, Set<ServerWebSocket<any>>>();
+const channels = new Map<string, Set<WebSocket>>();
 
-function handleConnection(ws: ServerWebSocket<any>) {
-  // Don't add to clients immediately - wait for channel join
+const httpServer = createServer((req, res) => {
+  // Set CORS headers for all responses
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("WebSocket server running");
+});
+
+const wss = new WebSocketServer({ noServer: true });
+
+httpServer.on("upgrade", (req, socket, head) => {
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit("connection", ws, req);
+  });
+});
+
+wss.on("connection", (ws: WebSocket) => {
   console.log("New client connected");
 
   // Send welcome message to the new client
@@ -16,189 +40,154 @@ function handleConnection(ws: ServerWebSocket<any>) {
     message: "Please join a channel to start chatting",
   }));
 
+  ws.on("message", (message: string | Buffer) => {
+    try {
+      const data = JSON.parse(message.toString());
+      console.log(`\n=== Received message from client ===`);
+      console.log(`Type: ${data.type}, Channel: ${data.channel || 'N/A'}`);
+      if (data.message?.command) {
+        console.log(`Command: ${data.message.command}, ID: ${data.id}`);
+      } else if (data.message?.result) {
+        console.log(`Response: ID: ${data.id}, Has Result: ${!!data.message.result}`);
+      }
+      console.log(`Full message:`, JSON.stringify(data, null, 2));
 
-}
-
-const server = Bun.serve({
-  port: port,
-  hostname: host,
-  fetch(req: Request, server: Server) {
-    // Handle CORS preflight
-    if (req.method === "OPTIONS") {
-      return new Response(null, {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        },
-      });
-    }
-
-    // Handle WebSocket upgrade
-    const success = server.upgrade(req, {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
-
-    if (success) {
-      return; // Upgraded to WebSocket
-    }
-
-    // Return response for non-WebSocket requests
-    return new Response("WebSocket server running", {
-      headers: {
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
-  },
-  websocket: {
-    open: handleConnection,
-    message(ws: ServerWebSocket<any>, message: string | Buffer) {
-      try {
-        const data = JSON.parse(message as string);
-        console.log(`\n=== Received message from client ===`);
-        console.log(`Type: ${data.type}, Channel: ${data.channel || 'N/A'}`);
-        if (data.message?.command) {
-          console.log(`Command: ${data.message.command}, ID: ${data.id}`);
-        } else if (data.message?.result) {
-          console.log(`Response: ID: ${data.id}, Has Result: ${!!data.message.result}`);
-        }
-        console.log(`Full message:`, JSON.stringify(data, null, 2));
-
-        if (data.type === "join") {
-          const channelName = data.channel;
-          if (!channelName || typeof channelName !== "string") {
-            ws.send(JSON.stringify({
-              type: "error",
-              message: "Channel name is required"
-            }));
-            return;
-          }
-
-          // Detect lone-MCP joins
-          if (data.clientType === "mcp") {
-            const size = channels.get(channelName)?.size ?? 0;
-            if (size === 0) {
-              ws.send(JSON.stringify({
-                type: "join_error",
-                code: "CHANNEL_NOT_FOUND",
-                id: data.id,
-                message: `Channel '${channelName}' was not found. Verify the channel name and that the Figma plugin is running and connected.`
-              }));
-              return;
-            }
-          }
-
-          // Create channel if it doesn't exist
-          if (!channels.has(channelName)) {
-            channels.set(channelName, new Set());
-          }
-
-          // Add client to channel
-          const channelClients = channels.get(channelName)!;
-          channelClients.add(ws);
-
-          console.log(`\n✓ Client joined channel "${channelName}" (${channelClients.size} total clients)`);
-
-          // Notify client they joined successfully
+      if (data.type === "join") {
+        const channelName = data.channel;
+        if (!channelName || typeof channelName !== "string") {
           ws.send(JSON.stringify({
-            type: "system",
-            message: `Joined channel: ${channelName}`,
-            channel: channelName
+            type: "error",
+            message: "Channel name is required"
           }));
-
-          ws.send(JSON.stringify({
-            type: "system",
-            message: {
-              id: data.id,
-              result: "Connected to channel: " + channelName,
-            },
-            channel: channelName
-          }));
-
-          // Notify other clients in channel
-          channelClients.forEach((client) => {
-            if (client !== ws && client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({
-                type: "system",
-                message: "A new user has joined the channel",
-                channel: channelName
-              }));
-            }
-          });
           return;
         }
 
-        // Handle regular messages
-        if (data.type === "message") {
-          const channelName = data.channel;
-          if (!channelName || typeof channelName !== "string") {
+        // Detect lone-MCP joins
+        if (data.clientType === "mcp") {
+          const size = channels.get(channelName)?.size ?? 0;
+          if (size === 0) {
             ws.send(JSON.stringify({
-              type: "error",
-              message: "Channel name is required"
+              type: "join_error",
+              code: "CHANNEL_NOT_FOUND",
+              id: data.id,
+              message: `Channel '${channelName}' was not found. Verify the channel name and that the Figma plugin is running and connected.`
             }));
             return;
-          }
-
-          const channelClients = channels.get(channelName);
-          if (!channelClients || !channelClients.has(ws)) {
-            ws.send(JSON.stringify({
-              type: "error",
-              message: "You must join the channel first"
-            }));
-            return;
-          }
-
-          // Broadcast to all OTHER clients in the channel (not the sender)
-          // This prevents echo and ensures proper request-response flow
-          let broadcastCount = 0;
-          channelClients.forEach((client) => {
-            if (client !== ws && client.readyState === WebSocket.OPEN) {
-              broadcastCount++;
-              const broadcastMessage = {
-                type: "broadcast",
-                message: data.message,
-                sender: "peer",
-                channel: channelName
-              };
-              console.log(`\n=== Broadcasting to peer #${broadcastCount} ===`);
-              console.log(JSON.stringify(broadcastMessage, null, 2));
-              client.send(JSON.stringify(broadcastMessage));
-            }
-          });
-
-          if (broadcastCount === 0) {
-            console.log(`⚠️  No other clients in channel "${channelName}" to receive message!`);
-          } else {
-            console.log(`✓ Broadcast to ${broadcastCount} peer(s) in channel "${channelName}"`);
           }
         }
-      } catch (err) {
-        console.error("Error handling message:", err);
+
+        // Create channel if it doesn't exist
+        if (!channels.has(channelName)) {
+          channels.set(channelName, new Set());
+        }
+
+        // Add client to channel
+        const channelClients = channels.get(channelName)!;
+        channelClients.add(ws);
+
+        console.log(`\n✓ Client joined channel "${channelName}" (${channelClients.size} total clients)`);
+
+        // Notify client they joined successfully
+        ws.send(JSON.stringify({
+          type: "system",
+          message: `Joined channel: ${channelName}`,
+          channel: channelName
+        }));
+
+        ws.send(JSON.stringify({
+          type: "system",
+          message: {
+            id: data.id,
+            result: "Connected to channel: " + channelName,
+          },
+          channel: channelName
+        }));
+
+        // Notify other clients in channel
+        channelClients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: "system",
+              message: "A new user has joined the channel",
+              channel: channelName
+            }));
+          }
+        });
+        return;
       }
-    },
-    close(ws: ServerWebSocket<any>) {
-      console.log("Client disconnected");
-      // Remove client from their channel
-      channels.forEach((clients, channelName) => {
-        if (clients.has(ws)) {
-          clients.delete(ws);
 
-          // Notify other clients in same channel
-          clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify({
-                type: "system",
-                message: "A user has left the channel",
-                channel: channelName
-              }));
-            }
-          });
+      // Handle regular messages
+      if (data.type === "message") {
+        const channelName = data.channel;
+        if (!channelName || typeof channelName !== "string") {
+          ws.send(JSON.stringify({
+            type: "error",
+            message: "Channel name is required"
+          }));
+          return;
         }
-      });
+
+        const channelClients = channels.get(channelName);
+        if (!channelClients || !channelClients.has(ws)) {
+          ws.send(JSON.stringify({
+            type: "error",
+            message: "You must join the channel first"
+          }));
+          return;
+        }
+
+        // Broadcast to all OTHER clients in the channel (not the sender)
+        // This prevents echo and ensures proper request-response flow
+        let broadcastCount = 0;
+        channelClients.forEach((client) => {
+          if (client !== ws && client.readyState === WebSocket.OPEN) {
+            broadcastCount++;
+            const broadcastMessage = {
+              type: "broadcast",
+              message: data.message,
+              sender: "peer",
+              channel: channelName
+            };
+            console.log(`\n=== Broadcasting to peer #${broadcastCount} ===`);
+            console.log(JSON.stringify(broadcastMessage, null, 2));
+            client.send(JSON.stringify(broadcastMessage));
+          }
+        });
+
+        if (broadcastCount === 0) {
+          console.log(`⚠️  No other clients in channel "${channelName}" to receive message!`);
+        } else {
+          console.log(`✓ Broadcast to ${broadcastCount} peer(s) in channel "${channelName}"`);
+        }
+      }
+    } catch (err) {
+      console.error("Error handling message:", err);
     }
-  }
+  });
+
+  ws.on("close", () => {
+    console.log("Client disconnected");
+    // Remove client from their channel
+    channels.forEach((clients, channelName) => {
+      if (clients.has(ws)) {
+        clients.delete(ws);
+
+        // Notify other clients in same channel
+        clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: "system",
+              message: "A user has left the channel",
+              channel: channelName
+            }));
+          }
+        });
+      }
+    });
+  });
 });
 
-console.log(`WebSocket server running on ${server.hostname}:${server.port}`);
+httpServer.listen(port, host, () => {
+  console.log(`WebSocket server running on ${host}:${port}`);
+});
+

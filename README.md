@@ -51,7 +51,7 @@ The config file location depends on your host — see [Integration-Specific Setu
 In a terminal, start the bridge that connects the MCP server to the Figma plugin. Keep this terminal running:
 
 ```bash
-npx figma-edit-mcp-socket
+npx -y --package figma-edit-mcp figma-edit-mcp-socket
 ```
 
 ### 3. Install the Figma plugin
@@ -129,9 +129,9 @@ For local development — building from source, running the bridge from a clone,
 To allow Figma (running on Windows) to connect to the bridge (running inside WSL), the bridge needs to listen on `0.0.0.0` instead of `localhost`:
 
 ```bash
-npx figma-edit-mcp-socket --host 0.0.0.0
+npx -y --package figma-edit-mcp figma-edit-mcp-socket --host 0.0.0.0
 # or via environment variable:
-FIGMA_EDIT_MCP_SOCKET_HOST=0.0.0.0 npx figma-edit-mcp-socket
+FIGMA_EDIT_MCP_SOCKET_HOST=0.0.0.0 npx -y --package figma-edit-mcp figma-edit-mcp-socket
 ```
 
 Then point the Figma plugin's WebSocket address at your WSL instance's IP.
@@ -140,7 +140,7 @@ Then point the Figma plugin's WebSocket address at your WSL instance's IP.
 
 ## Usage
 
-1. Start the WebSocket bridge: `npx figma-edit-mcp-socket`
+1. Start the WebSocket bridge: `npx -y --package figma-edit-mcp figma-edit-mcp-socket`
 2. Configure the MCP server in your AI assistant (see [Integration-Specific Setup](#integration-specific-setup))
 3. Open Figma and launch the Figma Edit MCP plugin from Plugins → Development
 4. Use the `join_channel` MCP tool to establish communication
