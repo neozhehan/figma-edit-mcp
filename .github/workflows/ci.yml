@@ -88,7 +88,10 @@ jobs:
           # Two separate --no-save installs would prune each other; a single
           # mixed-spec --no-save install confuses npm 11 into re-resolving the
           # local tarball from the registry.
-          TARBALL=$(ls ../figma-edit-mcp-*.tgz)
+          # Pin to the exact freshly-built tarball — a stale figma-edit-mcp-*.tgz
+          # may also be present (e.g. checked into the repo), so a glob is unsafe.
+          VERSION=$(node -p "require('../package.json').version")
+          TARBALL="../figma-edit-mcp-${VERSION}.tgz"
           cat > package.json <<EOF
           {
             "name": "scratch",
