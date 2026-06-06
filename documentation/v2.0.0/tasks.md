@@ -13,7 +13,7 @@
 - [ ] R1.1 Sync version to `2.0.0` in [package.json](../../package.json), [server.json](../../server.json) (both `version` fields), [manifest.json](../../manifest.json).
 - [ ] R1.2 Fix [server.ts](../../src/mcp_server/server.ts) hardcoded `version: "1.0.0"` → read from `package.json` at runtime (kills version drift; also corrects server `name`).
 - [ ] R1.3 Add `skills` to the `files` allowlist in [package.json](../../package.json) so the skill + references ship in the tarball.
-- [ ] R1.4 **Add a server icon** (Smithery Metadata, 8pt) to the `.mcpb` [manifest.json](../../manifest.json) via the `icon` field (and/or `icons` array); include the icon file in the bundle so it ships in the `.mcpb`.
+- [ ] R1.4 **Add a server icon** (Smithery Metadata, 8pt) to the `.mcpb` [manifest.json](../../manifest.json) via the `icon` field (and/or `icons` array). **Source:** [`documentation/v2.0.0/resources/Figma Edit MCP Plugin Icon.png`](./resources/Figma%20Edit%20MCP%20Plugin%20Icon.png) (1024×1024 PNG). Copy it into a location that ships in the bundle (e.g. repo root or an `assets/` dir added to the `files` allowlist) and reference it from the manifest — the `documentation/` source is planning-only and is **not** in the tarball. ⚠️ Rename to a space-free filename (e.g. `icon.png`) when copying; spaces in the manifest icon path are fragile.
 
 ## WS2 — Documentation deferral
 
