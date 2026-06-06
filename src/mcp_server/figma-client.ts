@@ -49,33 +49,70 @@ export interface setInstanceOverridesResult {
     }>;
 }
 
-// Define specific command types
+// Command strings accepted by sendCommandToFigma: the v2.0.0 dot-notation tool
+// commands plus the two internal transport commands (`join`, `get_connect_payload`).
+// Keep in sync with the tool registrations (src/mcp_server/tools/*) and the plugin
+// command router (figma_plugin/src/main.ts). Note: the `channel.join` tool is not a
+// wire command — it calls joinChannel(), which sends `join`.
 export type FigmaCommand =
-    | "get_connect_payload"
-    | "get_pages_info"
-    | "get_nodes_info"
+    // transport / internal
     | "join"
-    | "create_rectangle"
-    | "create_frame"
-    | "create_text"
-    | "create_node_from_svg"
-    | "set_fill_color"
-    | "set_stroke_color"
-    | "move_node"
-    | "clone_node"
-    | "resize_node"
-    | "set_node_name"
-    | "delete_multiple_nodes"
-    | "set_layout_mode"
-    | "set_padding"
-    | "set_axis_align"
-    | "set_layout_sizing"
-    | "set_item_spacing"
-    | "set_corner_radius"
-    | "manage_style" // If implemented
-    | "get_styles" // If implemented
-    | "mcp_FigmaEdit_apply_style" // Correct name? Check tool definitions. The tools usually map to internal commands.
-    | string;
+    | "get_connect_payload"
+    // page
+    | "page.info"
+    // node
+    | "node.info"
+    | "node.transform"
+    | "node.rename"
+    | "node.delete"
+    | "node.clone"
+    | "node.select"
+    | "node.group"
+    | "node.ungroup"
+    | "node.flatten"
+    | "node.insert_child"
+    | "node.set_auto_layout"
+    | "node.set_fill"
+    | "node.set_stroke"
+    | "node.set_corner_radius"
+    | "node.set_effects"
+    | "node.apply_style"
+    | "node.bind_variable"
+    | "node.export_visual"
+    // create
+    | "create.shape"
+    | "create.frame"
+    | "create.text"
+    | "create.svg"
+    | "create.component"
+    | "create.instance"
+    | "create.component_set"
+    | "create.connection"
+    // style
+    | "style.list"
+    | "style.manage"
+    | "style.delete"
+    // text
+    | "text.set_content"
+    | "text.set_style"
+    // component
+    | "component.list"
+    | "component.manage_property"
+    | "component.delete_property"
+    // instance
+    | "instance.set_property"
+    | "instance.get_overrides"
+    | "instance.set_overrides"
+    // variable
+    | "variable.list"
+    | "variable.manage"
+    | "variable.delete"
+    // annotation
+    | "annotation.list"
+    | "annotation.set"
+    // reaction
+    | "reaction.list"
+    | "reaction.update";
 
 // State management
 let ws: WebSocket | null = null;

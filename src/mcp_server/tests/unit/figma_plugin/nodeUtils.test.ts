@@ -121,14 +121,14 @@ describe("SAFE_LIST_PROPERTIES classifier", () => {
         expect(SAFE_LIST_PROPERTIES.has("annotations")).toBe(true);
     });
 
-    it("does NOT include non-safe-list / REST-only aggregates that require exportAsync", () => {
+    it("does NOT include style, but includes vector geometry from the official fields list", () => {
         // `style` is the canonical non-safe-list aggregate called out in the spec.
         expect(SAFE_LIST_PROPERTIES.has("style")).toBe(false);
-        // Vector geometry — heavyweight, deliberately omitted from v1.4.0 safe list.
-        expect(SAFE_LIST_PROPERTIES.has("fillGeometry")).toBe(false);
-        expect(SAFE_LIST_PROPERTIES.has("strokeGeometry")).toBe(false);
-        expect(SAFE_LIST_PROPERTIES.has("vectorNetwork")).toBe(false);
-        expect(SAFE_LIST_PROPERTIES.has("vectorPaths")).toBe(false);
+        // Vector geometry — now part of safe list in v2.0.0
+        expect(SAFE_LIST_PROPERTIES.has("fillGeometry")).toBe(true);
+        expect(SAFE_LIST_PROPERTIES.has("strokeGeometry")).toBe(true);
+        expect(SAFE_LIST_PROPERTIES.has("vectorNetwork")).toBe(true);
+        expect(SAFE_LIST_PROPERTIES.has("vectorPaths")).toBe(true);
     });
 
     it("returns false for typos / unrecognized names (must NOT force export fallback)", () => {

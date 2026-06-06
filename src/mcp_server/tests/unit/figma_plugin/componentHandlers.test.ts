@@ -263,9 +263,9 @@ describe("Component Handlers", () => {
 
         describe("DELETE", () => {
             it("should delete an existing property", async () => {
-                await manageComponentProperty({
+                const { deleteComponentProperty } = await import("../../../../../figma_plugin/handlers/componentHandlers.js");
+                await deleteComponentProperty({
                     nodeId: "1:1",
-                    action: "DELETE",
                     propertyName: "Show Icon"
                 });
 
@@ -273,9 +273,9 @@ describe("Component Handlers", () => {
             });
 
             it("should throw on missing property", async () => {
-                expect(manageComponentProperty({
+                const { deleteComponentProperty } = await import("../../../../../figma_plugin/handlers/componentHandlers.js");
+                expect(deleteComponentProperty({
                     nodeId: "1:1",
-                    action: "DELETE",
                     propertyName: "Missing Prop"
                 })).rejects.toThrow('Property "Missing Prop" not found. Available properties: Show Icon, State');
             });
@@ -303,10 +303,10 @@ describe("Security Gates via main.ts routing", () => {
         await gateOnMessage({ type: "set-scope" });
     });
 
-    describe("set_component_instance_property", () => {
+    describe("instance.set_property", () => {
         it("blocks when state.readOnly is true", async () => {
             // beforeEach already put us in readOnly mode.
-            const result = await executeCommand("set_component_instance_property", {
+            const result = await executeCommand("instance.set_property", {
                 nodeId: "1:1",
                 nodeName: "Instance",
                 propertyName: "Show Icon",
@@ -325,7 +325,7 @@ describe("Security Gates via main.ts routing", () => {
 
             await gateOnMessage({ type: "set-scope", scopeNodeId: "scope-1" });
 
-            const result = await executeCommand("set_component_instance_property", {
+            const result = await executeCommand("instance.set_property", {
                 nodeId: "1:1",
                 nodeName: "Instance",
                 propertyName: "Show Icon",
@@ -344,7 +344,7 @@ describe("Security Gates via main.ts routing", () => {
 
             await gateOnMessage({ type: "set-scope", scopeNodeId: "scope-1" });
 
-            const result = await executeCommand("set_component_instance_property", {
+            const result = await executeCommand("instance.set_property", {
                 nodeId: "1:1",
                 nodeName: "Wrong Name",
                 propertyName: "Show Icon",
@@ -356,7 +356,7 @@ describe("Security Gates via main.ts routing", () => {
         });
     });
 
-    describe("manage_component_property", () => {
+    describe("component.manage_property", () => {
         const addParams = {
             action: "ADD",
             propertyName: "New Prop",
@@ -365,7 +365,7 @@ describe("Security Gates via main.ts routing", () => {
         };
 
         it("blocks when state.readOnly is true (any action)", async () => {
-            const result = await executeCommand("manage_component_property", {
+            const result = await executeCommand("component.manage_property", {
                 nodeId: "1:1",
                 nodeName: "Component",
                 ...addParams,
@@ -383,7 +383,7 @@ describe("Security Gates via main.ts routing", () => {
 
             await gateOnMessage({ type: "set-scope", scopeNodeId: "scope-1" });
 
-            const result = await executeCommand("manage_component_property", {
+            const result = await executeCommand("component.manage_property", {
                 nodeId: "1:1",
                 nodeName: "Component",
                 ...addParams,
@@ -401,7 +401,7 @@ describe("Security Gates via main.ts routing", () => {
 
             await gateOnMessage({ type: "set-scope", scopeNodeId: "scope-1" });
 
-            const result = await executeCommand("manage_component_property", {
+            const result = await executeCommand("component.manage_property", {
                 nodeId: "1:1",
                 nodeName: "Wrong Name",
                 ...addParams,

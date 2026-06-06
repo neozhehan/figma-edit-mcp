@@ -6,67 +6,163 @@
 import { setCharacters } from '../utils/textUtils.js';
 
 /**
- * Creates a new rectangle node
+ * Creates a new shape node (rectangle, ellipse, polygon, or star)
  * @param {Object} params - Parameters object
+ * @param {string} params.type - RECTANGLE, ELLIPSE, POLYGON, or STAR
  * @param {number} params.x - X position
  * @param {number} params.y - Y position
- * @param {number} params.width - Width of rectangle
- * @param {number} params.height - Height of rectangle
- * @param {string} params.name - Name of rectangle
+ * @param {number} params.width - Width of shape
+ * @param {number} params.height - Height of shape
+ * @param {string} params.name - Optional name for the shape
  * @param {string} params.parentId - Optional parent node ID
- * @returns {Promise<Object>} Created rectangle info
+ * @param {boolean} params.useAbsolutePosition - Optional flag to force absolute position
+ * @param {Object} params.fillColor - Optional fill color in RGBA
+ * @param {Object} params.strokeColor - Optional stroke color in RGBA
+ * @param {Object} params.arcData - Optional arc properties (ELLIPSE only)
+ * @param {number} params.pointCount - Vertex count (POLYGON/STAR only)
+ * @param {number} params.innerRadius - Star sharpness (STAR only)
+ * @returns {Promise<Object>} Created shape info
  */
-export async function createRectangle(params: any) {
+export async function createShape(params: any) {
     const {
+        type,
         x = 0,
         y = 0,
         width = 100,
         height = 100,
-        name = "Rectangle",
+        name,
         parentId,
         useAbsolutePosition = false,
+        fillColor,
+        strokeColor,
+        arcData,
+        pointCount,
+        innerRadius
     } = params || {};
 
-    const rect = figma.createRectangle();
-    rect.x = x;
-    rect.y = y;
-    rect.resize(width, height);
-    rect.name = name;
+    if (!type) {
+        throw new Error("Missing shape type parameter");
+    }
 
-    // If parentId is provided, append to that node, otherwise append to current page
+    const upperType = type.toUpperCase();
+    if (arcData !== undefined && upperType !== "ELLIPSE") {
+        throw new Error(`arcData is only supported for shape type ELLIPSE, got ${type}`);
+    }
+    if ((upperType === "POLYGON" || upperType === "STAR") && pointCount === undefined) {
+        throw new Error(`pointCount is required for shape type ${type}`);
+    }
+    if (innerRadius !== undefined && upperType !== "STAR") {
+        throw new Error(`innerRadius is only supported for shape type STAR, got ${type}`);
+    }
+
+    let parent = figma.currentPage;
     if (parentId) {
-        const parentNode = await figma.getNodeByIdAsync(parentId);
-        if (!parentNode) {
+        // @ts-ignore
+        parent = await figma.getNodeByIdAsync(parentId);
+        if (!parent) {
             throw new Error(`Parent node not found with ID: ${parentId}`);
         }
-        if (!("appendChild" in parentNode)) {
+        if (!("appendChild" in parent)) {
             throw new Error(`Parent node does not support children: ${parentId}`);
         }
-        // @ts-ignore
-        parentNode.appendChild(rect);
-    } else {
-        figma.currentPage.appendChild(rect);
     }
+
+    let node: RectangleNode | EllipseNode | PolygonNode | StarNode;
+
+    switch (upperType) {
+        case "RECTANGLE":
+            node = figma.createRectangle();
+            break;
+        case "ELLIPSE":
+            node = figma.createEllipse();
+            if (arcData) {
+                node.arcData = {
+                    startingAngle: arcData.startingAngle ?? 0,
+                    endingAngle: arcData.endingAngle ?? Math.PI * 2,
+                    innerRadius: arcData.innerRadius ?? 0
+                };
+            }
+            break;
+        case "POLYGON":
+            node = figma.createPolygon();
+            if (pointCount !== undefined) {
+                if (pointCount < 3) {
+                    throw new Error("Polygons require pointCount >= 3");
+                }
+                node.pointCount = pointCount;
+            }
+            break;
+        case "STAR":
+            node = figma.createStar();
+            if (pointCount !== undefined) {
+                if (pointCount < 3) {
+                    throw new Error("Stars require pointCount >= 3");
+                }
+                node.pointCount = pointCount;
+            }
+            if (innerRadius !== undefined) {
+                node.innerRadius = innerRadius;
+            }
+            break;
+        default:
+            throw new Error(`Unsupported shape type: ${type}`);
+    }
+
+    node.x = x;
+    node.y = y;
+    node.resize(width, height);
+    if (name) {
+        node.name = name;
+    } else {
+        node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+    }
+
+    if (fillColor) {
+        node.fills = [{
+            type: 'SOLID',
+            color: {
+                r: parseFloat(fillColor.r) || 0,
+                g: parseFloat(fillColor.g) || 0,
+                b: parseFloat(fillColor.b) || 0,
+            },
+            opacity: fillColor.a ?? 1
+        }];
+    }
+
+    if (strokeColor) {
+        node.strokes = [{
+            type: 'SOLID',
+            color: {
+                r: parseFloat(strokeColor.r) || 0,
+                g: parseFloat(strokeColor.g) || 0,
+                b: parseFloat(strokeColor.b) || 0,
+            },
+            opacity: strokeColor.a ?? 1
+        }];
+    }
+
+    // @ts-ignore
+    parent.appendChild(node);
 
     // Handle absolute positioning if requested and parent is auto-layout
     if (useAbsolutePosition && parentId) {
-        const parent = rect.parent;
         // @ts-ignore
         if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
-            rect.layoutPositioning = "ABSOLUTE";
-            rect.x = x;
-            rect.y = y;
+            node.layoutPositioning = "ABSOLUTE";
+            node.x = x;
+            node.y = y;
         }
     }
 
     return {
-        id: rect.id,
-        name: rect.name,
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-        parentId: rect.parent ? rect.parent.id : undefined,
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        x: node.x,
+        y: node.y,
+        width: node.width,
+        height: node.height,
+        parentId: node.parent ? node.parent.id : undefined
     };
 }
 
@@ -367,155 +463,4 @@ export async function cloneNode(params: any) {
         width: "width" in clone ? clone.width : undefined,
         height: "height" in clone ? clone.height : undefined,
     };
-}
-
-/**
- * Creates a new ellipse node (circle, arc, donut)
- * @param {Object} params - Parameters object
- * @param {number} params.x - X position
- * @param {number} params.y - Y position
- * @param {number} params.width - Width of ellipse
- * @param {number} params.height - Height of ellipse
- * @param {Object} params.arcData - Optional arc properties (startingAngle, endingAngle, innerRadius)
- * @param {string} params.name - Name of ellipse
- * @param {string} params.parentId - Optional parent node ID
- * @param {Object} params.fillColor - Optional fill color
- * @param {Object} params.strokeColor - Optional stroke color
- * @returns {Promise<Object>} Created ellipse info
- */
-export async function createEllipse(params: any) {
-    const { x = 0, y = 0, width = 100, height = 100, arcData, name = "Ellipse", parentId, fillColor, strokeColor, useAbsolutePosition = false } = params || {};
-
-    let parent = figma.currentPage;
-    if (parentId) {
-        // @ts-ignore
-        parent = await figma.getNodeByIdAsync(parentId);
-        if (!parent) {
-            throw new Error(`Parent node not found with ID: ${parentId}`);
-        }
-    }
-
-    const node = figma.createEllipse();
-    node.x = x;
-    node.y = y;
-    node.resize(width, height);
-
-    // Apply arc data if provided
-    if (arcData) {
-        node.arcData = {
-            startingAngle: arcData.startingAngle ?? 0,
-            endingAngle: arcData.endingAngle ?? Math.PI * 2,
-            innerRadius: arcData.innerRadius ?? 0
-        };
-    }
-
-    if (name) node.name = name;
-
-    if (fillColor) {
-        node.fills = [{
-            type: 'SOLID',
-            color: { r: fillColor.r, g: fillColor.g, b: fillColor.b },
-            opacity: fillColor.a ?? 1
-        }];
-    }
-
-    if (strokeColor) {
-        node.strokes = [{
-            type: 'SOLID',
-            color: { r: strokeColor.r, g: strokeColor.g, b: strokeColor.b },
-            opacity: strokeColor.a ?? 1
-        }];
-    }
-
-    parent.appendChild(node);
-
-    // Handle absolute positioning if requested and parent is auto-layout
-    if (useAbsolutePosition && parentId) {
-        // @ts-ignore
-        if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
-            node.layoutPositioning = "ABSOLUTE";
-            node.x = x;
-            node.y = y;
-        }
-    }
-
-    return { id: node.id, name: node.name, type: node.type };
-}
-
-/**
- * Creates a new polygon or star node
- * @param {Object} params - Parameters object
- * @param {number} params.x - X position
- * @param {number} params.y - Y position
- * @param {number} params.width - Width of shape
- * @param {number} params.height - Height of shape
- * @param {number} params.pointCount - Vertex count
- * @param {number} params.innerRadius - Star sharpness (0-1)
- * @param {string} params.name - Name of shape
- * @param {string} params.parentId - Optional parent node ID
- * @param {Object} params.fillColor - Optional fill color
- * @param {Object} params.strokeColor - Optional stroke color
- * @returns {Promise<Object>} Created shape info
- */
-export async function createPolygonStar(params: any) {
-    const { x = 0, y = 0, width = 100, height = 100, pointCount, innerRadius = 1.0, name, parentId, fillColor, strokeColor, useAbsolutePosition = false } = params || {};
-
-    let parent = figma.currentPage;
-    if (parentId) {
-        // @ts-ignore
-        parent = await figma.getNodeByIdAsync(parentId);
-        if (!parent) {
-            throw new Error(`Parent node not found with ID: ${parentId}`);
-        }
-    }
-
-    let node;
-    if (innerRadius === 1.0) {
-        // Regular polygon
-        node = figma.createPolygon();
-        node.pointCount = pointCount;
-    } else {
-        // Star shape - pointCount must be even
-        if (pointCount % 2 !== 0) {
-            throw new Error("Stars require even pointCount (equal inner/outer vertices)");
-        }
-        node = figma.createStar();
-        node.pointCount = pointCount / 2;  // Figma's pointCount = spike count
-        node.innerRadius = innerRadius;
-    }
-
-    node.x = x;
-    node.y = y;
-    node.resize(width, height);
-    if (name) node.name = name;
-
-    if (fillColor) {
-        node.fills = [{
-            type: 'SOLID',
-            color: { r: fillColor.r, g: fillColor.g, b: fillColor.b },
-            opacity: fillColor.a ?? 1
-        }];
-    }
-
-    if (strokeColor) {
-        node.strokes = [{
-            type: 'SOLID',
-            color: { r: strokeColor.r, g: strokeColor.g, b: strokeColor.b },
-            opacity: strokeColor.a ?? 1
-        }];
-    }
-
-    parent.appendChild(node);
-
-    // Handle absolute positioning if requested and parent is auto-layout
-    if (useAbsolutePosition && parentId) {
-        // @ts-ignore
-        if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
-            node.layoutPositioning = "ABSOLUTE";
-            node.x = x;
-            node.y = y;
-        }
-    }
-
-    return { id: node.id, name: node.name, type: node.type };
 }

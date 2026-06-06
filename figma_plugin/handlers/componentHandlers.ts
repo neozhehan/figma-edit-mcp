@@ -935,25 +935,66 @@ export async function manageComponentProperty(params: any) {
                 updated: true
             };
             
-        } else if (action === "DELETE") {
-            if (!qualifiedName) {
-                throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
-            }
-            
-            targetNode.deleteComponentProperty(qualifiedName);
-            
-            return {
-                id: targetNode.id,
-                name: targetNode.name,
-                action: "DELETE",
-                propertyName
-            };
-            
         } else {
-            throw new Error(`Invalid action: ${action}`);
+            throw new Error(`Invalid action: ${action}. Use delete_property tool for deletion.`);
         }
     } catch (error: any) {
         throw new Error(`Error managing component property: ${error.message}`);
+    }
+}
+
+/**
+ * Removes a component-property definition from a main component or variant set
+ * @param {Object} params - Parameters object
+ * @param {string} params.nodeId - ID of the component node
+ * @param {string} params.propertyName - Human-readable name of the property
+ * @returns {Promise<Object>} Status info
+ */
+export async function deleteComponentProperty(params: any) {
+    const { nodeId, propertyName } = params || {};
+
+    if (!nodeId || !propertyName) {
+        throw new Error("Missing nodeId or propertyName parameter");
+    }
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+        throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+        throw new Error(`Target node must be a COMPONENT or COMPONENT_SET, got ${node.type}`);
+    }
+
+    const targetNode = node as ComponentNode | ComponentSetNode;
+    const properties = targetNode.componentPropertyDefinitions;
+    
+    let qualifiedName: string | null = null;
+    const validNames: string[] = [];
+    
+    for (const key in properties) {
+        const parts = key.split('#');
+        const readableName = parts[0];
+        validNames.push(readableName);
+        
+        if (readableName === propertyName) {
+            qualifiedName = key;
+        }
+    }
+
+    if (!qualifiedName) {
+        throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
+    }
+
+    try {
+        targetNode.deleteComponentProperty(qualifiedName);
+        return {
+            id: targetNode.id,
+            name: targetNode.name,
+            propertyName
+        };
+    } catch (error: any) {
+        throw new Error(`Error deleting component property: ${error.message}`);
     }
 }
 

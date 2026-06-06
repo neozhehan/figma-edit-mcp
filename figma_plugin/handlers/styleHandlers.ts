@@ -168,3 +168,34 @@ export async function applyStyle(params: any) {
         message: `Style ${styleId} applied to node ${nodeId}`
     };
 }
+
+/**
+ * Deletes a local style
+ * @param {Object} params - Parameters object
+ * @param {string} params.styleId - ID of style to delete
+ * @param {string} params.styleName - Expected name of style to delete (verification)
+ * @returns {Promise<Object>} Status info
+ */
+export async function deleteStyle(params: any) {
+    const { styleId, styleName } = params || {};
+
+    if (!styleId) {
+        throw new Error("Missing styleId parameter");
+    }
+
+    const style = await figma.getStyleByIdAsync(styleId);
+    if (!style) {
+        throw new Error(`Style with ID ${styleId} not found.`);
+    }
+
+    if (styleName !== undefined && styleName !== null && style.name !== styleName) {
+        throw new Error("Operation Denied: styleName does not match name of styleId. Refresh context & recheck to ensure correct styleId is passed in.");
+    }
+
+    style.remove();
+
+    return {
+        success: true,
+        message: `Style ${styleId} ("${styleName}") successfully deleted.`
+    };
+}

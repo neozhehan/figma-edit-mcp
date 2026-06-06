@@ -7,22 +7,20 @@ import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js
 import { delay } from '../utils/helpers.js';
 
 /**
- * Moves a node to a new position
+ * Moves and/or resizes a node (sets absolute coordinates and dimensions)
  * @param {Object} params - Parameters object
- * @param {string} params.nodeId - ID of node to move
- * @param {number} params.x - New X position
- * @param {number} params.y - New Y position
+ * @param {string} params.nodeId - ID of node to transform
+ * @param {number} [params.x] - Optional new X position
+ * @param {number} [params.y] - Optional new Y position
+ * @param {number} [params.width] - Optional new width
+ * @param {number} [params.height] - Optional new height
  * @returns {Promise<Object>} Updated node info
  */
-export async function moveNode(params: any) {
-    const { nodeId, x, y } = params || {};
+export async function transformNode(params: any) {
+    const { nodeId, x, y, width, height } = params || {};
 
     if (!nodeId) {
         throw new Error("Missing nodeId parameter");
-    }
-
-    if (x === undefined || y === undefined) {
-        throw new Error("Missing x or y parameters");
     }
 
     const node = await figma.getNodeByIdAsync(nodeId);
@@ -30,56 +28,35 @@ export async function moveNode(params: any) {
         throw new Error(`Node not found with ID: ${nodeId}`);
     }
 
-    if (!("x" in node) || !("y" in node)) {
-        throw new Error(`Node does not support position: ${nodeId}`);
+    // Apply X and Y if provided
+    if (x !== undefined || y !== undefined) {
+        if (!("x" in node) || !("y" in node)) {
+            throw new Error(`Node does not support position: ${nodeId}`);
+        }
+        if (x !== undefined) node.x = x;
+        if (y !== undefined) node.y = y;
     }
 
-    node.x = x;
-    node.y = y;
+    // Apply width and height if provided
+    if (width !== undefined || height !== undefined) {
+        if (!("resize" in node)) {
+            throw new Error(`Node does not support resizing: ${nodeId}`);
+        }
+        // @ts-ignore
+        const currentWidth = node.width;
+        // @ts-ignore
+        const currentHeight = node.height;
+        // @ts-ignore
+        node.resize(width ?? currentWidth, height ?? currentHeight);
+    }
 
     return {
         id: node.id,
         name: node.name,
-        x: node.x,
-        y: node.y,
-    };
-}
-
-/**
- * Resizes a node
- * @param {Object} params - Parameters object
- * @param {string} params.nodeId - ID of node to resize
- * @param {number} params.width - New width
- * @param {number} params.height - New height
- * @returns {Promise<Object>} Updated node info
- */
-export async function resizeNode(params: any) {
-    const { nodeId, width, height } = params || {};
-
-    if (!nodeId) {
-        throw new Error("Missing nodeId parameter");
-    }
-
-    if (width === undefined || height === undefined) {
-        throw new Error("Missing width or height parameters");
-    }
-
-    const node = await figma.getNodeByIdAsync(nodeId);
-    if (!node) {
-        throw new Error(`Node not found with ID: ${nodeId}`);
-    }
-
-    if (!("resize" in node)) {
-        throw new Error(`Node does not support resizing: ${nodeId}`);
-    }
-
-    node.resize(width, height);
-
-    return {
-        id: node.id,
-        name: node.name,
-        width: node.width,
-        height: node.height,
+        x: "x" in node ? node.x : undefined,
+        y: "y" in node ? node.y : undefined,
+        width: "width" in node ? node.width : undefined,
+        height: "height" in node ? node.height : undefined,
     };
 }
 
@@ -97,7 +74,7 @@ export async function deleteMultipleNodes(params: any) {
         const errorMsg = "Missing or invalid nodeIds parameter";
         await sendProgressUpdate(
             commandId,
-            "delete_multiple_nodes",
+            "node.delete",
             "error",
             0,
             0,
@@ -113,7 +90,7 @@ export async function deleteMultipleNodes(params: any) {
     // Send started progress update
     await sendProgressUpdate(
         commandId,
-        "delete_multiple_nodes",
+        "node.delete",
         "started",
         0,
         nodeIds.length,
@@ -139,7 +116,7 @@ export async function deleteMultipleNodes(params: any) {
     // Send chunking info update
     await sendProgressUpdate(
         commandId,
-        "delete_multiple_nodes",
+        "node.delete",
         "in_progress",
         5,
         nodeIds.length,
@@ -163,7 +140,7 @@ export async function deleteMultipleNodes(params: any) {
         // Send chunk processing start update
         await sendProgressUpdate(
             commandId,
-            "delete_multiple_nodes",
+            "node.delete",
             "in_progress",
             Math.round(5 + (chunkIndex / chunks.length) * 90),
             nodeIds.length,
@@ -233,7 +210,7 @@ export async function deleteMultipleNodes(params: any) {
         // Send chunk processing complete update
         await sendProgressUpdate(
             commandId,
-            "delete_multiple_nodes",
+            "node.delete",
             "in_progress",
             Math.round(5 + ((chunkIndex + 1) / chunks.length) * 90),
             nodeIds.length,
@@ -263,7 +240,7 @@ export async function deleteMultipleNodes(params: any) {
     // Send completed progress update
     await sendProgressUpdate(
         commandId,
-        "delete_multiple_nodes",
+        "node.delete",
         "completed",
         100,
         nodeIds.length,

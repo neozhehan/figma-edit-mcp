@@ -91,15 +91,35 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         sendCommandToFigma = clientMod.sendCommandToFigma;
         resetChannel = clientMod.resetChannel;
 
-        const docMod = await import("../../../tools/document.js");
+        const channelMod = await import("../../../tools/channel.js");
         registeredTools = {};
         const mockServer: any = {
+            registerTool: mock((name: string, options: any, handler: Function) => {
+                const wrapper = async (args: any) => {
+                    const res = await handler(args);
+                    if (res && res.structuredContent) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: JSON.stringify(res.structuredContent)
+                                }
+                            ]
+                        };
+                    }
+                    return res;
+                };
+                registeredTools[name] = wrapper;
+                if (name === "channel.join") {
+                    registeredTools["join_channel"] = wrapper;
+                }
+            }),
             tool: mock((name: string, _desc: any, _schema: any, handler: Function) => {
                 registeredTools[name] = handler;
             }),
             prompt: mock(() => {}),
         };
-        docMod.registerDocumentTools(mockServer);
+        channelMod.registerChannelTools(mockServer);
     });
 
     it("readonly payload: exact shape", async () => {
@@ -228,15 +248,35 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         sendCommandToFigma = clientMod.sendCommandToFigma;
         resetChannel = clientMod.resetChannel;
 
-        const docMod = await import("../../../tools/document.js");
+        const channelMod = await import("../../../tools/channel.js");
         registeredTools = {};
         const mockServer: any = {
+            registerTool: mock((name: string, options: any, handler: Function) => {
+                const wrapper = async (args: any) => {
+                    const res = await handler(args);
+                    if (res && res.structuredContent) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: JSON.stringify(res.structuredContent)
+                                }
+                            ]
+                        };
+                    }
+                    return res;
+                };
+                registeredTools[name] = wrapper;
+                if (name === "channel.join") {
+                    registeredTools["join_channel"] = wrapper;
+                }
+            }),
             tool: mock((name: string, _desc: any, _schema: any, handler: Function) => {
                 registeredTools[name] = handler;
             }),
             prompt: mock(() => {}),
         };
-        docMod.registerDocumentTools(mockServer);
+        channelMod.registerChannelTools(mockServer);
     });
 
     it("SCOPE_DELETED: structured error, resetChannel called, no payload fields", async () => {
@@ -332,9 +372,29 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
         joinChannel = clientMod.joinChannel;
         resetChannel = clientMod.resetChannel;
 
-        const docMod = await import("../../../tools/document.js");
+        const channelMod = await import("../../../tools/channel.js");
         registeredTools = {};
         const mockServer: any = {
+            registerTool: mock((name: string, options: any, handler: Function) => {
+                const wrapper = async (args: any) => {
+                    const res = await handler(args);
+                    if (res && res.structuredContent) {
+                        return {
+                            content: [
+                                {
+                                    type: "text",
+                                    text: JSON.stringify(res.structuredContent)
+                                }
+                            ]
+                        };
+                    }
+                    return res;
+                };
+                registeredTools[name] = wrapper;
+                if (name === "channel.join") {
+                    registeredTools["join_channel"] = wrapper;
+                }
+            }),
             tool: mock(
                 (name: string, _desc: any, _schema: any, handler: Function) => {
                     registeredTools[name] = handler;
@@ -342,7 +402,7 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
             ),
             prompt: mock(() => {}),
         };
-        docMod.registerDocumentTools(mockServer);
+        channelMod.registerChannelTools(mockServer);
     });
 
     it("no partial-success: all failure variants lack payload fields", async () => {

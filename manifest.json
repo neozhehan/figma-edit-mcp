@@ -2,7 +2,8 @@
   "manifest_version": "0.2",
   "name": "figma-edit-mcp",
   "display_name": "Figma Edit MCP",
-  "version": "1.5.2",
+  "version": "2.0.0",
+  "icon": "icon.png",
   "description": "Read, create, and modify Figma designs programmatically via MCP, empowering AI to execute Figma changes safer, cleaner, and faster.",
   "long_description": "Connect AI assistants to Figma via Model Context Protocol to read designs, create and modify elements, and manage design systems programmatically.\n\nThis plugin empowers your AI assistant to become an active design co-pilot, executing updates and modifications Safer, Cleaner, and Faster than manual entry. By offloading repetitive, error-prone manual operations to automated systems, designers are freed to focus entirely on creative decision-making and product strategy.\n\n### Core Principles\n\n* **🛡️ Safer**: The server enforces robust programmatic checks and validations that exceed the Figma Desktop app's default protections. For instance, it prevents deleting variables currently in use to avoid dangling references. By validating all writes against a locked editable scope and strict name checks before execution, it protects files from human error and AI hallucinations.\n\n* **✨ Cleaner**: System-driven, programmatic operations guarantee that no layers, text nodes, or components are skipped or forgotten during complex updates. Every design file stays consistent and conforms exactly to your design system.\n\n* **⚡ Faster**: Bulk edits like propagating instance overrides, batch-updating copy, or restructuring auto-layout frames are handled via high-performance APIs. Hours of tedious, click-heavy manual work are completed in seconds.\n\n### How it Works (Prerequisites)\nThis server runs locally on your machine. To operate, it requires:\n1. The Figma Desktop App to be open.\n2. The `Figma Edit` plugin to be active on the file you want to modify (listening on local port `3845`).",
   "author": {

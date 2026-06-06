@@ -11,29 +11,31 @@ import { PathTuple } from '../../shared/nodeTypes.js';
  */
 export const SAFE_LIST_PROPERTIES: ReadonlySet<string> = new Set([
     // Identity & structure
-    "id", "name", "type", "parent", "key", "expanded",
+    "id", "name", "type", "parent", "removed", "isAsset", "key", "expanded",
     // Visibility
-    "visible", "locked", "opacity", "blendMode", "isMask", "maskType",
+    "visible", "locked", "opacity", "blendMode", "isMask", "maskType", "stuckNodes", "attachedConnectors",
     // Geometry & transform
-    "x", "y", "width", "height", "rotation", "absoluteBoundingBox", "absoluteRenderBounds", "absoluteTransform", "relativeTransform", "constrainProportions",
+    "x", "y", "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight", "rotation", "relativeTransform", "absoluteTransform", "absoluteBoundingBox", "absoluteRenderBounds", "constraints", "constrainProportions", "targetAspectRatio", "layoutAlign", "layoutGrow", "layoutPositioning", "layoutSizingHorizontal", "layoutSizingVertical",
     // Auto-layout
-    "layoutMode", "layoutAlign", "layoutGrow", "layoutPositioning", "layoutWrap", "layoutSizingHorizontal", "layoutSizingVertical", "primaryAxisAlignItems", "primaryAxisSizingMode", "counterAxisAlignItems", "counterAxisSizingMode", "counterAxisSpacing", "counterAxisAlignContent", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "itemSpacing", "minWidth", "maxWidth", "minHeight", "maxHeight", "clipsContent",
-    // Constraints
-    "constraints",
+    "layoutMode", "layoutWrap", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "primaryAxisSizingMode", "counterAxisSizingMode", "primaryAxisAlignItems", "counterAxisAlignItems", "counterAxisAlignContent", "itemSpacing", "counterAxisSpacing", "itemReverseZIndex", "strokesIncludedInLayout", "clipsContent", "layoutGrids", "guides", "inferredAutoLayout", "detachedInfo",
+    // Grid child
+    "gridRowCount", "gridColumnCount", "gridRowGap", "gridColumnGap", "gridRowSizes", "gridColumnSizes", "gridAutoTracks", "gridItemsPositioning", "gridRowSpan", "gridColumnSpan", "gridChildHorizontalAlign", "gridChildVerticalAlign", "gridRowAnchorIndex", "gridColumnAnchorIndex",
     // Corner radius
-    "cornerRadius", "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius", "cornerSmoothing",
+    "cornerRadius", "cornerSmoothing", "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius",
     // Fills & strokes
-    "fills", "fillStyleId", "strokes", "strokeStyleId", "strokeWeight", "strokeAlign", "strokeCap", "strokeJoin", "strokeMiterLimit", "dashPattern", "strokeLeftWeight", "strokeRightWeight", "strokeTopWeight", "strokeBottomWeight",
+    "fills", "strokes", "strokeWeight", "strokeJoin", "strokeAlign", "strokeCap", "strokeMiterLimit", "dashPattern", "strokeLeftWeight", "strokeRightWeight", "strokeTopWeight", "strokeBottomWeight", "variableWidthStrokeProperties", "complexStrokeProperties", "fillStyleId", "strokeStyleId",
     // Effects
     "effects", "effectStyleId",
-    // Text
-    "characters", "fontSize", "fontName", "fontWeight", "lineHeight", "letterSpacing", "paragraphIndent", "paragraphSpacing", "listSpacing", "textCase", "textDecoration", "textAlignHorizontal", "textAlignVertical", "textAutoResize", "autoRename", "maxLines", "textTruncation", "hangingPunctuation", "hangingList", "leadingTrim", "hasMissingFont", "hyperlink",
-    // Component / instance
-    "componentProperties", "componentPropertyDefinitions", "componentPropertyReferences", "variantProperties", "overrides", "exposedInstances", "isExposedInstance", "scaleFactor", "mainComponent",
     // Prototyping
-    "reactions", "transitionNodeID", "transitionDuration", "transitionEasing",
+    "reactions", "overflowDirection", "numberOfFixedChildren", "overlayPositionType", "overlayBackground", "overlayBackgroundInteraction", "transitionNodeID", "transitionDuration", "transitionEasing",
+    // Component / instance
+    "componentProperties", "variantProperties", "componentPropertyDefinitions", "exposedInstances", "isExposedInstance", "scaleFactor", "overrides", "description", "descriptionMarkdown", "documentationLinks", "remote", "variantGroupProperties", "mainComponent", "instances",
+    // Text
+    "characters", "fontSize", "fontName", "fontWeight", "lineHeight", "letterSpacing", "paragraphIndent", "paragraphSpacing", "listSpacing", "textCase", "textDecoration", "textAlignHorizontal", "textAlignVertical", "textAutoResize", "autoRename", "maxLines", "textTruncation", "hangingPunctuation", "hangingList", "leadingTrim", "hasMissingFont", "hyperlink", "textDecorationStyle", "textDecorationOffset", "textDecorationThickness", "textDecorationColor", "textDecorationSkipInk", "openTypeFeatures",
+    // Vector
+    "handleMirroring", "vectorNetwork", "vectorPaths", "fillGeometry", "strokeGeometry",
     // Variables
-    "boundVariables", "explicitVariableModes",
+    "boundVariables", "explicitVariableModes", "inferredVariables", "resolvedVariableModes", "componentPropertyReferences",
     // Export & dev metadata
     "exportSettings", "devStatus", "annotations"
 ]);

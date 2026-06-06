@@ -10,20 +10,20 @@
 
 ## WS1 — Version & metadata hygiene
 
-- [ ] R1.1 Sync version to `2.0.0` in [package.json](../../package.json), [server.json](../../server.json) (both `version` fields), [manifest.json](../../manifest.json).
-- [ ] R1.2 Fix [server.ts](../../src/mcp_server/server.ts) hardcoded `version: "1.0.0"` → read from `package.json` at runtime (kills version drift; also corrects server `name`).
-- [ ] R1.3 Add `skills` to the `files` allowlist in [package.json](../../package.json) so the skill + references ship in the tarball.
-- [ ] R1.4 **Add a server icon** (Smithery Metadata, 8pt) to the `.mcpb` [manifest.json](../../manifest.json) via the `icon` field (and/or `icons` array). **Source:** [`documentation/v2.0.0/resources/Figma Edit MCP Plugin Icon.png`](./resources/Figma%20Edit%20MCP%20Plugin%20Icon.png) (1024×1024 PNG). Copy it into a location that ships in the bundle (e.g. repo root or an `assets/` dir added to the `files` allowlist) and reference it from the manifest — the `documentation/` source is planning-only and is **not** in the tarball. ⚠️ Rename to a space-free filename (e.g. `icon.png`) when copying; spaces in the manifest icon path are fragile.
+- [x] R1.1 Sync version to `2.0.0` in [package.json](../../package.json), [server.json](../../server.json) (both `version` fields), [manifest.json](../../manifest.json).
+- [x] R1.2 Fix [server.ts](../../src/mcp_server/server.ts) hardcoded `version: "1.0.0"` → read from `package.json` at runtime (kills version drift; also corrects server `name`).
+- [x] R1.3 Add `skills` to the `files` allowlist in [package.json](../../package.json) so the skill + references ship in the tarball.
+- [x] R1.4 **Add a server icon** (Smithery Metadata, 8pt) to the `.mcpb` [manifest.json](../../manifest.json) via the `icon` field (and/or `icons` array). **Source:** [`documentation/v2.0.0/resources/Figma Edit MCP Plugin Icon.png`](./resources/Figma%20Edit%20MCP%20Plugin%20Icon.png) (1024×1024 PNG). Copy it into a location that ships in the bundle (e.g. repo root or an `assets/` dir added to the `files` allowlist) and reference it from the manifest — the `documentation/` source is planning-only and is **not** in the tarball. ⚠️ Rename to a space-free filename (e.g. `icon.png`) when copying; spaces in the manifest icon path are fragile.
 
 ## WS2 — Documentation deferral
 
-- [ ] R2.1 Extract the **operational** content of [AGENTS.md](../../AGENTS.md) into `skills/figma-edit/references/{constraints,error-playbook,workflows,tool-selection}.md` (4 files, the canonical source). **Drop** the "tripartite / who decides" framing and any design-philosophy prose — include only what's needed to *use* the server. Fold the "when a constraint forbids the request" rule into `constraints.md`. Update tool names to the new dot-notation (coordinate with WS3).
-- [ ] R2.2 Add an MCP resources handler (`src/mcp_server/resources.ts`) registering one resource per reference file under `figma-edit://guide/*`; read file contents lazily on `resources/read`; `mimeType: text/markdown`; fail soft (return error text, never crash startup).
-- [ ] R2.3 Add a tiny eager `instructions` breadcrumb to the `McpServer` options pointing agents at the resources (and the skill) before writes / on errors.
-- [ ] R2.4 Create `skills/figma-edit/SKILL.md` — frontmatter (`name`, `description` with trigger guidance) + thin body that points into `references/`.
-- [ ] R2.5 Slim [AGENTS.md](../../AGENTS.md) to a pointer (constraints exist → load the skill / read `figma-edit://guide/*`). No duplicated body.
-- [ ] R2.6 Verify/adjust [CLAUDE.md](../../CLAUDE.md) wiring so the in-repo experience is no longer an eager full-guide load.
-- [ ] R2.7 Document skill installation in [README.md](../../README.md) (one-time copy into the user's skills dir).
+- [x] R2.1 Extract the **operational** content of [AGENTS.md](../../AGENTS.md) into `skills/figma-edit/references/{constraints,error-playbook,workflows,tool-selection}.md` (4 files, the canonical source). **Drop** the "tripartite / who decides" framing and any design-philosophy prose — include only what's needed to *use* the server. Fold the "when a constraint forbids the request" rule into `constraints.md`. Update tool names to the new dot-notation (coordinate with WS3).
+- [x] R2.2 Add an MCP resources handler (`src/mcp_server/resources.ts`) registering one resource per reference file under `figma-edit://guide/*`; read file contents lazily on `resources/read`; `mimeType: text/markdown`; fail soft (return error text, never crash startup).
+- [x] R2.3 Add a tiny eager `instructions` breadcrumb to the `McpServer` options pointing agents at the resources (and the skill) before writes / on errors.
+- [x] R2.4 Create `skills/figma-edit/SKILL.md` — frontmatter (`name`, `description` with trigger guidance) + thin body that points into `references/`.
+- [x] R2.5 Slim [AGENTS.md](../../AGENTS.md) to a pointer (constraints exist → load the skill / read `figma-edit://guide/*`). No duplicated body.
+- [x] R2.6 Verify/adjust [CLAUDE.md](../../CLAUDE.md) wiring so the in-repo experience is no longer an eager full-guide load.
+- [x] R2.7 Document skill installation in [README.md](../../README.md) (one-time copy into the user's skills dir).
 
 ## WS3 — Tool API redesign `[breaking — OK]`
 
@@ -76,7 +76,9 @@
 - [ ] R5.3 `bun run build:all` succeeds; `bun test` green (incl. all R5.1 additions).
 - [ ] R5.4 Remove the `temp/` scratch dir.
 - [ ] R5.5 Prep publish only — leave `npm publish` + git tag to the maintainer (npm 2FA).
-- [ ] R5.6 **Live-Figma verification** (mock-bias guard, critique §3) — in a real Figma session, exercise what mocks can't: `node.info` with `parent`/`mainComponent`/`exposedInstances` (no `DataCloneError`); `create.shape` actually applies fills and produces the correct star point count; `node.transform` partial updates; `style.delete` detaches consumers. The suite passes green on mocks while these can fail live.
+- [ ] R5.6 **Live verification against the running server** (mock-bias guard, critique §3) — `bun test` passes green on mocks while both of the following can fail live. This is the only task that runs the real stack; the server is local-only (needs the Figma desktop app + plugin on `localhost`).
+  - [ ] R5.6a **Live-Figma (canvas/host-object) checks** — in a real Figma session, exercise what mocks can't: `node.info` with `parent`/`mainComponent`/`exposedInstances` (no `DataCloneError`); `create.shape` actually applies fills and produces the correct star point count; `node.transform` partial updates; `style.delete` detaches consumers.
+  - [ ] R5.6b **MCP-protocol round-trip** (real client, e.g. MCP Inspector or a small stdio client against `dist/server.js`) — covers the surface unit tests bypass by calling handlers directly: every tool result carries **both** a `content` text block **and** a schema-valid `structuredContent` (R3.6 output validation is dormant under `bun test` and only fires for a real client — see [_result.ts](../../src/mcp_server/tools/_result.ts)). Exercise a read (`page.info`/`node.info`), a write (`node.transform`), and a delete (`style.delete`); confirm the eager `instructions` breadcrumb at `initialize` and `resources/read` of each `figma-edit://guide/*` (R2.2/R2.3).
 
 ## WS6 — Documentation sweep (new-reader, new names)
 
