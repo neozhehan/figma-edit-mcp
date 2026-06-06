@@ -8,7 +8,7 @@
 >
 > Parameter descriptions (R3.5) and output schemas (R3.6) are tracked separately — see [§ Output schemas & parameter descriptions](#output-schemas--parameter-descriptions). The `node.info` field set comes from [node-fields.md](./node-fields.md).
 
-**Count:** 48 current → 44 (three consolidations: `create.shape`, `node.transform`, `get_node_variables`→`node.info`) → **45** (one destructive-split: `component.delete_property`). See [consolidation-sweep.md](./consolidation-sweep.md).
+**Count:** 48 current → 44 (three consolidations: `create.shape`, `node.transform`, `get_node_variables`→`node.info`) → 45 (one destructive-split: `component.delete_property`) → **46** (one net-new tool: `style.delete`). See [consolidation-sweep.md](./consolidation-sweep.md).
 
 ---
 
@@ -19,7 +19,7 @@
 | Hint | Meaning | Convention in this project |
 |---|---|---|
 | `readOnlyHint` | Does not modify the document. | `true` for every read (`*.list`, `*.info`, `get_*`, `node.export_visual`). |
-| `destructiveHint` | May perform destructive/irreversible updates. Only meaningful when not read-only. | `true` for deletes and lossy/structural removals (`node.delete`, `variable.delete`, `component.delete_property`, `node.flatten`, `node.ungroup`). |
+| `destructiveHint` | May perform destructive/irreversible updates. Only meaningful when not read-only. | `true` for deletes and lossy/structural removals (`node.delete`, `variable.delete`, `component.delete_property`, `style.delete`, `node.flatten`, `node.ungroup`). |
 | `idempotentHint` | Repeating the call with the same args yields no *additional* change. | `true` for **absolute setters** (`node.set_*`, `node.rename`, `node.transform`, `text.set_*`, `reaction.update`, …) and re-deletes. `false` for **creators** (each call makes a new node) and **routers with a CREATE branch**. |
 | `openWorldHint` | Interacts with an open world of external, concurrently-mutating entities. | **`true` for *every* tool** — the Figma file is a live document a human edits concurrently (state can change between your read and write; this is the premise of the name-verification constraint). Omitted from the table below since it is constant. |
 
@@ -61,7 +61,7 @@
 ### `create`
 | New name | Old name(s) | Title | Description | RO | Dst | Idm |
 |---|---|---|---|:--:|:--:|:--:|
-| `create.shape` | `create_rectangle` **+** `create_ellipse` **+** `create_polygon_star` *(merged)* | Create Shape | Create a rectangle, ellipse, polygon, or star via `type`, with position/size and optional `fillColor`/`strokeColor`. Shape-specific params (`arcData`; `pointCount`/`innerRadius`) validated by `type`. | | | |
+| `create.shape` | `create_rectangle` **+** `create_ellipse` **+** `create_polygon_star` *(merged)* | Create Shape | Create a rectangle, ellipse, polygon, or star via `type`, with position/size and optional `fillColor`/`strokeColor`. Shape-specific params (`arcData`; `pointCount`/`innerRadius`) validated by `type`. `pointCount` = sides (polygon) or points (star), native count — no even-parity rule. | | | |
 | `create.frame` | `create_frame` | Create Frame | Create a frame (container) with optional fill/stroke and full auto-layout configuration. | | | |
 | `create.text` | `create_text` | Create Text | Create a text node with content and optional font size/weight/color. | | | |
 | `create.svg` | `create_node_from_svg` | Create Node from SVG | Create a node from an SVG markup string. | | | |
@@ -75,6 +75,7 @@
 |---|---|---|---|:--:|:--:|:--:|
 | `style.list` | `get_styles` | List Styles | List all local styles (paint/text/effect/grid) in the document. | ✓ | | |
 | `style.manage` | `manage_style` | Manage Style | Create a named style (paint/text/effect/grid), or update an existing one when `styleId` is given. | | | |
+| `style.delete` | *(net-new)* | Delete Style | Delete a local style by id. Detaches consumers — they keep their resolved values and lose only the style link. | | ✓ | ✓ |
 
 ### `text`
 | New name | Old name(s) | Title | Description | RO | Dst | Idm |
@@ -125,6 +126,7 @@
 ## Annotation rationale (borderline calls)
 
 - **`node.delete` / `variable.delete` — `destructive` ✓ *and* `idempotent` ✓.** Deletion is destructive; a repeat call on an already-gone target adds no further change, so it is also idempotent.
+- **`style.delete` — `destructive` ✓, no consumer check.** Unlike `variable.delete` (which guards against dangling references with a full-document scan), deleting a style is a **safe detach** — consumers keep their resolved values and lose only the style link — so it needs the destructive hint but *not* a consumer-safety check, mirroring `component.delete_property`.
 - **`node.ungroup` / `node.flatten` — `destructive` ✓.** Neither removes "data" in the delete sense, but both **irreversibly remove structure** (ungroup destroys the group container; flatten collapses a subtree into one vector). Flagged destructive so clients warn appropriately.
 - **`component.delete_property` split from `component.manage_property`.** Mirrors `variable.delete` vs `variable.manage` (rule 4): isolating `DELETE` keeps `manage_property` (ADD/EDIT) non-destructive and scopes `destructiveHint: true` to the delete alone, instead of over-warning on ADD/EDIT.
 - **Routers with a CREATE branch (`style.manage`, `variable.manage`, `create.connection`) — `idempotent` blank.** They can create new objects, so repeats are not no-ops. `create.connection`'s no-arg "check default" path is read-only, but the tool as a whole writes, so it is not marked `readOnlyHint`.
@@ -137,7 +139,7 @@
 
 Tracked separately from this table (they are not expressible in the `.mcpb` manifest `tools` array — see R4.3):
 
-- **Parameter descriptions (R3.5):** every input param across all 45 tools gets a `.describe(...)`. Audit during the rename.
+- **Parameter descriptions (R3.5):** every input param across all 46 tools gets a `.describe(...)`. Audit during the rename.
 - **Output schemas (R3.6):** migrate to `registerTool({ …, outputSchema })` + `structuredContent`. Priority-1 (high-value reads): `node.info`, `page.info`, `style.list`, `component.list`, `variable.list`; then extend to writes. `node.info`'s returnable field set + fast/slow flags come from [node-fields.md](./node-fields.md) (generated from `@figma/plugin-typings`).
 
 ---
@@ -151,6 +153,7 @@ Tracked separately from this table (they are not expressible in the `.mcpb` mani
 | − `resize_node` folded into `node.transform` | −1 |
 | − `get_node_variables` folded into `node.info` | −1 |
 | + `component.delete_property` split from `component.manage_property` | +1 |
-| **v2.0.0 total** | **45** |
+| + `style.delete` (net-new — first style-deletion capability) | +1 |
+| **v2.0.0 total** | **46** |
 
-(11 groups: `page` 1 · `node` 18 · `create` 8 · `style` 2 · `text` 2 · `component` 3 · `instance` 3 · `variable` 3 · `annotation` 2 · `reaction` 2 · `channel` 1.)
+(11 groups: `page` 1 · `node` 18 · `create` 8 · `style` 3 · `text` 2 · `component` 3 · `instance` 3 · `variable` 3 · `annotation` 2 · `reaction` 2 · `channel` 1.)

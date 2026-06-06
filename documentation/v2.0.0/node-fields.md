@@ -24,15 +24,15 @@ Everything else is a plain synchronous getter = **FAST**.
 | Identity | `id` · `name` · `type` · `parent` · `removed` · `isAsset` · `key` · `expanded` |
 | Visibility / blend | `visible` · `locked` · `opacity` · `blendMode` · `isMask` · `maskType` · `stuckNodes` · `attachedConnectors` |
 | Transform / geometry | `x` · `y` · `width` · `height` · `minWidth` · `maxWidth` · `minHeight` · `maxHeight` · `rotation` · `relativeTransform` · `absoluteTransform` · `absoluteBoundingBox` · `constraints` · `constrainProportions` · `targetAspectRatio` · `layoutAlign` · `layoutGrow` · `layoutPositioning` · `layoutSizingHorizontal` · `layoutSizingVertical` |
-| Auto-layout (frame) | `layoutMode` · `layoutWrap` · `paddingLeft` · `paddingRight` · `paddingTop` · `paddingBottom` · `primaryAxisSizingMode` · `counterAxisSizingMode` · `primaryAxisAlignItems` · `counterAxisAlignItems` · `counterAxisAlignContent` · `itemSpacing` · `counterAxisSpacing` · `itemReverseZIndex` · `strokesIncludedInLayout` · `clipsContent` · `layoutGrids` · `gridStyleId` · `guides` · `inferredAutoLayout` · `detachedInfo` |
+| Auto-layout (frame) | `layoutMode` · `layoutWrap` · `paddingLeft` · `paddingRight` · `paddingTop` · `paddingBottom` · `primaryAxisSizingMode` · `counterAxisSizingMode` · `primaryAxisAlignItems` · `counterAxisAlignItems` · `counterAxisAlignContent` · `itemSpacing` · `counterAxisSpacing` · `itemReverseZIndex` · `strokesIncludedInLayout` · `clipsContent` · `layoutGrids` · `guides` · `inferredAutoLayout` · `detachedInfo` |
 | Grid child | `gridRowCount` · `gridColumnCount` · `gridRowGap` · `gridColumnGap` · `gridRowSizes` · `gridColumnSizes` · `gridAutoTracks` · `gridItemsPositioning` · `gridRowSpan` · `gridColumnSpan` · `gridChildHorizontalAlign` · `gridChildVerticalAlign` · `gridRowAnchorIndex` · `gridColumnAnchorIndex` |
-| Fills / strokes (raw) | `fills` · `fillStyleId` · `strokes` · `strokeStyleId` · `strokeWeight` · `strokeJoin` · `strokeAlign` · `strokeCap` · `strokeMiterLimit` · `dashPattern` · `strokeTopWeight` · `strokeBottomWeight` · `strokeLeftWeight` · `strokeRightWeight` · `variableWidthStrokeProperties` · `complexStrokeProperties` |
+| Fills / strokes (raw) | `fills` · `strokes` · `strokeWeight` · `strokeJoin` · `strokeAlign` · `strokeCap` · `strokeMiterLimit` · `dashPattern` · `strokeTopWeight` · `strokeBottomWeight` · `strokeLeftWeight` · `strokeRightWeight` · `variableWidthStrokeProperties` · `complexStrokeProperties` |
 | Corner | `cornerRadius` · `cornerSmoothing` · `topLeftRadius` · `topRightRadius` · `bottomLeftRadius` · `bottomRightRadius` |
-| Effects | `effects` · `effectStyleId` |
-| Variables (raw IDs) | `boundVariables` · `inferredVariables` · `resolvedVariableModes` · `explicitVariableModes` · `componentPropertyReferences` |
+| Effects | `effects` |
+| Variables (raw) | `inferredVariables` · `resolvedVariableModes` · `componentPropertyReferences` |
 | Prototyping | `reactions` · `overflowDirection` · `numberOfFixedChildren` · `overlayPositionType` · `overlayBackground` · `overlayBackgroundInteraction` |
 | Component / instance | `componentProperties` · `variantProperties` · `componentPropertyDefinitions` · `exposedInstances` · `isExposedInstance` · `scaleFactor` · `overrides` · `description` · `descriptionMarkdown` · `documentationLinks` · `remote` · `variantGroupProperties` |
-| Text (when uniform) | `characters` · `hasMissingFont` · `autoRename` · `textAutoResize` · `textTruncation` · `maxLines` · `textAlignHorizontal` · `textAlignVertical` · `paragraphIndent` · `paragraphSpacing` · `listSpacing` · `hangingPunctuation` · `hangingList` · `fontSize` · `fontName` · `fontWeight` · `textCase` · `letterSpacing` · `lineHeight` · `leadingTrim` · `textDecoration` · `textDecorationStyle` · `textDecorationOffset` · `textDecorationThickness` · `textDecorationColor` · `textDecorationSkipInk` · `openTypeFeatures` · `textStyleId` · `hyperlink` |
+| Text (when uniform) | `characters` · `hasMissingFont` · `autoRename` · `textAutoResize` · `textTruncation` · `maxLines` · `textAlignHorizontal` · `textAlignVertical` · `paragraphIndent` · `paragraphSpacing` · `listSpacing` · `hangingPunctuation` · `hangingList` · `fontSize` · `fontName` · `fontWeight` · `textCase` · `letterSpacing` · `lineHeight` · `leadingTrim` · `textDecoration` · `textDecorationStyle` · `textDecorationOffset` · `textDecorationThickness` · `textDecorationColor` · `textDecorationSkipInk` · `openTypeFeatures` · `hyperlink` |
 | Vector | `handleMirroring` |
 | Export / dev / annotation | `exportSettings` · `devStatus` · `annotations` |
 
@@ -48,20 +48,32 @@ Everything else is a plain synchronous getter = **FAST**.
 | `vectorPaths` | Large computed vector geometry |
 | `fillGeometry` · `strokeGeometry` | Computed vector path geometry |
 | `absoluteRenderBounds` | Derived from **rendering** (cf. the fast `absoluteBoundingBox`) |
-| Resolved **names** of `fillStyleId` / `strokeStyleId` / `effectStyleId` / `textStyleId` / `gridStyleId` | Raw ID is fast; the style **name** needs `getStyleByIdAsync()` |
-| Resolved `boundVariables` / `explicitVariableModes` | Raw alias/mode IDs are fast; **variable / collection / mode names** need `getVariableByIdAsync()` / `getVariableCollectionByIdAsync()` |
+| `*StyleId` (`fill`/`stroke`/`effect`/`text`/`grid`) · `boundVariables` · `explicitVariableModes` | **Library-object references** — `node.info` resolves these to `{id, name}` by default (one cached async hop via `getStyleByIdAsync` / `getVariableByIdAsync` / `getVariableCollectionByIdAsync`). See **Reference fields** below |
 | Any text field that is `figma.mixed` | Real per-range values need `getStyledTextSegments()` / `getRange*()` |
 
 ---
 
-## The crux: raw reference = fast, resolved reference = slow
+## Reference fields (derived — not raw getters)
 
-This is the key rule for the `get_node_variables` → `node.info` fold (tasks R3.3) and for any style/component reference:
+Some fields' getters return a **reference** — a live node, or an opaque library-object id. `node.info` never returns the raw object / opaque-id form; it returns a **derived** value. Two rules, by reference kind:
 
-- The **IDs** — `fillStyleId`, `effectStyleId`, `textStyleId`, `boundVariables`, `explicitVariableModes`, `mainComponent` (write side) — are cheap synchronous reads.
-- Turning those IDs into human-readable **names** (`getStyleByIdAsync`, `getVariableByIdAsync`, `getMainComponentAsync`) is the async/slow work.
+### Node references → ID(s)
 
-So a "resolved" field (e.g. enriched `boundVariables` with names) is **SLOW** even though the raw form is FAST.
+Getter returns a live Figma node (or array of nodes): `parent` · `mainComponent` · `instances` · `exposedInstances` · `stuckNodes` · `attachedConnectors`.
+
+`node.info` returns the node **id(s)** (`string` / `string[]`) — never the raw node object. Mandatory, not cosmetic: a live Figma node is a host object that **cannot be structured-cloned across `figma.ui.postMessage` nor `JSON.stringify`'d**; returning one raw throws `DataCloneError` / "Converting circular structure to JSON", surfacing as a failed `node.info`. `extractProperties` must map each to `.id` (or `.map(n => n.id)`) **before** the result is posted. Latency: `parent` / `exposedInstances` / `stuckNodes` / `attachedConnectors` are sync (FAST); `mainComponent` / `instances` are async (SLOW). The id-mapping itself is trivial.
+
+**Why id, not name:** you operate on nodes **by id** (every write tool takes an id), and a node's name is one cheap `node.info` away. The id is the operative key.
+
+### Library-object references → `{id, name}` (resolved by default)
+
+Getter holds an opaque id pointing at a **style, variable, or mode**: `fillStyleId` · `strokeStyleId` · `effectStyleId` · `textStyleId` · `gridStyleId` · `boundVariables` · `explicitVariableModes`.
+
+`node.info` returns the **resolved superset `{id, name}`** — for `boundVariables` / `explicitVariableModes`, per binding, **recursing into arrays** (`fills` / `strokes` / `effects` / `layoutGrids`) and **nested maps** (`componentProperties`) (see tasks R3.3). There is **no raw-id-only variant.**
+
+**Why resolve by default, and why no raw tier:** unlike a node id, a style/variable id (`VariableID:1:23`) is **opaque** — an LLM can't reason about it, so a raw default would just force an inevitable follow-up to fetch the name. The resolved form is a **superset** — it still carries the `id`, so round-tripping into `node.bind_variable` / `node.apply_style` (which take ids) still works. A raw-id-only field would serve only a niche "bulk-transfer-by-id, names never needed" case while making the obvious field name return opaque ids — a footgun. Cost is bounded: resolution **caches per unique style/variable**, so it scales with distinct tokens, not node count. These fields are therefore **SLOW** (one cached async hop), reclassified out of the FAST tables above.
+
+See tasks **R3.3** (recursive resolver) and **R3.8** (field set / generation).
 
 ---
 

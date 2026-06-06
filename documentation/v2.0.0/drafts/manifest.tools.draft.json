@@ -30,6 +30,7 @@
     { "name": "create.connection", "description": "Create connector lines between nodes, or set/check the default connector template." },
     { "name": "style.list", "description": "List all local styles (paint/text/effect/grid) in the document." },
     { "name": "style.manage", "description": "Create a named style (paint/text/effect/grid), or update an existing one when styleId is given." },
+    { "name": "style.delete", "description": "Delete a local style by id. Detaches consumers — they keep their resolved values and lose only the style link." },
     { "name": "text.set_content", "description": "Set the text of one or more text nodes in a single batched, per-item-validated call." },
     { "name": "text.set_style", "description": "Set any combination of typography properties (font, size, weight, spacing, decoration, …) on a text node." },
     { "name": "component.list", "description": "List components in the document, with filtering and scope options." },

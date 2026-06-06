@@ -211,6 +211,7 @@ Tools are grouped into a two-level, dot-notation namespace (`group.action`). Rea
 |---|---|
 | `style.list` | List all local styles (paint/text/effect/grid) |
 | `style.manage` | Create a named style, or update one when `styleId` is given |
+| `style.delete` | Delete a local style by id (detaches consumers, which keep their resolved values) |
 
 ### `text` — text content & typography
 

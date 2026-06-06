@@ -19,7 +19,7 @@ Each tool is classified **Merge**, **Keep**, or **Already-consolidated**, using 
 >
 > - **Strong merge:** shapes (3 → 1) → **−2 tools**.
 > - **Judgment-call merges:** `move`+`resize` (−1); `delete_variables`→`manage` (−1, **not done**).
-> - **Final (decided):** shapes + `move`/`resize` + a post-sweep `get_node_variables`→`node.info` fold → **48 → 44**; plus splitting the destructive `DELETE` out of `manage_component_property` (→ `component.delete_property`, see C6) → **45**.
+> - **Final (decided):** shapes + `move`/`resize` + a post-sweep `get_node_variables`→`node.info` fold → **48 → 44**; plus splitting the destructive `DELETE` out of `manage_component_property` (→ `component.delete_property`, see C6) → **45**; plus a net-new `style.delete` (completes the style lifecycle — an addition, not a consolidation) → **46**.
 >
 > Aggressive merging beyond this fights the explicit-validation design and won't materially move Glama's "tool count" sub-score — 48 tools is largely inherent to Figma's API surface. **The dot-notation tree + annotations do more for the scores than merging does.**
 
@@ -75,6 +75,7 @@ Each tool is classified **Merge**, **Keep**, or **Already-consolidated**, using 
 | `get_styles` | — | **KEEP** (read) |
 | `manage_style` | type,name,propertiesJson?,styleId?,bindVariables? | **ALREADY-CONSOLIDATED** (create+update router) |
 | `apply_style` | nodeId,styleId,styleType | **KEEP** — links node→style (write) |
+| *(net-new)* `style.delete` | styleId, styleName | **ADD** — no style-deletion path existed; completes the `style.*` lifecycle (destructive, safe detach — no consumer check). See critique §2.2 |
 
 ### text
 | Tool | Key params | Verdict |
@@ -181,7 +182,8 @@ node.transform({ nodeId, nodeName, x?, y?, width?, height? })
 | + M1 (`node.transform`) | 45 | −3 |
 | + M1 + M2 | 44 | −4 |
 | **Decided** (shapes + M1 + C5 fold) | 44 | net −4 |
-| **+ C6 split** (`component.delete_property`) | **45** | +1 |
+| **+ C6 split** (`component.delete_property`) | 45 | +1 |
+| **+ `style.delete`** (net-new addition, critique §2.2) | **46** | +1 |
 
 **Recommendation:** take the **shape merge** (clear win + fixes an inconsistency); treat **M1 as optional**; **reject M2**. Land at **46** (or **45** with M1).
 
@@ -200,4 +202,4 @@ node.transform({ nodeId, nodeName, x?, y?, width?, height? })
 | C5 | Fold `get_node_variables` into `node.info` fields? (found post-sweep: `extractProperties` already does per-field async resolution, e.g. `mainComponent`) | Fold | ✅ **Yes — fold** |
 | C6 | Split destructive `DELETE` out of `manage_component_property`? (parallels C3 / `variable.delete`; isolates `destructiveHint` to the delete) | Split | ✅ **Yes — split → `component.delete_property`** |
 
-**Outcome:** shapes merge + transform merge + `get_node_variables`→`node.info` fold → 48 → 44; + `component.delete_property` split (C6) → **45 tools**.
+**Outcome:** shapes merge + transform merge + `get_node_variables`→`node.info` fold → 48 → 44; + `component.delete_property` split (C6) → 45; + net-new `style.delete` (addition, critique §2.2) → **46 tools**.

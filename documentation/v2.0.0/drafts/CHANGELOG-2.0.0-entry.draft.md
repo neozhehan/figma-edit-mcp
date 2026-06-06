@@ -14,10 +14,11 @@
 - **Split** (1 tool → 2): the `DELETE` action of `manage_component_property` becomes a standalone **`component.delete_property`**, so its destructive behavior is annotated separately. `component.manage_property` now handles `ADD` / `EDIT` only.
 - **Prompts:** `annotation_conversion_strategy` is **removed**; `text_replacement_strategy` is removed as a prompt and its recipe is folded into the `workflows` usage reference. `reaction_to_connector_strategy` and `swap_overrides_instances` are retained, rewritten to the new tool names.
 
-Net tool count: **48 → 45**.
+Net tool count: **48 → 46**.
 
 ### New
 
+- **`style.delete`** — a new tool to delete a local style by id (styles previously had no deletion path). Completes the style lifecycle (`style.list` / `style.manage` / `style.delete`), alongside `variable.delete` and `component.delete_property`. Deleting a style detaches its consumers — they keep their resolved values.
 - **MCP resources** — the usage guide is now served over the connection under `figma-edit://guide/*` (`constraints`, `error-playbook`, `workflows`, `tool-selection`), fetched lazily so it costs nothing until needed.
 - **Packaged skill** — a cross-tool `skills/figma-edit/` (`SKILL.md` + `references/`) discovered by agents that support the open `SKILL.md` standard; shipped in the npm tarball.
 - **Eager `instructions` breadcrumb** — a tiny pointer delivered at connection time directing agents to the resources/skill before writes and on errors.

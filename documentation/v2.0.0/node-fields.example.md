@@ -70,7 +70,6 @@ Pass field names to `node.info({ nodeIds, fields: [...] })`. Omitted fields are 
 | `strokesIncludedInLayout` | `boolean` — stroke counts toward layout size |
 | `clipsContent` | `boolean` |
 | `layoutGrids` | `LayoutGrid[]` |
-| `gridStyleId` | `string` |
 | `guides` | `Guide[]` |
 | `inferredAutoLayout` | `InferredAutoLayoutResult \| null` — layout Figma infers for a non-AL frame |
 | `detachedInfo` | `DetachedInfo \| null` — provenance if detached from a component |
@@ -91,9 +90,7 @@ Pass field names to `node.info({ nodeIds, fields: [...] })`. Omitted fields are 
 | field | type |
 |---|---|
 | `fills` | `Paint[]` · `mixed` |
-| `fillStyleId` | `string` · `mixed` |
 | `strokes` | `Paint[]` |
-| `strokeStyleId` | `string` |
 | `strokeWeight` | `number` · `mixed` |
 | `strokeJoin` | `StrokeJoin` · `mixed` |
 | `strokeAlign` | `'INSIDE' \| 'OUTSIDE' \| 'CENTER'` |
@@ -115,16 +112,15 @@ Pass field names to `node.info({ nodeIds, fields: [...] })`. Omitted fields are 
 | field | type |
 |---|---|
 | `effects` | `Effect[]` |
-| `effectStyleId` | `string` |
 
-### Variables (raw ids)
+### Variables (raw)
 | field | type |
 |---|---|
-| `boundVariables` | `{ [field]: VariableAlias \| VariableAlias[] }` — raw alias ids; **resolved names = slow** |
 | `inferredVariables` | `{ [field]: VariableAlias[] }` — variables Figma infers for unbound fields |
 | `resolvedVariableModes` | `{ [collectionId]: modeId }` |
-| `explicitVariableModes` | `{ [collectionId]: modeId }` — raw mode ids; **resolved names = slow** |
 | `componentPropertyReferences` | `{ [field]: string } \| null` — maps a field to a component-property name |
+
+> Style/variable references (`*StyleId`, `boundVariables`, `explicitVariableModes`) are **not** here — they resolve to `{id, name}` and live under **Slow fields** (see Reference fields in node-fields.md).
 
 ### Prototyping
 | field | type |
@@ -175,7 +171,6 @@ Pass field names to `node.info({ nodeIds, fields: [...] })`. Omitted fields are 
 | `leadingTrim` | `'CAP_HEIGHT' \| 'NONE'` · `mixed` — trims line-box leading |
 | `textDecoration` | `TextDecoration` · `mixed` |
 | `openTypeFeatures` | `{ [feature]: boolean }` |
-| `textStyleId` | `string` · `mixed` |
 | `hyperlink` | `HyperlinkTarget \| null` · `mixed` |
 
 ### Vector / export / dev
@@ -198,10 +193,12 @@ Pass field names to `node.info({ nodeIds, fields: [...] })`. Omitted fields are 
 | `vectorPaths` | `VectorPaths` | large computed vector geometry |
 | `fillGeometry` · `strokeGeometry` | `VectorPaths` | computed vector path geometry |
 | `absoluteRenderBounds` | `Rect \| null` | derived from rendering (use fast `absoluteBoundingBox` instead) |
-| *resolved* `fillStyleId` · `strokeStyleId` · `effectStyleId` · `textStyleId` · `gridStyleId` | `string` (name) | id is fast; the **name** needs `getStyleByIdAsync()` |
-| *resolved* `boundVariables` · `explicitVariableModes` | `{ …names }` | ids are fast; variable/collection/mode **names** need `getVariableByIdAsync()` etc. |
+| `fillStyleId` · `strokeStyleId` · `effectStyleId` · `textStyleId` · `gridStyleId` | `{ id, name }` | library-object ref — resolved by default via `getStyleByIdAsync()` (cached per style) |
+| `boundVariables` · `explicitVariableModes` | `{ [field]: { id, name } }` (recurses arrays/nested) | library-object ref — resolved by default via `getVariableByIdAsync()` / `getVariableCollectionByIdAsync()` (cached per token) |
 | any `mixed` text field, per-range | `StyledTextSegment[]` | `getStyledTextSegments()` / `getRange*()` |
 
 > **`mixed`:** a uniform value reads fast; if the field varies across the text the uniform read returns `figma.mixed` and the real per-range values are slow.
+>
+> **References:** node references (`parent`, `mainComponent`, `instances`, `exposedInstances`, …) return **id(s)**; library-object references (`*StyleId`, `boundVariables`, `explicitVariableModes`) return the resolved **`{id, name}`** superset (no raw-id variant). See node-fields.md → *Reference fields*.
 >
 > **Not `node.info` fields** (use the right tool — not requestable here): rendered image → `node.export_visual`; CSS → `getCSSAsync()`; publish status → `getPublishStatusAsync()`.
