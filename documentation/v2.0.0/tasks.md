@@ -3,6 +3,8 @@
 > Actionable checklist for the v2.0.0 release. For motivation, architecture, success criteria, and open decisions see [plan.md](./plan.md).
 >
 > **Branch:** `release/v2.0.0` · **Backwards compatibility is NOT required** (zero end-users) — rename/consolidate the tool API freely.
+>
+> **Testing — definition of done:** **no functional code change merges without unit tests in the same PR.** Server + handler logic (schemas, routing, validation, resolvers, id-mapping) is covered by `bun test` in [src/mcp_server/tests](../../src/mcp_server/tests); per-change coverage is enumerated in **R5.1**. Behaviors that mocks can't exercise — Figma host-object serialization and real canvas effects — additionally require a live-Figma check (**R5.6**), because the suite passes green on mocks while those can fail live (critique §3).
 
 ---
 
@@ -58,11 +60,23 @@
 
 ## WS5 — Release mechanics
 
-- [ ] R5.1 Update tests in [src/mcp_server/tests](../../src/mcp_server/tests) for renamed tools / new schemas.
+- [ ] R5.1 **Unit tests for every functional change** ([src/mcp_server/tests](../../src/mcp_server/tests)) — add or extend a test per change. One checkbox each:
+  - [ ] R5.1a **Renames (R3.2):** every tool responds under its new dot-notation name; old names are no longer registered.
+  - [ ] R5.1b **`create.shape` (R3.3):** `type` routes RECTANGLE/ELLIPSE/POLYGON/STAR; RECTANGLE applies `fillColor`/`strokeColor`; shape-specific validation (`arcData` ELLIPSE-only; `pointCount`/`innerRadius` polygon/star); **STAR `pointCount` native** — `pointCount: 5` → 5 spikes, no `/2`, no even-parity throw.
+  - [ ] R5.1c **`node.transform` (R3.3):** partial updates — `x`-only / `y`-only / `width`-only / `height`-only / move-only / resize-only / combined; all-undefined = no-op; missing resize dimension defaults from the node (no throw).
+  - [ ] R5.1d **`node.info` library-ref resolution (R3.3/R3.8):** returns resolved `{id, name}` for `boundVariables`/`explicitVariableModes`/`*StyleId`; **recursive resolver** covers array bindings (`fills`/`strokes`/`effects`/`layoutGrids`) and nested maps (`componentProperties`); no raw-id-only variant.
+  - [ ] R5.1e **`node.info` node-ref mapping (R3.8):** `parent`/`mainComponent`/`instances`/`exposedInstances`/`stuckNodes`/`attachedConnectors` return id(s), never node objects. ⚠️ Mocks return plain objects, so a unit test proves the *id-mapping logic* but not serialization-safety — pair with R5.6.
+  - [ ] R5.1f **`component.delete_property` (R3.3):** `DELETE` routed to the new tool; `manage_property` no longer accepts a `DELETE` action.
+  - [ ] R5.1g **`style.delete` (R3.3):** deletes by id with name verification; rejects on name mismatch (`NAME_MISMATCH`); safe-detach (no consumer-check rejection).
+  - [ ] R5.1h **Resources handler (R2.2):** lists the 4 `figma-edit://guide/*` resources; `resources/read` returns markdown; fails soft on a missing file (no startup crash).
+  - [ ] R5.1i **Runtime version + breadcrumb (R1.2/R2.3):** server reports the `package.json` version (not a hardcoded string); `instructions` is present and non-empty.
+  - [ ] R5.1j **Output schemas + annotations (R3.6/R3.7):** every tool registers an `outputSchema` and the full annotation set; assert `readOnlyHint`/`destructiveHint`/`idempotentHint` values against [tool-reference.md](./tool-reference.md).
+  - [ ] R5.1k **Schema completeness (R3.4/R3.5):** every tool has a non-empty description; every input param has a `.describe(...)` (table-driven over the registry).
 - [ ] R5.2 CHANGELOG `[2.0.0]` entry — see **R6.7** (the migration table lives there).
-- [ ] R5.3 `bun run build:all` succeeds; `bun test` green.
+- [ ] R5.3 `bun run build:all` succeeds; `bun test` green (incl. all R5.1 additions).
 - [ ] R5.4 Remove the `temp/` scratch dir.
 - [ ] R5.5 Prep publish only — leave `npm publish` + git tag to the maintainer (npm 2FA).
+- [ ] R5.6 **Live-Figma verification** (mock-bias guard, critique §3) — in a real Figma session, exercise what mocks can't: `node.info` with `parent`/`mainComponent`/`exposedInstances` (no `DataCloneError`); `create.shape` actually applies fills and produces the correct star point count; `node.transform` partial updates; `style.delete` detaches consumers. The suite passes green on mocks while these can fail live.
 
 ## WS6 — Documentation sweep (new-reader, new names)
 
