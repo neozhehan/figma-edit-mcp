@@ -223,5 +223,33 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
 
             expect(sendCommandToFigma).toHaveBeenCalledWith("component_delete_property", params);
         });
+
+        it("style_manage parses propertiesJson into a `properties` object (regression: empty styles)", async () => {
+            const registered = (server as any)._registeredTools;
+            const tool = registered["style_manage"];
+
+            const props = { paints: [{ type: "SOLID", color: { r: 0, g: 0.7, b: 0.2 } }] };
+            await (tool.handler || tool.callback)(
+                { type: "PAINT", name: "Brand", propertiesJson: JSON.stringify(props) },
+                {} as any
+            );
+
+            const arg = (sendCommandToFigma as any).mock.calls.at(-1)[1];
+            // Handler reads `properties` (object); the raw `propertiesJson` string must NOT leak through.
+            expect(arg.properties).toEqual(props);
+            expect(arg.propertiesJson).toBeUndefined();
+            expect(arg).toMatchObject({ type: "PAINT", name: "Brand" });
+        });
+
+        it("style_manage rejects malformed propertiesJson", async () => {
+            const registered = (server as any)._registeredTools;
+            const tool = registered["style_manage"];
+            await expect(
+                (tool.handler || tool.callback)(
+                    { type: "PAINT", name: "Bad", propertiesJson: "{not valid json" },
+                    {} as any
+                )
+            ).rejects.toThrow(/Invalid propertiesJson/);
+        });
     });
 });

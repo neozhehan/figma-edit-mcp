@@ -59,7 +59,22 @@ export function registerStyleTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("style_manage", params);
+            // The handler expects a parsed `properties` object; the tool exposes
+            // `propertiesJson` as a string. Parse it here — without this, paints/
+            // effects/grids/text props are silently dropped and styles are created
+            // empty (regression caught by live testing).
+            const { propertiesJson, ...rest } = params;
+            const payload: Record<string, unknown> = { ...rest };
+            if (propertiesJson !== undefined) {
+                try {
+                    payload.properties = JSON.parse(propertiesJson);
+                } catch (e) {
+                    throw new Error(
+                        `Invalid propertiesJson: ${e instanceof Error ? e.message : String(e)}`
+                    );
+                }
+            }
+            const result = await sendCommandToFigma("style_manage", payload);
             return toolResult(result);
         }
     );

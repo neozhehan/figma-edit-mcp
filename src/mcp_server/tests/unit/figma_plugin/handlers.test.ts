@@ -3,7 +3,7 @@ import { createShape } from "../../../../../figma_plugin/handlers/nodeCreators.j
 import { transformNode } from "../../../../../figma_plugin/handlers/nodeModifiers.js";
 import { getNodesInfo } from "../../../../../figma_plugin/handlers/nodeReaders.js";
 import { deleteStyle } from "../../../../../figma_plugin/handlers/styleHandlers.js";
-import { deleteComponentProperty, manageComponentProperty } from "../../../../../figma_plugin/handlers/componentHandlers.js";
+import { deleteComponentProperty, manageComponentProperty, exportNodeAsImage } from "../../../../../figma_plugin/handlers/componentHandlers.js";
 
 // Global stub setup for Figma
 (globalThis as any).__html__ = "<html></html>";
@@ -446,6 +446,62 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
             })).rejects.toThrow("Operation Denied: styleName does not match name of styleId");
 
             expect(mockStyle.remove).not.toHaveBeenCalled();
+        });
+    });
+
+    // --- node_export_visual format handling ---
+    describe("node_export_visual: format handling", () => {
+        let exportSettings: any[];
+        let mockExpNode: any;
+
+        beforeEach(() => {
+            exportSettings = [];
+            mockExpNode = {
+                id: "exp-1",
+                type: "FRAME",
+                name: "Exportable",
+                exportAsync: mock(async (settings: any) => {
+                    exportSettings.push(settings);
+                    return new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
+                }),
+            };
+            (globalThis as any).figma.getNodeByIdAsync = mock(async (id: string) =>
+                id === "exp-1" ? mockExpNode : null
+            );
+        });
+
+        it("defaults to PNG with a SCALE constraint", async () => {
+            const res = await exportNodeAsImage({ nodeId: "exp-1" });
+            expect(res.format).toBe("PNG");
+            expect(res.mimeType).toBe("image/png");
+            expect(exportSettings[0]).toEqual({ format: "PNG", constraint: { type: "SCALE", value: 1 } });
+        });
+
+        it("honors JPG — raster: keeps SCALE constraint, image/jpeg", async () => {
+            const res = await exportNodeAsImage({ nodeId: "exp-1", format: "JPG", scale: 2 });
+            expect(res.format).toBe("JPG");
+            expect(res.mimeType).toBe("image/jpeg");
+            expect(exportSettings[0]).toEqual({ format: "JPG", constraint: { type: "SCALE", value: 2 } });
+        });
+
+        it("honors SVG — vector: no constraint, image/svg+xml", async () => {
+            const res = await exportNodeAsImage({ nodeId: "exp-1", format: "SVG" });
+            expect(res.format).toBe("SVG");
+            expect(res.mimeType).toBe("image/svg+xml");
+            expect(exportSettings[0]).toEqual({ format: "SVG" });
+        });
+
+        it("honors PDF — vector: no constraint, application/pdf", async () => {
+            const res = await exportNodeAsImage({ nodeId: "exp-1", format: "PDF" });
+            expect(res.format).toBe("PDF");
+            expect(res.mimeType).toBe("application/pdf");
+            expect(exportSettings[0]).toEqual({ format: "PDF" });
+        });
+
+        it("normalizes lowercase format and rejects unsupported formats", async () => {
+            const res = await exportNodeAsImage({ nodeId: "exp-1", format: "svg" });
+            expect(res.format).toBe("SVG");
+            await expect(exportNodeAsImage({ nodeId: "exp-1", format: "GIF" })).rejects.toThrow(/Unsupported export format/);
         });
     });
 });

@@ -1933,9 +1933,12 @@
   }
   async function exportNodeAsImage(params) {
     const { nodeId, scale = 1 } = params || {};
-    const format = "PNG";
+    const format = (params == null ? void 0 : params.format) ? String(params.format).toUpperCase() : "PNG";
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
+    }
+    if (!["PNG", "JPG", "SVG", "PDF"].includes(format)) {
+      throw new Error(`Unsupported export format: ${format}. Use PNG, JPG, SVG, or PDF.`);
     }
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
@@ -1945,25 +1948,20 @@
       throw new Error(`Node does not support exporting: ${nodeId}`);
     }
     try {
-      const settings = {
-        format,
-        constraint: { type: "SCALE", value: scale }
-      };
+      const isRaster = format === "PNG" || format === "JPG";
+      const settings = isRaster ? { format, constraint: { type: "SCALE", value: scale } } : { format };
       const bytes = await node.exportAsync(settings);
       let mimeType;
       switch (format) {
         case "PNG":
           mimeType = "image/png";
           break;
-        // @ts-ignore
         case "JPG":
           mimeType = "image/jpeg";
           break;
-        // @ts-ignore
         case "SVG":
           mimeType = "image/svg+xml";
           break;
-        // @ts-ignore
         case "PDF":
           mimeType = "application/pdf";
           break;
@@ -1974,7 +1972,7 @@
       return {
         nodeId,
         format,
-        scale,
+        scale: isRaster ? scale : void 0,
         mimeType,
         imageData: base64
       };

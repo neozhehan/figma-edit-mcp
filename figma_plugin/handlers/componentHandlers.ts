@@ -229,11 +229,13 @@ export async function createComponentInstance(params: any) {
  */
 export async function exportNodeAsImage(params: any) {
     const { nodeId, scale = 1 } = params || {};
-
-    const format = "PNG";
+    const format = params?.format ? String(params.format).toUpperCase() : "PNG";
 
     if (!nodeId) {
         throw new Error("Missing nodeId parameter");
+    }
+    if (!["PNG", "JPG", "SVG", "PDF"].includes(format)) {
+        throw new Error(`Unsupported export format: ${format}. Use PNG, JPG, SVG, or PDF.`);
     }
 
     const node = await figma.getNodeByIdAsync(nodeId);
@@ -246,10 +248,12 @@ export async function exportNodeAsImage(params: any) {
     }
 
     try {
-        const settings: any = {
-            format: format,
-            constraint: { type: "SCALE", value: scale },
-        };
+        // The SCALE constraint only applies to raster formats; SVG and PDF are
+        // vector and Figma's export settings for them reject a `constraint`.
+        const isRaster = format === "PNG" || format === "JPG";
+        const settings: any = isRaster
+            ? { format, constraint: { type: "SCALE", value: scale } }
+            : { format };
 
         const bytes = await node.exportAsync(settings);
 
@@ -258,15 +262,12 @@ export async function exportNodeAsImage(params: any) {
             case "PNG":
                 mimeType = "image/png";
                 break;
-            // @ts-ignore
             case "JPG":
                 mimeType = "image/jpeg";
                 break;
-            // @ts-ignore
             case "SVG":
                 mimeType = "image/svg+xml";
                 break;
-            // @ts-ignore
             case "PDF":
                 mimeType = "application/pdf";
                 break;
@@ -280,7 +281,7 @@ export async function exportNodeAsImage(params: any) {
         return {
             nodeId,
             format,
-            scale,
+            scale: isRaster ? scale : undefined,
             mimeType,
             imageData: base64,
         };
