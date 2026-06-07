@@ -3,7 +3,7 @@
  * Handles component-related operations including styles, instances, and overrides
  */
 
-import { customBase64Encode } from '../utils/exportUtils.js';
+import { customBase64Encode, bytesToUtf8 } from '../utils/exportUtils.js';
 
 /**
  * Gets all local styles from the document
@@ -275,15 +275,24 @@ export async function exportNodeAsImage(params: any) {
                 mimeType = "application/octet-stream";
         }
 
-        // Proper way to convert Uint8Array to base64
-        const base64 = customBase64Encode(bytes);
+        // SVG is text — return the raw XML directly. It's far more useful to an
+        // LLM (readable, transformable, no base64 inflation) than opaque base64.
+        // Raster (PNG/JPG) and PDF remain base64-encoded binary in `imageData`.
+        if (format === "SVG") {
+            return {
+                nodeId,
+                format,
+                mimeType,
+                svg: bytesToUtf8(bytes),
+            };
+        }
 
         return {
             nodeId,
             format,
             scale: isRaster ? scale : undefined,
             mimeType,
-            imageData: base64,
+            imageData: customBase64Encode(bytes),
         };
     } catch (error: any) {
         throw new Error(`Error exporting node as image: ${error.message}`);

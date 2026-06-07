@@ -129,7 +129,7 @@
     },
     {
       "name": "node_export_visual",
-      "description": "Render a node to an image (PNG/JPG/SVG/PDF) at a given scale. Read-only; the canonical way to visually verify edits."
+      "description": "Render a node to an image (PNG/JPG/SVG/PDF) at a given scale. Read-only; the canonical way to visually verify edits. SVG returns raw XML in `svg` (directly readable); PNG/JPG/PDF return base64 in `imageData` (PDF is a delivery artifact — prefer PNG/SVG for inspection)."
     },
     {
       "name": "create_shape",

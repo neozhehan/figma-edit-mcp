@@ -625,7 +625,7 @@ export function registerNodeTools(server: McpServer) {
         "node_export_visual",
         {
             title: "Export Node Image",
-            description: "Render a node to an image (PNG/JPG/SVG/PDF) at a given scale. Read-only; the canonical way to visually verify edits.",
+            description: "Render a node to an image (PNG/JPG/SVG/PDF) at a given scale. Read-only; the canonical way to visually verify edits. SVG returns raw XML in `svg` (directly readable); PNG/JPG/PDF return base64 in `imageData` (PDF is a delivery artifact — prefer PNG/SVG for inspection).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to export"),
                 format: z
@@ -642,7 +642,8 @@ export function registerNodeTools(server: McpServer) {
                 format: z.string().optional().describe("Image format"),
                 scale: z.number().optional().describe("Export scale used"),
                 mimeType: z.string().optional().describe("MIME type of the exported image"),
-                imageData: z.string().optional().describe("Base64-encoded image data"),
+                imageData: z.string().optional().describe("Base64-encoded binary data (PNG/JPG/PDF)"),
+                svg: z.string().optional().describe("Raw SVG XML markup (returned instead of imageData when format=SVG)"),
             }),
             annotations: {
                 readOnlyHint: true,

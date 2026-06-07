@@ -1775,6 +1775,35 @@
     }
     return base64;
   }
+  function bytesToUtf8(bytes) {
+    if (typeof TextDecoder !== "undefined") {
+      return new TextDecoder("utf-8").decode(bytes);
+    }
+    let out = "";
+    let i = 0;
+    const len = bytes.length;
+    while (i < len) {
+      const b1 = bytes[i++];
+      if (b1 < 128) {
+        out += String.fromCharCode(b1);
+      } else if (b1 >= 192 && b1 < 224) {
+        const b2 = bytes[i++];
+        out += String.fromCharCode((b1 & 31) << 6 | b2 & 63);
+      } else if (b1 >= 224 && b1 < 240) {
+        const b2 = bytes[i++];
+        const b3 = bytes[i++];
+        out += String.fromCharCode((b1 & 15) << 12 | (b2 & 63) << 6 | b3 & 63);
+      } else {
+        const b2 = bytes[i++];
+        const b3 = bytes[i++];
+        const b4 = bytes[i++];
+        let cp = (b1 & 7) << 18 | (b2 & 63) << 12 | (b3 & 63) << 6 | b4 & 63;
+        cp -= 65536;
+        out += String.fromCharCode(55296 + (cp >> 10), 56320 + (cp & 1023));
+      }
+    }
+    return out;
+  }
 
   // figma_plugin/handlers/componentHandlers.ts
   async function getStyles() {
@@ -1968,13 +1997,20 @@
         default:
           mimeType = "application/octet-stream";
       }
-      const base64 = customBase64Encode(bytes);
+      if (format === "SVG") {
+        return {
+          nodeId,
+          format,
+          mimeType,
+          svg: bytesToUtf8(bytes)
+        };
+      }
       return {
         nodeId,
         format,
         scale: isRaster ? scale : void 0,
         mimeType,
-        imageData: base64
+        imageData: customBase64Encode(bytes)
       };
     } catch (error) {
       throw new Error(`Error exporting node as image: ${error.message}`);

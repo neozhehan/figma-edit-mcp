@@ -58,3 +58,41 @@ export function customBase64Encode(bytes: any) {
 
     return base64;
 }
+
+/**
+ * Decode UTF-8 bytes (e.g. an SVG export) to a string. Uses the native
+ * TextDecoder when the runtime provides it, with a manual fallback for the
+ * Figma sandbox (which historically lacks several web APIs — see the manual
+ * base64 encoder above).
+ * @param {Uint8Array} bytes - UTF-8 encoded binary data
+ * @returns {string} Decoded string
+ */
+export function bytesToUtf8(bytes: any): string {
+    if (typeof TextDecoder !== "undefined") {
+        return new TextDecoder("utf-8").decode(bytes);
+    }
+    let out = "";
+    let i = 0;
+    const len = bytes.length;
+    while (i < len) {
+        const b1 = bytes[i++];
+        if (b1 < 0x80) {
+            out += String.fromCharCode(b1);
+        } else if (b1 >= 0xc0 && b1 < 0xe0) {
+            const b2 = bytes[i++];
+            out += String.fromCharCode(((b1 & 0x1f) << 6) | (b2 & 0x3f));
+        } else if (b1 >= 0xe0 && b1 < 0xf0) {
+            const b2 = bytes[i++];
+            const b3 = bytes[i++];
+            out += String.fromCharCode(((b1 & 0x0f) << 12) | ((b2 & 0x3f) << 6) | (b3 & 0x3f));
+        } else {
+            const b2 = bytes[i++];
+            const b3 = bytes[i++];
+            const b4 = bytes[i++];
+            let cp = ((b1 & 0x07) << 18) | ((b2 & 0x3f) << 12) | ((b3 & 0x3f) << 6) | (b4 & 0x3f);
+            cp -= 0x10000;
+            out += String.fromCharCode(0xd800 + (cp >> 10), 0xdc00 + (cp & 0x3ff));
+        }
+    }
+    return out;
+}

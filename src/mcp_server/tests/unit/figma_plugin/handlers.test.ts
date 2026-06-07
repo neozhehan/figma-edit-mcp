@@ -484,11 +484,18 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
             expect(exportSettings[0]).toEqual({ format: "JPG", constraint: { type: "SCALE", value: 2 } });
         });
 
-        it("honors SVG — vector: no constraint, image/svg+xml", async () => {
+        it("honors SVG — returns raw XML text (not base64), no constraint, image/svg+xml", async () => {
+            const svgText = '<svg width="50" height="50"><rect fill="white"/></svg>';
+            mockExpNode.exportAsync = mock(async (settings: any) => {
+                exportSettings.push(settings);
+                return new TextEncoder().encode(svgText);
+            });
             const res = await exportNodeAsImage({ nodeId: "exp-1", format: "SVG" });
             expect(res.format).toBe("SVG");
             expect(res.mimeType).toBe("image/svg+xml");
             expect(exportSettings[0]).toEqual({ format: "SVG" });
+            expect(res.svg).toBe(svgText);          // raw XML, directly readable
+            expect(res.imageData).toBeUndefined();  // not base64-encoded
         });
 
         it("honors PDF — vector: no constraint, application/pdf", async () => {
