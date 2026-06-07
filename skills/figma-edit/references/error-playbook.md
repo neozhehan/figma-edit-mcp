@@ -8,10 +8,10 @@ Every structured error you may receive, what it means, and the correct recovery.
 
 | Code | Meaning | Recovery |
 |---|---|---|
-| `READ_ONLY_MODE` | The session is read-only — the user connected without a Page/Layer link. | Inform the user. Only read tools (`page.info`, `node.info`, `style.list`, `component.list`, …) work. To enable writes, the user must reconnect with a link to the Page or Layer they want edited. |
+| `READ_ONLY_MODE` | The session is read-only — the user connected without a Page/Layer link. | Inform the user. Only read tools (`page_info`, `node_info`, `style_list`, `component_list`, …) work. To enable writes, the user must reconnect with a link to the Page or Layer they want edited. |
 | `OUTSIDE_SCOPE` | The target `nodeId` exists but is outside the locked editable scope. | Do not retry with the same ID. Pick a node inside the scope, or ask the user to reconnect with a broader scope. |
 | `PARENT_OUTSIDE_SCOPE` | The `parentId` for a creation tool is outside the editable scope. | Pick a parent inside the scope, or ask the user to reconnect more broadly. |
-| `CLONING_SOURCE_NODE_OUTSIDE_SCOPE` | `node.clone`'s source is outside the editable scope. | Clone creates inside the scope, but the source must be reachable. Pick a source inside the scope, or reconnect more broadly. |
+| `CLONING_SOURCE_NODE_OUTSIDE_SCOPE` | `node_clone`'s source is outside the editable scope. | Clone creates inside the scope, but the source must be reachable. Pick a source inside the scope, or reconnect more broadly. |
 | `SCOPE_DELETED` | The locked scope node was deleted from the file after connecting. | The session is unrecoverable. Ask the user to reconnect. |
 | `SCOPE_INVALID` | The connect-time scope payload was malformed. | Ask the user to reconnect with a fresh link. |
 
@@ -19,8 +19,8 @@ Every structured error you may receive, what it means, and the correct recovery.
 
 | Code | Meaning | Recovery |
 |---|---|---|
-| `NAME_MISMATCH` | `nodeName` does not match the actual name of `nodeId`. | Your context is stale or the ID is wrong. Call `node.info({ nodeIds: [<id>] })` to refresh, then retry with the actual name. |
-| `PARENT_NAME_MISMATCH` | `parentNodeName` does not match the actual name of `parentId`. | Refresh via `node.info` and retry. |
+| `NAME_MISMATCH` | `nodeName` does not match the actual name of `nodeId`. | Your context is stale or the ID is wrong. Call `node_info({ nodeIds: [<id>] })` to refresh, then retry with the actual name. |
+| `PARENT_NAME_MISMATCH` | `parentNodeName` does not match the actual name of `parentId`. | Refresh via `node_info` and retry. |
 
 ## Connection errors
 

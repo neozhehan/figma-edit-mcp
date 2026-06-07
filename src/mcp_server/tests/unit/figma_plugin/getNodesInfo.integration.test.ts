@@ -448,13 +448,13 @@ describe("Phase 6.2 — empty-args dispatch + read-only short-circuit (static so
         // Look for the canonical pattern: effectiveNodeIds resolved from scope.
         // We don't try to lock the exact tokenization — we assert the substitution
         // path exists (state.scopeRootId used to source effective nodeIds).
-        const slice = src.split('case "node.info"')[1] ?? "";
+        const slice = src.split('case "node_info"')[1] ?? "";
         expect(slice).toMatch(/effectiveNodeIds/);
         expect(slice).toMatch(/state\.scopeRootId/);
     });
 
     it("node.info dispatch short-circuits to { nodes: [] } in read-only mode with no ids", () => {
-        const slice = src.split('case "node.info"')[1] ?? "";
+        const slice = src.split('case "node_info"')[1] ?? "";
         // The branch must check both effectiveNodeIds.length === 0 AND state.readOnly,
         // and the return shape is { nodes: [] }.
         expect(slice).toMatch(/effectiveNodeIds\.length\s*===\s*0/);
@@ -463,7 +463,7 @@ describe("Phase 6.2 — empty-args dispatch + read-only short-circuit (static so
     });
 
     it("node.info dispatch otherwise forwards through the unified getNodesInfo handler", () => {
-        const slice = src.split('case "node.info"')[1] ?? "";
+        const slice = src.split('case "node_info"')[1] ?? "";
         expect(slice).toMatch(/return\s+await\s+getNodesInfo\(/);
     });
 });

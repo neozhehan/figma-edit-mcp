@@ -17,15 +17,15 @@ If a write fails with a scope error, **do not retry with the same ID** — the s
 
 Every modification tool requires a `nodeName`. Every creation tool requires a `parentNodeName`. Batch tools require a name on each item in the array. The plugin resolves the actual name by ID and rejects the operation if it does not match.
 
-**The only correct way to obtain a name:** read it from `node.info` or `page.info` and pass it back verbatim. Do not guess, abbreviate, normalize, translate, or "clean up" the name. Whitespace and casing must match exactly. This catches the most common failure: confidently operating on a stale or fabricated node ID.
+**The only correct way to obtain a name:** read it from `node_info` or `page_info` and pass it back verbatim. Do not guess, abbreviate, normalize, translate, or "clean up" the name. Whitespace and casing must match exactly. This catches the most common failure: confidently operating on a stale or fabricated node ID.
 
 ## 3. There is no implicit selection state
 
-No tool reads or acts on "current selection" or "last-touched node." Every tool requires explicit IDs. Never assume which node the user is looking at — discover it via `page.info` / `node.info` first.
+No tool reads or acts on "current selection" or "last-touched node." Every tool requires explicit IDs. Never assume which node the user is looking at — discover it via `page_info` / `node_info` first.
 
 ## 4. Batch tools verify every item
 
-`node.delete`, `text.set_content`, `annotation.set`, `instance.set_overrides`, and the other batch tools run scope and name checks on each item independently. **One invalid item fails the entire operation.** Validate every item's ID and name before calling. If a batch fails partway, re-read state before retrying — some items may already have been applied.
+`node_delete`, `text_set_content`, `annotation_set`, `instance_set_overrides`, and the other batch tools run scope and name checks on each item independently. **One invalid item fails the entire operation.** Validate every item's ID and name before calling. If a batch fails partway, re-read state before retrying — some items may already have been applied.
 
 ## 5. Node IDs from Figma URLs work as-is
 

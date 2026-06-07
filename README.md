@@ -154,115 +154,115 @@ Then point the Figma plugin's WebSocket address at your WSL instance's IP.
 1. Start the WebSocket bridge: `npx -y --package figma-edit-mcp figma-edit-mcp-socket`
 2. Configure the MCP server in your AI assistant (see [Integration-Specific Setup](#integration-specific-setup))
 3. Open Figma and launch the Figma Edit MCP plugin from Plugins → Development
-4. Use the `channel.join` MCP tool to establish communication
+4. Use the `channel_join` MCP tool to establish communication
 5. Use your AI assistant to interact with Figma via the available MCP tools
 
 ---
 
 ## MCP Tools
 
-Tools are grouped into a two-level, dot-notation namespace (`group.action`). Reads are `*.list` / `*.info`; writes use verb leaves. Anything that mutates a node lives under `node.*`.
+Tools are grouped into a two-level, underscore-separated namespace (`group_action`). Reads are `*_list` / `*_info`; writes use verb leaves. Anything that mutates a node lives under `node_*`.
 
 ### `page` — pages
 
 | Tool | Description |
 |---|---|
-| `page.info` | List the document's pages; with `pageIds`, return those pages and their top-level children |
+| `page_info` | List the document's pages; with `pageIds`, return those pages and their top-level children |
 
 ### `node` — read, transform, and style any node
 
 | Tool | Description |
 |---|---|
-| `node.info` | Read one or more nodes — recursive traversal with `fields`, `filter`, and `maxDepth` (the workhorse read; also returns bound variables / explicit modes) |
-| `node.transform` | Move and/or resize a node by setting absolute `x` / `y` / `width` / `height` |
-| `node.rename` | Rename a node |
-| `node.delete` | Delete one or more nodes in a single validated batch |
-| `node.clone` | Duplicate a node, optionally at a new position |
-| `node.select` | Set the canvas selection and focus the nodes in the viewport |
-| `node.group` | Wrap nodes in a new group |
-| `node.ungroup` | Dissolve a group, promoting its children |
-| `node.flatten` | Flatten a node and its children into a single vector |
-| `node.insert_child` | Reparent a node under a new parent at an optional index |
-| `node.set_auto_layout` | Configure a frame's auto-layout (mode, padding, spacing, alignment, sizing) |
-| `node.set_fill` | Set a node's fill to a literal RGBA color |
-| `node.set_stroke` | Set stroke color and weight (uniform or per-side) |
-| `node.set_corner_radius` | Set corner radius (uniform or per-corner) |
-| `node.set_effects` | Set the effect array (shadows, blurs) |
-| `node.apply_style` | Link a node to a shared library style (paint/text/effect/grid) |
-| `node.bind_variable` | Bind a variable to a node property, or set an explicit variable mode |
-| `node.export_visual` | Render a node to an image (PNG / JPG / SVG / PDF) |
+| `node_info` | Read one or more nodes — recursive traversal with `fields`, `filter`, and `maxDepth` (the workhorse read; also returns bound variables / explicit modes) |
+| `node_transform` | Move and/or resize a node by setting absolute `x` / `y` / `width` / `height` |
+| `node_rename` | Rename a node |
+| `node_delete` | Delete one or more nodes in a single validated batch |
+| `node_clone` | Duplicate a node, optionally at a new position |
+| `node_select` | Set the canvas selection and focus the nodes in the viewport |
+| `node_group` | Wrap nodes in a new group |
+| `node_ungroup` | Dissolve a group, promoting its children |
+| `node_flatten` | Flatten a node and its children into a single vector |
+| `node_insert_child` | Reparent a node under a new parent at an optional index |
+| `node_set_auto_layout` | Configure a frame's auto-layout (mode, padding, spacing, alignment, sizing) |
+| `node_set_fill` | Set a node's fill to a literal RGBA color |
+| `node_set_stroke` | Set stroke color and weight (uniform or per-side) |
+| `node_set_corner_radius` | Set corner radius (uniform or per-corner) |
+| `node_set_effects` | Set the effect array (shadows, blurs) |
+| `node_apply_style` | Link a node to a shared library style (paint/text/effect/grid) |
+| `node_bind_variable` | Bind a variable to a node property, or set an explicit variable mode |
+| `node_export_visual` | Render a node to an image (PNG / JPG / SVG / PDF) |
 
 ### `create` — make new nodes
 
 | Tool | Description |
 |---|---|
-| `create.shape` | Create a rectangle, ellipse, polygon, or star (`type`) with optional fill/stroke |
-| `create.frame` | Create a frame with optional fill/stroke and full auto-layout |
-| `create.text` | Create a text node with optional font size/weight/color |
-| `create.svg` | Create a node from an SVG markup string |
-| `create.component` | Convert an existing frame into a main component |
-| `create.instance` | Instantiate a component at a position |
-| `create.component_set` | Combine components into a component set (variants) |
-| `create.connection` | Draw connector lines between nodes, or set/check the default connector |
+| `create_shape` | Create a rectangle, ellipse, polygon, or star (`type`) with optional fill/stroke |
+| `create_frame` | Create a frame with optional fill/stroke and full auto-layout |
+| `create_text` | Create a text node with optional font size/weight/color |
+| `create_svg` | Create a node from an SVG markup string |
+| `create_component` | Convert an existing frame into a main component |
+| `create_instance` | Instantiate a component at a position |
+| `create_component_set` | Combine components into a component set (variants) |
+| `create_connection` | Draw connector lines between nodes, or set/check the default connector |
 
 ### `style` — shared styles
 
 | Tool | Description |
 |---|---|
-| `style.list` | List all local styles (paint/text/effect/grid) |
-| `style.manage` | Create a named style, or update one when `styleId` is given |
-| `style.delete` | Delete a local style by id (detaches consumers, which keep their resolved values) |
+| `style_list` | List all local styles (paint/text/effect/grid) |
+| `style_manage` | Create a named style, or update one when `styleId` is given |
+| `style_delete` | Delete a local style by id (detaches consumers, which keep their resolved values) |
 
 ### `text` — text content & typography
 
 | Tool | Description |
 |---|---|
-| `text.set_content` | Batch-set the text of one or more text nodes |
-| `text.set_style` | Set any combination of typography properties on a text node |
+| `text_set_content` | Batch-set the text of one or more text nodes |
+| `text_set_style` | Set any combination of typography properties on a text node |
 
 ### `component` — components & variants
 
 | Tool | Description |
 |---|---|
-| `component.list` | List components, with filtering and scope options |
-| `component.manage_property` | Add or edit a component-property definition (BOOLEAN/TEXT/INSTANCE_SWAP) |
-| `component.delete_property` | Remove a component-property definition |
+| `component_list` | List components, with filtering and scope options |
+| `component_manage_property` | Add or edit a component-property definition (BOOLEAN/TEXT/INSTANCE_SWAP) |
+| `component_delete_property` | Remove a component-property definition |
 
 ### `instance` — component instances
 
 | Tool | Description |
 |---|---|
-| `instance.set_property` | Set one property on an instance (toggle, text, swap, or variant) |
-| `instance.get_overrides` | Read the override properties from a source instance |
-| `instance.set_overrides` | Apply copied overrides to target instances |
+| `instance_set_property` | Set one property on an instance (toggle, text, swap, or variant) |
+| `instance_get_overrides` | Read the override properties from a source instance |
+| `instance_set_overrides` | Apply copied overrides to target instances |
 
 ### `variable` — variables & collections
 
 | Tool | Description |
 |---|---|
-| `variable.list` | List variables/collections, or detail by ID; optionally scan consumers |
-| `variable.manage` | Create collections and variables and set values/aliases |
-| `variable.delete` | Delete variables or a collection (rejected if still in use) |
+| `variable_list` | List variables/collections, or detail by ID; optionally scan consumers |
+| `variable_manage` | Create collections and variables and set values/aliases |
+| `variable_delete` | Delete variables or a collection (rejected if still in use) |
 
 ### `annotation` — Dev Mode annotations
 
 | Tool | Description |
 |---|---|
-| `annotation.list` | Read annotations on a node; optionally include categories |
-| `annotation.set` | Batch create or update native annotations (markdown) |
+| `annotation_list` | Read annotations on a node; optionally include categories |
+| `annotation_set` | Batch create or update native annotations (markdown) |
 
 ### `reaction` — prototype reactions
 
 | Tool | Description |
 |---|---|
-| `reaction.list` | Read prototype reactions (click flows, overlays) from nodes |
-| `reaction.update` | Replace a node's reactions with a full new array |
+| `reaction_list` | Read prototype reactions (click flows, overlays) from nodes |
+| `reaction_update` | Replace a node's reactions with a full new array |
 
 ### `channel` — connection
 
 | Tool | Description |
 |---|---|
-| `channel.join` | Join a WebSocket channel to establish communication with the plugin |
+| `channel_join` | Join a WebSocket channel to establish communication with the plugin |
 
 ---
 
@@ -287,7 +287,7 @@ The plugin enforces hard constraints (scope locking, name verification, batch va
 
 When working with Figma Edit MCP:
 
-1. Always join a channel first with `channel.join` before sending any other commands.
+1. Always join a channel first with `channel_join` before sending any other commands.
 
 ---
 

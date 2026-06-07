@@ -6,7 +6,7 @@ import { toolResult } from "./_result.js";
 export function registerComponentTools(server: McpServer) {
     // 1. List Components Tool
     server.registerTool(
-        "component.list",
+        "component_list",
         {
             title: "List Components",
             description: "List components in the document, with filtering and scope options.",
@@ -31,17 +31,17 @@ export function registerComponentTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("component.list", params);
+            const result = await sendCommandToFigma("component_list", params);
             return toolResult(result);
         }
     );
 
     // 2. Manage Component Property Tool
     server.registerTool(
-        "component.manage_property",
+        "component_manage_property",
         {
             title: "Manage Component Property",
-            description: "Add or edit a component-property definition (BOOLEAN/TEXT/INSTANCE_SWAP) on a main component or variant set. Deleting is `component.delete_property`.",
+            description: "Add or edit a component-property definition (BOOLEAN/TEXT/INSTANCE_SWAP) on a main component or variant set. Deleting is `component_delete_property`.",
             inputSchema: z.object({
                 nodeId: z.string().describe("ID of the COMPONENT or COMPONENT_SET"),
                 nodeName: z.string().describe("Name of the node for verification"),
@@ -77,14 +77,14 @@ export function registerComponentTools(server: McpServer) {
             if (args.action === "ADD" && (args.propertyType === undefined || args.defaultValue === undefined)) {
                 throw new Error("propertyType and defaultValue are required for ADD action");
             }
-            const result = await sendCommandToFigma("component.manage_property", args);
+            const result = await sendCommandToFigma("component_manage_property", args);
             return toolResult(result);
         }
     );
 
     // 3. Delete Component Property Tool
     server.registerTool(
-        "component.delete_property",
+        "component_delete_property",
         {
             title: "Delete Component Property",
             description: "Remove a component-property definition from a main component or variant set; propagates to every instance.",
@@ -107,7 +107,7 @@ export function registerComponentTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("component.delete_property", params);
+            const result = await sendCommandToFigma("component_delete_property", params);
             return toolResult(result);
         }
     );

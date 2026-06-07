@@ -6,7 +6,7 @@ import { toolResult } from "./_result.js";
 export function registerTextTools(server: McpServer) {
     // 1. Set Text Contents Tool
     server.registerTool(
-        "text.set_content",
+        "text_set_content",
         {
             title: "Set Text Contents",
             description: "Set the text of one or more text nodes in a single batched, per-item-validated call.",
@@ -31,14 +31,14 @@ export function registerTextTools(server: McpServer) {
             }
         },
         async ({ text }: any) => {
-            const result = await sendCommandToFigma("text.set_content", { text });
+            const result = await sendCommandToFigma("text_set_content", { text });
             return toolResult(result);
         }
     );
 
     // 2. Set Text Style Tool
     server.registerTool(
-        "text.set_style",
+        "text_set_style",
         {
             title: "Set Text Style",
             description: "Set any combination of typography properties (font, size, weight, spacing, decoration, …) on a text node.",
@@ -88,7 +88,7 @@ export function registerTextTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("text.set_style", params);
+            const result = await sendCommandToFigma("text_set_style", params);
             return toolResult(result);
         }
     );

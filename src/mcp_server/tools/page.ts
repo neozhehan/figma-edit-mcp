@@ -5,7 +5,7 @@ import { toolResult } from "./_result.js";
 
 export function registerPageTools(server: McpServer) {
     server.registerTool(
-        "page.info",
+        "page_info",
         {
             title: "Get Pages",
             description: "List the document's pages; no args → all pages (no children), or pass `pageIds` → those pages with their top-level children. Batch ≤25 ids/call.",
@@ -37,7 +37,7 @@ export function registerPageTools(server: McpServer) {
             }
         },
         async ({ pageIds }: any) => {
-            const result = await sendCommandToFigma("page.info", { pageIds });
+            const result = await sendCommandToFigma("page_info", { pageIds });
             return toolResult(result);
         }
     );

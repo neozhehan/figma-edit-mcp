@@ -56,7 +56,7 @@ Smithery's scoring definitions:
 - **Parameter descriptions** — every input parameter should describe what it accepts.
 - **Output schemas** — tools should declare an `outputSchema` so callers can type-check responses.
 - **Annotations** — tools can declare annotations (`readOnlyHint`, `destructiveHint`, etc.).
-- **Naming** — tool/trigger names should form a navigable tree via dot-notation (e.g. `admin.tools.list`). **Both flat lists and over-nested paths reduce the score** → target **two levels** (`group.verb_object`).
+- **Naming** — tool/trigger names should form a navigable, consistently-prefixed set. **Both flat lists and over-nested paths reduce the score** → target **two levels** (`group_action`).
 
 #### Glama — **~67% (C-tier)**
 
@@ -77,7 +77,7 @@ skills/figma-edit/
     constraints.md              # hard, plugin-enforced rules (scope, name verify, batch, URL IDs) + handling a forbidden request
     error-playbook.md           # every structured error code + recovery
     workflows.md                # discover-before-acting + recipes
-    tool-selection.md           # node.info usage, batch vs single, streaming
+    tool-selection.md           # node_info usage, batch vs single, streaming
 ```
 
 | Consumer | Reads from | Loading | Reach |
@@ -90,60 +90,62 @@ skills/figma-edit/
 - **Layer A — in-protocol (zero setup, all clients):** MCP Resources + a tiny eager `instructions` breadcrumb. The only path that ships *with the server* and reaches npm end-users automatically.
 - **Layer B — skill (cross-tool, proactive):** an installable `SKILL.md` folder, the direct analog of Figma's `figma-use`. Auto-discovered by 20+ agents once installed.
 
-### 2.2 Tool API — dot-notation tree
+### 2.2 Tool API — two-level namespace
 
-The **46 tools** (after three consolidations, one destructive-split, and one net-new tool `style.delete` — see [consolidation-sweep.md](./consolidation-sweep.md)) are renamed into a **two-level** navigable tree (`group.leaf`) across **11 groups**: `page` · `node` · `create` · `style` · `text` · `component` · `instance` · `variable` · `annotation` · `reaction` · `channel`. Reads use noun/`list` leaves; writes use verb leaves. (Names below are **proposed** and may be adjusted.)
+The **46 tools** (after three consolidations, one destructive-split, and one net-new tool `style_delete` — see [consolidation-sweep.md](./consolidation-sweep.md)) are renamed into a **two-level** navigable namespace (`group_action`) across **11 groups**: `page` · `node` · `create` · `style` · `text` · `component` · `instance` · `variable` · `annotation` · `reaction` · `channel`. Reads use noun/`list` leaves; writes use verb leaves.
+
+> **Separator: underscore, not dots.** Names use `group_action` (e.g. `node_set_fill`), not `group.action`. A dotted tree reads as more hierarchical, but dotted names violate the host tool-name constraint `^[a-zA-Z0-9_-]{1,64}$` — shared by Antigravity and the Anthropic/OpenAI/Gemini function-calling APIs — and get rejected (Claude Code silently rewrites `.`→`_`, Antigravity hard-fails). So the separator is an underscore.
 
 | Group | New name | Old name |
 |---|---|---|
-| **page** | `page.info` | `get_pages_info` |
-| **node** | `node.info` | `get_nodes_info` |
-| | `node.transform` | `move_node` + `resize_node` *(merged)* |
-| | `node.rename` | `set_node_name` |
-| | `node.delete` | `delete_multiple_nodes` |
-| | `node.clone` | `clone_node` |
-| | `node.select` | `set_selections` |
-| | `node.group` | `group_nodes` |
-| | `node.ungroup` | `ungroup_nodes` |
-| | `node.flatten` | `flatten_node` |
-| | `node.insert_child` | `insert_child` |
-| | `node.set_auto_layout` | `set_auto_layout` |
-| | `node.set_fill` | `set_fill_color` |
-| | `node.set_stroke` | `set_stroke` |
-| | `node.set_corner_radius` | `set_corner_radius` |
-| | `node.set_effects` | `set_effects` |
-| | `node.apply_style` | `apply_style` |
-| | `node.bind_variable` | `set_bound_variable` |
-| | `node.export_visual` | `export_node_as_image` |
-| **create** | `create.shape` | `create_rectangle` + `create_ellipse` + `create_polygon_star` *(merged)* |
-| | `create.frame` | `create_frame` |
-| | `create.text` | `create_text` |
-| | `create.svg` | `create_node_from_svg` |
-| | `create.component` | `create_component` |
-| | `create.instance` | `create_component_instance` |
-| | `create.component_set` | `create_component_set` |
-| | `create.connection` | `create_connections` |
-| **style** | `style.list` | `get_styles` |
-| | `style.manage` | `manage_style` |
-| | `style.delete` | *(net-new — first style-deletion capability)* |
-| **text** | `text.set_content` | `set_multiple_text_contents` |
-| | `text.set_style` | `set_text_style` |
-| **component** | `component.list` | `get_components` |
-| | `component.manage_property` | `manage_component_property` *(ADD/EDIT)* |
-| | `component.delete_property` | `manage_component_property` *(DELETE)* |
-| **instance** | `instance.set_property` | `set_component_instance_property` |
-| | `instance.get_overrides` | `get_instance_overrides` |
-| | `instance.set_overrides` | `set_instance_overrides` |
-| **variable** | `variable.list` | `get_variables` |
-| | `variable.manage` | `manage_variables` |
-| | `variable.delete` | `delete_variables` |
-| **annotation** | `annotation.list` | `get_annotations` |
-| | `annotation.set` | `set_multiple_annotations` |
-| **reaction** | `reaction.list` | `get_reactions` |
-| | `reaction.update` | `update_reactions` |
-| **channel** | `channel.join` | `join_channel` |
+| **page** | `page_info` | `get_pages_info` |
+| **node** | `node_info` | `get_nodes_info` |
+| | `node_transform` | `move_node` + `resize_node` *(merged)* |
+| | `node_rename` | `set_node_name` |
+| | `node_delete` | `delete_multiple_nodes` |
+| | `node_clone` | `clone_node` |
+| | `node_select` | `set_selections` |
+| | `node_group` | `group_nodes` |
+| | `node_ungroup` | `ungroup_nodes` |
+| | `node_flatten` | `flatten_node` |
+| | `node_insert_child` | `insert_child` |
+| | `node_set_auto_layout` | `set_auto_layout` |
+| | `node_set_fill` | `set_fill_color` |
+| | `node_set_stroke` | `set_stroke` |
+| | `node_set_corner_radius` | `set_corner_radius` |
+| | `node_set_effects` | `set_effects` |
+| | `node_apply_style` | `apply_style` |
+| | `node_bind_variable` | `set_bound_variable` |
+| | `node_export_visual` | `export_node_as_image` |
+| **create** | `create_shape` | `create_rectangle` + `create_ellipse` + `create_polygon_star` *(merged)* |
+| | `create_frame` | `create_frame` |
+| | `create_text` | `create_text` |
+| | `create_svg` | `create_node_from_svg` |
+| | `create_component` | `create_component` |
+| | `create_instance` | `create_component_instance` |
+| | `create_component_set` | `create_component_set` |
+| | `create_connection` | `create_connections` |
+| **style** | `style_list` | `get_styles` |
+| | `style_manage` | `manage_style` |
+| | `style_delete` | *(net-new — first style-deletion capability)* |
+| **text** | `text_set_content` | `set_multiple_text_contents` |
+| | `text_set_style` | `set_text_style` |
+| **component** | `component_list` | `get_components` |
+| | `component_manage_property` | `manage_component_property` *(ADD/EDIT)* |
+| | `component_delete_property` | `manage_component_property` *(DELETE)* |
+| **instance** | `instance_set_property` | `set_component_instance_property` |
+| | `instance_get_overrides` | `get_instance_overrides` |
+| | `instance_set_overrides` | `set_instance_overrides` |
+| **variable** | `variable_list` | `get_variables` |
+| | `variable_manage` | `manage_variables` |
+| | `variable_delete` | `delete_variables` |
+| **annotation** | `annotation_list` | `get_annotations` |
+| | `annotation_set` | `set_multiple_annotations` |
+| **reaction** | `reaction_list` | `get_reactions` |
+| | `reaction_update` | `update_reactions` |
+| **channel** | `channel_join` | `join_channel` |
 
-> Notes: groups follow Figma's **object types**. **Anything that mutates a node lives under `node`** — both raw values (`set_fill`/`set_stroke`/`set_corner_radius`/`set_effects`/`set_auto_layout`) *and* links that attach a library object to a node (`node.apply_style`, `node.bind_variable`). The `style.*` and `variable.*` groups therefore hold only **object-lifecycle** ops (list/manage/delete), since applying/binding doesn't mutate the Style/Variable object itself. `component.*` is the Component/ComponentSet object (`list`, `manage_property`, `delete_property` — the latter split from the former so `destructiveHint` scopes to the delete, mirroring `variable.delete`); instance ops live under `instance.*` (`set_property`, `get_overrides`, `set_overrides`). `create.connection` ← `create_connections` creates connector lines, so it sits in the `create` verb group. There is no `layout` group (`node.set_auto_layout` is a structural node property). **Consolidations:** `create.shape` folds the 3 shape tools (also fixes rectangle's missing `fillColor`/`strokeColor`) via a `type` discriminator; `node.transform` folds `move`+`resize` into `{x?,y?,width?,height?}`; `get_node_variables` is folded into `node.info` as resolvable `boundVariables`/`explicitVariableModes` fields (resolved plugin-side like `mainComponent`). **Split:** `component.delete_property` is broken out of `component.manage_property` (ADD/EDIT) so the destructive hint scopes to the delete. **Addition:** `style.delete` is net-new — styles previously had no deletion path; it completes the `style.*` lifecycle (list/manage/delete) symmetric with `variable.*`. `variable.delete`, `component.delete_property`, and `style.delete` stay separate (destructive, rule 4). See [consolidation-sweep.md](./consolidation-sweep.md).
+> Notes: groups follow Figma's **object types**. **Anything that mutates a node lives under `node`** — both raw values (`set_fill`/`set_stroke`/`set_corner_radius`/`set_effects`/`set_auto_layout`) *and* links that attach a library object to a node (`node_apply_style`, `node_bind_variable`). The `style_*` and `variable_*` groups therefore hold only **object-lifecycle** ops (list/manage/delete), since applying/binding doesn't mutate the Style/Variable object itself. `component_*` is the Component/ComponentSet object (`list`, `manage_property`, `delete_property` — the latter split from the former so `destructiveHint` scopes to the delete, mirroring `variable_delete`); instance ops live under `instance_*` (`set_property`, `get_overrides`, `set_overrides`). `create_connection` ← `create_connections` creates connector lines, so it sits in the `create` verb group. There is no `layout` group (`node_set_auto_layout` is a structural node property). **Consolidations:** `create_shape` folds the 3 shape tools (also fixes rectangle's missing `fillColor`/`strokeColor`) via a `type` discriminator; `node_transform` folds `move`+`resize` into `{x?,y?,width?,height?}`; `get_node_variables` is folded into `node_info` as resolvable `boundVariables`/`explicitVariableModes` fields (resolved plugin-side like `mainComponent`). **Split:** `component_delete_property` is broken out of `component_manage_property` (ADD/EDIT) so the destructive hint scopes to the delete. **Addition:** `style_delete` is net-new — styles previously had no deletion path; it completes the `style_*` lifecycle (list/manage/delete) symmetric with `variable_*`. `variable_delete`, `component_delete_property`, and `style_delete` stay separate (destructive, rule 4). See [consolidation-sweep.md](./consolidation-sweep.md).
 
 Each tool additionally gains: behavioral **annotation**, an **`outputSchema`** (typed response), and verified **description** + **parameter descriptions**. The canonical old→new names, **titles, descriptions, and annotation values** for all 46 tools live in [tool-reference.md](./tool-reference.md) — the single source the rename, the `manifest.json` `tools` array, and the doc sweep all draw from.
 
@@ -151,8 +153,8 @@ Each tool additionally gains: behavioral **annotation**, an **`outputSchema`** (
 
 ## 3. Success criteria
 
-1. **Smithery ≈ 100**: tools scanned (Capability category unlocked); every tool has description, parameter descriptions, output schema, and annotations; names form a 2-level dot-notation tree; server has an icon.
-2. **Glama improves**: annotations on every tool; `glama.json` present; three clarity-driven consolidations (`create.shape`, `node.transform`, folding node-variable reads into `node.info`) + one destructive-split (`component.delete_property`) + one net-new tool (`style.delete`, completing the style lifecycle) → 46 tools.
+1. **Smithery ≈ 100**: tools scanned (Capability category unlocked); every tool has description, parameter descriptions, output schema, and annotations; names form a 2-level underscore tree; server has an icon.
+2. **Glama improves**: annotations on every tool; `glama.json` present; three clarity-driven consolidations (`create_shape`, `node_transform`, folding node-variable reads into `node_info`) + one destructive-split (`component_delete_property`) + one net-new tool (`style_delete`, completing the style lifecycle) → 46 tools.
 3. An npm end-user's MCP client can reach the full guidance **through the server connection** (resources), with only a ~3-line eager cost (breadcrumb) + resource metadata.
 4. All four version sources report `2.0.0`; the server reports its real version at runtime.
 5. Single source of truth — guidance prose exists in exactly one place (`references/`), with all other surfaces pointing at it.
@@ -162,7 +164,7 @@ Each tool additionally gains: behavioral **annotation**, an **`outputSchema`** (
 ## 4. Non-goals
 
 - **Backwards compatibility / migration paths** — explicitly out of scope (zero users); the tool API is redesigned freely.
-- **Aggressive consolidation** — only the three clarity-driven consolidations land (`create.shape`, `node.transform`, folding `get_node_variables` into `node.info`); the sweep ([consolidation-sweep.md](./consolidation-sweep.md)) found no others. We do **not** collapse get/set pairs, destructive ops, or params-divergent setters just to cut count.
+- **Aggressive consolidation** — only the three clarity-driven consolidations land (`create_shape`, `node_transform`, folding `get_node_variables` into `node_info`); the sweep ([consolidation-sweep.md](./consolidation-sweep.md)) found no others. We do **not** collapse get/set pairs, destructive ops, or params-divergent setters just to cut count.
 - **Hosted / remote deployment** — the server is local-only by design (requires the Figma desktop app + plugin on `localhost`); a hosted Smithery deployment is out of scope.
 - **Verbose per-tool prose documentation** — conflicts with the token goal; behavioral transparency is delivered via structured annotations + output schemas instead.
 
@@ -174,7 +176,7 @@ Each tool additionally gains: behavioral **annotation**, an **`outputSchema`** (
 
 **Governing rules**
 - **R-DOC-1 — New-reader assumption.** All docs assume the reader is new to the project. No migration / "renamed-from" / "formerly" framing anywhere **except** the CHANGELOG.
-- **R-DOC-2 — New names only.** No reader-facing doc may reference a removed, renamed, or merged tool (`create_rectangle`, `move_node`, `set_fill_color`, …). Use the dot-notation names from [§2.2](#22-tool-api--dot-notation-tree).
+- **R-DOC-2 — New names only.** No reader-facing doc may reference a removed, renamed, or merged tool (`create_rectangle`, `move_node`, `set_fill_color`, …). Use the underscore names from [§2.2](#22-tool-api--two-level-namespace).
 - **R-DOC-3 — CHANGELOG is the sole exception.** It records history and **must** carry a v2.0.0 old→new rename/merge mapping (the one place old names belong).
 - **R-DOC-4 — Archival docs are frozen.** `documentation/completed/**`, `documentation/legacy/**`, `documentation/v1.5.1/**`, and prior CHANGELOG entries are records of past work; leave them unchanged (rewriting falsifies history). They are not onboarding docs.
 
@@ -182,8 +184,8 @@ Each tool additionally gains: behavioral **annotation**, an **`outputSchema`** (
 
 | Surface | Old-name refs | Verdict |
 |---|---|---|
-| `README.md` — has a full **tool reference table** + usage examples | 36 | **Rewrite** to new names; collapse the 3 shape rows into one `create.shape` row and `move_node`/`resize_node` into `node.transform` |
-| `AGENTS.md` → `skills/figma-edit/references/**` | 44 | **Rewrite during WS2** — the split is the canonical source; every recipe and the `node.info` tool-selection table must use new names |
+| `README.md` — has a full **tool reference table** + usage examples | 36 | **Rewrite** to new names; collapse the 3 shape rows into one `create_shape` row and `move_node`/`resize_node` into `node_transform` |
+| `AGENTS.md` → `skills/figma-edit/references/**` | 44 | **Rewrite during WS2** — the split is the canonical source; every recipe and the `node_info` tool-selection table must use new names |
 | MCP **prompt** bodies (4) — see **Prompt disposition** below | many | **Keep 2 / fold 1 / cut 1** — only the kept prompts get the new-name rewrite |
 | Tool/prompt **cross-references** in descriptions (e.g. `update_reactions`→"use get_reactions", `get_reactions`→`create_connections`) | several | **Rewrite during the WS3 rename** |
 | `CONTRIBUTING.md` | 7 | **Rewrite** to new names |
@@ -199,9 +201,9 @@ MCP **prompts are user-initiated and deferred** — they surface in the client a
 
 | Prompt | Disposition | Why |
 |---|---|---|
-| `reaction_to_connector_strategy` | **Keep** (rewrite names) | Encodes the non-derivable `create.connection` **default-connector handshake** (empty-call probe; if unset, the user must paste a FigJam connector — the agent cannot proceed otherwise) + the reaction action-type filter. A model won't infer this from tool descriptions. |
-| `swap_overrides_instances` | **Keep** (rewrite names) | Lean (~38 ln); pairs `instance.get_overrides` → `instance.set_overrides` with the source→targets shape and the "prefer overrides over direct edits" rule. |
-| `text_replacement_strategy` | **Fold → `workflows.md`, then drop** | An **everyday recipe**, not a quirk. Its useful skeleton (clone-for-safety → chunked `text.set_content` → `node.export_visual` verify) belongs in the `workflows` reference; ~60% was generic advice. Don't maintain the same recipe in both a prompt and a resource. |
+| `reaction_to_connector_strategy` | **Keep** (rewrite names) | Encodes the non-derivable `create_connection` **default-connector handshake** (empty-call probe; if unset, the user must paste a FigJam connector — the agent cannot proceed otherwise) + the reaction action-type filter. A model won't infer this from tool descriptions. |
+| `swap_overrides_instances` | **Keep** (rewrite names) | Lean (~38 ln); pairs `instance_get_overrides` → `instance_set_overrides` with the source→targets shape and the "prefer overrides over direct edits" rule. |
+| `text_replacement_strategy` | **Fold → `workflows.md`, then drop** | An **everyday recipe**, not a quirk. Its useful skeleton (clone-for-safety → chunked `text_set_content` → `node_export_visual` verify) belongs in the `workflows` reference; ~60% was generic advice. Don't maintain the same recipe in both a prompt and a resource. |
 | `annotation_conversion_strategy` | **Cut** | Longest (~138 ln), most niche (manual-marker → native conversion), and contains **fictional pseudo-code** (`findTargetByPath`, `determineCategory`, … — functions that don't exist). Lowest value-per-line. |
 
 **Principle:** prompts hold **non-derivable, quirk-driven procedures**; the `workflows` resource holds **everyday recipes**. This keeps the two from duplicating content and shrinks the R6.3 rewrite surface from 4 prompts to 2.
@@ -215,6 +217,6 @@ MCP **prompts are user-initiated and deferred** — they surface in the client a
 | D1 | Keep slim `AGENTS.md` vs drop it entirely | **Decided: keep slim.** `AGENTS.md` becomes a thin pointer (implemented in [tasks.md](./tasks.md) WS2 R2.5) — preserves the recognized cross-tool root-convention filename at near-zero cost; the full guide lives once in `references/` |
 | D2 | Resource granularity / URI scheme | **Decided: 4 resources**, one per `references/*.md` under `figma-edit://guide/<section>` — `constraints`, `error-playbook`, `workflows`, `tool-selection`. **Operational content only** (no philosophy/tripartite framing). Optional index resource skipped (the `instructions` breadcrumb covers discovery) |
 | D3 | Embed reference `.md` at build vs read at runtime via `fs` | **Decided: read at runtime** from package root (`fileURLToPath(import.meta.url)` → up from `dist/` → `skills/figma-edit/references/`); keeps `.md` as the single source shared by skill + resources; ship `skills/` in `files` (R1.3); fail-soft on read errors (R2.2). No token-efficiency difference vs embedding |
-| D4 | Tool taxonomy — exact group set & leaf names | **Decided.** Full mapping in [§2.2](#22-tool-api--dot-notation-tree) — 46 tools, 11 groups, strictly 2 levels. Last leaf names settled: `variable.of_node` folded into `node.info`; `export_node_as_image` → `node.export_visual` |
-| D5 | Output-schema depth (fully-typed vs permissive) | Start with a reasonable typed schema per tool; refine high-value read tools (`node.info`, `page.info`) first. `node.info`'s field set + fast/slow flags come from [node-fields.md](./node-fields.md) (from the official Figma API; regenerate from `@figma/plugin-typings`) |
-| D6 | Tool consolidation | **Decided: `create.shape` + `node.transform` merges, and fold `get_node_variables` into `node.info` fields (48→44); plus split `component.delete_property` from `component.manage_property` (→45), and add net-new `style.delete` to complete the style lifecycle (→46).** No other merges. Still applies: **disambiguate** `node.set_fill` vs `node.apply_style`; keep get/set pairs and the destructive deletes (`variable.delete`, `component.delete_property`, `style.delete`) split. See [consolidation-sweep.md](./consolidation-sweep.md) |
+| D4 | Tool taxonomy — exact group set & leaf names | **Decided.** Full mapping in [§2.2](#22-tool-api--two-level-namespace) — 46 tools, 11 groups, strictly 2 levels. Last leaf names settled: `get_node_variables` folded into `node_info`; `export_node_as_image` → `node_export_visual` |
+| D5 | Output-schema depth (fully-typed vs permissive) | Start with a reasonable typed schema per tool; refine high-value read tools (`node_info`, `page_info`) first. `node_info`'s field set + fast/slow flags come from [node-fields.md](./node-fields.md) (from the official Figma API; regenerate from `@figma/plugin-typings`) |
+| D6 | Tool consolidation | **Decided: `create_shape` + `node_transform` merges, and fold `get_node_variables` into `node_info` fields (48→44); plus split `component_delete_property` from `component_manage_property` (→45), and add net-new `style_delete` to complete the style lifecycle (→46).** No other merges. Still applies: **disambiguate** `node_set_fill` vs `node_apply_style`; keep get/set pairs and the destructive deletes (`variable_delete`, `component_delete_property`, `style_delete`) split. See [consolidation-sweep.md](./consolidation-sweep.md) |

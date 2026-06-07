@@ -6,7 +6,7 @@ import { toolResult } from "./_result.js";
 export function registerNodeTools(server: McpServer) {
     // 1. Get Node Info Tool
     server.registerTool(
-        "node.info",
+        "node_info",
         {
             title: "Get Node Info",
             description: "Read one or more nodes — recursive subtree traversal with `fields` selection, `filter`, and `maxDepth`. Returns only requested fields (incl. resolved `boundVariables`/`explicitVariableModes`). The workhorse read; start here before any write.",
@@ -40,7 +40,7 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async ({ nodeIds, fields, filter, maxDepth }: any) => {
-            const result = await sendCommandToFigma("node.info", {
+            const result = await sendCommandToFigma("node_info", {
                 nodeIds,
                 properties: fields,
                 filter,
@@ -52,7 +52,7 @@ export function registerNodeTools(server: McpServer) {
 
     // 2. Transform Node Tool
     server.registerTool(
-        "node.transform",
+        "node_transform",
         {
             title: "Transform Node",
             description: "Move and/or resize a node by setting absolute `x`/`y`/`width`/`height` (any subset).",
@@ -78,14 +78,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.transform", params);
+            const result = await sendCommandToFigma("node_transform", params);
             return toolResult(result);
         }
     );
 
     // 3. Rename Node Tool
     server.registerTool(
-        "node.rename",
+        "node_rename",
         {
             title: "Rename Node",
             description: "Rename a node (sets `name` to an exact value).",
@@ -104,14 +104,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.rename", params);
+            const result = await sendCommandToFigma("node_rename", params);
             return toolResult(result);
         }
     );
 
     // 4. Delete Nodes Tool
     server.registerTool(
-        "node.delete",
+        "node_delete",
         {
             title: "Delete Nodes",
             description: "Delete one or more nodes in a single batched, per-item-validated call. No API undo.",
@@ -137,14 +137,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async ({ nodes }: any) => {
-            const result = await sendCommandToFigma("node.delete", { nodes });
+            const result = await sendCommandToFigma("node_delete", { nodes });
             return toolResult(result);
         }
     );
 
     // 5. Clone Node Tool
     server.registerTool(
-        "node.clone",
+        "node_clone",
         {
             title: "Clone Node",
             description: "Duplicate an existing node, optionally at a new `x`/`y`. Produces a new node id.",
@@ -163,14 +163,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.clone", params);
+            const result = await sendCommandToFigma("node_clone", params);
             return toolResult(result);
         }
     );
 
     // 6. Select Nodes Tool
     server.registerTool(
-        "node.select",
+        "node_select",
         {
             title: "Select Nodes",
             description: "Set the canvas selection to one or more nodes and focus them in the viewport.",
@@ -190,14 +190,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async ({ nodeIds }: any) => {
-            const result = await sendCommandToFigma("node.select", { nodeIds });
+            const result = await sendCommandToFigma("node_select", { nodeIds });
             return toolResult(result);
         }
     );
 
     // 7. Group Nodes Tool
     server.registerTool(
-        "node.group",
+        "node_group",
         {
             title: "Group Nodes",
             description: "Wrap multiple nodes in a new group node.",
@@ -222,14 +222,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.group", params);
+            const result = await sendCommandToFigma("node_group", params);
             return toolResult(result);
         }
     );
 
     // 8. Ungroup Node Tool
     server.registerTool(
-        "node.ungroup",
+        "node_ungroup",
         {
             title: "Ungroup Node",
             description: "Dissolve a group, promoting its children to the parent. Removes the group container.",
@@ -250,14 +250,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.ungroup", params);
+            const result = await sendCommandToFigma("node_ungroup", params);
             return toolResult(result);
         }
     );
 
     // 9. Flatten Node Tool
     server.registerTool(
-        "node.flatten",
+        "node_flatten",
         {
             title: "Flatten Node",
             description: "Flatten a node and its children into a single vector. Lossy — original structure is not recoverable.",
@@ -276,14 +276,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.flatten", params);
+            const result = await sendCommandToFigma("node_flatten", params);
             return toolResult(result);
         }
     );
 
     // 10. Reparent Node Tool
     server.registerTool(
-        "node.insert_child",
+        "node_insert_child",
         {
             title: "Reparent Node",
             description: "Reparent a node under a new parent at an optional `index`.",
@@ -308,14 +308,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.insert_child", params);
+            const result = await sendCommandToFigma("node_insert_child", params);
             return toolResult(result);
         }
     );
 
     // 11. Set Auto Layout Tool
     server.registerTool(
-        "node.set_auto_layout",
+        "node_set_auto_layout",
         {
             title: "Set Auto Layout",
             description: "Configure a frame's auto-layout (mode, padding, spacing, alignment, sizing) in one unified setter.",
@@ -380,17 +380,17 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.set_auto_layout", params);
+            const result = await sendCommandToFigma("node_set_auto_layout", params);
             return toolResult(result);
         }
     );
 
     // 12. Set Fill Color Tool
     server.registerTool(
-        "node.set_fill",
+        "node_set_fill",
         {
             title: "Set Fill Color",
-            description: "Set a node's fill to a literal RGBA color. Use `node.apply_style` to link a shared paint style, or `node.bind_variable` to bind a color token.",
+            description: "Set a node's fill to a literal RGBA color. Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
                 nodeName: z.string().describe("Name of the node to modify"),
@@ -413,7 +413,7 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async ({ nodeId, nodeName, r, g, b, a }: any) => {
-            const result = await sendCommandToFigma("node.set_fill", {
+            const result = await sendCommandToFigma("node_set_fill", {
                 nodeId,
                 nodeName,
                 color: { r, g, b, a: a ?? 1 },
@@ -424,7 +424,7 @@ export function registerNodeTools(server: McpServer) {
 
     // 13. Set Stroke Tool
     server.registerTool(
-        "node.set_stroke",
+        "node_set_stroke",
         {
             title: "Set Stroke",
             description: "Set a node's stroke color and weight; supports uniform or per-side weights.",
@@ -455,7 +455,7 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async ({ nodeId, nodeName, r, g, b, a, weight, strokeTopWeight, strokeBottomWeight, strokeLeftWeight, strokeRightWeight }: any) => {
-            const result = await sendCommandToFigma("node.set_stroke", {
+            const result = await sendCommandToFigma("node_set_stroke", {
                 nodeId,
                 nodeName,
                 color: { r, g, b, a: a ?? 1 },
@@ -471,7 +471,7 @@ export function registerNodeTools(server: McpServer) {
 
     // 14. Set Corner Radius Tool
     server.registerTool(
-        "node.set_corner_radius",
+        "node_set_corner_radius",
         {
             title: "Set Corner Radius",
             description: "Set a node's corner radius — uniform or per-corner.",
@@ -496,7 +496,7 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async ({ nodeId, nodeName, radius, corners }: any) => {
-            const result = await sendCommandToFigma("node.set_corner_radius", {
+            const result = await sendCommandToFigma("node_set_corner_radius", {
                 nodeId,
                 nodeName,
                 radius,
@@ -508,10 +508,10 @@ export function registerNodeTools(server: McpServer) {
 
     // 15. Set Effects Tool
     server.registerTool(
-        "node.set_effects",
+        "node_set_effects",
         {
             title: "Set Effects",
-            description: "Set a node's effect array (shadows, blurs). Use `node.apply_style` to link a shared effect style instead.",
+            description: "Set a node's effect array (shadows, blurs). Use `node_apply_style` to link a shared effect style instead.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
                 nodeName: z.string().describe("Name of the node to verify against"),
@@ -552,14 +552,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.set_effects", params);
+            const result = await sendCommandToFigma("node_set_effects", params);
             return toolResult(result);
         }
     );
 
     // 16. Apply Style Tool
     server.registerTool(
-        "node.apply_style",
+        "node_apply_style",
         {
             title: "Apply Style",
             description: "Link a node to a shared library style (paint/text/effect/grid) by `styleId`. Use the raw `node.set_*` setters for ad-hoc values not backed by a style.",
@@ -581,14 +581,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.apply_style", params);
+            const result = await sendCommandToFigma("node_apply_style", params);
             return toolResult(result);
         }
     );
 
     // 17. Bind Variable Tool
     server.registerTool(
-        "node.bind_variable",
+        "node_bind_variable",
         {
             title: "Bind Variable",
             description: "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node.set_*` when the value should track a design token.",
@@ -615,14 +615,14 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.bind_variable", params);
+            const result = await sendCommandToFigma("node_bind_variable", params);
             return toolResult(result);
         }
     );
 
     // 18. Export Node Image Tool
     server.registerTool(
-        "node.export_visual",
+        "node_export_visual",
         {
             title: "Export Node Image",
             description: "Render a node to an image (PNG/JPG/SVG/PDF) at a given scale. Read-only; the canonical way to visually verify edits.",
@@ -650,7 +650,7 @@ export function registerNodeTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("node.export_visual", params);
+            const result = await sendCommandToFigma("node_export_visual", params);
             return toolResult(result);
         }
     );

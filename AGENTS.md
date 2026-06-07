@@ -10,7 +10,7 @@ The full operational guide lives in one place and is delivered three ways; use w
 
 Two rules to internalize before anything else:
 
-1. **Discover before acting.** Start every node workflow with a read (`page.info` → `node.info`); pass names back verbatim.
+1. **Discover before acting.** Start every node workflow with a read (`page_info` → `node_info`); pass names back verbatim.
 2. **The plugin can refuse you.** Constraints are checked at execution time and return structured errors — plan calls to comply rather than retrying.
 
 > Installing or developing figma-edit-mcp? See [README.md](./README.md) (install) and [CONTRIBUTING.md](./CONTRIBUTING.md) (development).

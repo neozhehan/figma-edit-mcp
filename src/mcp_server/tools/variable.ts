@@ -6,7 +6,7 @@ import { toolResult } from "./_result.js";
 export function registerVariableTools(server: McpServer) {
     // 1. List Variables Tool
     server.registerTool(
-        "variable.list",
+        "variable_list",
         {
             title: "List Variables",
             description: "List local variables/collections, or detailed info for specific variable ids; optionally scan for consumers.",
@@ -31,14 +31,14 @@ export function registerVariableTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("variable.list", params);
+            const result = await sendCommandToFigma("variable_list", params);
             return toolResult(result);
         }
     );
 
     // 2. Manage Variables Tool
     server.registerTool(
-        "variable.manage",
+        "variable_manage",
         {
             title: "Manage Variables",
             description: "Create collections and variables and set their values/aliases (create/update router).",
@@ -97,14 +97,14 @@ export function registerVariableTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("variable.manage", params);
+            const result = await sendCommandToFigma("variable_manage", params);
             return toolResult(result);
         }
     );
 
     // 3. Delete Variables Tool
     server.registerTool(
-        "variable.delete",
+        "variable_delete",
         {
             title: "Delete Variables",
             description: "Delete specific variables or an entire collection. Runs a full-document consumer check first and rejects the whole operation if any target is still in use.",
@@ -129,7 +129,7 @@ export function registerVariableTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("variable.delete", params);
+            const result = await sendCommandToFigma("variable_delete", params);
             return toolResult(result);
         }
     );

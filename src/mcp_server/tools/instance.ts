@@ -6,7 +6,7 @@ import { toolResult } from "./_result.js";
 export function registerInstanceTools(server: McpServer) {
     // 1. Set Instance Property Tool
     server.registerTool(
-        "instance.set_property",
+        "instance_set_property",
         {
             title: "Set Instance Property",
             description: "Set one property on an instance — boolean toggle, text override, instance swap, or variant selection.",
@@ -26,14 +26,14 @@ export function registerInstanceTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("instance.set_property", params);
+            const result = await sendCommandToFigma("instance_set_property", params);
             return toolResult(result);
         }
     );
 
     // 2. Get Instance Overrides Tool
     server.registerTool(
-        "instance.get_overrides",
+        "instance_get_overrides",
         {
             title: "Get Instance Overrides",
             description: "Read the override properties from a source instance, to later apply them to other instances.",
@@ -56,7 +56,7 @@ export function registerInstanceTools(server: McpServer) {
             }
         },
         async ({ nodeId }: any) => {
-            const result = await sendCommandToFigma("instance.get_overrides", {
+            const result = await sendCommandToFigma("instance_get_overrides", {
                 instanceNodeId: nodeId || null,
             });
             return toolResult(result);
@@ -65,7 +65,7 @@ export function registerInstanceTools(server: McpServer) {
 
     // 3. Set Instance Overrides Tool
     server.registerTool(
-        "instance.set_overrides",
+        "instance_set_overrides",
         {
             title: "Set Instance Overrides",
             description: "Apply previously-read overrides to target instances; targets are swapped to the source component and all overrides applied.",
@@ -92,7 +92,7 @@ export function registerInstanceTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("instance.set_overrides", params);
+            const result = await sendCommandToFigma("instance_set_overrides", params);
             return toolResult(result);
         }
     );

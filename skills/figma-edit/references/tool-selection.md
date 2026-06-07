@@ -2,9 +2,9 @@
 
 Heuristics for picking the right tool when several overlap.
 
-## `node.info` — the workhorse read
+## `node_info` — the workhorse read
 
-`node.info` is the one read tool for node data (it subsumes the old separate scan tools and the per-node variable read). Use its parameters to scope the read tightly:
+`node_info` is the one read tool for node data (it subsumes the old separate scan tools and the per-node variable read). Use its parameters to scope the read tightly:
 
 - **`nodeIds: string[]`** — the roots of the traversal. Always required.
 - **`fields: string[]`** — return only these properties. Omitted properties are absent from the response (not `null`). Use aggressively to keep responses small. Common: `name`, `type`, `characters`, `fills`, `width`, `height`.
@@ -13,11 +13,11 @@ Heuristics for picking the right tool when several overlap.
 
 | Goal | Call |
 |---|---|
-| All text in a frame | `node.info({ nodeIds: [frameId], filter: { type: "TEXT" }, fields: ["characters", "name"] })` |
-| Immediate children of a node | `node.info({ nodeIds: [id], maxDepth: 1, fields: ["name", "type"] })` |
-| All components in a page | `node.info({ nodeIds: [pageId], filter: { type: ["COMPONENT", "COMPONENT_SET"] }, fields: ["name"] })` |
-| Full info on one known node | `node.info({ nodeIds: [id], maxDepth: 0 })` |
-| Variables bound to a node | `node.info({ nodeIds: [id], fields: ["boundVariables", "explicitVariableModes"] })` |
+| All text in a frame | `node_info({ nodeIds: [frameId], filter: { type: "TEXT" }, fields: ["characters", "name"] })` |
+| Immediate children of a node | `node_info({ nodeIds: [id], maxDepth: 1, fields: ["name", "type"] })` |
+| All components in a page | `node_info({ nodeIds: [pageId], filter: { type: ["COMPONENT", "COMPONENT_SET"] }, fields: ["name"] })` |
+| Full info on one known node | `node_info({ nodeIds: [id], maxDepth: 0 })` |
+| Variables bound to a node | `node_info({ nodeIds: [id], fields: ["boundVariables", "explicitVariableModes"] })` |
 
 The response includes `descendantCount` on top-level and boundary nodes — use it to gauge whether a deeper traversal is feasible before requesting it.
 
@@ -34,15 +34,15 @@ When you only need to know *whether* something is bound, request the raw ID fiel
 
 | Want to… | Use | Not |
 |---|---|---|
-| Set an ad-hoc color | `node.set_fill` (literal RGBA) | `node.apply_style` (that links a shared paint style) |
-| Make a value track a design token | `node.bind_variable` | `node.set_fill` (a literal won't update with the token) |
-| Reuse a library style | `node.apply_style` (by `styleId`) | the raw `node.set_*` setters |
-| Move and/or size a node | `node.transform` ({x?, y?, width?, height?}) | — |
-| Create any basic shape | `create.shape` ({type, …}) | — |
+| Set an ad-hoc color | `node_set_fill` (literal RGBA) | `node_apply_style` (that links a shared paint style) |
+| Make a value track a design token | `node_bind_variable` | `node_set_fill` (a literal won't update with the token) |
+| Reuse a library style | `node_apply_style` (by `styleId`) | the raw `node_set_*` setters |
+| Move and/or size a node | `node_transform` ({x?, y?, width?, height?}) | — |
+| Create any basic shape | `create_shape` ({type, …}) | — |
 
 ## Batch vs single-item
 
-Use a **batch** tool (`text.set_content`, `node.delete`, `annotation.set`, `instance.set_overrides`) when:
+Use a **batch** tool (`text_set_content`, `node_delete`, `annotation_set`, `instance_set_overrides`) when:
 
 - You have more than 2–3 items of the same operation.
 - The operations are independent of each other's results.
@@ -52,4 +52,4 @@ Use a **single-item** path when you have one item, later operations depend on ea
 
 ## Streaming progress
 
-Tools that may run long (`node.info` at high depth, `page.info` on large files) emit `progress_update` events. Treat them as informational — they prevent timeouts and signal the call is still working. Wait for the actual response; do not treat a progress event as completion.
+Tools that may run long (`node_info` at high depth, `page_info` on large files) emit `progress_update` events. Treat them as informational — they prevent timeouts and signal the call is still working. Wait for the actual response; do not treat a progress event as completion.

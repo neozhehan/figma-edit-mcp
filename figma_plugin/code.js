@@ -1196,7 +1196,7 @@
       const errorMsg = "Missing or invalid nodeIds parameter";
       await sendProgressUpdate(
         commandId,
-        "node.delete",
+        "node_delete",
         "error",
         0,
         0,
@@ -1209,7 +1209,7 @@
     console.log(`Starting deletion of ${nodeIds.length} nodes`);
     await sendProgressUpdate(
       commandId,
-      "node.delete",
+      "node_delete",
       "started",
       0,
       nodeIds.length,
@@ -1228,7 +1228,7 @@
     console.log(`Split ${nodeIds.length} deletions into ${chunks.length} chunks`);
     await sendProgressUpdate(
       commandId,
-      "node.delete",
+      "node_delete",
       "in_progress",
       5,
       nodeIds.length,
@@ -1247,7 +1247,7 @@
       );
       await sendProgressUpdate(
         commandId,
-        "node.delete",
+        "node_delete",
         "in_progress",
         Math.round(5 + chunkIndex / chunks.length * 90),
         nodeIds.length,
@@ -1303,7 +1303,7 @@
       });
       await sendProgressUpdate(
         commandId,
-        "node.delete",
+        "node_delete",
         "in_progress",
         Math.round(5 + (chunkIndex + 1) / chunks.length * 90),
         nodeIds.length,
@@ -1327,7 +1327,7 @@
     );
     await sendProgressUpdate(
       commandId,
-      "node.delete",
+      "node_delete",
       "completed",
       100,
       nodeIds.length,
@@ -4477,37 +4477,37 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     switch (command) {
       case "get_connect_payload":
         return await getConnectPayload();
-      case "node.set_fill":
+      case "node_set_fill":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setFillColor(params);
-      case "node.set_stroke":
+      case "node_set_stroke":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setStroke(params);
-      case "node.set_corner_radius":
+      case "node_set_corner_radius":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setCornerRadius(params);
-      case "node.set_auto_layout":
+      case "node_set_auto_layout":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setAutoLayout(params);
-      case "node.bind_variable":
+      case "node_bind_variable":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setBoundVariable(params);
-      case "node.rename":
+      case "node_rename":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setNodeName(params);
-      case "node.group":
+      case "node_group":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
         if (params.nodes.length > 0) {
@@ -4524,49 +4524,49 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           }
         }
         return await groupNodes(params);
-      case "node.ungroup":
+      case "node_ungroup":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await ungroupNodes(params);
-      case "node.flatten":
+      case "node_flatten":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await flattenNode(params);
-      case "node.insert_child":
+      case "node_insert_child":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         if (!await checkScopeAccess(params ? params.childId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.childId : null, params ? params.childNodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await insertChild(params);
-      case "node.transform":
+      case "node_transform":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await transformNode(params);
-      case "node.clone":
+      case "node_clone":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await cloneNode(params);
-      case "create.shape":
+      case "create_shape":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createShape(params);
-      case "create.frame":
+      case "create_frame":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createFrame(params);
-      case "create.text":
+      case "create_text":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createText(params);
-      case "create.instance":
+      case "create_instance":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (params && params.parentId) {
           if (!await checkScopeAccess(params.parentId)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
@@ -4575,7 +4575,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (state.scopeRootId) throw new Error(formatScopeError(ERRORS.ROOT_INSTANCE_DISALLOWED));
         }
         return await createComponentInstance(params);
-      case "create.connection":
+      case "create_connection":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (params && params.connectorId) {
           if (!await checkScopeAccess(params.connectorId)) throw new Error(formatScopeError(`Operation denied: Connector node ${params.connectorId} outside editable scope`));
@@ -4589,7 +4589,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           }
         }
         return await createConnections(params);
-      case "text.set_content":
+      case "text_set_content":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.text || !Array.isArray(params.text)) throw new Error("Missing or Invalid text parameter");
         for (const item of params.text) {
@@ -4597,12 +4597,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
         }
         return await setMultipleTextContents(params);
-      case "text.set_style":
+      case "text_set_style":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setTextStyle(params);
-      case "annotation.set":
+      case "annotation_set":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.annotations || !Array.isArray(params.annotations)) throw new Error("Missing or Invalid annotations parameter");
         for (const item of params.annotations) {
@@ -4610,7 +4610,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
         }
         return await setMultipleAnnotations(params);
-      case "node.delete":
+      case "node_delete":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
         const nodeIdsToDelete = [];
@@ -4620,7 +4620,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           nodeIdsToDelete.push(item.nodeId);
         }
         return await deleteMultipleNodes({ nodeIds: nodeIdsToDelete });
-      case "instance.set_overrides":
+      case "instance_set_overrides":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (params && params.targetNodes) {
           if (!Array.isArray(params.targetNodes)) {
@@ -4650,26 +4650,26 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           }
         }
         throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
-      case "instance.set_property":
+      case "instance_set_property":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setComponentInstanceProperty(params);
-      case "component.manage_property":
+      case "component_manage_property":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await manageComponentProperty(params);
-      case "component.delete_property":
+      case "component_delete_property":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await deleteComponentProperty(params);
-      case "page.info":
+      case "page_info":
         return await getPagesInfo(params);
       case "get_selection":
         return await getSelection();
-      case "node.info":
+      case "node_info":
         const effectiveNodeIds = params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0 ? params.nodeIds : state.scopeRootId ? [state.scopeRootId] : [];
         if (effectiveNodeIds.length === 0 && state.readOnly) {
           return { nodes: [] };
@@ -4678,15 +4678,15 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           nodeIds: effectiveNodeIds,
           commandId: params && params.commandId ? params.commandId : generateCommandId()
         }));
-      case "style.list":
+      case "style_list":
         return await getStyles();
-      case "component.list":
+      case "component_list":
         return await getComponents(params);
-      case "node.export_visual":
+      case "node_export_visual":
         return await exportNodeAsImage(params);
-      case "annotation.list":
+      case "annotation_list":
         return await getAnnotations(params);
-      case "instance.get_overrides":
+      case "instance_get_overrides":
         if (params && params.instanceNodeId) {
           const instanceNode = await figma.getNodeByIdAsync(params.instanceNodeId);
           if (!instanceNode) {
@@ -4695,42 +4695,42 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           return await getInstanceOverrides(instanceNode);
         }
         return await getInstanceOverrides();
-      case "reaction.list":
+      case "reaction_list":
         if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
           throw new Error(ERRORS.MISSING_NODE_IDS);
         }
         return await getReactions(params.nodeIds);
-      case "reaction.update":
+      case "reaction_update":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         return await updateReactions(params);
-      case "node.select":
+      case "node_select":
         return await setSelections(params);
-      case "variable.list":
+      case "variable_list":
         return await getVariables(params);
-      case "variable.manage":
+      case "variable_manage":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         return await handleVariableRequest(params);
-      case "variable.delete":
+      case "variable_delete":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         return await deleteVariables(params);
-      case "style.manage":
+      case "style_manage":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         return await createStyle(params);
-      case "style.delete":
+      case "style_delete":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         return await deleteStyle(params);
-      case "node.apply_style":
+      case "node_apply_style":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await applyStyle(params);
-      case "create.component":
+      case "create_component":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await createComponent(params);
-      case "create.component_set":
+      case "create_component_set":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         const props = params.properties || [];
         if (params.components) {
@@ -4748,12 +4748,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (!await verifyParentName(params.parentId, params.parentNodeName)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         }
         return await createComponentSet(params);
-      case "create.svg":
+      case "create_svg":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createNodeFromSvg(params);
-      case "node.set_effects":
+      case "node_set_effects":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);

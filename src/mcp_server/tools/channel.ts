@@ -6,7 +6,7 @@ import { toolResult } from "./_result.js";
 export function registerChannelTools(server: McpServer) {
     // 1. Join Channel Tool
     server.registerTool(
-        "channel.join",
+        "channel_join",
         {
             title: "Join Channel",
             description: "Join a plugin channel to establish the live connection to the Figma document.",

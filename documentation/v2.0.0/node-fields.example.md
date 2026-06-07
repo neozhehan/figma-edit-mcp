@@ -1,8 +1,8 @@
-# Node fields — `node.info`
+# Node fields — `node_info`
 
 > Sample of the **generated, LLM-facing** reference (the artifact an agent reads via the `tool-selection` resource). Generated from `@figma/plugin-typings`; do not hand-edit. The authoritative spec (provenance, fast/slow rule, maintenance) is [node-fields.md](./node-fields.md); this file shows the rendered shape.
 
-Pass field names to `node.info({ nodeIds, fields: [...] })`. Omitted fields are absent from the response (not `null`).
+Pass field names to `node_info({ nodeIds, fields: [...] })`. Omitted fields are absent from the response (not `null`).
 
 - **fast** = synchronous read, cheap. Request freely.
 - **slow** = async resolution / computed geometry. Request only when needed; adds latency.
@@ -201,4 +201,4 @@ Pass field names to `node.info({ nodeIds, fields: [...] })`. Omitted fields are 
 >
 > **References:** node references (`parent`, `mainComponent`, `instances`, `exposedInstances`, …) return **id(s)**; library-object references (`*StyleId`, `boundVariables`, `explicitVariableModes`) return the resolved **`{id, name}`** superset (no raw-id variant). See node-fields.md → *Reference fields*.
 >
-> **Not `node.info` fields** (use the right tool — not requestable here): rendered image → `node.export_visual`; CSS → `getCSSAsync()`; publish status → `getPublishStatusAsync()`.
+> **Not `node_info` fields** (use the right tool — not requestable here): rendered image → `node_export_visual`; CSS → `getCSSAsync()`; publish status → `getPublishStatusAsync()`.

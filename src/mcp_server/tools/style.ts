@@ -6,7 +6,7 @@ import { toolResult } from "./_result.js";
 export function registerStyleTools(server: McpServer) {
     // 1. List Styles Tool
     server.registerTool(
-        "style.list",
+        "style_list",
         {
             title: "List Styles",
             description: "List all local styles (paint/text/effect/grid) in the document.",
@@ -23,14 +23,14 @@ export function registerStyleTools(server: McpServer) {
             }
         },
         async () => {
-            const result = await sendCommandToFigma("style.list");
+            const result = await sendCommandToFigma("style_list");
             return toolResult(result);
         }
     );
 
     // 2. Manage Style Tool
     server.registerTool(
-        "style.manage",
+        "style_manage",
         {
             title: "Manage Style",
             description: "Create a named style (paint/text/effect/grid), or update an existing one when `styleId` is given.",
@@ -59,14 +59,14 @@ export function registerStyleTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("style.manage", params);
+            const result = await sendCommandToFigma("style_manage", params);
             return toolResult(result);
         }
     );
 
     // 3. Delete Style Tool
     server.registerTool(
-        "style.delete",
+        "style_delete",
         {
             title: "Delete Style",
             description: "Delete a local style by id. Detaches consumers — they keep their resolved values and lose only the style link.",
@@ -85,7 +85,7 @@ export function registerStyleTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("style.delete", params);
+            const result = await sendCommandToFigma("style_delete", params);
             return toolResult(result);
         }
     );

@@ -45,10 +45,10 @@ const ReactionSchema = z.object({
 export function registerReactionTools(server: McpServer) {
     // 1. List Reactions Tool
     server.registerTool(
-        "reaction.list",
+        "reaction_list",
         {
             title: "List Reactions",
-            description: "Read prototype reactions from one or more nodes. Process the output with the `reaction_to_connector_strategy` prompt to build `create.connection` parameters.",
+            description: "Read prototype reactions from one or more nodes. Process the output with the `reaction_to_connector_strategy` prompt to build `create_connection` parameters.",
             inputSchema: z.object({
                 nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
             }),
@@ -63,17 +63,17 @@ export function registerReactionTools(server: McpServer) {
             }
         },
         async ({ nodeIds }: any) => {
-            const result = await sendCommandToFigma("reaction.list", { nodeIds });
+            const result = await sendCommandToFigma("reaction_list", { nodeIds });
             return toolResult(result);
         }
     );
 
     // 2. Update Reactions Tool
     server.registerTool(
-        "reaction.update",
+        "reaction_update",
         {
             title: "Update Reactions",
-            description: "Replace a node's prototype reactions with a full new reactions array (read first via `reaction.list`).",
+            description: "Replace a node's prototype reactions with a full new reactions array (read first via `reaction_list`).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to update reactions for"),
                 reactions: z.array(ReactionSchema).describe("The full array of Reaction objects to set"),
@@ -87,7 +87,7 @@ export function registerReactionTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("reaction.update", params);
+            const result = await sendCommandToFigma("reaction_update", params);
             return toolResult(result);
         }
     );
@@ -96,7 +96,7 @@ export function registerReactionTools(server: McpServer) {
     server.registerPrompt(
         "reaction_to_connector_strategy",
         {
-            description: "Strategy for converting Figma prototype reactions to connector lines using the output of 'reaction.list'",
+            description: "Strategy for converting Figma prototype reactions to connector lines using the output of 'reaction_list'",
         },
         (extra) => {
             return {

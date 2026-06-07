@@ -6,7 +6,7 @@ import { toolResult } from "./_result.js";
 export function registerAnnotationTools(server: McpServer) {
     // 1. List Annotations Tool
     server.registerTool(
-        "annotation.list",
+        "annotation_list",
         {
             title: "List Annotations",
             description: "Read the native annotations on a node (and subtree); optionally include the file's annotation categories.",
@@ -24,14 +24,14 @@ export function registerAnnotationTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("annotation.list", params);
+            const result = await sendCommandToFigma("annotation_list", params);
             return toolResult(result);
         }
     );
 
     // 2. Set Annotations Tool
     server.registerTool(
-        "annotation.set",
+        "annotation_set",
         {
             title: "Set Annotations",
             description: "Create or update native annotations on one or more nodes in a batched call (per item: `annotationId` present = update, absent = create).",
@@ -59,7 +59,7 @@ export function registerAnnotationTools(server: McpServer) {
             }
         },
         async ({ annotations }: any) => {
-            const result = await sendCommandToFigma("annotation.set", { annotations });
+            const result = await sendCommandToFigma("annotation_set", { annotations });
             return toolResult(result);
         }
     );

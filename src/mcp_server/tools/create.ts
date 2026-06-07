@@ -6,7 +6,7 @@ import { toolResult } from "./_result.js";
 export function registerCreateTools(server: McpServer) {
     // 1. Create Shape Tool
     server.registerTool(
-        "create.shape",
+        "create_shape",
         {
             title: "Create Shape",
             description: "Create a rectangle, ellipse, polygon, or star via `type`, with position/size and optional `fillColor`/`strokeColor`. Shape-specific params (`arcData`; `pointCount`/`innerRadius`) validated by `type`. `pointCount` = sides (polygon) or points (star), native count — no even-parity rule.",
@@ -49,14 +49,14 @@ export function registerCreateTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("create.shape", params);
+            const result = await sendCommandToFigma("create_shape", params);
             return toolResult(result);
         }
     );
 
     // 2. Create Frame Tool
     server.registerTool(
-        "create.frame",
+        "create_frame",
         {
             title: "Create Frame",
             description: "Create a frame (container) with optional fill/stroke and full auto-layout configuration.",
@@ -102,7 +102,7 @@ export function registerCreateTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("create.frame", {
+            const result = await sendCommandToFigma("create_frame", {
                 ...params,
                 fillColor: params.fillColor || { r: 1, g: 1, b: 1, a: 1 },
                 name: params.name || "Frame",
@@ -113,7 +113,7 @@ export function registerCreateTools(server: McpServer) {
 
     // 3. Create Text Tool
     server.registerTool(
-        "create.text",
+        "create_text",
         {
             title: "Create Text",
             description: "Create a text node with content and optional font size/weight/color.",
@@ -142,7 +142,7 @@ export function registerCreateTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("create.text", {
+            const result = await sendCommandToFigma("create_text", {
                 ...params,
                 fontSize: params.fontSize || 14,
                 fontWeight: params.fontWeight || 400,
@@ -155,7 +155,7 @@ export function registerCreateTools(server: McpServer) {
 
     // 4. Create Node from SVG Tool
     server.registerTool(
-        "create.svg",
+        "create_svg",
         {
             title: "Create Node from SVG",
             description: "Create a node from an SVG markup string.",
@@ -176,14 +176,14 @@ export function registerCreateTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("create.svg", params);
+            const result = await sendCommandToFigma("create_svg", params);
             return toolResult(result);
         }
     );
 
     // 5. Create Component Tool
     server.registerTool(
-        "create.component",
+        "create_component",
         {
             title: "Create Component",
             description: "Convert an existing frame into a main component.",
@@ -200,14 +200,14 @@ export function registerCreateTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("create.component", params);
+            const result = await sendCommandToFigma("create_component", params);
             return toolResult(result);
         }
     );
 
     // 6. Create Instance Tool
     server.registerTool(
-        "create.instance",
+        "create_instance",
         {
             title: "Create Instance",
             description: "Instantiate a component (by `componentKey` or `componentId`) at a position.",
@@ -228,14 +228,14 @@ export function registerCreateTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("create.instance", params);
+            const result = await sendCommandToFigma("create_instance", params);
             return toolResult(result);
         }
     );
 
     // 7. Create Component Set Tool
     server.registerTool(
-        "create.component_set",
+        "create_component_set",
         {
             title: "Create Component Set",
             description: "Combine components into a component set (variants) with property definitions.",
@@ -259,14 +259,14 @@ export function registerCreateTools(server: McpServer) {
             }
         },
         async (params: any) => {
-            const result = await sendCommandToFigma("create.component_set", params);
+            const result = await sendCommandToFigma("create_component_set", params);
             return toolResult(result);
         }
     );
 
     // 8. Create Connections Tool
     server.registerTool(
-        "create.connection",
+        "create_connection",
         {
             title: "Create Connections",
             description: "Create connector lines between nodes, or set/check the default connector template. Pass `connectorId` to set a default, `connections` to draw lines, or nothing to check the current default.",
@@ -299,7 +299,7 @@ export function registerCreateTools(server: McpServer) {
             }
         },
         async ({ connectorId, connections }: any) => {
-            const result = await sendCommandToFigma("create.connection", {
+            const result = await sendCommandToFigma("create_connection", {
                 connectorId,
                 connections,
                 checkDefault: !connectorId && !connections

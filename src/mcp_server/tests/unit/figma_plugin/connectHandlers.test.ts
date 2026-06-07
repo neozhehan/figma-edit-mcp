@@ -110,7 +110,7 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
                     return res;
                 };
                 registeredTools[name] = wrapper;
-                if (name === "channel.join") {
+                if (name === "channel_join") {
                     registeredTools["join_channel"] = wrapper;
                 }
             }),
@@ -267,7 +267,7 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
                     return res;
                 };
                 registeredTools[name] = wrapper;
-                if (name === "channel.join") {
+                if (name === "channel_join") {
                     registeredTools["join_channel"] = wrapper;
                 }
             }),
@@ -391,7 +391,7 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
                     return res;
                 };
                 registeredTools[name] = wrapper;
-                if (name === "channel.join") {
+                if (name === "channel_join") {
                     registeredTools["join_channel"] = wrapper;
                 }
             }),

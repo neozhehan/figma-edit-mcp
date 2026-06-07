@@ -56,187 +56,187 @@
   "tools_generated": false,
   "tools": [
     {
-      "name": "page.info",
+      "name": "page_info",
       "description": "List the document's pages; no args → all pages (no children), or pass `pageIds` → those pages with their top-level children. Batch ≤25 ids/call."
     },
     {
-      "name": "node.info",
+      "name": "node_info",
       "description": "Read one or more nodes — recursive subtree traversal with `fields` selection, `filter`, and `maxDepth`. Returns only requested fields (incl. resolved `boundVariables`/`explicitVariableModes`). The workhorse read; start here before any write."
     },
     {
-      "name": "node.transform",
+      "name": "node_transform",
       "description": "Move and/or resize a node by setting absolute `x`/`y`/`width`/`height` (any subset)."
     },
     {
-      "name": "node.rename",
+      "name": "node_rename",
       "description": "Rename a node (sets `name` to an exact value)."
     },
     {
-      "name": "node.delete",
+      "name": "node_delete",
       "description": "Delete one or more nodes in a single batched, per-item-validated call. No API undo."
     },
     {
-      "name": "node.clone",
+      "name": "node_clone",
       "description": "Duplicate an existing node, optionally at a new `x`/`y`. Produces a new node id."
     },
     {
-      "name": "node.select",
+      "name": "node_select",
       "description": "Set the canvas selection to one or more nodes and focus them in the viewport."
     },
     {
-      "name": "node.group",
+      "name": "node_group",
       "description": "Wrap multiple nodes in a new group node."
     },
     {
-      "name": "node.ungroup",
+      "name": "node_ungroup",
       "description": "Dissolve a group, promoting its children to the parent. Removes the group container."
     },
     {
-      "name": "node.flatten",
+      "name": "node_flatten",
       "description": "Flatten a node and its children into a single vector. Lossy — original structure is not recoverable."
     },
     {
-      "name": "node.insert_child",
+      "name": "node_insert_child",
       "description": "Reparent a node under a new parent at an optional `index`."
     },
     {
-      "name": "node.set_auto_layout",
+      "name": "node_set_auto_layout",
       "description": "Configure a frame's auto-layout (mode, padding, spacing, alignment, sizing) in one unified setter."
     },
     {
-      "name": "node.set_fill",
-      "description": "Set a node's fill to a literal RGBA color. Use `node.apply_style` to link a shared paint style, or `node.bind_variable` to bind a color token."
+      "name": "node_set_fill",
+      "description": "Set a node's fill to a literal RGBA color. Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token."
     },
     {
-      "name": "node.set_stroke",
+      "name": "node_set_stroke",
       "description": "Set a node's stroke color and weight; supports uniform or per-side weights."
     },
     {
-      "name": "node.set_corner_radius",
+      "name": "node_set_corner_radius",
       "description": "Set a node's corner radius — uniform or per-corner."
     },
     {
-      "name": "node.set_effects",
-      "description": "Set a node's effect array (shadows, blurs). Use `node.apply_style` to link a shared effect style instead."
+      "name": "node_set_effects",
+      "description": "Set a node's effect array (shadows, blurs). Use `node_apply_style` to link a shared effect style instead."
     },
     {
-      "name": "node.apply_style",
+      "name": "node_apply_style",
       "description": "Link a node to a shared library style (paint/text/effect/grid) by `styleId`. Use the raw `node.set_*` setters for ad-hoc values not backed by a style."
     },
     {
-      "name": "node.bind_variable",
+      "name": "node_bind_variable",
       "description": "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node.set_*` when the value should track a design token."
     },
     {
-      "name": "node.export_visual",
+      "name": "node_export_visual",
       "description": "Render a node to an image (PNG/JPG/SVG/PDF) at a given scale. Read-only; the canonical way to visually verify edits."
     },
     {
-      "name": "create.shape",
+      "name": "create_shape",
       "description": "Create a rectangle, ellipse, polygon, or star via `type`, with position/size and optional `fillColor`/`strokeColor`. Shape-specific params (`arcData`; `pointCount`/`innerRadius`) validated by `type`. `pointCount` = sides (polygon) or points (star), native count — no even-parity rule."
     },
     {
-      "name": "create.frame",
+      "name": "create_frame",
       "description": "Create a frame (container) with optional fill/stroke and full auto-layout configuration."
     },
     {
-      "name": "create.text",
+      "name": "create_text",
       "description": "Create a text node with content and optional font size/weight/color."
     },
     {
-      "name": "create.svg",
+      "name": "create_svg",
       "description": "Create a node from an SVG markup string."
     },
     {
-      "name": "create.component",
+      "name": "create_component",
       "description": "Convert an existing frame into a main component."
     },
     {
-      "name": "create.instance",
+      "name": "create_instance",
       "description": "Instantiate a component (by `componentKey` or `componentId`) at a position."
     },
     {
-      "name": "create.component_set",
+      "name": "create_component_set",
       "description": "Combine components into a component set (variants) with property definitions."
     },
     {
-      "name": "create.connection",
+      "name": "create_connection",
       "description": "Create connector lines between nodes, or set/check the default connector template. Pass `connectorId` to set a default, `connections` to draw lines, or nothing to check the current default."
     },
     {
-      "name": "style.list",
+      "name": "style_list",
       "description": "List all local styles (paint/text/effect/grid) in the document."
     },
     {
-      "name": "style.manage",
+      "name": "style_manage",
       "description": "Create a named style (paint/text/effect/grid), or update an existing one when `styleId` is given."
     },
     {
-      "name": "style.delete",
+      "name": "style_delete",
       "description": "Delete a local style by id. Detaches consumers — they keep their resolved values and lose only the style link."
     },
     {
-      "name": "text.set_content",
+      "name": "text_set_content",
       "description": "Set the text of one or more text nodes in a single batched, per-item-validated call."
     },
     {
-      "name": "text.set_style",
+      "name": "text_set_style",
       "description": "Set any combination of typography properties (font, size, weight, spacing, decoration, …) on a text node."
     },
     {
-      "name": "component.list",
+      "name": "component_list",
       "description": "List components in the document, with filtering and scope options."
     },
     {
-      "name": "component.manage_property",
-      "description": "Add or edit a component-property definition (BOOLEAN/TEXT/INSTANCE_SWAP) on a main component or variant set. Deleting is `component.delete_property`."
+      "name": "component_manage_property",
+      "description": "Add or edit a component-property definition (BOOLEAN/TEXT/INSTANCE_SWAP) on a main component or variant set. Deleting is `component_delete_property`."
     },
     {
-      "name": "component.delete_property",
+      "name": "component_delete_property",
       "description": "Remove a component-property definition from a main component or variant set; propagates to every instance."
     },
     {
-      "name": "instance.set_property",
+      "name": "instance_set_property",
       "description": "Set one property on an instance — boolean toggle, text override, instance swap, or variant selection."
     },
     {
-      "name": "instance.get_overrides",
+      "name": "instance_get_overrides",
       "description": "Read the override properties from a source instance, to later apply them to other instances."
     },
     {
-      "name": "instance.set_overrides",
+      "name": "instance_set_overrides",
       "description": "Apply previously-read overrides to target instances; targets are swapped to the source component and all overrides applied."
     },
     {
-      "name": "variable.list",
+      "name": "variable_list",
       "description": "List local variables/collections, or detailed info for specific variable ids; optionally scan for consumers."
     },
     {
-      "name": "variable.manage",
+      "name": "variable_manage",
       "description": "Create collections and variables and set their values/aliases (create/update router)."
     },
     {
-      "name": "variable.delete",
+      "name": "variable_delete",
       "description": "Delete specific variables or an entire collection. Runs a full-document consumer check first and rejects the whole operation if any target is still in use."
     },
     {
-      "name": "annotation.list",
+      "name": "annotation_list",
       "description": "Read the native annotations on a node (and subtree); optionally include the file's annotation categories."
     },
     {
-      "name": "annotation.set",
+      "name": "annotation_set",
       "description": "Create or update native annotations on one or more nodes in a batched call (per item: `annotationId` present = update, absent = create)."
     },
     {
-      "name": "reaction.list",
-      "description": "Read prototype reactions from one or more nodes. Process the output with the `reaction_to_connector_strategy` prompt to build `create.connection` parameters."
+      "name": "reaction_list",
+      "description": "Read prototype reactions from one or more nodes. Process the output with the `reaction_to_connector_strategy` prompt to build `create_connection` parameters."
     },
     {
-      "name": "reaction.update",
-      "description": "Replace a node's prototype reactions with a full new reactions array (read first via `reaction.list`)."
+      "name": "reaction_update",
+      "description": "Replace a node's prototype reactions with a full new reactions array (read first via `reaction_list`)."
     },
     {
-      "name": "channel.join",
+      "name": "channel_join",
       "description": "Join a plugin channel to establish the live connection to the Figma document."
     }
   ]

@@ -4,11 +4,11 @@
 
 Every workflow that touches a node should start with a read. There is no exception worth memorizing.
 
-1. **Discover pages** with `page.info` to learn the page structure.
-2. **Discover nodes** with `node.info({ nodeIds, filter, fields, maxDepth })` to get IDs, names, types, and any properties you need.
+1. **Discover pages** with `page_info` to learn the page structure.
+2. **Discover nodes** with `node_info({ nodeIds, filter, fields, maxDepth })` to get IDs, names, types, and any properties you need.
 3. **Plan** the operation using the IDs and names from the read — verbatim, no transformation.
 4. **Act** with the appropriate write tool.
-5. **Verify** with another `node.info` (or `node.export_visual`) when the result matters.
+5. **Verify** with another `node_info` (or `node_export_visual`) when the result matters.
 
 **Anti-patterns to avoid:**
 
@@ -25,11 +25,11 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
 ### Find and update text
 
 ```
-1. page.info()                                          → find the page
-2. node.info({ nodeIds: [pageId],
+1. page_info()                                          → find the page
+2. node_info({ nodeIds: [pageId],
                filter: { type: "TEXT" },
                fields: ["characters", "name"] })         → list text nodes
-3. text.set_content({ nodeId: parentId, text: [
+3. text_set_content({ nodeId: parentId, text: [
      { nodeId, nodeName, text }, ...                     → names verbatim from step 2
    ]})
 ```
@@ -37,8 +37,8 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
 ### Create a node inside a frame
 
 ```
-1. node.info({ nodeIds: [frameId], maxDepth: 0 })       → confirm parent name
-2. create.shape({ type: "RECTANGLE", parentId: frameId,
+1. node_info({ nodeIds: [frameId], maxDepth: 0 })       → confirm parent name
+2. create_shape({ type: "RECTANGLE", parentId: frameId,
                   parentNodeName: <verbatim name>,
                   x, y, width, height })
 ```
@@ -47,7 +47,7 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
 
 ```
 1. Pass the URL-format ID through unchanged (server normalizes dashes → colons)
-2. node.info({ nodeIds: [urlId], maxDepth: 0 })          → discover real name
+2. node_info({ nodeIds: [urlId], maxDepth: 0 })          → discover real name
 3. <write tool>({ nodeId: urlId, nodeName: <name from step 2>, ... })
 ```
 
@@ -55,11 +55,11 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
 
 For replacing many text nodes safely, work in verifiable chunks rather than one giant call:
 
-1. **Map the structure** — `node.info({ nodeIds: [rootId], filter: { type: "TEXT" }, fields: ["characters", "name"], maxDepth: 10 })`.
+1. **Map the structure** — `node_info({ nodeIds: [rootId], filter: { type: "TEXT" }, fields: ["characters", "name"], maxDepth: 10 })`.
 2. **Chunk** by logical grouping (table rows, card groups, form sections) — not arbitrarily.
-3. **Optionally clone first** — `node.clone` the target to keep a safe copy while iterating.
-4. **Replace a chunk** with one `text.set_content` call (names verbatim from step 1).
-5. **Verify** that chunk with a small targeted export — `node.export_visual({ nodeId: chunkId, format: "PNG", scale: 0.5 })` — then fix issues before the next chunk.
+3. **Optionally clone first** — `node_clone` the target to keep a safe copy while iterating.
+4. **Replace a chunk** with one `text_set_content` call (names verbatim from step 1).
+5. **Verify** that chunk with a small targeted export — `node_export_visual({ nodeId: chunkId, format: "PNG", scale: 0.5 })` — then fix issues before the next chunk.
 6. **Final pass** — export the whole frame at a reduced scale to check cross-chunk consistency.
 
 Scale exports down as chunks grow (≈1.0 for a few nodes, 0.3–0.5 for large groups) to keep responses small.

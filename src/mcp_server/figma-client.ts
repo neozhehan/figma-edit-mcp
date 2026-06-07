@@ -59,70 +59,70 @@ export interface setInstanceOverridesResult {
     }>;
 }
 
-// Command strings accepted by sendCommandToFigma: the v2.0.0 dot-notation tool
-// commands plus the two internal transport commands (`join`, `get_connect_payload`).
+// Command strings accepted by sendCommandToFigma: the v2.0.0 underscore-namespaced
+// tool commands plus the two internal transport commands (`join`, `get_connect_payload`).
 // Keep in sync with the tool registrations (src/mcp_server/tools/*) and the plugin
-// command router (figma_plugin/src/main.ts). Note: the `channel.join` tool is not a
+// command router (figma_plugin/src/main.ts). Note: the `channel_join` tool is not a
 // wire command — it calls joinChannel(), which sends `join`.
 export type FigmaCommand =
     // transport / internal
     | "join"
     | "get_connect_payload"
     // page
-    | "page.info"
+    | "page_info"
     // node
-    | "node.info"
-    | "node.transform"
-    | "node.rename"
-    | "node.delete"
-    | "node.clone"
-    | "node.select"
-    | "node.group"
-    | "node.ungroup"
-    | "node.flatten"
-    | "node.insert_child"
-    | "node.set_auto_layout"
-    | "node.set_fill"
-    | "node.set_stroke"
-    | "node.set_corner_radius"
-    | "node.set_effects"
-    | "node.apply_style"
-    | "node.bind_variable"
-    | "node.export_visual"
+    | "node_info"
+    | "node_transform"
+    | "node_rename"
+    | "node_delete"
+    | "node_clone"
+    | "node_select"
+    | "node_group"
+    | "node_ungroup"
+    | "node_flatten"
+    | "node_insert_child"
+    | "node_set_auto_layout"
+    | "node_set_fill"
+    | "node_set_stroke"
+    | "node_set_corner_radius"
+    | "node_set_effects"
+    | "node_apply_style"
+    | "node_bind_variable"
+    | "node_export_visual"
     // create
-    | "create.shape"
-    | "create.frame"
-    | "create.text"
-    | "create.svg"
-    | "create.component"
-    | "create.instance"
-    | "create.component_set"
-    | "create.connection"
+    | "create_shape"
+    | "create_frame"
+    | "create_text"
+    | "create_svg"
+    | "create_component"
+    | "create_instance"
+    | "create_component_set"
+    | "create_connection"
     // style
-    | "style.list"
-    | "style.manage"
-    | "style.delete"
+    | "style_list"
+    | "style_manage"
+    | "style_delete"
     // text
-    | "text.set_content"
-    | "text.set_style"
+    | "text_set_content"
+    | "text_set_style"
     // component
-    | "component.list"
-    | "component.manage_property"
-    | "component.delete_property"
+    | "component_list"
+    | "component_manage_property"
+    | "component_delete_property"
     // instance
-    | "instance.set_property"
-    | "instance.get_overrides"
-    | "instance.set_overrides"
+    | "instance_set_property"
+    | "instance_get_overrides"
+    | "instance_set_overrides"
     // variable
-    | "variable.list"
-    | "variable.manage"
-    | "variable.delete"
+    | "variable_list"
+    | "variable_manage"
+    | "variable_delete"
     // annotation
-    | "annotation.list"
-    | "annotation.set"
+    | "annotation_list"
+    | "annotation_set"
     // reaction
-    | "reaction.list"
-    | "reaction.update";
+    | "reaction_list"
+    | "reaction_update";
 
 // State management
 let ws: any = null;
