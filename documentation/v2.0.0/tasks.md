@@ -53,10 +53,10 @@
 
 > Smithery lists this project via an **`.mcpb` bundle**, so config/metadata come from [manifest.json](../../manifest.json), **not `smithery.yaml`** (which is unused on this path). The published bundle is also stale (manifest `1.5.2`) and must be rebuilt + republished.
 
-- [ ] R4.1 **Populate `manifest.json` `tools` array** — every tool's `name` + `description` from [tool-reference.md](./tool-reference.md) (primary unlock for the 0/40 Capability category; Smithery enumerates tools from here). Keep names in sync with the WS3 dot-notation taxonomy. Consider auto-generating from the registered tools to avoid drift.
-- [ ] R4.2 **Rebuild + republish the `.mcpb`** — `mcpb pack` (or current build) then `smithery mcp publish ./figma-edit-mcp.mcpb -n <org/server>`. Confirm the new bundle carries the `2.0.0` manifest, the `tools` array, and the icon.
-- [ ] R4.3 **Verify `.mcpb` Capability scanning** — determine whether Smithery scores Capability sub-items (param descriptions / output schemas / annotations) by executing the bundle or only reading the manifest. Republish with `tools`+`icon`, observe which sub-scores move; or inspect a known high-scoring `.mcpb` server. Re-prioritise WS3 Smithery effort based on the result.
-- [ ] R4.4 **`glama.json`** — maintainers/metadata at repo root (Glama path, independent of Smithery).
+- [x] R4.1 **Populate `manifest.json` `tools` array** — every tool's `name` + `description` from [tool-reference.md](./tool-reference.md) (primary unlock for the 0/40 Capability category; Smithery enumerates tools from here). Keep names in sync with the WS3 dot-notation taxonomy. Consider auto-generating from the registered tools to avoid drift.
+- [x] R4.2 **Rebuild + republish the `.mcpb`** — `bun run build:smithery` produces both `figma-edit-mcp.mcpb` (MCPB-spec) and `figma-edit-mcp.smithery.mcpb` (rich tools), both verified (2.0.0 + 46 tools + icon). Republished the rich bundle via `smithery mcp publish ./figma-edit-mcp.smithery.mcpb -n neo-vtqv/figma-edit-mcp`. **Confirmed: Smithery score 52 → 98 after republish** (Capability category unlocked).
+- [x] R4.3 **Verify `.mcpb` Capability scanning** — **Resolved:** Smithery's deploy reads the static manifest `tools` and validates each against a schema that **requires `inputSchema`** and accepts `outputSchema` + `annotations` (evidence: the `@smithery/cli` deploy schema, and a 400 "expected object, received undefined" ×46 when publishing a name/description-only bundle). So R3.5/R3.6/R3.7 **are** scoreable on the `.mcpb` path. But the MCPB manifest spec forbids those keys (`additionalProperties:false`, all versions, enforced by `mcpb pack`), so they ship via a **separate Smithery bundle** (`bun run build:smithery`). Final score-movement confirmation is post-republish (R4.2).
+- [x] R4.4 **`glama.json`** — maintainers/metadata at repo root (Glama path, independent of Smithery).
 
 ## WS5 — Release mechanics
 

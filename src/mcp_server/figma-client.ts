@@ -1,7 +1,17 @@
-import WebSocket from "ws";
+import { WebSocket as WsWebSocket } from "ws";
 import { v4 as uuidv4 } from "uuid";
 import { normalizeNodeId, normalizeNodeIds } from "./utils.js";
 import { logger } from "./logger.js";
+
+// Prefer the runtime's native WebSocket (bun, and node >= 22) over the `ws`
+// package's client. The `ws` client mishandles the HTTP 101 upgrade under bun:
+// it surfaces the *successful* handshake as "Unexpected server response: 101",
+// drops the connection, and reconnect-loops forever. The native WebSocket
+// handles the upgrade correctly. Fall back to `ws` on older node (20/21) that
+// lack a global WebSocket. We drive it through the browser-style event API
+// (addEventListener / event.data), which both implementations support.
+const WSImpl: any = (globalThis as any).WebSocket ?? WsWebSocket;
+const WS_OPEN = 1; // WebSocket.OPEN === 1 in every implementation
 
 // Define TypeScript interfaces for Figma responses
 export interface FigmaResponse {
@@ -115,7 +125,7 @@ export type FigmaCommand =
     | "reaction.update";
 
 // State management
-let ws: WebSocket | null = null;
+let ws: any = null;
 let currentChannel: string | null = null;
 let wsUrl: string = 'ws://localhost:3055'; // Default
 let defaultPort: number = 3055;
@@ -133,7 +143,7 @@ export function setFigmaServerUrl(url: string) {
 
 export function connectToFigma(port: number = defaultPort) {
     // If already connected, do nothing
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (ws && ws.readyState === WS_OPEN) {
         logger.info('Already connected to Figma');
         return;
     }
@@ -152,15 +162,15 @@ export function connectToFigma(port: number = defaultPort) {
     }
 
     logger.info(`Connecting to Figma socket server at ${finalUrl}...`);
-    ws = new WebSocket(finalUrl);
+    ws = new WSImpl(finalUrl);
 
-    ws.on('open', () => {
+    ws.addEventListener('open', () => {
         logger.info('Connected to Figma socket server');
         // Reset channel on new connection
         currentChannel = null;
     });
 
-    ws.on("message", (data: any) => {
+    ws.addEventListener("message", (event: any) => {
         try {
             interface ProgressMessage {
                 message: FigmaResponse | any;
@@ -169,7 +179,12 @@ export function connectToFigma(port: number = defaultPort) {
                 [key: string]: any;
             }
 
-            const json = JSON.parse(data) as ProgressMessage;
+            // event.data is a string for text frames under native WebSocket; the
+            // `ws` package may hand back a Buffer — normalize to a string either way.
+            const raw = typeof event.data === "string"
+                ? event.data
+                : (event.data?.toString?.() ?? String(event.data));
+            const json = JSON.parse(raw) as ProgressMessage;
 
             // Handle join_error
             if (json.type === 'join_error') {
@@ -252,11 +267,12 @@ export function connectToFigma(port: number = defaultPort) {
         }
     });
 
-    ws.on('error', (error) => {
-        logger.error(`Socket error: ${error}`);
+    ws.addEventListener('error', (event: any) => {
+        const detail = event?.message ?? event?.error ?? event?.type ?? event;
+        logger.error(`Socket error: ${detail}`);
     });
 
-    ws.on('close', () => {
+    ws.addEventListener('close', () => {
         logger.info('Disconnected from Figma socket server');
         ws = null;
 
@@ -267,9 +283,12 @@ export function connectToFigma(port: number = defaultPort) {
             pendingRequests.delete(id);
         }
 
-        // Attempt to reconnect
-        logger.info('Attempting to reconnect in 2 seconds...');
-        setTimeout(() => connectToFigma(port), 2000);
+        // Attempt to reconnect. unref() so a pending reconnect alone never
+        // keeps the process alive — when the MCP host disconnects, the server
+        // must be free to exit instead of lingering as an orphan that spins
+        // this loop forever (see server.ts shutdown wiring).
+        const reconnectTimer = setTimeout(() => connectToFigma(port), 2000);
+        reconnectTimer.unref?.();
     });
 }
 
@@ -278,7 +297,7 @@ export function resetChannel() {
 }
 
 export async function joinChannel(channelName: string): Promise<void> {
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
+    if (!ws || ws.readyState !== WS_OPEN) {
         throw new Error("Not connected to Figma");
     }
 
@@ -299,7 +318,7 @@ export function sendCommandToFigma(
 ): Promise<unknown> {
     return new Promise((resolve, reject) => {
         // If not connected, try to connect first
-        if (!ws || ws.readyState !== WebSocket.OPEN) {
+        if (!ws || ws.readyState !== WS_OPEN) {
             connectToFigma();
             reject(new Error("Not connected to Figma. Attempting to connect..."));
             return;

@@ -57,6 +57,24 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
         for (const toolName of expectedTools) {
             expect(toolName in registered).toBe(true);
         }
+
+        // R5.1a: Verify that legacy names are no longer registered
+        const legacyNames = [
+            "create_rectangle", "create_frame", "create_node_from_svg", "create_ellipse", "create_polygon_star",
+            "move_node", "resize_node", "set_node_name", "delete_multiple_nodes", "clone_node", "set_selections",
+            "group_nodes", "ungroup_nodes", "flatten_node", "insert_child", "set_fill_color", "set_stroke",
+            "set_corner_radius", "set_effects", "get_styles", "manage_style", "apply_style", "create_text",
+            "set_multiple_text_contents", "set_text_style", "get_components", "create_component",
+            "create_component_instance", "get_instance_overrides", "set_instance_overrides", "create_component_set",
+            "set_component_instance_property", "manage_component_property", "get_variables", "get_node_variables",
+            "set_bound_variable", "manage_variables", "delete_variables", "get_annotations", "set_multiple_annotations",
+            "update_reactions", "get_reactions", "create_connections", "get_pages_info", "get_nodes_info",
+            "join_channel", "export_node_as_image"
+        ];
+
+        for (const legacyName of legacyNames) {
+            expect(legacyName in registered).toBe(false);
+        }
     });
 
     it("should carry correct title, descriptions and annotations verbatim", () => {
@@ -98,6 +116,35 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
         expect(varDelete.title).toBe("Delete Variables");
         expect(varDelete.annotations?.destructiveHint).toBe(true);
         expect(varDelete.annotations?.idempotentHint).toBe(true);
+    });
+
+    it("should satisfy R5.1j and R5.1k: schema completeness, annotations, and parameter descriptions", () => {
+        const registered = (server as any)._registeredTools;
+
+        for (const [name, tool] of Object.entries(registered) as [string, any][]) {
+            // R5.1k: every tool has a non-empty description
+            expect(tool.description).toBeDefined();
+            expect(tool.description.trim().length).toBeGreaterThan(0);
+
+            // R5.1j: every tool registers an outputSchema and title
+            expect(tool.outputSchema).toBeDefined();
+            expect(tool.title).toBeDefined();
+            expect(tool.title.trim().length).toBeGreaterThan(0);
+            expect(tool.annotations).toBeDefined();
+
+            // R5.1k: every input param has a .describe(...)
+            const schema = tool.inputSchema;
+            if (schema && schema.shape) {
+                for (const [paramName, paramField] of Object.entries(schema.shape) as [string, any][]) {
+                    const desc = paramField.description;
+                    if (!desc) {
+                        console.error(`Missing description for tool "${name}", parameter "${paramName}"`);
+                    }
+                    expect(desc).toBeDefined();
+                    expect(desc.trim().length).toBeGreaterThan(0);
+                }
+            }
+        }
     });
 
     describe("Tool routing & payload verification", () => {

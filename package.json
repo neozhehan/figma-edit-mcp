@@ -62,6 +62,8 @@
     "plugin:build": "node figma_plugin/build.js",
     "plugin:watch": "node figma_plugin/build.js --watch",
     "build:all": "bun run build && bun run plugin:build",
+    "gen:manifest": "bun run scripts/gen-manifest-tools.ts",
+    "build:smithery": "bash scripts/build-smithery-bundle.sh",
     "prepublishOnly": "bun run build:all"
   },
   "dependencies": {

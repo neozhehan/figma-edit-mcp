@@ -47,6 +47,25 @@ async function main() {
   // Start the MCP server with stdio transport
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  // Exit when the host disconnects (closes our stdin) or on a termination
+  // signal. Without this the process lingers after the host quits — the
+  // figma-client reconnect timer and any open socket keep the event loop
+  // alive — so orphaned MCP servers pile up across host restarts and spin
+  // forever against the socket on :3055. The stdin EOF path is the reliable
+  // signal (the host talks to us over the stdin pipe); transport.onclose and
+  // the signal handlers are belt-and-suspenders. Set onclose AFTER connect so
+  // the SDK's own handler isn't clobbered.
+  const shutdown = () => process.exit(0);
+  const sdkOnClose = transport.onclose;
+  transport.onclose = () => {
+    try { sdkOnClose?.(); } finally { shutdown(); }
+  };
+  process.stdin.on("end", shutdown);
+  process.stdin.on("close", shutdown);
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
   logger.info('FigmaMCP server running on stdio');
 }
 
