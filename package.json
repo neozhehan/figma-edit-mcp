@@ -52,6 +52,7 @@
   ],
   "scripts": {
     "test": "bun test src/mcp_server/tests",
+    "test:live": "bun run scripts/live-verify.ts",
     "start": "bun run dist/server.js",
     "socket": "bun run src/socket.ts",
     "setup": "./scripts/setup.sh",
