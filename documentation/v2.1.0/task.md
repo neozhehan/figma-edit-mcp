@@ -39,8 +39,8 @@
   - (Leave `CHANGELOG.md` and `documentation/completed/v2.0.0/*` untouched — historical records of the prior rename.)
 
 ## Phase 3: Bounded Parallelism in `node_info` Streaming
-- [ ] Update the MCP tool registration for `node_info` in `src/mcp_server/tools/node.ts` to pass `concurrencyLimit` (default `4`) inside WebSocket parameters.
-- [ ] Implement parallel subtree walk `getNodesInfoParallel` in `figma_plugin/handlers/nodeReaders.ts`:
+- [x] Update the MCP tool registration for `node_info` in `src/mcp_server/tools/node.ts` to pass `concurrencyLimit` (default `4`) inside WebSocket parameters.
+- [x] Implement parallel subtree walk `getNodesInfoParallel` in `figma_plugin/handlers/nodeReaders.ts`:
   - Launch worker promises up to `concurrencyLimit`.
   - Process subtrees concurrently and increment progress counters for all node IDs (found, missing, or errored).
   - Emit progress updates with monotonic percentages.
@@ -49,8 +49,8 @@
   - **Replace** the existing sequential multi-id loop inside `getNodesInfo` with this worker pool (do not add a second parallel path alongside the old one).
   - Preserve the intra-subtree yields (`setTimeout(0)` + per-25-node `progress_update`) inside `mapNodeRecursive`.
   - Keep the `'started'` and final `'completed'` progress events bookending the pool.
-- [ ] Make `exportCache` concurrency-safe (§2): in `extractProperties` (`nodeReaders.ts`), cache the pending `Promise` of `exportAsync(...).then(r => r.document)` *before* awaiting and `await` the cached promise on a hit, so overlapping subtrees/duplicate instances export each node exactly once.
-- [ ] **Live test (§2)** — after rebuilding/reloading the plugin, extend `scripts/live-verify.ts` (run via `bun run test:live <channel>`) to query `node_info` with many top-level ids including one deliberately missing id, asserting `nodes` is input-ordered, the missing id lands in `missingNodeIds`, and the call completes (progress streamed) without hanging.
+- [x] Make `exportCache` concurrency-safe (§2): in `extractProperties` (`nodeReaders.ts`), cache the pending `Promise` of `exportAsync(...).then(r => r.document)` *before* awaiting and `await` the cached promise on a hit, so overlapping subtrees/duplicate instances export each node exactly once.
+- [x] **Live test (§2)** — after rebuilding/reloading the plugin, extend `scripts/live-verify.ts` (run via `bun run test:live <channel>`) to query `node_info` with many top-level ids including one deliberately missing id, asserting `nodes` is input-ordered, the missing id lands in `missingNodeIds`, and the call completes (progress streamed) without hanging.
 
 ## Phase 4: Atomicity in Modify and Delete Tools
 - [ ] In the **batch** dispatch loops in `figma_plugin/src/main.ts` (`node_delete`, `text_set_content`, `annotation_set`, `instance_set_overrides`, `create_component_set`), resolve each item's node **once** and run the checks against that single reference, in order: explicit **not-found** (throw a clear "Node X not found" instead of today's misleading "outside scope"/"name mismatch" for stale ids), scope, name, then type (next item). Hoist the constant scope-root resolve out of the loop. Introduce any reference-based scope check **additively** (a new helper) — do **not** change the shared `checkScopeAccess`/`verifyNodeName` signatures or the single-target dispatch cases. (Justification: clean type-check integration + clearer errors — **not** performance.)

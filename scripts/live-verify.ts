@@ -416,6 +416,32 @@ async function main() {
         }
         console.log(`   ✅ component_list document scope returned ${docComponents.count} components (no load error)`);
 
+        // 6.6 Phase 3 v2.1.0 Bounded Parallelism & Streaming Verification
+        console.log("\n--- Step 6.6: Phase 3 Bounded Parallelism & Streaming Verification ---");
+        
+        console.log("Querying node_info with multiple IDs including a missing ID...");
+        const queryRes: any = await sendCommandToFigma("node_info", {
+            nodeIds: [star5.id, "ghost-id-12345", rect.id, star7.id],
+            concurrencyLimit: 2
+        });
+        
+        console.log("Returned nodes:", JSON.stringify(queryRes.nodes.map((n: any) => n.id)));
+        console.log("Returned missingNodeIds:", JSON.stringify(queryRes.missingNodeIds));
+        
+        // Assert exact order in nodes
+        const expectedNodeOrder = [star5.id, rect.id, star7.id];
+        const actualNodeOrder = queryRes.nodes.map((n: any) => n.id);
+        if (JSON.stringify(actualNodeOrder) !== JSON.stringify(expectedNodeOrder)) {
+            throw new Error(`Expected nodes order ${JSON.stringify(expectedNodeOrder)}, but got ${JSON.stringify(actualNodeOrder)}`);
+        }
+        
+        // Assert missing ID is returned
+        if (!queryRes.missingNodeIds || !queryRes.missingNodeIds.includes("ghost-id-12345")) {
+            throw new Error(`Expected missingNodeIds to contain "ghost-id-12345", but got ${JSON.stringify(queryRes.missingNodeIds)}`);
+        }
+        
+        console.log("✅ Bounded Parallelism & Streaming verified successfully on live channel.");
+
         // 7. Cleanup
         console.log("\n--- Step 7: Cleanup ---");
         console.log("Deleting created test nodes...");

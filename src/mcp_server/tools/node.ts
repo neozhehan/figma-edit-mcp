@@ -45,6 +45,12 @@ export function registerNodeTools(server: McpServer) {
                     .min(0)
                     .optional()
                     .describe("Maximum depth for recursive child traversal. 0 = self only, 1 = self and immediate children, etc."),
+                concurrencyLimit: z
+                    .number()
+                    .int()
+                    .min(1)
+                    .optional()
+                    .describe("Concurrency limit for parallel subtree walk (default: 4)"),
             }),
             outputSchema: z.object({
                 nodes: z.array(nodeInfoEntry).describe("Node entries (id/name/type + optional properties/children/path/descendantCount)"),
@@ -55,12 +61,13 @@ export function registerNodeTools(server: McpServer) {
                 openWorldHint: true
             }
         },
-        async ({ nodeIds, fields, filter, maxDepth }: any) => {
+        async ({ nodeIds, fields, filter, maxDepth, concurrencyLimit }: any) => {
             const result = await sendCommandToFigma("node_info", {
                 nodeIds,
                 properties: fields,
                 filter,
-                maxDepth
+                maxDepth,
+                concurrencyLimit: concurrencyLimit ?? 4
             });
             return toolResult(result);
         }
