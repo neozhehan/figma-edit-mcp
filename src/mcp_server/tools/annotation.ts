@@ -9,9 +9,10 @@ export function registerAnnotationTools(server: McpServer) {
         "annotation_list",
         {
             title: "List Annotations",
-            description: "Read the native annotations on a node (and subtree); optionally include the file's annotation categories.",
+            description: "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. Optionally include the file's annotation categories.",
             inputSchema: z.object({
-                nodeId: z.string().describe("The node ID to get annotations from"),
+                pageId: z.string().optional().describe("The page ID to get annotations from. Exactly one of pageId or nodeId is required."),
+                nodeId: z.string().optional().describe("The node ID to get annotations from. Exactly one of pageId or nodeId is required."),
                 includeCategories: z.boolean().optional().describe("If true, retrieves the list of global annotation categories in the file"),
             }),
             outputSchema: z.object({

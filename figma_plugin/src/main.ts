@@ -47,7 +47,6 @@ const ERRORS: any = {
     OUTSIDE_SCOPE: "Operation Denied: Node outside editable scope. Verify if user intends for changes to be made to this particular node. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
     PARENT_OUTSIDE_SCOPE: "Operation Denied: Parent outside editable scope. Verify if user intends for changes to be made to the parent node. If so, advise user to disconnect plugin, paste a link to the parent page/layer into Link to Selection field, then reconnect plugin.",
     CLONING_SOURCE_NODE_OUTSIDE_SCOPE: "Operation Denied: Node to be cloned is outside editable scope. Verify if user intends for this node to be cloned. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
-    ROOT_INSTANCE_DISALLOWED: "Operation Denied: Cannot create instance at root with current editable scope. Verify if user intends for the instance to be created on this page. If so, advise user to disconnect plugin, paste a link to this page into Link to Selection field, then reconnect plugin.",
     SCOPE_DELETED: "Operation Denied: The specific Node set as the Editable Scope no longer exists/cannot be found. Advise user to disconnect the plugin and Select a new Editable Scope.",
 
     // Node ID Errors
@@ -342,13 +341,8 @@ async function handleCommand(command: any, params: any) {
             return await createText(params);
         case "create_instance":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-
-            if (params && params.parentId) {
-                if (!(await checkScopeAccess(params.parentId))) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-                if (!(await verifyParentName(params.parentId, params.parentNodeName))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
-            } else {
-                if (state.scopeRootId) throw new Error(formatScopeError(ERRORS.ROOT_INSTANCE_DISALLOWED));
-            }
+            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
+            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
             return await createComponentInstance(params);
 
         case "create_connection":

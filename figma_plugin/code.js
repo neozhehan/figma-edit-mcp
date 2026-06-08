@@ -3775,6 +3775,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     try {
       if (variableId && variableId.length > 0) {
         const variables2 = [];
+        const missingIds = [];
         const idSet = new Set(variableId);
         const isStreaming = includeConsumers === "document";
         if (commandId && isStreaming) {
@@ -3790,7 +3791,10 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         for (const [index, id] of variableId.entries()) {
           const variable = await figma.variables.getVariableByIdAsync(id);
-          if (!variable) continue;
+          if (!variable) {
+            missingIds.push(id);
+            continue;
+          }
           const collection = await figma.variables.getVariableCollectionByIdAsync(
             variable.variableCollectionId
           );
@@ -3863,7 +3867,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             `Completed fetching variable information`
           );
         }
-        return variables2;
+        return missingIds.length > 0 ? { variables: variables2, missingIds } : { variables: variables2 };
       }
       const collections = await figma.variables.getLocalVariableCollectionsAsync();
       const variables = await figma.variables.getLocalVariablesAsync();
@@ -4475,7 +4479,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     OUTSIDE_SCOPE: "Operation Denied: Node outside editable scope. Verify if user intends for changes to be made to this particular node. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
     PARENT_OUTSIDE_SCOPE: "Operation Denied: Parent outside editable scope. Verify if user intends for changes to be made to the parent node. If so, advise user to disconnect plugin, paste a link to the parent page/layer into Link to Selection field, then reconnect plugin.",
     CLONING_SOURCE_NODE_OUTSIDE_SCOPE: "Operation Denied: Node to be cloned is outside editable scope. Verify if user intends for this node to be cloned. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
-    ROOT_INSTANCE_DISALLOWED: "Operation Denied: Cannot create instance at root with current editable scope. Verify if user intends for the instance to be created on this page. If so, advise user to disconnect plugin, paste a link to this page into Link to Selection field, then reconnect plugin.",
     SCOPE_DELETED: "Operation Denied: The specific Node set as the Editable Scope no longer exists/cannot be found. Advise user to disconnect the plugin and Select a new Editable Scope.",
     // Node ID Errors
     NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
@@ -4706,12 +4709,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         return await createText(params);
       case "create_instance":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-        if (params && params.parentId) {
-          if (!await checkScopeAccess(params.parentId)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-          if (!await verifyParentName(params.parentId, params.parentNodeName)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
-        } else {
-          if (state.scopeRootId) throw new Error(formatScopeError(ERRORS.ROOT_INSTANCE_DISALLOWED));
-        }
+        if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
+        if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createComponentInstance(params);
       case "create_connection":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);

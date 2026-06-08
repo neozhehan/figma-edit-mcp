@@ -80,8 +80,8 @@
       "description": "Duplicate an existing node, optionally at a new `x`/`y`. Produces a new node id."
     },
     {
-      "name": "node_select",
-      "description": "Set the canvas selection to one or more nodes and focus them in the viewport."
+      "name": "view_navigate",
+      "description": "Navigate the editor view to a page or node(s)."
     },
     {
       "name": "node_group",

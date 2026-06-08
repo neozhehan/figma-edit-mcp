@@ -329,6 +329,7 @@ export async function getVariables(params: any) {
         // 1. Lookup Mode
         if (variableId && variableId.length > 0) {
             const variables: any[] = [];
+            const missingIds: string[] = [];
             const idSet = new Set(variableId as string[]);
             // Per spec §get_variables rule 2: only includeConsumers: 'document'
             // streams. Lookup mode (no includeConsumers) and current_page mode
@@ -349,8 +350,11 @@ export async function getVariables(params: any) {
 
             for (const [index, id] of (variableId as string[]).entries()) {
                 const variable = await figma.variables.getVariableByIdAsync(id);
-                if (!variable) continue;
-                
+                if (!variable) {
+                    missingIds.push(id);
+                    continue;
+                }
+
                 const collection = await figma.variables.getVariableCollectionByIdAsync(
                     variable.variableCollectionId
                 );
@@ -433,7 +437,7 @@ export async function getVariables(params: any) {
                     `Completed fetching variable information`
                 );
             }
-            return variables;
+            return missingIds.length > 0 ? { variables, missingIds } : { variables };
         }
 
         // 2. List All Mode (Discovery)

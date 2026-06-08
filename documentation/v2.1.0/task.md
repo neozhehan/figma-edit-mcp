@@ -23,19 +23,19 @@
   - Clean up all created nodes at the end (extend the existing cleanup step).
 
 ## Phase 2: Schema Changes & Server Adapters (MCP Side)
-- [ ] Update input schemas in `src/mcp_server/tools/create.ts` to make `parentId` required on all 5 creation tools.
-- [ ] Clean up `create_instance` dispatch in `main.ts` by removing the `ROOT_INSTANCE_DISALLOWED` check, and retire the `ROOT_INSTANCE_DISALLOWED` error constant in `main.ts`.
-- [ ] Update `component_list` schema in `src/mcp_server/tools/component.ts`: rename scope `'current_page'` -> `'page'`, change default scope to `'document'`, add optional `pageId` parameter, and update description.
-- [ ] Update `annotation_list` schema in `src/mcp_server/tools/annotation.ts`: add optional `pageId` parameter and update description to require exactly one of `pageId` / `nodeId`.
-- [ ] Update `variable_list` schema in `src/mcp_server/tools/variable.ts`: rename `includeConsumers` enum value `'current_page'` -> `'page'`, add optional `pageId` parameter, and ensure `includeConsumers` remains optional with no default.
-- [ ] Update `instance_get_overrides` schema in `src/mcp_server/tools/instance.ts`: make input field `nodeId` required and update description.
-- [ ] Update `node_export_visual` schema in `src/mcp_server/tools/node.ts`: cap `scale` with `.min(0.1).max(4)` and update description.
-- [ ] Rename the select tool in `src/mcp_server/tools/node.ts`: `node_select` → `view_navigate`, input `nodeIds` → `ids`, update title/description ("Navigate the editor view to a page or node(s)"), update the `sendCommandToFigma("view_navigate", { ids })` call, and extend the output schema to cover the page branch (`{ pageId, pageName }`).
-- [ ] Complete the `node_select` → `view_navigate` rename fan-out (required for the build/tests to pass):
-  - `src/mcp_server/figma-client.ts`: update the command-name union type (`| "node_select"` → `| "view_navigate"`).
-  - Root `manifest.json`: rename the tool catalog entry (`name`: `node_select` → `view_navigate`) and update its `description`.
-  - `README.md`: update the tool-table row (name + description).
-  - `src/mcp_server/tests/unit/tools/v2Tools.test.ts`: update the tool-list assertion (`"node_select"` → `"view_navigate"`).
+- [x] Update input schemas in `src/mcp_server/tools/create.ts` to make `parentId` required on all 5 creation tools.
+- [x] Clean up `create_instance` dispatch in `main.ts` by removing the `ROOT_INSTANCE_DISALLOWED` check, and retire the `ROOT_INSTANCE_DISALLOWED` error constant in `main.ts`.
+- [x] Update `component_list` schema in `src/mcp_server/tools/component.ts`: rename scope `'current_page'` -> `'page'`, change default scope to `'document'`, add optional `pageId` parameter, and update description.
+- [x] Update `annotation_list` schema in `src/mcp_server/tools/annotation.ts`: add optional `pageId` parameter and update description to require exactly one of `pageId` / `nodeId`.
+- [x] Update `variable_list` schema in `src/mcp_server/tools/variable.ts`: rename `includeConsumers` enum value `'current_page'` -> `'page'`, add optional `pageId` parameter, and ensure `includeConsumers` remains optional with no default.
+- [x] Update `instance_get_overrides` schema in `src/mcp_server/tools/instance.ts`: make input field `nodeId` required and update description.
+- [x] Update `node_export_visual` schema in `src/mcp_server/tools/node.ts`: cap `scale` with `.min(0.1).max(4)` and update description.
+- [x] Rename the select tool in `src/mcp_server/tools/node.ts`: `node_select` → `view_navigate`, input `nodeIds` → `ids`, update title/description ("Navigate the editor view to a page or node(s)"), update the `sendCommandToFigma("view_navigate", { ids })` call, and extend the output schema to cover the page branch (`{ pageId, pageName }`).
+- [x] Complete the `node_select` → `view_navigate` rename fan-out (required for the build/tests to pass):
+  - [x] `src/mcp_server/figma-client.ts`: update the command-name union type (`| "node_select"` → `| "view_navigate"`).
+  - [x] Root `manifest.json`: rename the tool catalog entry (`name`: `node_select` → `view_navigate`) and update its `description`.
+  - [x] `README.md`: update the tool-table row (name + description).
+  - [x] `src/mcp_server/tests/unit/tools/v2Tools.test.ts`: update the tool-list assertion (`"node_select"` → `"view_navigate"`).
   - (Leave `CHANGELOG.md` and `documentation/completed/v2.0.0/*` untouched — historical records of the prior rename.)
 
 ## Phase 3: Bounded Parallelism in `node_info` Streaming

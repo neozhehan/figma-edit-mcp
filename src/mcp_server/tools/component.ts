@@ -16,10 +16,14 @@ export function registerComponentTools(server: McpServer) {
                     .optional()
                     .describe("Filter components by origin: 'local' (created in this file) or 'remote' (library components). If omitted, returns all."),
                 scope: z
-                    .enum(["current_page", "document"])
+                    .enum(["page", "document"])
                     .optional()
-                    .default("current_page")
-                    .describe("Scope of the search: 'current_page' (default) or 'document' (entire file, streams progress page-by-page)."),
+                    .default("document")
+                    .describe("Scope of the search: 'page' (queries a specific page, requiring pageId) or 'document' (entire file, default)."),
+                pageId: z
+                    .string()
+                    .optional()
+                    .describe("The ID of the page to query when scope is 'page'"),
             }),
             outputSchema: z.object({
                 count: z.number().describe("Total count of components"),

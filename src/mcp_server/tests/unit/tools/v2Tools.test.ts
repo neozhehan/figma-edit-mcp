@@ -30,7 +30,7 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             "page_info",
             // node
             "node_info", "node_transform", "node_rename", "node_delete", "node_clone",
-            "node_select", "node_group", "node_ungroup", "node_flatten", "node_insert_child",
+            "view_navigate", "node_group", "node_ungroup", "node_flatten", "node_insert_child",
             "node_set_auto_layout", "node_set_fill", "node_set_stroke", "node_set_corner_radius",
             "node_set_effects", "node_apply_style", "node_bind_variable", "node_export_visual",
             // create

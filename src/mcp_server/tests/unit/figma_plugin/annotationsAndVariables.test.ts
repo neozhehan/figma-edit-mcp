@@ -91,4 +91,25 @@ describe("getVariables Handler", () => {
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockRect);
         expect(getVariables({ variableId: ["v-1"], includeConsumers: "page", pageId: "rect-1" })).rejects.toThrow("pageId does not resolve to a PAGE");
     });
+
+    it("lookup mode returns an object keyed by `variables` (not a bare array), omitting missingIds when all resolve", async () => {
+        const result: any = await getVariables({ variableId: ["v-1"] });
+        expect(Array.isArray(result)).toBe(false);
+        expect(result.variables).toHaveLength(1);
+        expect(result.variables[0].id).toBe("v-1");
+        expect(result).not.toHaveProperty("missingIds");
+    });
+
+    it("lookup mode reports unresolved ids in `missingIds`", async () => {
+        const result: any = await getVariables({ variableId: ["v-1", "ghost-1", "ghost-2"] });
+        expect(result.variables.map((v: any) => v.id)).toEqual(["v-1"]);
+        expect(result.missingIds).toEqual(["ghost-1", "ghost-2"]);
+    });
+
+    it("list-all mode still returns an object with collections + variables", async () => {
+        const result: any = await getVariables({});
+        expect(Array.isArray(result)).toBe(false);
+        expect(result).toHaveProperty("collections");
+        expect(result).toHaveProperty("variables");
+    });
 });

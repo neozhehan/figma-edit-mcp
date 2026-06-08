@@ -178,7 +178,7 @@ Tools are grouped into a two-level, underscore-separated namespace (`group_actio
 | `node_rename` | Rename a node |
 | `node_delete` | Delete one or more nodes in a single validated batch |
 | `node_clone` | Duplicate a node, optionally at a new position |
-| `node_select` | Set the canvas selection and focus the nodes in the viewport |
+| `view_navigate` | Navigate the editor view to a page or node(s) |
 | `node_group` | Wrap nodes in a new group |
 | `node_ungroup` | Dissolve a group, promoting its children |
 | `node_flatten` | Flatten a node and its children into a single vector |

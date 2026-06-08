@@ -16,14 +16,18 @@ export function registerVariableTools(server: McpServer) {
                     .optional()
                     .describe("Optional array of variable IDs to retrieve detailed information for. If omitted, lists all local variables."),
                 includeConsumers: z
-                    .enum(["current_page", "document"])
+                    .enum(["page", "document"])
                     .optional()
-                    .describe("Only used when variableId is provided; ignored otherwise. 'current_page' scans the active page (fast). 'document' scans all pages (streams progress page-by-page)."),
+                    .describe("Only used when variableId is provided; ignored otherwise. 'page' scans a specific page, requiring pageId. 'document' scans all pages (streams progress page-by-page)."),
+                pageId: z
+                    .string()
+                    .optional()
+                    .describe("The page ID to scan for consumers when includeConsumers is 'page'."),
             }),
             outputSchema: z.object({
-                collections: z.array(z.any()).optional().describe("List of variable collections"),
-                variables: z.array(z.any()).optional().describe("List of variables"),
-                consumers: z.any().optional().describe("Consumer mapping for the requested variables"),
+                variables: z.array(z.any()).optional().describe("List of variables — present in both list-all and lookup modes (each may carry nodeConsumers/styleConsumers/aliasConsumers when includeConsumers is set)"),
+                collections: z.array(z.any()).optional().describe("List of variable collections (list-all mode only)"),
+                missingIds: z.array(z.string()).optional().describe("Requested variable IDs that did not resolve (lookup mode only; omitted when none)"),
             }),
             annotations: {
                 readOnlyHint: true,
