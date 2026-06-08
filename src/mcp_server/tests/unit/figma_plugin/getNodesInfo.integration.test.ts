@@ -444,17 +444,17 @@ describe("Phase 6.2 — empty-args dispatch + read-only short-circuit (static so
         src = await fs.readFile("figma_plugin/src/main.ts", "utf8");
     });
 
-    it("get_nodes_info dispatch substitutes the scope id when nodeIds is empty/missing", () => {
+    it("node.info dispatch substitutes the scope id when nodeIds is empty/missing", () => {
         // Look for the canonical pattern: effectiveNodeIds resolved from scope.
         // We don't try to lock the exact tokenization — we assert the substitution
         // path exists (state.scopeRootId used to source effective nodeIds).
-        const slice = src.split('case "get_nodes_info"')[1] ?? "";
+        const slice = src.split('case "node_info"')[1] ?? "";
         expect(slice).toMatch(/effectiveNodeIds/);
         expect(slice).toMatch(/state\.scopeRootId/);
     });
 
-    it("get_nodes_info dispatch short-circuits to { nodes: [] } in read-only mode with no ids", () => {
-        const slice = src.split('case "get_nodes_info"')[1] ?? "";
+    it("node.info dispatch short-circuits to { nodes: [] } in read-only mode with no ids", () => {
+        const slice = src.split('case "node_info"')[1] ?? "";
         // The branch must check both effectiveNodeIds.length === 0 AND state.readOnly,
         // and the return shape is { nodes: [] }.
         expect(slice).toMatch(/effectiveNodeIds\.length\s*===\s*0/);
@@ -462,8 +462,8 @@ describe("Phase 6.2 — empty-args dispatch + read-only short-circuit (static so
         expect(slice).toMatch(/\{\s*nodes:\s*\[\s*\]\s*\}/);
     });
 
-    it("get_nodes_info dispatch otherwise forwards through the unified getNodesInfo handler", () => {
-        const slice = src.split('case "get_nodes_info"')[1] ?? "";
+    it("node.info dispatch otherwise forwards through the unified getNodesInfo handler", () => {
+        const slice = src.split('case "node_info"')[1] ?? "";
         expect(slice).toMatch(/return\s+await\s+getNodesInfo\(/);
     });
 });

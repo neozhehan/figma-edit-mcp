@@ -10,3 +10,4 @@ src/figma_plugin/dist/
 *.mcpb
 *.tgz
 scratch/
+temp/

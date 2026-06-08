@@ -1,26 +1,26 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { registerCreationTools } from "./creation.js";
-import { registerModificationTools } from "./modification.js";
-import { registerStylingTools } from "./styling.js";
+import { registerPageTools } from "./page.js";
+import { registerNodeTools } from "./node.js";
+import { registerCreateTools } from "./create.js";
+import { registerStyleTools } from "./style.js";
 import { registerTextTools } from "./text.js";
-import { registerLayoutTools } from "./layout.js";
-import { registerComponentTools } from "./components.js";
-import { registerVariablesTools } from "./variables.js";
-import { registerAnnotationTools } from "./annotations.js";
-import { registerPrototypingTools } from "./prototyping.js";
-import { registerDocumentTools } from "./document.js";
-import { registerAssetTools } from "./assets.js";
+import { registerComponentTools } from "./component.js";
+import { registerInstanceTools } from "./instance.js";
+import { registerVariableTools } from "./variable.js";
+import { registerAnnotationTools } from "./annotation.js";
+import { registerReactionTools } from "./reaction.js";
+import { registerChannelTools } from "./channel.js";
 
 export function registerAllTools(server: McpServer) {
-    registerCreationTools(server);
-    registerModificationTools(server);
-    registerStylingTools(server);
+    registerPageTools(server);
+    registerNodeTools(server);
+    registerCreateTools(server);
+    registerStyleTools(server);
     registerTextTools(server);
-    registerLayoutTools(server);
     registerComponentTools(server);
-    registerVariablesTools(server);
+    registerInstanceTools(server);
+    registerVariableTools(server);
     registerAnnotationTools(server);
-    registerPrototypingTools(server);
-    registerDocumentTools(server);
-    registerAssetTools(server);
+    registerReactionTools(server);
+    registerChannelTools(server);
 }

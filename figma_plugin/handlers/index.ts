@@ -29,7 +29,7 @@ export {
 
 // Node creators
 export {
-    createRectangle,
+    createShape,
     createFrame,
     createText,
     cloneNode
@@ -37,8 +37,7 @@ export {
 
 // Node modifiers
 export {
-    moveNode,
-    resizeNode,
+    transformNode,
     deleteMultipleNodes,
     setSelections,
     setNodeName

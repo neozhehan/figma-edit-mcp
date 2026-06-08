@@ -1,0 +1,7 @@
+This project connects to Figma via the figma-edit-mcp server, which enforces hard constraints (scope locking, name verification, batch validation) and returns structured error codes.
+
+Before reading or editing a Figma file, load the usage guide on demand — do not act blind:
+- MCP resources: figma-edit://guide/{constraints,error-playbook,workflows,tool-selection}
+- or the figma-edit skill / skills/figma-edit/references/
+
+Always start a node workflow with a read (page.info → node.info) and pass names back verbatim. Do not duplicate the guide content here; treat the references as authoritative.

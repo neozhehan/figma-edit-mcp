@@ -4,38 +4,29 @@
 
 import { rgbaToHex } from './colorUtils.js';
 import { PathTuple } from '../../shared/nodeTypes.js';
+import { NODE_DATA_FIELDS } from './nodeFields.generated.js';
 
 /**
- * Constant set of property names that can be read directly from a Figma node
- * without requiring an expensive exportAsync call.
+ * Property names readable directly from a Figma node without an exportAsync.
+ *
+ * The data fields are GENERATED from `@figma/plugin-typings` (run
+ * `bun run gen:node-fields`) so this set can't drift from the official API and
+ * covers every node field (e.g. `pointCount`, `innerRadius`, `arcData`).
+ *
+ * The node-reference fields below are added back so requesting only references
+ * doesn't trigger an export — `extractProperties` serializes them to `id` /
+ * `id[]` / `{id,name}` before they reach `postMessage`, so they're never
+ * returned as raw host objects (DataCloneError). Other node-typed fields (e.g.
+ * `defaultVariant`) are intentionally absent from the data set so they can't be
+ * read raw.
  */
+const RESOLVED_NODE_REFS = [
+    "parent", "mainComponent", "instances", "exposedInstances", "stuckNodes", "attachedConnectors",
+];
 export const SAFE_LIST_PROPERTIES: ReadonlySet<string> = new Set([
-    // Identity & structure
-    "id", "name", "type", "parent", "key", "expanded",
-    // Visibility
-    "visible", "locked", "opacity", "blendMode", "isMask", "maskType",
-    // Geometry & transform
-    "x", "y", "width", "height", "rotation", "absoluteBoundingBox", "absoluteRenderBounds", "absoluteTransform", "relativeTransform", "constrainProportions",
-    // Auto-layout
-    "layoutMode", "layoutAlign", "layoutGrow", "layoutPositioning", "layoutWrap", "layoutSizingHorizontal", "layoutSizingVertical", "primaryAxisAlignItems", "primaryAxisSizingMode", "counterAxisAlignItems", "counterAxisSizingMode", "counterAxisSpacing", "counterAxisAlignContent", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "itemSpacing", "minWidth", "maxWidth", "minHeight", "maxHeight", "clipsContent",
-    // Constraints
-    "constraints",
-    // Corner radius
-    "cornerRadius", "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius", "cornerSmoothing",
-    // Fills & strokes
-    "fills", "fillStyleId", "strokes", "strokeStyleId", "strokeWeight", "strokeAlign", "strokeCap", "strokeJoin", "strokeMiterLimit", "dashPattern", "strokeLeftWeight", "strokeRightWeight", "strokeTopWeight", "strokeBottomWeight",
-    // Effects
-    "effects", "effectStyleId",
-    // Text
-    "characters", "fontSize", "fontName", "fontWeight", "lineHeight", "letterSpacing", "paragraphIndent", "paragraphSpacing", "listSpacing", "textCase", "textDecoration", "textAlignHorizontal", "textAlignVertical", "textAutoResize", "autoRename", "maxLines", "textTruncation", "hangingPunctuation", "hangingList", "leadingTrim", "hasMissingFont", "hyperlink",
-    // Component / instance
-    "componentProperties", "componentPropertyDefinitions", "componentPropertyReferences", "variantProperties", "overrides", "exposedInstances", "isExposedInstance", "scaleFactor", "mainComponent",
-    // Prototyping
-    "reactions", "transitionNodeID", "transitionDuration", "transitionEasing",
-    // Variables
-    "boundVariables", "explicitVariableModes",
-    // Export & dev metadata
-    "exportSettings", "devStatus", "annotations"
+    "id", "name", "type", "children",
+    ...NODE_DATA_FIELDS,
+    ...RESOLVED_NODE_REFS,
 ]);
 
 

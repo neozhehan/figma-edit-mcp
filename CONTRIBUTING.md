@@ -74,7 +74,7 @@ bun run build:watch
 
 Your MCP host (configured via `bun integrate --local` above) launches the server on demand. The plugin connects to the bridge over `ws://localhost:3055` when you run it inside Figma.
 
-End-to-end smoke test: open a Figma file → run the plugin → ask your AI assistant to call a tool (e.g. `get_pages_info`) → confirm a response comes back.
+End-to-end smoke test: open a Figma file → run the plugin → ask your AI assistant to call a tool (e.g. `page_info`) → confirm a response comes back.
 
 ---
 
@@ -93,7 +93,7 @@ Tests run against in-memory mocks; no Figma connection required. Please add or u
 
 - TypeScript strict mode; no `any` in new code.
 - Tools live in `src/mcp_server/tools/<tool_name>.ts` and register themselves via the central registry.
-- Error responses use structured codes — see existing tools and [AGENTS.md](./AGENTS.md) for the full taxonomy.
+- Error responses use structured codes — see existing tools and the figma-edit skill / references (`skills/figma-edit/references/error-playbook.md`) for the full taxonomy.
 - Follow the **discover-before-acting** pattern for any new tool: never trust unverified names or IDs from the agent.
 - Hallucination safeguards (scope locking, name verification, batch validation) are non-negotiable. New tools must integrate with them, not bypass them.
 
@@ -103,13 +103,13 @@ Tests run against in-memory mocks; no Figma connection required. Please add or u
 
 ### Should this be a new tool at all?
 
-**Every tool is permanent context cost.** Each registered tool ships its name, description, and full parameter schema into the system prompt of every agent that connects to figma-edit-mcp — even when the tool is never called. Some MCP hosts also cap the total number of tools (Claude Desktop, Cursor, and others have observed limits in the 40–128 range depending on host and model). The v1.4.0 work that collapsed `scan_nodes_by_types` and `scan_text_nodes` into a unified `get_nodes_info` was driven by exactly this concern.
+**Every tool is permanent context cost.** Each registered tool ships its name, description, and full parameter schema into the system prompt of every agent that connects to figma-edit-mcp — even when the tool is never called. Some MCP hosts also cap the total number of tools (Claude Desktop, Cursor, and others have observed limits in the 40–128 range depending on host and model). The work that consolidated several overlapping read tools into a unified `node_info` was driven by exactly this concern.
 
 Before adding a new tool, work through this checklist in order. Stop at the first "yes":
 
-1. **Can an existing tool be extended with a new parameter or option?** Prefer this when the new behavior shares the same conceptual operation, target node type, and return shape. Example: adding a `filter` predicate to `get_nodes_info` rather than introducing `get_filtered_nodes_info`.
+1. **Can an existing tool be extended with a new parameter or option?** Prefer this when the new behavior shares the same conceptual operation, target node type, and return shape. Example: adding a `filter` predicate to `node_info` rather than introducing a separate filter tool.
 2. **Can an existing tool's parameter be generalized?** If two tools differ only by a hard-coded value (a node type, a property name, a side-effect mode), unify them and accept the value as input. The v1.4.0 collapse of `scan_*` tools is the canonical precedent.
-3. **Can the agent compose existing tools to achieve the result?** If the new "tool" is really a fixed sequence of existing calls with no plugin-side atomicity requirement, document the pattern in [AGENTS.md](./AGENTS.md) instead of adding a tool. Reserve new tools for operations that genuinely require server- or plugin-side logic (atomicity, validation, batching, safeguard enforcement).
+3. **Can the agent compose existing tools to achieve the result?** If the new "tool" is really a fixed sequence of existing calls with no plugin-side atomicity requirement, document the pattern in the figma-edit skill / references (e.g., `skills/figma-edit/references/workflows.md`) instead of adding a tool. Reserve new tools for operations that genuinely require server- or plugin-side logic (atomicity, validation, batching, safeguard enforcement).
 4. **Is this a batch variant of an existing single-item tool?** Batch tools are justified when they (a) reduce N round-trips on a common workflow and (b) enforce per-item validation that the agent cannot reliably reproduce by looping. If neither holds, the single-item tool plus agent-side iteration is sufficient.
 
 Only add a new tool when none of the above apply — i.e., the operation is conceptually distinct, cannot be expressed by extending an existing tool without overloading its semantics, and benefits from being a first-class call (atomicity, safeguards, or a clearly different mental model for the agent).
@@ -140,7 +140,7 @@ Once the design decision is settled:
 2. Register it in the tool registry.
 3. If it mutates the document, add the corresponding plugin-side handler in `figma_plugin/` and the validation/safeguard checks.
 4. Add a test in `src/mcp_server/tests/`.
-5. Update the README tool inventory and [AGENTS.md](./AGENTS.md) usage guidance — including when to reach for the new tool vs. its neighbors, so agents don't pick it by accident.
+5. Update the README tool inventory and the figma-edit skill / references (`skills/figma-edit/references/tool-selection.md`) usage guidance — including when to reach for the new tool vs. its neighbors, so agents don't pick it by accident.
 6. If the new tool supersedes existing functionality, mark the displaced tool deprecated in the same PR and schedule its removal for the next minor release.
 
 ---

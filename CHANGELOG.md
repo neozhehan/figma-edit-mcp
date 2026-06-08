@@ -2,6 +2,78 @@
 
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
+## [2.0.0]
+### Breaking changes
+This release completely overhauls the Model Context Protocol tool API to use a clean, standardized two-level namespace (`group_action`, 46 tools across 11 taxonomy groups). Tool routing, parameters, schemas, and return formats have been restructured to optimize for agentic consumption.
+
+#### Consolidations and Splits:
+- **`create_shape`**: Consolidated `create_rectangle`, `create_ellipse`, and `create_polygon_star` into a single tool. Star point counts now use native Figma StarNode pointCount semantics (no division/even-parity throw). Rectangle shapes now properly support solid fills and stroke colors.
+- **`node_transform`**: Consolidated `move_node` and `resize_node` into a single tool. Supports partial updates for any subset of `x`, `y`, `width`, and `height`.
+- **`node_info`**: Consolidated `get_node_variables` into `node_info` fields (`boundVariables`, `explicitVariableModes`). Library object references and style IDs resolve to structured `{id, name}` objects. Node-reference fields (e.g. `parent`, `mainComponent`, `instances`, `exposedInstances`, `stuckNodes`, `attachedConnectors`) are serialized to string IDs or arrays of IDs to prevent host-object serialization issues (caught via live verification).
+- **`component_delete_property`**: Split out the destructive deletion action from `manage_component_property` (now `component_manage_property`) into a separate tool for tighter security boundaries.
+- **`style_delete`**: Added a net-new tool to complete the style lifecycle, allowing safe style detach.
+
+#### Complete Old to New Tool Mapping Table:
+| Old Name | New Name | Group |
+|---|---|---|
+| `get_pages_info` | `page_info` | page |
+| `get_nodes_info` | `node_info` | node |
+| `get_node_variables` | *Folded into `node_info`* | node |
+| `move_node` | `node_transform` | node |
+| `resize_node` | `node_transform` | node |
+| `set_node_name` | `node_rename` | node |
+| `delete_multiple_nodes` | `node_delete` | node |
+| `clone_node` | `node_clone` | node |
+| `set_selections` | `node_select` | node |
+| `group_nodes` | `node_group` | node |
+| `ungroup_nodes` | `node_ungroup` | node |
+| `flatten_node` | `node_flatten` | node |
+| `insert_child` | `node_insert_child` | node |
+| `set_auto_layout` | `node_set_auto_layout` | node |
+| `set_fill_color` | `node_set_fill` | node |
+| `set_stroke` | `node_set_stroke` | node |
+| `set_corner_radius` | `node_set_corner_radius` | node |
+| `set_effects` | `node_set_effects` | node |
+| `apply_style` | `node_apply_style` | node |
+| `set_bound_variable` | `node_bind_variable` | node |
+| `export_node_as_image` | `node_export_visual` | node |
+| `create_rectangle` | `create_shape` | create |
+| `create_ellipse` | `create_shape` | create |
+| `create_polygon_star` | `create_shape` | create |
+| `create_frame` | `create_frame` | create |
+| `create_text` | `create_text` | create |
+| `create_node_from_svg` | `create_svg` | create |
+| `create_component` | `create_component` | create |
+| `create_component_instance` | `create_instance` | create |
+| `create_component_set` | `create_component_set` | create |
+| `create_connections` | `create_connection` | create |
+| `get_styles` | `style_list` | style |
+| `manage_style` | `style_manage` | style |
+| *(None - Net New)* | `style_delete` | style |
+| `set_multiple_text_contents` | `text_set_content` | text |
+| `set_text_style` | `text_set_style` | text |
+| `get_components` | `component_list` | component |
+| `manage_component_property` (ADD/EDIT) | `component_manage_property` | component |
+| `manage_component_property` (DELETE) | `component_delete_property` | component |
+| `set_component_instance_property` | `instance_set_property` | instance |
+| `get_instance_overrides` | `instance_get_overrides` | instance |
+| `set_instance_overrides` | `instance_set_overrides` | instance |
+| `get_variables` | `variable_list` | variable |
+| `manage_variables` | `variable_manage` | variable |
+| `delete_variables` | `variable_delete` | variable |
+| `get_annotations` | `annotation_list` | annotation |
+| `set_multiple_annotations` | `annotation_set` | annotation |
+| `get_reactions` | `reaction_list` | reaction |
+| `update_reactions` | `reaction_update` | reaction |
+| `join_channel` | `channel_join` | channel |
+
+#### Additional Improvements:
+- **Rich Schema & Annotations**: Every tool now exposes explicit Zod input/output schemas with descriptions on all properties, and carries annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`) for better client integration and Smithery publish score.
+- **Dynamic Server Metadata**: Server reads name and version from `package.json` dynamically to avoid version drift.
+- **Local Resources**: Exposed 4 offline operational guide resources under `figma-edit://guide/*` with an eager initialization instructions breadcrumb.
+- **Runtime-agnostic socket client**: The Figma WebSocket client now uses the runtime's native `WebSocket` (bun, Node ≥22) and falls back to the `ws` package only on older Node. Fixes an endless connect/disconnect reconnect loop when the server was launched under **bun** (the `ws` client rejected its own `101` upgrade — "Unexpected server response: 101").
+- **Clean shutdown / no orphaned processes**: The server now exits when its stdio host disconnects (stdin EOF) or on `SIGINT`/`SIGTERM`, and the reconnect timer is `unref()`d. Previously, MCP server instances lingered after the host quit and spun the reconnect loop forever, accumulating across host restarts.
+
 ## [1.5.3]
 ### CLI & Socket Bugfixes
 - Rewrote WebSocket server in `src/socket.ts` to run on native Node.js HTTP and `ws` instead of `Bun.serve`, removing the dependency on Bun runtime for standard users.

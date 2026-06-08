@@ -1,6 +1,6 @@
 {
   "name": "figma-edit-mcp",
-  "version": "1.5.3",
+  "version": "2.0.0",
   "mcpName": "io.github.neozhehan/figma-edit-mcp",
   "description": "Read, create, and modify Figma designs programmatically via MCP, empowering AI to execute Figma changes safer, cleaner, and faster.",
   "keywords": [
@@ -46,10 +46,13 @@
     "DESIGN_PHILOSOPHY.md",
     "AGENTS.md",
     "CLAUDE.md",
-    ".cursorrules"
+    ".cursorrules",
+    "skills",
+    "icon.png"
   ],
   "scripts": {
     "test": "bun test src/mcp_server/tests",
+    "test:live": "bun run scripts/live-verify.ts",
     "start": "bun run dist/server.js",
     "socket": "bun run src/socket.ts",
     "setup": "./scripts/setup.sh",
@@ -59,7 +62,10 @@
     "dev": "bun run build:watch",
     "plugin:build": "node figma_plugin/build.js",
     "plugin:watch": "node figma_plugin/build.js --watch",
-    "build:all": "bun run build && bun run plugin:build",
+    "build:all": "bun run gen:node-fields && bun run build && bun run plugin:build",
+    "gen:node-fields": "bun run scripts/gen-node-fields.ts",
+    "gen:manifest": "bun run scripts/gen-manifest-tools.ts",
+    "build:smithery": "bash scripts/build-smithery-bundle.sh",
     "prepublishOnly": "bun run build:all"
   },
   "dependencies": {

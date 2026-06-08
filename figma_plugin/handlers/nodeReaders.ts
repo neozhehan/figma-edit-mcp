@@ -373,6 +373,40 @@ function checkFilterMatch(node: BaseNode, filter: Record<string, string[]>): boo
 /**
  * Extracts requested properties from a node using safe-list or exportAsync.
  */
+/**
+ * Helper to recursively resolve variable aliases to {id, name}
+ */
+async function resolveVariableAliases(obj: any): Promise<any> {
+    if (obj === null || obj === undefined) {
+        return obj;
+    }
+    if (Array.isArray(obj)) {
+        return Promise.all(obj.map(item => resolveVariableAliases(item)));
+    }
+    if (typeof obj === 'object') {
+        if (obj.type === 'VARIABLE_ALIAS' && typeof obj.id === 'string') {
+            try {
+                const variable = await figma.variables.getVariableByIdAsync(obj.id);
+                return {
+                    id: obj.id,
+                    name: variable ? variable.name : "Unknown Variable"
+                };
+            } catch (e) {
+                return { id: obj.id, name: "Unknown Variable" };
+            }
+        }
+        const resolved: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+            resolved[key] = await resolveVariableAliases(value);
+        }
+        return resolved;
+    }
+    return obj;
+}
+
+/**
+ * Extracts requested properties from a node using safe-list or exportAsync.
+ */
 async function extractProperties(
     node: BaseNode,
     requestedProps: string[],
@@ -403,19 +437,91 @@ async function extractProperties(
 
     for (const key of requestedProps) {
         if (STRUCTURAL_KEYS.has(key)) continue;
-        if (SAFE_LIST_PROPERTIES.has(key)) {
-            // mainComponent on InstanceNode requires getMainComponentAsync() under
-            // documentAccess: "dynamic-page" (manifest.json). Reading it sync
-            // returns a Promise that would be stored unawaited.
-            let val: any;
-            if (key === "mainComponent" && typeof (node as any).getMainComponentAsync === "function") {
-                val = await (node as any).getMainComponentAsync();
+
+        // 1. Node reference fields -> map to ID(s)
+        if (key === "parent") {
+            props["parent"] = node.parent ? node.parent.id : null;
+        } else if (key === "mainComponent") {
+            if ("getMainComponentAsync" in node && typeof (node as any).getMainComponentAsync === "function") {
+                const mainComp = await (node as any).getMainComponentAsync();
+                props["mainComponent"] = mainComp ? mainComp.id : null;
             } else {
-                val = (node as any)[key];
+                props["mainComponent"] = null;
             }
-            // Only include if property is applicable (not undefined)
+        } else if (key === "instances") {
+            if ("getInstancesAsync" in node && typeof (node as any).getInstancesAsync === "function") {
+                const instances = await (node as any).getInstancesAsync();
+                props["instances"] = instances ? instances.map((inst: any) => inst.id) : [];
+            } else {
+                props["instances"] = [];
+            }
+        } else if (key === "exposedInstances") {
+            const expInst = (node as any).exposedInstances;
+            props["exposedInstances"] = expInst ? expInst.map((inst: any) => inst.id) : [];
+        } else if (key === "stuckNodes") {
+            const stuck = (node as any).stuckNodes;
+            props["stuckNodes"] = stuck ? stuck.map((n: any) => n.id) : [];
+        } else if (key === "attachedConnectors") {
+            const conn = (node as any).attachedConnectors;
+            props["attachedConnectors"] = conn ? conn.map((c: any) => c.id) : [];
+        }
+
+        // 2. Style references -> resolve to {id, name}
+        else if (key.endsWith("StyleId")) {
+            const styleId = (node as any)[key];
+            if (styleId && typeof styleId === 'string' && styleId !== "") {
+                try {
+                    const style = await figma.getStyleByIdAsync(styleId);
+                    props[key] = {
+                        id: styleId,
+                        name: style ? style.name : "Unknown Style"
+                    };
+                } catch (e) {
+                    props[key] = { id: styleId, name: "Unknown Style" };
+                }
+            } else {
+                props[key] = null;
+            }
+        }
+
+        // 3. Variable references -> resolve recursively
+        else if (key === "boundVariables") {
+            const boundVars = (node as any).boundVariables;
+            if (boundVars && Object.keys(boundVars).length > 0) {
+                props["boundVariables"] = await resolveVariableAliases(boundVars);
+            } else {
+                props["boundVariables"] = {};
+            }
+        } else if (key === "explicitVariableModes") {
+            const modes = (node as any).explicitVariableModes;
+            if (modes && Object.keys(modes).length > 0) {
+                const resolvedModes: any = {};
+                for (const [colId, modeId] of Object.entries(modes)) {
+                    try {
+                        const col = await figma.variables.getVariableCollectionByIdAsync(colId);
+                        const m = col ? col.modes.find((mode: any) => mode.modeId === modeId) : null;
+                        resolvedModes[colId] = {
+                            id: modeId,
+                            name: m ? `${col!.name}: ${m.name}` : "Unknown Mode"
+                        };
+                    } catch (e) {
+                        resolvedModes[colId] = { id: modeId, name: "Unknown Mode" };
+                    }
+                }
+                props["explicitVariableModes"] = resolvedModes;
+            } else {
+                props["explicitVariableModes"] = {};
+            }
+        }
+
+        // 4. Regular safe-list properties or fallback
+        else if (SAFE_LIST_PROPERTIES.has(key)) {
+            const val = (node as any)[key];
             if (val !== undefined && val !== null) {
-                props[key] = val;
+                // `figma.mixed` is a Symbol (returned when a field has mixed
+                // values across a node's range) and isn't structured-cloneable —
+                // serialize it so it can't throw DataCloneError on postMessage.
+                props[key] = typeof val === "symbol" ? "mixed" : val;
             }
         } else if (exportedData && exportedData[key] !== undefined) {
             props[key] = exportedData[key];

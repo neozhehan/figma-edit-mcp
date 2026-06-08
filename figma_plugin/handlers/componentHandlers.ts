@@ -3,7 +3,7 @@
  * Handles component-related operations including styles, instances, and overrides
  */
 
-import { customBase64Encode } from '../utils/exportUtils.js';
+import { customBase64Encode, bytesToUtf8 } from '../utils/exportUtils.js';
 
 /**
  * Gets all local styles from the document
@@ -229,11 +229,13 @@ export async function createComponentInstance(params: any) {
  */
 export async function exportNodeAsImage(params: any) {
     const { nodeId, scale = 1 } = params || {};
-
-    const format = "PNG";
+    const format = params?.format ? String(params.format).toUpperCase() : "PNG";
 
     if (!nodeId) {
         throw new Error("Missing nodeId parameter");
+    }
+    if (!["PNG", "JPG", "SVG", "PDF"].includes(format)) {
+        throw new Error(`Unsupported export format: ${format}. Use PNG, JPG, SVG, or PDF.`);
     }
 
     const node = await figma.getNodeByIdAsync(nodeId);
@@ -246,10 +248,12 @@ export async function exportNodeAsImage(params: any) {
     }
 
     try {
-        const settings: any = {
-            format: format,
-            constraint: { type: "SCALE", value: scale },
-        };
+        // The SCALE constraint only applies to raster formats; SVG and PDF are
+        // vector and Figma's export settings for them reject a `constraint`.
+        const isRaster = format === "PNG" || format === "JPG";
+        const settings: any = isRaster
+            ? { format, constraint: { type: "SCALE", value: scale } }
+            : { format };
 
         const bytes = await node.exportAsync(settings);
 
@@ -258,15 +262,12 @@ export async function exportNodeAsImage(params: any) {
             case "PNG":
                 mimeType = "image/png";
                 break;
-            // @ts-ignore
             case "JPG":
                 mimeType = "image/jpeg";
                 break;
-            // @ts-ignore
             case "SVG":
                 mimeType = "image/svg+xml";
                 break;
-            // @ts-ignore
             case "PDF":
                 mimeType = "application/pdf";
                 break;
@@ -274,15 +275,24 @@ export async function exportNodeAsImage(params: any) {
                 mimeType = "application/octet-stream";
         }
 
-        // Proper way to convert Uint8Array to base64
-        const base64 = customBase64Encode(bytes);
+        // SVG is text — return the raw XML directly. It's far more useful to an
+        // LLM (readable, transformable, no base64 inflation) than opaque base64.
+        // Raster (PNG/JPG) and PDF remain base64-encoded binary in `imageData`.
+        if (format === "SVG") {
+            return {
+                nodeId,
+                format,
+                mimeType,
+                svg: bytesToUtf8(bytes),
+            };
+        }
 
         return {
             nodeId,
             format,
-            scale,
+            scale: isRaster ? scale : undefined,
             mimeType,
-            imageData: base64,
+            imageData: customBase64Encode(bytes),
         };
     } catch (error: any) {
         throw new Error(`Error exporting node as image: ${error.message}`);
@@ -935,25 +945,66 @@ export async function manageComponentProperty(params: any) {
                 updated: true
             };
             
-        } else if (action === "DELETE") {
-            if (!qualifiedName) {
-                throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
-            }
-            
-            targetNode.deleteComponentProperty(qualifiedName);
-            
-            return {
-                id: targetNode.id,
-                name: targetNode.name,
-                action: "DELETE",
-                propertyName
-            };
-            
         } else {
-            throw new Error(`Invalid action: ${action}`);
+            throw new Error(`Invalid action: ${action}. Use delete_property tool for deletion.`);
         }
     } catch (error: any) {
         throw new Error(`Error managing component property: ${error.message}`);
+    }
+}
+
+/**
+ * Removes a component-property definition from a main component or variant set
+ * @param {Object} params - Parameters object
+ * @param {string} params.nodeId - ID of the component node
+ * @param {string} params.propertyName - Human-readable name of the property
+ * @returns {Promise<Object>} Status info
+ */
+export async function deleteComponentProperty(params: any) {
+    const { nodeId, propertyName } = params || {};
+
+    if (!nodeId || !propertyName) {
+        throw new Error("Missing nodeId or propertyName parameter");
+    }
+
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+        throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+
+    if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+        throw new Error(`Target node must be a COMPONENT or COMPONENT_SET, got ${node.type}`);
+    }
+
+    const targetNode = node as ComponentNode | ComponentSetNode;
+    const properties = targetNode.componentPropertyDefinitions;
+    
+    let qualifiedName: string | null = null;
+    const validNames: string[] = [];
+    
+    for (const key in properties) {
+        const parts = key.split('#');
+        const readableName = parts[0];
+        validNames.push(readableName);
+        
+        if (readableName === propertyName) {
+            qualifiedName = key;
+        }
+    }
+
+    if (!qualifiedName) {
+        throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
+    }
+
+    try {
+        targetNode.deleteComponentProperty(qualifiedName);
+        return {
+            id: targetNode.id,
+            name: targetNode.name,
+            propertyName
+        };
+    } catch (error: any) {
+        throw new Error(`Error deleting component property: ${error.message}`);
     }
 }
 

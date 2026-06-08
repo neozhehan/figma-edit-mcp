@@ -30,129 +30,221 @@
     return update;
   }
 
-  // figma_plugin/utils/nodeUtils.ts
-  var SAFE_LIST_PROPERTIES = /* @__PURE__ */ new Set([
-    // Identity & structure
-    "id",
-    "name",
-    "type",
-    "parent",
-    "key",
-    "expanded",
-    // Visibility
-    "visible",
-    "locked",
-    "opacity",
-    "blendMode",
-    "isMask",
-    "maskType",
-    // Geometry & transform
-    "x",
-    "y",
-    "width",
-    "height",
-    "rotation",
+  // figma_plugin/utils/sanitize.ts
+  function sanitizeForPostMessage(value, seen = /* @__PURE__ */ new WeakSet()) {
+    if (typeof value === "symbol") return "mixed";
+    if (typeof value === "function") return void 0;
+    if (value === null || typeof value !== "object") return value;
+    if (seen.has(value)) return void 0;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      return value.map((v) => sanitizeForPostMessage(v, seen));
+    }
+    const out = {};
+    for (const key of Object.keys(value)) {
+      out[key] = sanitizeForPostMessage(value[key], seen);
+    }
+    return out;
+  }
+
+  // figma_plugin/utils/nodeFields.generated.ts
+  var NODE_DATA_FIELDS = [
     "absoluteBoundingBox",
     "absoluteRenderBounds",
     "absoluteTransform",
-    "relativeTransform",
-    "constrainProportions",
-    // Auto-layout
-    "layoutMode",
-    "layoutAlign",
-    "layoutGrow",
-    "layoutPositioning",
-    "layoutWrap",
-    "layoutSizingHorizontal",
-    "layoutSizingVertical",
-    "primaryAxisAlignItems",
-    "primaryAxisSizingMode",
-    "counterAxisAlignItems",
-    "counterAxisSizingMode",
-    "counterAxisSpacing",
-    "counterAxisAlignContent",
-    "paddingLeft",
-    "paddingRight",
-    "paddingTop",
-    "paddingBottom",
-    "itemSpacing",
-    "minWidth",
-    "maxWidth",
-    "minHeight",
-    "maxHeight",
-    "clipsContent",
-    // Constraints
-    "constraints",
-    // Corner radius
-    "cornerRadius",
-    "topLeftRadius",
-    "topRightRadius",
+    "annotations",
+    "arcData",
+    "authorName",
+    "authorVisible",
+    "autoRename",
+    "backgroundStyleId",
+    "backgrounds",
+    "blendMode",
+    "booleanOperation",
     "bottomLeftRadius",
     "bottomRightRadius",
-    "cornerSmoothing",
-    // Fills & strokes
-    "fills",
-    "fillStyleId",
-    "strokes",
-    "strokeStyleId",
-    "strokeWeight",
-    "strokeAlign",
-    "strokeCap",
-    "strokeJoin",
-    "strokeMiterLimit",
-    "dashPattern",
-    "strokeLeftWeight",
-    "strokeRightWeight",
-    "strokeTopWeight",
-    "strokeBottomWeight",
-    // Effects
-    "effects",
-    "effectStyleId",
-    // Text
+    "boundVariables",
     "characters",
-    "fontSize",
-    "fontName",
-    "fontWeight",
-    "lineHeight",
-    "letterSpacing",
-    "paragraphIndent",
-    "paragraphSpacing",
-    "listSpacing",
-    "textCase",
-    "textDecoration",
-    "textAlignHorizontal",
-    "textAlignVertical",
-    "textAutoResize",
-    "autoRename",
-    "maxLines",
-    "textTruncation",
-    "hangingPunctuation",
-    "hangingList",
-    "leadingTrim",
-    "hasMissingFont",
-    "hyperlink",
-    // Component / instance
+    "clipsContent",
+    "code",
+    "codeLanguage",
+    "complexStrokeProperties",
     "componentProperties",
     "componentPropertyDefinitions",
     "componentPropertyReferences",
-    "variantProperties",
-    "overrides",
-    "exposedInstances",
-    "isExposedInstance",
-    "scaleFactor",
-    "mainComponent",
-    // Prototyping
-    "reactions",
-    "transitionNodeID",
-    "transitionDuration",
-    "transitionEasing",
-    // Variables
-    "boundVariables",
-    "explicitVariableModes",
-    // Export & dev metadata
-    "exportSettings",
+    "connectorEnd",
+    "connectorEndStrokeCap",
+    "connectorLineType",
+    "connectorStart",
+    "connectorStartStrokeCap",
+    "constrainProportions",
+    "constraints",
+    "cornerRadius",
+    "cornerSmoothing",
+    "counterAxisAlignContent",
+    "counterAxisAlignItems",
+    "counterAxisSizingMode",
+    "counterAxisSpacing",
+    "dashPattern",
+    "description",
+    "descriptionMarkdown",
+    "detachedInfo",
     "devStatus",
-    "annotations"
+    "documentationLinks",
+    "effectStyleId",
+    "effects",
+    "embedData",
+    "expanded",
+    "explicitVariableModes",
+    "exportSettings",
+    "fillGeometry",
+    "fillStyleId",
+    "fills",
+    "fontName",
+    "fontSize",
+    "fontWeight",
+    "gridChildHorizontalAlign",
+    "gridChildVerticalAlign",
+    "gridColumnAnchorIndex",
+    "gridColumnCount",
+    "gridColumnGap",
+    "gridColumnSizes",
+    "gridColumnSpan",
+    "gridRowAnchorIndex",
+    "gridRowCount",
+    "gridRowGap",
+    "gridRowSizes",
+    "gridRowSpan",
+    "gridStyleId",
+    "guides",
+    "handleMirroring",
+    "hangingList",
+    "hangingPunctuation",
+    "hasMissingFont",
+    "height",
+    "horizontalPadding",
+    "hyperlink",
+    "inferredAutoLayout",
+    "inferredVariables",
+    "innerRadius",
+    "interactiveSlideElementType",
+    "isAsset",
+    "isExposedInstance",
+    "isMask",
+    "isSkippedSlide",
+    "isWideWidth",
+    "itemReverseZIndex",
+    "itemSpacing",
+    "key",
+    "layoutAlign",
+    "layoutGrids",
+    "layoutGrow",
+    "layoutMode",
+    "layoutPositioning",
+    "layoutSizingHorizontal",
+    "layoutSizingVertical",
+    "layoutWrap",
+    "leadingTrim",
+    "letterSpacing",
+    "lineHeight",
+    "linkUnfurlData",
+    "listSpacing",
+    "locked",
+    "maskType",
+    "maxHeight",
+    "maxLines",
+    "maxWidth",
+    "mediaData",
+    "minHeight",
+    "minWidth",
+    "numColumns",
+    "numRows",
+    "numberOfFixedChildren",
+    "opacity",
+    "openTypeFeatures",
+    "overflowDirection",
+    "overlayBackground",
+    "overlayBackgroundInteraction",
+    "overlayPositionType",
+    "overrides",
+    "paddingBottom",
+    "paddingLeft",
+    "paddingRight",
+    "paddingTop",
+    "paragraphIndent",
+    "paragraphSpacing",
+    "pointCount",
+    "primaryAxisAlignItems",
+    "primaryAxisSizingMode",
+    "reactions",
+    "relativeTransform",
+    "remote",
+    "removed",
+    "resolvedVariableModes",
+    "rotation",
+    "scaleFactor",
+    "sectionContentsHidden",
+    "shapeType",
+    "strokeAlign",
+    "strokeBottomWeight",
+    "strokeCap",
+    "strokeGeometry",
+    "strokeJoin",
+    "strokeLeftWeight",
+    "strokeMiterLimit",
+    "strokeRightWeight",
+    "strokeStyleId",
+    "strokeTopWeight",
+    "strokeWeight",
+    "strokes",
+    "strokesIncludedInLayout",
+    "targetAspectRatio",
+    "textAlignHorizontal",
+    "textAlignVertical",
+    "textAutoResize",
+    "textCase",
+    "textDecoration",
+    "textDecorationColor",
+    "textDecorationOffset",
+    "textDecorationSkipInk",
+    "textDecorationStyle",
+    "textDecorationThickness",
+    "textPathStartData",
+    "textStyleId",
+    "textTruncation",
+    "topLeftRadius",
+    "topRightRadius",
+    "transformModifiers",
+    "variableWidthStrokeProperties",
+    "variantGroupProperties",
+    "variantProperties",
+    "vectorNetwork",
+    "vectorPaths",
+    "verticalPadding",
+    "visible",
+    "widgetId",
+    "widgetSyncedState",
+    "width",
+    "x",
+    "y"
+  ];
+
+  // figma_plugin/utils/nodeUtils.ts
+  var RESOLVED_NODE_REFS = [
+    "parent",
+    "mainComponent",
+    "instances",
+    "exposedInstances",
+    "stuckNodes",
+    "attachedConnectors"
+  ];
+  var SAFE_LIST_PROPERTIES = /* @__PURE__ */ new Set([
+    "id",
+    "name",
+    "type",
+    "children",
+    ...NODE_DATA_FIELDS,
+    ...RESOLVED_NODE_REFS
   ]);
   function buildPathArray(node) {
     const path = [];
@@ -436,6 +528,33 @@
     }
     return true;
   }
+  async function resolveVariableAliases(obj) {
+    if (obj === null || obj === void 0) {
+      return obj;
+    }
+    if (Array.isArray(obj)) {
+      return Promise.all(obj.map((item) => resolveVariableAliases(item)));
+    }
+    if (typeof obj === "object") {
+      if (obj.type === "VARIABLE_ALIAS" && typeof obj.id === "string") {
+        try {
+          const variable = await figma.variables.getVariableByIdAsync(obj.id);
+          return {
+            id: obj.id,
+            name: variable ? variable.name : "Unknown Variable"
+          };
+        } catch (e) {
+          return { id: obj.id, name: "Unknown Variable" };
+        }
+      }
+      const resolved = {};
+      for (const [key, value] of Object.entries(obj)) {
+        resolved[key] = await resolveVariableAliases(value);
+      }
+      return resolved;
+    }
+    return obj;
+  }
   async function extractProperties(node, requestedProps, exportCache) {
     const props = {};
     const needsExport = requestedProps.some((p) => !SAFE_LIST_PROPERTIES.has(p));
@@ -454,15 +573,77 @@
     const STRUCTURAL_KEYS = /* @__PURE__ */ new Set(["id", "name", "type", "children", "path"]);
     for (const key of requestedProps) {
       if (STRUCTURAL_KEYS.has(key)) continue;
-      if (SAFE_LIST_PROPERTIES.has(key)) {
-        let val;
-        if (key === "mainComponent" && typeof node.getMainComponentAsync === "function") {
-          val = await node.getMainComponentAsync();
+      if (key === "parent") {
+        props["parent"] = node.parent ? node.parent.id : null;
+      } else if (key === "mainComponent") {
+        if ("getMainComponentAsync" in node && typeof node.getMainComponentAsync === "function") {
+          const mainComp = await node.getMainComponentAsync();
+          props["mainComponent"] = mainComp ? mainComp.id : null;
         } else {
-          val = node[key];
+          props["mainComponent"] = null;
         }
+      } else if (key === "instances") {
+        if ("getInstancesAsync" in node && typeof node.getInstancesAsync === "function") {
+          const instances = await node.getInstancesAsync();
+          props["instances"] = instances ? instances.map((inst) => inst.id) : [];
+        } else {
+          props["instances"] = [];
+        }
+      } else if (key === "exposedInstances") {
+        const expInst = node.exposedInstances;
+        props["exposedInstances"] = expInst ? expInst.map((inst) => inst.id) : [];
+      } else if (key === "stuckNodes") {
+        const stuck = node.stuckNodes;
+        props["stuckNodes"] = stuck ? stuck.map((n) => n.id) : [];
+      } else if (key === "attachedConnectors") {
+        const conn = node.attachedConnectors;
+        props["attachedConnectors"] = conn ? conn.map((c) => c.id) : [];
+      } else if (key.endsWith("StyleId")) {
+        const styleId = node[key];
+        if (styleId && typeof styleId === "string" && styleId !== "") {
+          try {
+            const style = await figma.getStyleByIdAsync(styleId);
+            props[key] = {
+              id: styleId,
+              name: style ? style.name : "Unknown Style"
+            };
+          } catch (e) {
+            props[key] = { id: styleId, name: "Unknown Style" };
+          }
+        } else {
+          props[key] = null;
+        }
+      } else if (key === "boundVariables") {
+        const boundVars = node.boundVariables;
+        if (boundVars && Object.keys(boundVars).length > 0) {
+          props["boundVariables"] = await resolveVariableAliases(boundVars);
+        } else {
+          props["boundVariables"] = {};
+        }
+      } else if (key === "explicitVariableModes") {
+        const modes = node.explicitVariableModes;
+        if (modes && Object.keys(modes).length > 0) {
+          const resolvedModes = {};
+          for (const [colId, modeId] of Object.entries(modes)) {
+            try {
+              const col = await figma.variables.getVariableCollectionByIdAsync(colId);
+              const m = col ? col.modes.find((mode) => mode.modeId === modeId) : null;
+              resolvedModes[colId] = {
+                id: modeId,
+                name: m ? `${col.name}: ${m.name}` : "Unknown Mode"
+              };
+            } catch (e) {
+              resolvedModes[colId] = { id: modeId, name: "Unknown Mode" };
+            }
+          }
+          props["explicitVariableModes"] = resolvedModes;
+        } else {
+          props["explicitVariableModes"] = {};
+        }
+      } else if (SAFE_LIST_PROPERTIES.has(key)) {
+        const val = node[key];
         if (val !== void 0 && val !== null) {
-          props[key] = val;
+          props[key] = typeof val === "symbol" ? "mixed" : val;
         }
       } else if (exportedData && exportedData[key] !== void 0) {
         props[key] = exportedData[key];
@@ -668,49 +849,132 @@
   };
 
   // figma_plugin/handlers/nodeCreators.ts
-  async function createRectangle(params) {
+  async function createShape(params) {
+    var _a, _b, _c, _d, _e;
     const {
+      type,
       x = 0,
       y = 0,
       width = 100,
       height = 100,
-      name = "Rectangle",
+      name,
       parentId,
-      useAbsolutePosition = false
+      useAbsolutePosition = false,
+      fillColor,
+      strokeColor,
+      arcData,
+      pointCount,
+      innerRadius
     } = params || {};
-    const rect = figma.createRectangle();
-    rect.x = x;
-    rect.y = y;
-    rect.resize(width, height);
-    rect.name = name;
+    if (!type) {
+      throw new Error("Missing shape type parameter");
+    }
+    const upperType = type.toUpperCase();
+    if (arcData !== void 0 && upperType !== "ELLIPSE") {
+      throw new Error(`arcData is only supported for shape type ELLIPSE, got ${type}`);
+    }
+    if ((upperType === "POLYGON" || upperType === "STAR") && pointCount === void 0) {
+      throw new Error(`pointCount is required for shape type ${type}`);
+    }
+    if (innerRadius !== void 0 && upperType !== "STAR") {
+      throw new Error(`innerRadius is only supported for shape type STAR, got ${type}`);
+    }
+    let parent = figma.currentPage;
     if (parentId) {
-      const parentNode = await figma.getNodeByIdAsync(parentId);
-      if (!parentNode) {
+      parent = await figma.getNodeByIdAsync(parentId);
+      if (!parent) {
         throw new Error(`Parent node not found with ID: ${parentId}`);
       }
-      if (!("appendChild" in parentNode)) {
+      if (!("appendChild" in parent)) {
         throw new Error(`Parent node does not support children: ${parentId}`);
       }
-      parentNode.appendChild(rect);
-    } else {
-      figma.currentPage.appendChild(rect);
     }
+    let node;
+    switch (upperType) {
+      case "RECTANGLE":
+        node = figma.createRectangle();
+        break;
+      case "ELLIPSE":
+        node = figma.createEllipse();
+        if (arcData) {
+          node.arcData = {
+            startingAngle: (_a = arcData.startingAngle) != null ? _a : 0,
+            endingAngle: (_b = arcData.endingAngle) != null ? _b : Math.PI * 2,
+            innerRadius: (_c = arcData.innerRadius) != null ? _c : 0
+          };
+        }
+        break;
+      case "POLYGON":
+        node = figma.createPolygon();
+        if (pointCount !== void 0) {
+          if (pointCount < 3) {
+            throw new Error("Polygons require pointCount >= 3");
+          }
+          node.pointCount = pointCount;
+        }
+        break;
+      case "STAR":
+        node = figma.createStar();
+        if (pointCount !== void 0) {
+          if (pointCount < 3) {
+            throw new Error("Stars require pointCount >= 3");
+          }
+          node.pointCount = pointCount;
+        }
+        if (innerRadius !== void 0) {
+          node.innerRadius = innerRadius;
+        }
+        break;
+      default:
+        throw new Error(`Unsupported shape type: ${type}`);
+    }
+    node.x = x;
+    node.y = y;
+    node.resize(width, height);
+    if (name) {
+      node.name = name;
+    } else {
+      node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+    }
+    if (fillColor) {
+      node.fills = [{
+        type: "SOLID",
+        color: {
+          r: parseFloat(fillColor.r) || 0,
+          g: parseFloat(fillColor.g) || 0,
+          b: parseFloat(fillColor.b) || 0
+        },
+        opacity: (_d = fillColor.a) != null ? _d : 1
+      }];
+    }
+    if (strokeColor) {
+      node.strokes = [{
+        type: "SOLID",
+        color: {
+          r: parseFloat(strokeColor.r) || 0,
+          g: parseFloat(strokeColor.g) || 0,
+          b: parseFloat(strokeColor.b) || 0
+        },
+        opacity: (_e = strokeColor.a) != null ? _e : 1
+      }];
+    }
+    parent.appendChild(node);
     if (useAbsolutePosition && parentId) {
-      const parent = rect.parent;
       if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
-        rect.layoutPositioning = "ABSOLUTE";
-        rect.x = x;
-        rect.y = y;
+        node.layoutPositioning = "ABSOLUTE";
+        node.x = x;
+        node.y = y;
       }
     }
     return {
-      id: rect.id,
-      name: rect.name,
-      x: rect.x,
-      y: rect.y,
-      width: rect.width,
-      height: rect.height,
-      parentId: rect.parent ? rect.parent.id : void 0
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      x: node.x,
+      y: node.y,
+      width: node.width,
+      height: node.height,
+      parentId: node.parent ? node.parent.id : void 0
     };
   }
   async function createFrame(params) {
@@ -860,7 +1124,7 @@
     } catch (error) {
       console.error("Error setting font size", error);
     }
-    setCharacters(textNode, text);
+    await setCharacters(textNode, text);
     const paintStyle = {
       type: "SOLID",
       color: {
@@ -930,149 +1194,39 @@
       height: "height" in clone ? clone.height : void 0
     };
   }
-  async function createEllipse(params) {
-    var _a, _b, _c, _d, _e;
-    const { x = 0, y = 0, width = 100, height = 100, arcData, name = "Ellipse", parentId, fillColor, strokeColor, useAbsolutePosition = false } = params || {};
-    let parent = figma.currentPage;
-    if (parentId) {
-      parent = await figma.getNodeByIdAsync(parentId);
-      if (!parent) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-      }
-    }
-    const node = figma.createEllipse();
-    node.x = x;
-    node.y = y;
-    node.resize(width, height);
-    if (arcData) {
-      node.arcData = {
-        startingAngle: (_a = arcData.startingAngle) != null ? _a : 0,
-        endingAngle: (_b = arcData.endingAngle) != null ? _b : Math.PI * 2,
-        innerRadius: (_c = arcData.innerRadius) != null ? _c : 0
-      };
-    }
-    if (name) node.name = name;
-    if (fillColor) {
-      node.fills = [{
-        type: "SOLID",
-        color: { r: fillColor.r, g: fillColor.g, b: fillColor.b },
-        opacity: (_d = fillColor.a) != null ? _d : 1
-      }];
-    }
-    if (strokeColor) {
-      node.strokes = [{
-        type: "SOLID",
-        color: { r: strokeColor.r, g: strokeColor.g, b: strokeColor.b },
-        opacity: (_e = strokeColor.a) != null ? _e : 1
-      }];
-    }
-    parent.appendChild(node);
-    if (useAbsolutePosition && parentId) {
-      if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
-        node.layoutPositioning = "ABSOLUTE";
-        node.x = x;
-        node.y = y;
-      }
-    }
-    return { id: node.id, name: node.name, type: node.type };
-  }
-  async function createPolygonStar(params) {
-    var _a, _b;
-    const { x = 0, y = 0, width = 100, height = 100, pointCount, innerRadius = 1, name, parentId, fillColor, strokeColor, useAbsolutePosition = false } = params || {};
-    let parent = figma.currentPage;
-    if (parentId) {
-      parent = await figma.getNodeByIdAsync(parentId);
-      if (!parent) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-      }
-    }
-    let node;
-    if (innerRadius === 1) {
-      node = figma.createPolygon();
-      node.pointCount = pointCount;
-    } else {
-      if (pointCount % 2 !== 0) {
-        throw new Error("Stars require even pointCount (equal inner/outer vertices)");
-      }
-      node = figma.createStar();
-      node.pointCount = pointCount / 2;
-      node.innerRadius = innerRadius;
-    }
-    node.x = x;
-    node.y = y;
-    node.resize(width, height);
-    if (name) node.name = name;
-    if (fillColor) {
-      node.fills = [{
-        type: "SOLID",
-        color: { r: fillColor.r, g: fillColor.g, b: fillColor.b },
-        opacity: (_a = fillColor.a) != null ? _a : 1
-      }];
-    }
-    if (strokeColor) {
-      node.strokes = [{
-        type: "SOLID",
-        color: { r: strokeColor.r, g: strokeColor.g, b: strokeColor.b },
-        opacity: (_b = strokeColor.a) != null ? _b : 1
-      }];
-    }
-    parent.appendChild(node);
-    if (useAbsolutePosition && parentId) {
-      if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
-        node.layoutPositioning = "ABSOLUTE";
-        node.x = x;
-        node.y = y;
-      }
-    }
-    return { id: node.id, name: node.name, type: node.type };
-  }
 
   // figma_plugin/handlers/nodeModifiers.ts
-  async function moveNode(params) {
-    const { nodeId, x, y } = params || {};
+  async function transformNode(params) {
+    const { nodeId, x, y, width, height } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
-    }
-    if (x === void 0 || y === void 0) {
-      throw new Error("Missing x or y parameters");
     }
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
-    if (!("x" in node) || !("y" in node)) {
-      throw new Error(`Node does not support position: ${nodeId}`);
+    if (x !== void 0 || y !== void 0) {
+      if (!("x" in node) || !("y" in node)) {
+        throw new Error(`Node does not support position: ${nodeId}`);
+      }
+      if (x !== void 0) node.x = x;
+      if (y !== void 0) node.y = y;
     }
-    node.x = x;
-    node.y = y;
+    if (width !== void 0 || height !== void 0) {
+      if (!("resize" in node)) {
+        throw new Error(`Node does not support resizing: ${nodeId}`);
+      }
+      const currentWidth = node.width;
+      const currentHeight = node.height;
+      node.resize(width != null ? width : currentWidth, height != null ? height : currentHeight);
+    }
     return {
       id: node.id,
       name: node.name,
-      x: node.x,
-      y: node.y
-    };
-  }
-  async function resizeNode(params) {
-    const { nodeId, width, height } = params || {};
-    if (!nodeId) {
-      throw new Error("Missing nodeId parameter");
-    }
-    if (width === void 0 || height === void 0) {
-      throw new Error("Missing width or height parameters");
-    }
-    const node = await figma.getNodeByIdAsync(nodeId);
-    if (!node) {
-      throw new Error(`Node not found with ID: ${nodeId}`);
-    }
-    if (!("resize" in node)) {
-      throw new Error(`Node does not support resizing: ${nodeId}`);
-    }
-    node.resize(width, height);
-    return {
-      id: node.id,
-      name: node.name,
-      width: node.width,
-      height: node.height
+      x: "x" in node ? node.x : void 0,
+      y: "y" in node ? node.y : void 0,
+      width: "width" in node ? node.width : void 0,
+      height: "height" in node ? node.height : void 0
     };
   }
   async function deleteMultipleNodes(params) {
@@ -1082,7 +1236,7 @@
       const errorMsg = "Missing or invalid nodeIds parameter";
       await sendProgressUpdate(
         commandId,
-        "delete_multiple_nodes",
+        "node_delete",
         "error",
         0,
         0,
@@ -1095,7 +1249,7 @@
     console.log(`Starting deletion of ${nodeIds.length} nodes`);
     await sendProgressUpdate(
       commandId,
-      "delete_multiple_nodes",
+      "node_delete",
       "started",
       0,
       nodeIds.length,
@@ -1114,7 +1268,7 @@
     console.log(`Split ${nodeIds.length} deletions into ${chunks.length} chunks`);
     await sendProgressUpdate(
       commandId,
-      "delete_multiple_nodes",
+      "node_delete",
       "in_progress",
       5,
       nodeIds.length,
@@ -1133,7 +1287,7 @@
       );
       await sendProgressUpdate(
         commandId,
-        "delete_multiple_nodes",
+        "node_delete",
         "in_progress",
         Math.round(5 + chunkIndex / chunks.length * 90),
         nodeIds.length,
@@ -1189,7 +1343,7 @@
       });
       await sendProgressUpdate(
         commandId,
-        "delete_multiple_nodes",
+        "node_delete",
         "in_progress",
         Math.round(5 + (chunkIndex + 1) / chunks.length * 90),
         nodeIds.length,
@@ -1213,7 +1367,7 @@
     );
     await sendProgressUpdate(
       commandId,
-      "delete_multiple_nodes",
+      "node_delete",
       "completed",
       100,
       nodeIds.length,
@@ -1661,6 +1815,35 @@
     }
     return base64;
   }
+  function bytesToUtf8(bytes) {
+    if (typeof TextDecoder !== "undefined") {
+      return new TextDecoder("utf-8").decode(bytes);
+    }
+    let out = "";
+    let i = 0;
+    const len = bytes.length;
+    while (i < len) {
+      const b1 = bytes[i++];
+      if (b1 < 128) {
+        out += String.fromCharCode(b1);
+      } else if (b1 >= 192 && b1 < 224) {
+        const b2 = bytes[i++];
+        out += String.fromCharCode((b1 & 31) << 6 | b2 & 63);
+      } else if (b1 >= 224 && b1 < 240) {
+        const b2 = bytes[i++];
+        const b3 = bytes[i++];
+        out += String.fromCharCode((b1 & 15) << 12 | (b2 & 63) << 6 | b3 & 63);
+      } else {
+        const b2 = bytes[i++];
+        const b3 = bytes[i++];
+        const b4 = bytes[i++];
+        let cp = (b1 & 7) << 18 | (b2 & 63) << 12 | (b3 & 63) << 6 | b4 & 63;
+        cp -= 65536;
+        out += String.fromCharCode(55296 + (cp >> 10), 56320 + (cp & 1023));
+      }
+    }
+    return out;
+  }
 
   // figma_plugin/handlers/componentHandlers.ts
   async function getStyles() {
@@ -1819,9 +2002,12 @@
   }
   async function exportNodeAsImage(params) {
     const { nodeId, scale = 1 } = params || {};
-    const format = "PNG";
+    const format = (params == null ? void 0 : params.format) ? String(params.format).toUpperCase() : "PNG";
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
+    }
+    if (!["PNG", "JPG", "SVG", "PDF"].includes(format)) {
+      throw new Error(`Unsupported export format: ${format}. Use PNG, JPG, SVG, or PDF.`);
     }
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
@@ -1831,38 +2017,40 @@
       throw new Error(`Node does not support exporting: ${nodeId}`);
     }
     try {
-      const settings = {
-        format,
-        constraint: { type: "SCALE", value: scale }
-      };
+      const isRaster = format === "PNG" || format === "JPG";
+      const settings = isRaster ? { format, constraint: { type: "SCALE", value: scale } } : { format };
       const bytes = await node.exportAsync(settings);
       let mimeType;
       switch (format) {
         case "PNG":
           mimeType = "image/png";
           break;
-        // @ts-ignore
         case "JPG":
           mimeType = "image/jpeg";
           break;
-        // @ts-ignore
         case "SVG":
           mimeType = "image/svg+xml";
           break;
-        // @ts-ignore
         case "PDF":
           mimeType = "application/pdf";
           break;
         default:
           mimeType = "application/octet-stream";
       }
-      const base64 = customBase64Encode(bytes);
+      if (format === "SVG") {
+        return {
+          nodeId,
+          format,
+          mimeType,
+          svg: bytesToUtf8(bytes)
+        };
+      }
       return {
         nodeId,
         format,
-        scale,
+        scale: isRaster ? scale : void 0,
         mimeType,
-        imageData: base64
+        imageData: customBase64Encode(bytes)
       };
     } catch (error) {
       throw new Error(`Error exporting node as image: ${error.message}`);
@@ -2310,22 +2498,49 @@
           propertyName: newPropertyName || propertyName,
           updated: true
         };
-      } else if (action === "DELETE") {
-        if (!qualifiedName) {
-          throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(", ")}`);
-        }
-        targetNode.deleteComponentProperty(qualifiedName);
-        return {
-          id: targetNode.id,
-          name: targetNode.name,
-          action: "DELETE",
-          propertyName
-        };
       } else {
-        throw new Error(`Invalid action: ${action}`);
+        throw new Error(`Invalid action: ${action}. Use delete_property tool for deletion.`);
       }
     } catch (error) {
       throw new Error(`Error managing component property: ${error.message}`);
+    }
+  }
+  async function deleteComponentProperty(params) {
+    const { nodeId, propertyName } = params || {};
+    if (!nodeId || !propertyName) {
+      throw new Error("Missing nodeId or propertyName parameter");
+    }
+    const node = await figma.getNodeByIdAsync(nodeId);
+    if (!node) {
+      throw new Error(`Node not found with ID: ${nodeId}`);
+    }
+    if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
+      throw new Error(`Target node must be a COMPONENT or COMPONENT_SET, got ${node.type}`);
+    }
+    const targetNode = node;
+    const properties = targetNode.componentPropertyDefinitions;
+    let qualifiedName = null;
+    const validNames = [];
+    for (const key in properties) {
+      const parts = key.split("#");
+      const readableName = parts[0];
+      validNames.push(readableName);
+      if (readableName === propertyName) {
+        qualifiedName = key;
+      }
+    }
+    if (!qualifiedName) {
+      throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(", ")}`);
+    }
+    try {
+      targetNode.deleteComponentProperty(qualifiedName);
+      return {
+        id: targetNode.id,
+        name: targetNode.name,
+        propertyName
+      };
+    } catch (error) {
+      throw new Error(`Error deleting component property: ${error.message}`);
     }
   }
 
@@ -3742,65 +3957,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       return { success: true, deleted: idsToCheck };
     }
   }
-  async function getNodeVariables(params) {
-    const { nodeId } = params || {};
-    if (!nodeId) {
-      throw new Error("Missing nodeId parameter");
-    }
-    const node = await figma.getNodeByIdAsync(nodeId);
-    if (!node) {
-      throw new Error(`Node not found with ID: ${nodeId}`);
-    }
-    const boundVariables = node.boundVariables || {};
-    const explicitVariableModes = node.explicitVariableModes || {};
-    const resolvedModes = {};
-    if (Object.keys(explicitVariableModes).length > 0) {
-      try {
-        const collections = await Promise.all(
-          Object.keys(explicitVariableModes).map((id) => figma.variables.getVariableCollectionByIdAsync(id))
-        );
-        collections.forEach((collection) => {
-          if (collection) {
-            const modeId = explicitVariableModes[collection.id];
-            const mode = collection.modes.find((m) => m.modeId === modeId);
-            resolvedModes[collection.id] = {
-              collectionName: collection.name,
-              modeId,
-              modeName: mode ? mode.name : "Unknown Mode"
-            };
-          }
-        });
-      } catch (e) {
-      }
-    }
-    const resolvedBindings = {};
-    for (const [field, alias] of Object.entries(boundVariables)) {
-      if (alias && alias.id) {
-        try {
-          const v = await figma.variables.getVariableByIdAsync(alias.id);
-          resolvedBindings[field] = {
-            // @ts-ignore
-            variableId: alias.id,
-            variableName: v ? v.name : "Unknown Variable"
-          };
-        } catch (e) {
-          resolvedBindings[field] = alias;
-        }
-      } else {
-        resolvedBindings[field] = alias;
-      }
-    }
-    return {
-      nodeId: node.id,
-      name: node.name,
-      boundVariables: resolvedBindings,
-      // enriched with names where possible
-      rawBoundVariables: boundVariables,
-      // raw data
-      explicitVariableModes,
-      resolvedExplicitModes: resolvedModes
-    };
-  }
   async function setBoundVariable(params) {
     const { nodeId, field, variableId, collectionId, modeId } = params || {};
     if (!nodeId) {
@@ -3986,73 +4142,87 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           throw new Error(`Unsupported style type: ${type}`);
       }
     }
-    style.name = name;
-    if (description) style.description = description;
-    if (properties) {
-      switch (type.toUpperCase()) {
-        case "TEXT": {
-          const s = style;
-          if (properties.fontName) await figma.loadFontAsync(properties.fontName);
-          if (properties.fontName) s.fontName = properties.fontName;
-          if (properties.fontSize) s.fontSize = properties.fontSize;
-          if (properties.lineHeight) s.lineHeight = properties.lineHeight;
-          if (properties.letterSpacing) s.letterSpacing = properties.letterSpacing;
-          if (properties.paragraphIndent) s.paragraphIndent = properties.paragraphIndent;
-          if (properties.paragraphSpacing) s.paragraphSpacing = properties.paragraphSpacing;
-          if (properties.textCase) s.textCase = properties.textCase;
-          if (properties.textDecoration) s.textDecoration = properties.textDecoration;
-          break;
-        }
-        case "PAINT": {
-          const s = style;
-          if (properties.paints) s.paints = properties.paints;
-          break;
-        }
-        case "EFFECT": {
-          const s = style;
-          if (properties.effects) s.effects = properties.effects;
-          break;
-        }
-        case "GRID": {
-          const s = style;
-          if (properties.layoutGrids) s.layoutGrids = properties.layoutGrids;
-          break;
-        }
-      }
-    }
-    if (bindVariables && typeof bindVariables === "object") {
-      const entries = Object.entries(bindVariables);
-      if (type.toUpperCase() === "PAINT") {
-        const paintStyle = style;
-        const paints = [...paintStyle.paints];
-        if (paints.length === 0) {
-          throw new Error("Cannot bind/unbind variables on a paint style with no paints. Set paints first via properties.");
-        }
-        for (const [field, variableId] of entries) {
-          if (variableId === null) {
-            paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, null);
-          } else {
-            const variable = await figma.variables.getVariableByIdAsync(variableId);
-            if (!variable) {
-              throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
+    try {
+      style.name = name;
+      if (description) style.description = description;
+      if (properties) {
+        switch (type.toUpperCase()) {
+          case "TEXT": {
+            const s = style;
+            if (properties.fontName) {
+              await figma.loadFontAsync(properties.fontName);
+              s.fontName = properties.fontName;
+            } else {
+              await figma.loadFontAsync(s.fontName);
             }
-            paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, variable);
+            if (properties.fontSize) s.fontSize = properties.fontSize;
+            if (properties.lineHeight) s.lineHeight = properties.lineHeight;
+            if (properties.letterSpacing) s.letterSpacing = properties.letterSpacing;
+            if (properties.paragraphIndent) s.paragraphIndent = properties.paragraphIndent;
+            if (properties.paragraphSpacing) s.paragraphSpacing = properties.paragraphSpacing;
+            if (properties.textCase) s.textCase = properties.textCase;
+            if (properties.textDecoration) s.textDecoration = properties.textDecoration;
+            break;
           }
-        }
-        paintStyle.paints = paints;
-      } else {
-        for (const [field, variableId] of entries) {
-          if (variableId === null) {
-            style.setBoundVariable(field, null);
-          } else {
-            const variable = await figma.variables.getVariableByIdAsync(variableId);
-            if (!variable) {
-              throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
-            }
-            style.setBoundVariable(field, variable);
+          case "PAINT": {
+            const s = style;
+            if (properties.paints) s.paints = properties.paints;
+            break;
+          }
+          case "EFFECT": {
+            const s = style;
+            if (properties.effects) s.effects = properties.effects;
+            break;
+          }
+          case "GRID": {
+            const s = style;
+            if (properties.layoutGrids) s.layoutGrids = properties.layoutGrids;
+            break;
           }
         }
       }
+      if (bindVariables && typeof bindVariables === "object") {
+        const entries = Object.entries(bindVariables);
+        if (type.toUpperCase() === "PAINT") {
+          const paintStyle = style;
+          const paints = [...paintStyle.paints];
+          if (paints.length === 0) {
+            throw new Error("Cannot bind/unbind variables on a paint style with no paints. Set paints first via properties.");
+          }
+          for (const [field, variableId] of entries) {
+            if (variableId === null) {
+              paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, null);
+            } else {
+              const variable = await figma.variables.getVariableByIdAsync(variableId);
+              if (!variable) {
+                throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
+              }
+              paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, variable);
+            }
+          }
+          paintStyle.paints = paints;
+        } else {
+          for (const [field, variableId] of entries) {
+            if (variableId === null) {
+              style.setBoundVariable(field, null);
+            } else {
+              const variable = await figma.variables.getVariableByIdAsync(variableId);
+              if (!variable) {
+                throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
+              }
+              style.setBoundVariable(field, variable);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (!styleId) {
+        try {
+          style.remove();
+        } catch (e2) {
+        }
+      }
+      throw e;
     }
     return {
       id: style.id,
@@ -4096,6 +4266,24 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     return {
       success: true,
       message: `Style ${styleId} applied to node ${nodeId}`
+    };
+  }
+  async function deleteStyle(params) {
+    const { styleId, styleName } = params || {};
+    if (!styleId) {
+      throw new Error("Missing styleId parameter");
+    }
+    const style = await figma.getStyleByIdAsync(styleId);
+    if (!style) {
+      throw new Error(`Style with ID ${styleId} not found.`);
+    }
+    if (styleName !== void 0 && styleName !== null && style.name !== styleName) {
+      throw new Error("Operation Denied: styleName does not match name of styleId. Refresh context & recheck to ensure correct styleId is passed in.");
+    }
+    style.remove();
+    return {
+      success: true,
+      message: `Style ${styleId} ("${styleName}") successfully deleted.`
     };
   }
 
@@ -4349,7 +4537,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             figma.ui.postMessage({
               type: "command-result",
               id: msg.id,
-              result
+              result: sanitizeForPostMessage(result)
             });
           } catch (error) {
             figma.ui.postMessage({
@@ -4377,37 +4565,37 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     switch (command) {
       case "get_connect_payload":
         return await getConnectPayload();
-      case "set_fill_color":
+      case "node_set_fill":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setFillColor(params);
-      case "set_stroke":
+      case "node_set_stroke":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setStroke(params);
-      case "set_corner_radius":
+      case "node_set_corner_radius":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setCornerRadius(params);
-      case "set_auto_layout":
+      case "node_set_auto_layout":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setAutoLayout(params);
-      case "set_bound_variable":
+      case "node_bind_variable":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setBoundVariable(params);
-      case "set_node_name":
+      case "node_rename":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setNodeName(params);
-      case "group_nodes":
+      case "node_group":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
         if (params.nodes.length > 0) {
@@ -4424,43 +4612,38 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           }
         }
         return await groupNodes(params);
-      case "ungroup_nodes":
+      case "node_ungroup":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await ungroupNodes(params);
-      case "flatten_node":
+      case "node_flatten":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await flattenNode(params);
-      case "insert_child":
+      case "node_insert_child":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         if (!await checkScopeAccess(params ? params.childId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.childId : null, params ? params.childNodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await insertChild(params);
-      case "move_node":
+      case "node_transform":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
-        return await moveNode(params);
-      case "resize_node":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-        if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
-        if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
-        return await resizeNode(params);
-      case "clone_node":
+        return await transformNode(params);
+      case "node_clone":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await cloneNode(params);
-      case "create_rectangle":
+      case "create_shape":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
-        return await createRectangle(params);
+        return await createShape(params);
       case "create_frame":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
@@ -4471,17 +4654,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createText(params);
-      case "create_ellipse":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-        if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-        if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
-        return await createEllipse(params);
-      case "create_polygon_star":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-        if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-        if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
-        return await createPolygonStar(params);
-      case "create_component_instance":
+      case "create_instance":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (params && params.parentId) {
           if (!await checkScopeAccess(params.parentId)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
@@ -4490,7 +4663,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (state.scopeRootId) throw new Error(formatScopeError(ERRORS.ROOT_INSTANCE_DISALLOWED));
         }
         return await createComponentInstance(params);
-      case "create_connections":
+      case "create_connection":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (params && params.connectorId) {
           if (!await checkScopeAccess(params.connectorId)) throw new Error(formatScopeError(`Operation denied: Connector node ${params.connectorId} outside editable scope`));
@@ -4504,7 +4677,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           }
         }
         return await createConnections(params);
-      case "set_multiple_text_contents":
+      case "text_set_content":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.text || !Array.isArray(params.text)) throw new Error("Missing or Invalid text parameter");
         for (const item of params.text) {
@@ -4512,12 +4685,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
         }
         return await setMultipleTextContents(params);
-      case "set_text_style":
+      case "text_set_style":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setTextStyle(params);
-      case "set_multiple_annotations":
+      case "annotation_set":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.annotations || !Array.isArray(params.annotations)) throw new Error("Missing or Invalid annotations parameter");
         for (const item of params.annotations) {
@@ -4525,7 +4698,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
         }
         return await setMultipleAnnotations(params);
-      case "delete_multiple_nodes":
+      case "node_delete":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
         const nodeIdsToDelete = [];
@@ -4535,7 +4708,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           nodeIdsToDelete.push(item.nodeId);
         }
         return await deleteMultipleNodes({ nodeIds: nodeIdsToDelete });
-      case "set_instance_overrides":
+      case "instance_set_overrides":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (params && params.targetNodes) {
           if (!Array.isArray(params.targetNodes)) {
@@ -4565,21 +4738,26 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           }
         }
         throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
-      case "set_component_instance_property":
+      case "instance_set_property":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setComponentInstanceProperty(params);
-      case "manage_component_property":
+      case "component_manage_property":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await manageComponentProperty(params);
-      case "get_pages_info":
+      case "component_delete_property":
+        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
+        return await deleteComponentProperty(params);
+      case "page_info":
         return await getPagesInfo(params);
       case "get_selection":
         return await getSelection();
-      case "get_nodes_info":
+      case "node_info":
         const effectiveNodeIds = params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0 ? params.nodeIds : state.scopeRootId ? [state.scopeRootId] : [];
         if (effectiveNodeIds.length === 0 && state.readOnly) {
           return { nodes: [] };
@@ -4588,15 +4766,15 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           nodeIds: effectiveNodeIds,
           commandId: params && params.commandId ? params.commandId : generateCommandId()
         }));
-      case "get_styles":
+      case "style_list":
         return await getStyles();
-      case "get_components":
+      case "component_list":
         return await getComponents(params);
-      case "export_node_as_image":
+      case "node_export_visual":
         return await exportNodeAsImage(params);
-      case "get_annotations":
+      case "annotation_list":
         return await getAnnotations(params);
-      case "get_instance_overrides":
+      case "instance_get_overrides":
         if (params && params.instanceNodeId) {
           const instanceNode = await figma.getNodeByIdAsync(params.instanceNodeId);
           if (!instanceNode) {
@@ -4605,31 +4783,32 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           return await getInstanceOverrides(instanceNode);
         }
         return await getInstanceOverrides();
-      case "get_reactions":
+      case "reaction_list":
         if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
           throw new Error(ERRORS.MISSING_NODE_IDS);
         }
         return await getReactions(params.nodeIds);
-      case "update_reactions":
+      case "reaction_update":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         return await updateReactions(params);
-      case "set_selections":
+      case "node_select":
         return await setSelections(params);
-      case "get_variables":
+      case "variable_list":
         return await getVariables(params);
-      case "get_node_variables":
-        return await getNodeVariables(params);
-      case "manage_variables":
+      case "variable_manage":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         return await handleVariableRequest(params);
-      case "delete_variables":
+      case "variable_delete":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         return await deleteVariables(params);
-      case "manage_style":
+      case "style_manage":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         return await createStyle(params);
-      case "apply_style":
+      case "style_delete":
+        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        return await deleteStyle(params);
+      case "node_apply_style":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
@@ -4657,12 +4836,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (!await verifyParentName(params.parentId, params.parentNodeName)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         }
         return await createComponentSet(params);
-      case "create_node_from_svg":
+      case "create_svg":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createNodeFromSvg(params);
-      case "set_effects":
+      case "node_set_effects":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);

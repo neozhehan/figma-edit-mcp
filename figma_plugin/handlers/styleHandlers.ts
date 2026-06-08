@@ -35,80 +35,99 @@ export async function createStyle(params: any) {
         }
     }
 
-    style.name = name;
-    if (description) style.description = description;
+    // Apply name/properties/bindings. If anything throws on a freshly-created
+    // style, remove it — otherwise a partial failure (e.g. an unloaded font)
+    // leaves an orphaned empty style behind.
+    try {
+        style.name = name;
+        if (description) style.description = description;
 
-    if (properties) {
-        switch (type.toUpperCase()) {
-            case 'TEXT': {
-                const s = style as TextStyle;
-                if (properties.fontName) await figma.loadFontAsync(properties.fontName);
-                if (properties.fontName) s.fontName = properties.fontName;
-                if (properties.fontSize) s.fontSize = properties.fontSize;
-                if (properties.lineHeight) s.lineHeight = properties.lineHeight;
-                if (properties.letterSpacing) s.letterSpacing = properties.letterSpacing;
-                if (properties.paragraphIndent) s.paragraphIndent = properties.paragraphIndent;
-                if (properties.paragraphSpacing) s.paragraphSpacing = properties.paragraphSpacing;
-                if (properties.textCase) s.textCase = properties.textCase;
-                if (properties.textDecoration) s.textDecoration = properties.textDecoration;
-                break;
-            }
-            case 'PAINT': {
-                const s = style as PaintStyle;
-                if (properties.paints) s.paints = properties.paints;
-                break;
-            }
-            case 'EFFECT': {
-                const s = style as EffectStyle;
-                if (properties.effects) s.effects = properties.effects;
-                break;
-            }
-            case 'GRID': {
-                const s = style as GridStyle;
-                if (properties.layoutGrids) s.layoutGrids = properties.layoutGrids;
-                break;
-            }
-        }
-    }
-
-    // bindVariables: map of field names to variable IDs (bind) or null (unbind)
-    // Runs after properties so bindings aren't overwritten by paint assignments
-    if (bindVariables && typeof bindVariables === 'object') {
-        const entries = Object.entries(bindVariables) as [string, string | null][];
-
-        if (type.toUpperCase() === 'PAINT') {
-            const paintStyle = style as PaintStyle;
-            const paints = [...paintStyle.paints];
-            if (paints.length === 0) {
-                throw new Error("Cannot bind/unbind variables on a paint style with no paints. Set paints first via properties.");
-            }
-            for (const [field, variableId] of entries) {
-                if (variableId === null) {
-                    paints[0] = figma.variables.setBoundVariableForPaint(paints[0] as SolidPaint, field as any, null);
-                } else {
-                    const variable = await figma.variables.getVariableByIdAsync(variableId);
-                    if (!variable) {
-                        throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
+        if (properties) {
+            switch (type.toUpperCase()) {
+                case 'TEXT': {
+                    const s = style as TextStyle;
+                    // Any text-prop write requires the target font loaded. Load
+                    // the provided font, or the style's current/default font when
+                    // none is given — otherwise set_fontSize/lineHeight/etc. throw
+                    // "unloaded font" on a fresh style.
+                    if (properties.fontName) {
+                        await figma.loadFontAsync(properties.fontName);
+                        s.fontName = properties.fontName;
+                    } else {
+                        await figma.loadFontAsync(s.fontName as FontName);
                     }
-                    paints[0] = figma.variables.setBoundVariableForPaint(paints[0] as SolidPaint, field as any, variable);
+                    if (properties.fontSize) s.fontSize = properties.fontSize;
+                    if (properties.lineHeight) s.lineHeight = properties.lineHeight;
+                    if (properties.letterSpacing) s.letterSpacing = properties.letterSpacing;
+                    if (properties.paragraphIndent) s.paragraphIndent = properties.paragraphIndent;
+                    if (properties.paragraphSpacing) s.paragraphSpacing = properties.paragraphSpacing;
+                    if (properties.textCase) s.textCase = properties.textCase;
+                    if (properties.textDecoration) s.textDecoration = properties.textDecoration;
+                    break;
                 }
-            }
-            paintStyle.paints = paints;
-        } else {
-            for (const [field, variableId] of entries) {
-                if (variableId === null) {
-                    // @ts-ignore
-                    style.setBoundVariable(field, null);
-                } else {
-                    const variable = await figma.variables.getVariableByIdAsync(variableId);
-                    if (!variable) {
-                        throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
-                    }
-                    // @ts-ignore
-                    style.setBoundVariable(field, variable);
+                case 'PAINT': {
+                    const s = style as PaintStyle;
+                    if (properties.paints) s.paints = properties.paints;
+                    break;
+                }
+                case 'EFFECT': {
+                    const s = style as EffectStyle;
+                    if (properties.effects) s.effects = properties.effects;
+                    break;
+                }
+                case 'GRID': {
+                    const s = style as GridStyle;
+                    if (properties.layoutGrids) s.layoutGrids = properties.layoutGrids;
+                    break;
                 }
             }
         }
+
+        // bindVariables: map of field names to variable IDs (bind) or null (unbind)
+        // Runs after properties so bindings aren't overwritten by paint assignments
+        if (bindVariables && typeof bindVariables === 'object') {
+            const entries = Object.entries(bindVariables) as [string, string | null][];
+
+            if (type.toUpperCase() === 'PAINT') {
+                const paintStyle = style as PaintStyle;
+                const paints = [...paintStyle.paints];
+                if (paints.length === 0) {
+                    throw new Error("Cannot bind/unbind variables on a paint style with no paints. Set paints first via properties.");
+                }
+                for (const [field, variableId] of entries) {
+                    if (variableId === null) {
+                        paints[0] = figma.variables.setBoundVariableForPaint(paints[0] as SolidPaint, field as any, null);
+                    } else {
+                        const variable = await figma.variables.getVariableByIdAsync(variableId);
+                        if (!variable) {
+                            throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
+                        }
+                        paints[0] = figma.variables.setBoundVariableForPaint(paints[0] as SolidPaint, field as any, variable);
+                    }
+                }
+                paintStyle.paints = paints;
+            } else {
+                for (const [field, variableId] of entries) {
+                    if (variableId === null) {
+                        // @ts-ignore
+                        style.setBoundVariable(field, null);
+                    } else {
+                        const variable = await figma.variables.getVariableByIdAsync(variableId);
+                        if (!variable) {
+                            throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
+                        }
+                        // @ts-ignore
+                        style.setBoundVariable(field, variable);
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        // Roll back a style we created here (no styleId = freshly created).
+        if (!styleId) {
+            try { (style as any).remove(); } catch { /* best-effort cleanup */ }
+        }
+        throw e;
     }
 
     return {
@@ -166,5 +185,36 @@ export async function applyStyle(params: any) {
     return {
         success: true,
         message: `Style ${styleId} applied to node ${nodeId}`
+    };
+}
+
+/**
+ * Deletes a local style
+ * @param {Object} params - Parameters object
+ * @param {string} params.styleId - ID of style to delete
+ * @param {string} params.styleName - Expected name of style to delete (verification)
+ * @returns {Promise<Object>} Status info
+ */
+export async function deleteStyle(params: any) {
+    const { styleId, styleName } = params || {};
+
+    if (!styleId) {
+        throw new Error("Missing styleId parameter");
+    }
+
+    const style = await figma.getStyleByIdAsync(styleId);
+    if (!style) {
+        throw new Error(`Style with ID ${styleId} not found.`);
+    }
+
+    if (styleName !== undefined && styleName !== null && style.name !== styleName) {
+        throw new Error("Operation Denied: styleName does not match name of styleId. Refresh context & recheck to ensure correct styleId is passed in.");
+    }
+
+    style.remove();
+
+    return {
+        success: true,
+        message: `Style ${styleId} ("${styleName}") successfully deleted.`
     };
 }
