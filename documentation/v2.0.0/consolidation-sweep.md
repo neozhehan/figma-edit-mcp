@@ -73,7 +73,7 @@ Each tool is classified **Merge**, **Keep**, or **Already-consolidated**, using 
 | Tool | Key params | Verdict |
 |---|---|---|
 | `get_styles` | — | **KEEP** (read) |
-| `manage_style` | type,name,propertiesJson?,styleId?,bindVariables? | **ALREADY-CONSOLIDATED** (create+update router) |
+| `manage_style` | type,name,properties?,styleId?,bindVariables? | **ALREADY-CONSOLIDATED** (create+update router) |
 | `apply_style` | nodeId,styleId,styleType | **KEEP** — links node→style (write) |
 | *(net-new)* `style_delete` | styleId, styleName | **ADD** — no style-deletion path existed; completes the `style_*` lifecycle (destructive, safe detach — no consumer check). See critique §2.2 |
 

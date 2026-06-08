@@ -518,7 +518,10 @@ async function extractProperties(
         else if (SAFE_LIST_PROPERTIES.has(key)) {
             const val = (node as any)[key];
             if (val !== undefined && val !== null) {
-                props[key] = val;
+                // `figma.mixed` is a Symbol (returned when a field has mixed
+                // values across a node's range) and isn't structured-cloneable —
+                // serialize it so it can't throw DataCloneError on postMessage.
+                props[key] = typeof val === "symbol" ? "mixed" : val;
             }
         } else if (exportedData && exportedData[key] !== undefined) {
             props[key] = exportedData[key];

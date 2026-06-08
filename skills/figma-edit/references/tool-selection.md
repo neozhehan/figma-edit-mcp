@@ -7,7 +7,7 @@ Heuristics for picking the right tool when several overlap.
 `node_info` is the one read tool for node data (it subsumes the old separate scan tools and the per-node variable read). Use its parameters to scope the read tightly:
 
 - **`nodeIds: string[]`** — the roots of the traversal. Always required.
-- **`fields: string[]`** — return only these properties. Omitted properties are absent from the response (not `null`). Use aggressively to keep responses small. Common: `name`, `type`, `characters`, `fills`, `width`, `height`.
+- **`fields: string[]`** — return only these properties. Omitted properties are absent from the response (not `null`). Use aggressively to keep responses small. Common: `name`, `type`, `characters`, `fills`, `width`, `height`. The full field list (generated from `@figma/plugin-typings`, with types) is in the **`figma-edit://guide/node-fields`** resource.
 - **`filter: { type: string | string[] }`** — prune the traversal tree. Only matching nodes (and their ancestors back to the root) are retained. Use for "all text nodes" / "all components" in a subtree.
 - **`maxDepth: number`** — cap recursion. `maxDepth: 1` = immediate children; `maxDepth: 0` = the root nodes themselves.
 

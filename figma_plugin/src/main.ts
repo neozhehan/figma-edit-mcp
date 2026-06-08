@@ -5,6 +5,7 @@
 
 // Import utilities
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
+import { sanitizeForPostMessage } from '../utils/sanitize.js';
 
 // Import handlers
 import { getSelection, getNodesInfo, getPagesInfo } from '../handlers/nodeReaders.js';
@@ -192,11 +193,14 @@ figma.ui.onmessage = async (msg: any) => {
             state.commandQueue = (state.commandQueue || Promise.resolve()).then(async () => {
                 try {
                     const result = await handleCommand(msg.command, msg.params);
-                    // Send result back to UI
+                    // Send result back to UI. Sanitize first: any field that is
+                    // figma.mixed (a Symbol) — or any other non-cloneable — would
+                    // otherwise throw "Cannot unwrap symbol" on postMessage and
+                    // fail a command whose mutation already succeeded.
                     figma.ui.postMessage({
                         type: "command-result",
                         id: msg.id,
-                        result,
+                        result: sanitizeForPostMessage(result),
                     });
                 } catch (error: any) {
                     figma.ui.postMessage({

@@ -30,18 +30,19 @@ describe("WS2 - Resources Handler (R2.2, R5.1h)", () => {
     delete (globalThis as any).mockFsFail;
   });
 
-  it("should register the 4 guide resources and read markdown content", async () => {
+  it("should register the 5 guide resources and read markdown content", async () => {
     (globalThis as any).mockFsFail = false;
     const server = new McpServer({ name: "test", version: "1.0.0" });
     registerAllResources(server);
 
     const registered = (server as any)._registeredResources;
     const keys = Object.keys(registered);
-    expect(keys.length).toBe(4);
+    expect(keys.length).toBe(5);
     expect(keys).toContain("figma-edit://guide/constraints");
     expect(keys).toContain("figma-edit://guide/error-playbook");
     expect(keys).toContain("figma-edit://guide/workflows");
     expect(keys).toContain("figma-edit://guide/tool-selection");
+    expect(keys).toContain("figma-edit://guide/node-fields");
 
     // Test successful read of a guide
     const constraints = registered["figma-edit://guide/constraints"];

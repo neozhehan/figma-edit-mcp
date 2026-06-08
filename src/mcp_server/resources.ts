@@ -33,6 +33,11 @@ export function registerAllResources(server: McpServer) {
       title: "Figma Edit tool selection guide",
       description: "Guidance on choosing the right tools, using node.info, batch vs single, etc.",
     },
+    {
+      id: "node-fields",
+      title: "Figma Edit node_info field reference",
+      description: "The full set of node_info `fields` (generated from @figma/plugin-typings), with types and how reference fields resolve.",
+    },
   ];
 
   for (const res of resources) {

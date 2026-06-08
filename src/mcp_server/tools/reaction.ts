@@ -108,10 +108,10 @@ export function registerReactionTools(server: McpServer) {
                             text: `# Strategy: Convert Figma Prototype Reactions to Connector Lines
 
 ## Goal
-Process the JSON output from the \`reaction.list\` tool to generate an array of connection objects suitable for the \`create.connection\` tool. This visually represents prototype flows as connector lines on the Figma canvas.
+Process the JSON output from the \`reaction_list\` tool to generate an array of connection objects suitable for the \`create_connection\` tool. This visually represents prototype flows as connector lines on the Figma canvas.
 
 ## Input Data
-You will receive JSON data from the \`reaction.list\` tool. This data contains an array of nodes, each with potential reactions. A typical reaction object looks like this:
+You will receive JSON data from the \`reaction_list\` tool. This data contains an array of nodes, each with potential reactions. A typical reaction object looks like this:
 \`\`\`json
 {
   "trigger": { "type": "ON_CLICK" },
@@ -127,14 +127,14 @@ You will receive JSON data from the \`reaction.list\` tool. This data contains a
 ## Step-by-Step Process
 
 ### 1. Preparation & Context Gathering
-   - **Action:** Call \`node.info\` on the relevant node(s) to get context about the nodes involved (names, types, etc.). This helps in generating meaningful connector labels later.
-   - **Action:** Call \`create.connection\` **without** any parameters (empty object).
+   - **Action:** Call \`node_info\` on the relevant node(s) to get context about the nodes involved (names, types, etc.). This helps in generating meaningful connector labels later.
+   - **Action:** Call \`create_connection\` **without** any parameters (empty object).
    - **Check Result:** Analyze the response to see if a default connector is set.
-     - If it confirms a default connector is already set (e.g., "Default connector is already set"), proceed to Step 2.
-     - If it indicates no default connector is set, you **cannot** proceed with creating connections yet. Inform the user they need to manually copy a connector from FigJam, paste it onto the current page, select it, and then you can run \`create.connection({ connectorId: "SELECTED_NODE_ID" })\` before attempting to create the lines. **Do not proceed to Step 2 until a default connector is confirmed.**
+   - **If it confirms a default connector is already set (e.g., "Default connector is already set"), proceed to Step 2.
+   - **If it indicates no default connector is set, you **cannot** proceed with creating connections yet. Inform the user they need to manually copy a connector from FigJam, paste it onto the current page, select it, and then you can run \`create_connection({ connectorId: "SELECTED_NODE_ID" })\` before attempting to create the lines. **Do not proceed to Step 2 until a default connector is confirmed.**
 
-### 2. Filter and Transform Reactions from \`reaction.list\` Output
-   - **Iterate:** Go through the JSON array provided by \`reaction.list\`. For each node in the array:
+### 2. Filter and Transform Reactions from \`reaction_list\` Output
+   - **Iterate:** Go through the JSON array provided by \`reaction_list\`. For each node in the array:
      - Iterate through its \`reactions\` array.
    - **Filter:** Keep only reactions where the \`action\` meets these criteria:
      - Has a \`type\` that implies a connection (e.g., \`NAVIGATE\`, \`OPEN_OVERLAY\`, \`SWAP_OVERLAY\`). **Ignore** types like \`CHANGE_TO\`, \`CLOSE_OVERLAY\`, etc.
@@ -153,7 +153,7 @@ You will receive JSON data from the \`reaction.list\` tool. This data contains a
      - "On drag, open [Destination Node Name] overlay"
    - **Keep it brief and informative.** Let this generated string be \`generatedText\`.
 
-### 4. Prepare the \`connections\` Array for \`create.connection\`
+### 4. Prepare the \`connections\` Array for \`create_connection\`
    - **Structure:** Create a JSON array where each element is an object representing a connection.
    - **Format:** Each object in the array must have the following structure:
      \`\`\`json
@@ -163,11 +163,11 @@ You will receive JSON data from the \`reaction.list\` tool. This data contains a
        "text": "generatedText_from_step_3"
      }
      \`\`\`
-   - **Result:** This final array is the value you will pass to the \`connections\` parameter when calling the \`create.connection\` tool.
+   - **Result:** This final array is the value you will pass to the \`connections\` parameter when calling the \`create_connection\` tool.
 
 ### 5. Execute Connection Creation
-   - **Action:** Call the \`create.connection\` tool, passing the array generated in Step 4 as the \`connections\` argument.
-   - **Verify:** Check the response from \`create.connection\` to confirm success or failure.
+   - **Action:** Call the \`create_connection\` tool, passing the array generated in Step 4 as the \`connections\` argument.
+   - **Verify:** Check the response from \`create_connection\` to confirm success or failure.
 
 This detailed process ensures you correctly interpret the reaction data, prepare the necessary information, and use the appropriate tools to create the connector lines.`,
                         },

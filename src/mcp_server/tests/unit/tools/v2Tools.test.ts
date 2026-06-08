@@ -224,32 +224,61 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             expect(sendCommandToFigma).toHaveBeenCalledWith("component_delete_property", params);
         });
 
-        it("style_manage parses propertiesJson into a `properties` object (regression: empty styles)", async () => {
+        it("style_manage forwards the typed `properties` object to the plugin", async () => {
             const registered = (server as any)._registeredTools;
             const tool = registered["style_manage"];
 
-            const props = { paints: [{ type: "SOLID", color: { r: 0, g: 0.7, b: 0.2 } }] };
+            const properties = { paints: [{ type: "SOLID", color: { r: 0, g: 0.7, b: 0.2 } }] };
             await (tool.handler || tool.callback)(
-                { type: "PAINT", name: "Brand", propertiesJson: JSON.stringify(props) },
+                { type: "PAINT", name: "Brand", properties },
                 {} as any
             );
 
             const arg = (sendCommandToFigma as any).mock.calls.at(-1)[1];
-            // Handler reads `properties` (object); the raw `propertiesJson` string must NOT leak through.
-            expect(arg.properties).toEqual(props);
+            // The handler reads `properties` directly; no JSON-string indirection.
+            expect(arg.properties).toEqual(properties);
             expect(arg.propertiesJson).toBeUndefined();
             expect(arg).toMatchObject({ type: "PAINT", name: "Brand" });
         });
 
-        it("style_manage rejects malformed propertiesJson", async () => {
+        it("style_manage input schema types the common cases (enums) and passes through polymorphic types", () => {
             const registered = (server as any)._registeredTools;
-            const tool = registered["style_manage"];
-            await expect(
-                (tool.handler || tool.callback)(
-                    { type: "PAINT", name: "Bad", propertiesJson: "{not valid json" },
-                    {} as any
-                )
-            ).rejects.toThrow(/Invalid propertiesJson/);
+            const schema = registered["style_manage"].inputSchema;
+            const ok = (input: any) => schema.safeParse(input).success;
+
+            // Previously-undocumented TEXT props are now typed + validated.
+            expect(ok({ type: "TEXT", name: "Body", properties: { fontSize: 14, textCase: "UPPER", lineHeight: { value: 20, unit: "PIXELS" } } })).toBe(true);
+            expect(ok({ type: "TEXT", name: "Body", properties: { lineHeight: { unit: "AUTO" } } })).toBe(true);
+            // Bad enum / out-of-range channel are rejected before reaching Figma.
+            expect(ok({ type: "TEXT", name: "Body", properties: { textCase: "BOGUS" } })).toBe(false);
+            expect(ok({ type: "PAINT", name: "C", properties: { paints: [{ type: "SOLID", color: { r: 5, g: 0, b: 0 } }] } })).toBe(false);
+            // SOLID typed; GRADIENT/IMAGE pass through with their extra fields intact.
+            expect(ok({ type: "PAINT", name: "C", properties: { paints: [{ type: "SOLID", color: { r: 1, g: 0, b: 0 } }] } })).toBe(true);
+            const grad = schema.safeParse({ type: "PAINT", name: "G", properties: { paints: [{ type: "GRADIENT_LINEAR", gradientStops: [{ position: 0 }] }] } });
+            expect(grad.success).toBe(true);
+            expect(grad.data.properties.paints[0].gradientStops).toEqual([{ position: 0 }]);
+        });
+
+        it("R3.8 polish: node_info outputSchema accepts real result shapes (typed, not over-strict)", () => {
+            const registered = (server as any)._registeredTools;
+            const out = registered["node_info"].outputSchema;
+            const ok = (r: any) => out.safeParse(r).success;
+
+            // Representative result: resolved refs, recursive children, path, missingNodeIds.
+            expect(ok({
+                nodes: [{
+                    id: "1:2", name: "Frame", type: "FRAME",
+                    properties: { fillStyleId: { id: "S:x", name: "Brand" }, pointCount: 5, parent: "0:1", cornerRadius: "mixed" },
+                    path: [["PAGE", "0:1", "Page 1"], ["FRAME", "1:1", "Outer"]],
+                    descendantCount: 3,
+                    children: [{ id: "1:3", name: "Child", type: "TEXT", properties: { characters: "hi" } }],
+                }],
+                missingNodeIds: ["9:9"],
+            })).toBe(true);
+            // Minimal entry (id/name/type only) is valid.
+            expect(ok({ nodes: [{ id: "1:2", name: "N", type: "RECTANGLE" }] })).toBe(true);
+            // Missing a required structural key fails.
+            expect(ok({ nodes: [{ name: "N", type: "RECTANGLE" }] })).toBe(false);
         });
     });
 });

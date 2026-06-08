@@ -99,8 +99,8 @@ async function runRoundtrip() {
         const listResponse = await sendRequest("resources/list", {}, 2);
         console.log("Verifying resources/list response...");
         const resources = listResponse.result.resources;
-        if (!resources || resources.length !== 4) {
-            throw new Error(`Expected 4 guide resources, got ${resources?.length}`);
+        if (!resources || resources.length !== 5) {
+            throw new Error(`Expected 5 guide resources, got ${resources?.length}`);
         }
         const uris = resources.map((r: any) => r.uri);
         const expectedUris = [
@@ -108,6 +108,7 @@ async function runRoundtrip() {
             "figma-edit://guide/error-playbook",
             "figma-edit://guide/workflows",
             "figma-edit://guide/tool-selection",
+            "figma-edit://guide/node-fields",
         ];
         for (const uri of expectedUris) {
             if (!uris.includes(uri)) {

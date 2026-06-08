@@ -30,181 +30,221 @@
     return update;
   }
 
-  // figma_plugin/utils/nodeUtils.ts
-  var SAFE_LIST_PROPERTIES = /* @__PURE__ */ new Set([
-    // Identity & structure
-    "id",
-    "name",
-    "type",
-    "parent",
-    "removed",
-    "isAsset",
-    "key",
-    "expanded",
-    // Visibility
-    "visible",
-    "locked",
-    "opacity",
-    "blendMode",
-    "isMask",
-    "maskType",
-    "stuckNodes",
-    "attachedConnectors",
-    // Geometry & transform
-    "x",
-    "y",
-    "width",
-    "height",
-    "minWidth",
-    "maxWidth",
-    "minHeight",
-    "maxHeight",
-    "rotation",
-    "relativeTransform",
-    "absoluteTransform",
+  // figma_plugin/utils/sanitize.ts
+  function sanitizeForPostMessage(value, seen = /* @__PURE__ */ new WeakSet()) {
+    if (typeof value === "symbol") return "mixed";
+    if (typeof value === "function") return void 0;
+    if (value === null || typeof value !== "object") return value;
+    if (seen.has(value)) return void 0;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      return value.map((v) => sanitizeForPostMessage(v, seen));
+    }
+    const out = {};
+    for (const key of Object.keys(value)) {
+      out[key] = sanitizeForPostMessage(value[key], seen);
+    }
+    return out;
+  }
+
+  // figma_plugin/utils/nodeFields.generated.ts
+  var NODE_DATA_FIELDS = [
     "absoluteBoundingBox",
     "absoluteRenderBounds",
-    "constraints",
+    "absoluteTransform",
+    "annotations",
+    "arcData",
+    "authorName",
+    "authorVisible",
+    "autoRename",
+    "backgroundStyleId",
+    "backgrounds",
+    "blendMode",
+    "booleanOperation",
+    "bottomLeftRadius",
+    "bottomRightRadius",
+    "boundVariables",
+    "characters",
+    "clipsContent",
+    "code",
+    "codeLanguage",
+    "complexStrokeProperties",
+    "componentProperties",
+    "componentPropertyDefinitions",
+    "componentPropertyReferences",
+    "connectorEnd",
+    "connectorEndStrokeCap",
+    "connectorLineType",
+    "connectorStart",
+    "connectorStartStrokeCap",
     "constrainProportions",
-    "targetAspectRatio",
+    "constraints",
+    "cornerRadius",
+    "cornerSmoothing",
+    "counterAxisAlignContent",
+    "counterAxisAlignItems",
+    "counterAxisSizingMode",
+    "counterAxisSpacing",
+    "dashPattern",
+    "description",
+    "descriptionMarkdown",
+    "detachedInfo",
+    "devStatus",
+    "documentationLinks",
+    "effectStyleId",
+    "effects",
+    "embedData",
+    "expanded",
+    "explicitVariableModes",
+    "exportSettings",
+    "fillGeometry",
+    "fillStyleId",
+    "fills",
+    "fontName",
+    "fontSize",
+    "fontWeight",
+    "gridChildHorizontalAlign",
+    "gridChildVerticalAlign",
+    "gridColumnAnchorIndex",
+    "gridColumnCount",
+    "gridColumnGap",
+    "gridColumnSizes",
+    "gridColumnSpan",
+    "gridRowAnchorIndex",
+    "gridRowCount",
+    "gridRowGap",
+    "gridRowSizes",
+    "gridRowSpan",
+    "gridStyleId",
+    "guides",
+    "handleMirroring",
+    "hangingList",
+    "hangingPunctuation",
+    "hasMissingFont",
+    "height",
+    "horizontalPadding",
+    "hyperlink",
+    "inferredAutoLayout",
+    "inferredVariables",
+    "innerRadius",
+    "interactiveSlideElementType",
+    "isAsset",
+    "isExposedInstance",
+    "isMask",
+    "isSkippedSlide",
+    "isWideWidth",
+    "itemReverseZIndex",
+    "itemSpacing",
+    "key",
     "layoutAlign",
+    "layoutGrids",
     "layoutGrow",
+    "layoutMode",
     "layoutPositioning",
     "layoutSizingHorizontal",
     "layoutSizingVertical",
-    // Auto-layout
-    "layoutMode",
     "layoutWrap",
+    "leadingTrim",
+    "letterSpacing",
+    "lineHeight",
+    "linkUnfurlData",
+    "listSpacing",
+    "locked",
+    "maskType",
+    "maxHeight",
+    "maxLines",
+    "maxWidth",
+    "mediaData",
+    "minHeight",
+    "minWidth",
+    "numColumns",
+    "numRows",
+    "numberOfFixedChildren",
+    "opacity",
+    "openTypeFeatures",
+    "overflowDirection",
+    "overlayBackground",
+    "overlayBackgroundInteraction",
+    "overlayPositionType",
+    "overrides",
+    "paddingBottom",
     "paddingLeft",
     "paddingRight",
     "paddingTop",
-    "paddingBottom",
-    "primaryAxisSizingMode",
-    "counterAxisSizingMode",
-    "primaryAxisAlignItems",
-    "counterAxisAlignItems",
-    "counterAxisAlignContent",
-    "itemSpacing",
-    "counterAxisSpacing",
-    "itemReverseZIndex",
-    "strokesIncludedInLayout",
-    "clipsContent",
-    "layoutGrids",
-    "guides",
-    "inferredAutoLayout",
-    "detachedInfo",
-    // Grid child
-    "gridRowCount",
-    "gridColumnCount",
-    "gridRowGap",
-    "gridColumnGap",
-    "gridRowSizes",
-    "gridColumnSizes",
-    "gridAutoTracks",
-    "gridItemsPositioning",
-    "gridRowSpan",
-    "gridColumnSpan",
-    "gridChildHorizontalAlign",
-    "gridChildVerticalAlign",
-    "gridRowAnchorIndex",
-    "gridColumnAnchorIndex",
-    // Corner radius
-    "cornerRadius",
-    "cornerSmoothing",
-    "topLeftRadius",
-    "topRightRadius",
-    "bottomLeftRadius",
-    "bottomRightRadius",
-    // Fills & strokes
-    "fills",
-    "strokes",
-    "strokeWeight",
-    "strokeJoin",
-    "strokeAlign",
-    "strokeCap",
-    "strokeMiterLimit",
-    "dashPattern",
-    "strokeLeftWeight",
-    "strokeRightWeight",
-    "strokeTopWeight",
-    "strokeBottomWeight",
-    "variableWidthStrokeProperties",
-    "complexStrokeProperties",
-    "fillStyleId",
-    "strokeStyleId",
-    // Effects
-    "effects",
-    "effectStyleId",
-    // Prototyping
-    "reactions",
-    "overflowDirection",
-    "numberOfFixedChildren",
-    "overlayPositionType",
-    "overlayBackground",
-    "overlayBackgroundInteraction",
-    "transitionNodeID",
-    "transitionDuration",
-    "transitionEasing",
-    // Component / instance
-    "componentProperties",
-    "variantProperties",
-    "componentPropertyDefinitions",
-    "exposedInstances",
-    "isExposedInstance",
-    "scaleFactor",
-    "overrides",
-    "description",
-    "descriptionMarkdown",
-    "documentationLinks",
-    "remote",
-    "variantGroupProperties",
-    "mainComponent",
-    "instances",
-    // Text
-    "characters",
-    "fontSize",
-    "fontName",
-    "fontWeight",
-    "lineHeight",
-    "letterSpacing",
     "paragraphIndent",
     "paragraphSpacing",
-    "listSpacing",
-    "textCase",
-    "textDecoration",
+    "pointCount",
+    "primaryAxisAlignItems",
+    "primaryAxisSizingMode",
+    "reactions",
+    "relativeTransform",
+    "remote",
+    "removed",
+    "resolvedVariableModes",
+    "rotation",
+    "scaleFactor",
+    "sectionContentsHidden",
+    "shapeType",
+    "strokeAlign",
+    "strokeBottomWeight",
+    "strokeCap",
+    "strokeGeometry",
+    "strokeJoin",
+    "strokeLeftWeight",
+    "strokeMiterLimit",
+    "strokeRightWeight",
+    "strokeStyleId",
+    "strokeTopWeight",
+    "strokeWeight",
+    "strokes",
+    "strokesIncludedInLayout",
+    "targetAspectRatio",
     "textAlignHorizontal",
     "textAlignVertical",
     "textAutoResize",
-    "autoRename",
-    "maxLines",
-    "textTruncation",
-    "hangingPunctuation",
-    "hangingList",
-    "leadingTrim",
-    "hasMissingFont",
-    "hyperlink",
-    "textDecorationStyle",
-    "textDecorationOffset",
-    "textDecorationThickness",
+    "textCase",
+    "textDecoration",
     "textDecorationColor",
+    "textDecorationOffset",
     "textDecorationSkipInk",
-    "openTypeFeatures",
-    // Vector
-    "handleMirroring",
+    "textDecorationStyle",
+    "textDecorationThickness",
+    "textPathStartData",
+    "textStyleId",
+    "textTruncation",
+    "topLeftRadius",
+    "topRightRadius",
+    "transformModifiers",
+    "variableWidthStrokeProperties",
+    "variantGroupProperties",
+    "variantProperties",
     "vectorNetwork",
     "vectorPaths",
-    "fillGeometry",
-    "strokeGeometry",
-    // Variables
-    "boundVariables",
-    "explicitVariableModes",
-    "inferredVariables",
-    "resolvedVariableModes",
-    "componentPropertyReferences",
-    // Export & dev metadata
-    "exportSettings",
-    "devStatus",
-    "annotations"
+    "verticalPadding",
+    "visible",
+    "widgetId",
+    "widgetSyncedState",
+    "width",
+    "x",
+    "y"
+  ];
+
+  // figma_plugin/utils/nodeUtils.ts
+  var RESOLVED_NODE_REFS = [
+    "parent",
+    "mainComponent",
+    "instances",
+    "exposedInstances",
+    "stuckNodes",
+    "attachedConnectors"
+  ];
+  var SAFE_LIST_PROPERTIES = /* @__PURE__ */ new Set([
+    "id",
+    "name",
+    "type",
+    "children",
+    ...NODE_DATA_FIELDS,
+    ...RESOLVED_NODE_REFS
   ]);
   function buildPathArray(node) {
     const path = [];
@@ -603,7 +643,7 @@
       } else if (SAFE_LIST_PROPERTIES.has(key)) {
         const val = node[key];
         if (val !== void 0 && val !== null) {
-          props[key] = val;
+          props[key] = typeof val === "symbol" ? "mixed" : val;
         }
       } else if (exportedData && exportedData[key] !== void 0) {
         props[key] = exportedData[key];
@@ -1084,7 +1124,7 @@
     } catch (error) {
       console.error("Error setting font size", error);
     }
-    setCharacters(textNode, text);
+    await setCharacters(textNode, text);
     const paintStyle = {
       type: "SOLID",
       color: {
@@ -4102,73 +4142,87 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           throw new Error(`Unsupported style type: ${type}`);
       }
     }
-    style.name = name;
-    if (description) style.description = description;
-    if (properties) {
-      switch (type.toUpperCase()) {
-        case "TEXT": {
-          const s = style;
-          if (properties.fontName) await figma.loadFontAsync(properties.fontName);
-          if (properties.fontName) s.fontName = properties.fontName;
-          if (properties.fontSize) s.fontSize = properties.fontSize;
-          if (properties.lineHeight) s.lineHeight = properties.lineHeight;
-          if (properties.letterSpacing) s.letterSpacing = properties.letterSpacing;
-          if (properties.paragraphIndent) s.paragraphIndent = properties.paragraphIndent;
-          if (properties.paragraphSpacing) s.paragraphSpacing = properties.paragraphSpacing;
-          if (properties.textCase) s.textCase = properties.textCase;
-          if (properties.textDecoration) s.textDecoration = properties.textDecoration;
-          break;
-        }
-        case "PAINT": {
-          const s = style;
-          if (properties.paints) s.paints = properties.paints;
-          break;
-        }
-        case "EFFECT": {
-          const s = style;
-          if (properties.effects) s.effects = properties.effects;
-          break;
-        }
-        case "GRID": {
-          const s = style;
-          if (properties.layoutGrids) s.layoutGrids = properties.layoutGrids;
-          break;
-        }
-      }
-    }
-    if (bindVariables && typeof bindVariables === "object") {
-      const entries = Object.entries(bindVariables);
-      if (type.toUpperCase() === "PAINT") {
-        const paintStyle = style;
-        const paints = [...paintStyle.paints];
-        if (paints.length === 0) {
-          throw new Error("Cannot bind/unbind variables on a paint style with no paints. Set paints first via properties.");
-        }
-        for (const [field, variableId] of entries) {
-          if (variableId === null) {
-            paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, null);
-          } else {
-            const variable = await figma.variables.getVariableByIdAsync(variableId);
-            if (!variable) {
-              throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
+    try {
+      style.name = name;
+      if (description) style.description = description;
+      if (properties) {
+        switch (type.toUpperCase()) {
+          case "TEXT": {
+            const s = style;
+            if (properties.fontName) {
+              await figma.loadFontAsync(properties.fontName);
+              s.fontName = properties.fontName;
+            } else {
+              await figma.loadFontAsync(s.fontName);
             }
-            paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, variable);
+            if (properties.fontSize) s.fontSize = properties.fontSize;
+            if (properties.lineHeight) s.lineHeight = properties.lineHeight;
+            if (properties.letterSpacing) s.letterSpacing = properties.letterSpacing;
+            if (properties.paragraphIndent) s.paragraphIndent = properties.paragraphIndent;
+            if (properties.paragraphSpacing) s.paragraphSpacing = properties.paragraphSpacing;
+            if (properties.textCase) s.textCase = properties.textCase;
+            if (properties.textDecoration) s.textDecoration = properties.textDecoration;
+            break;
           }
-        }
-        paintStyle.paints = paints;
-      } else {
-        for (const [field, variableId] of entries) {
-          if (variableId === null) {
-            style.setBoundVariable(field, null);
-          } else {
-            const variable = await figma.variables.getVariableByIdAsync(variableId);
-            if (!variable) {
-              throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
-            }
-            style.setBoundVariable(field, variable);
+          case "PAINT": {
+            const s = style;
+            if (properties.paints) s.paints = properties.paints;
+            break;
+          }
+          case "EFFECT": {
+            const s = style;
+            if (properties.effects) s.effects = properties.effects;
+            break;
+          }
+          case "GRID": {
+            const s = style;
+            if (properties.layoutGrids) s.layoutGrids = properties.layoutGrids;
+            break;
           }
         }
       }
+      if (bindVariables && typeof bindVariables === "object") {
+        const entries = Object.entries(bindVariables);
+        if (type.toUpperCase() === "PAINT") {
+          const paintStyle = style;
+          const paints = [...paintStyle.paints];
+          if (paints.length === 0) {
+            throw new Error("Cannot bind/unbind variables on a paint style with no paints. Set paints first via properties.");
+          }
+          for (const [field, variableId] of entries) {
+            if (variableId === null) {
+              paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, null);
+            } else {
+              const variable = await figma.variables.getVariableByIdAsync(variableId);
+              if (!variable) {
+                throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
+              }
+              paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, variable);
+            }
+          }
+          paintStyle.paints = paints;
+        } else {
+          for (const [field, variableId] of entries) {
+            if (variableId === null) {
+              style.setBoundVariable(field, null);
+            } else {
+              const variable = await figma.variables.getVariableByIdAsync(variableId);
+              if (!variable) {
+                throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
+              }
+              style.setBoundVariable(field, variable);
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (!styleId) {
+        try {
+          style.remove();
+        } catch (e2) {
+        }
+      }
+      throw e;
     }
     return {
       id: style.id,
@@ -4483,7 +4537,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             figma.ui.postMessage({
               type: "command-result",
               id: msg.id,
-              result
+              result: sanitizeForPostMessage(result)
             });
           } catch (error) {
             figma.ui.postMessage({

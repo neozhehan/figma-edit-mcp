@@ -4,40 +4,29 @@
 
 import { rgbaToHex } from './colorUtils.js';
 import { PathTuple } from '../../shared/nodeTypes.js';
+import { NODE_DATA_FIELDS } from './nodeFields.generated.js';
 
 /**
- * Constant set of property names that can be read directly from a Figma node
- * without requiring an expensive exportAsync call.
+ * Property names readable directly from a Figma node without an exportAsync.
+ *
+ * The data fields are GENERATED from `@figma/plugin-typings` (run
+ * `bun run gen:node-fields`) so this set can't drift from the official API and
+ * covers every node field (e.g. `pointCount`, `innerRadius`, `arcData`).
+ *
+ * The node-reference fields below are added back so requesting only references
+ * doesn't trigger an export — `extractProperties` serializes them to `id` /
+ * `id[]` / `{id,name}` before they reach `postMessage`, so they're never
+ * returned as raw host objects (DataCloneError). Other node-typed fields (e.g.
+ * `defaultVariant`) are intentionally absent from the data set so they can't be
+ * read raw.
  */
+const RESOLVED_NODE_REFS = [
+    "parent", "mainComponent", "instances", "exposedInstances", "stuckNodes", "attachedConnectors",
+];
 export const SAFE_LIST_PROPERTIES: ReadonlySet<string> = new Set([
-    // Identity & structure
-    "id", "name", "type", "parent", "removed", "isAsset", "key", "expanded",
-    // Visibility
-    "visible", "locked", "opacity", "blendMode", "isMask", "maskType", "stuckNodes", "attachedConnectors",
-    // Geometry & transform
-    "x", "y", "width", "height", "minWidth", "maxWidth", "minHeight", "maxHeight", "rotation", "relativeTransform", "absoluteTransform", "absoluteBoundingBox", "absoluteRenderBounds", "constraints", "constrainProportions", "targetAspectRatio", "layoutAlign", "layoutGrow", "layoutPositioning", "layoutSizingHorizontal", "layoutSizingVertical",
-    // Auto-layout
-    "layoutMode", "layoutWrap", "paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "primaryAxisSizingMode", "counterAxisSizingMode", "primaryAxisAlignItems", "counterAxisAlignItems", "counterAxisAlignContent", "itemSpacing", "counterAxisSpacing", "itemReverseZIndex", "strokesIncludedInLayout", "clipsContent", "layoutGrids", "guides", "inferredAutoLayout", "detachedInfo",
-    // Grid child
-    "gridRowCount", "gridColumnCount", "gridRowGap", "gridColumnGap", "gridRowSizes", "gridColumnSizes", "gridAutoTracks", "gridItemsPositioning", "gridRowSpan", "gridColumnSpan", "gridChildHorizontalAlign", "gridChildVerticalAlign", "gridRowAnchorIndex", "gridColumnAnchorIndex",
-    // Corner radius
-    "cornerRadius", "cornerSmoothing", "topLeftRadius", "topRightRadius", "bottomLeftRadius", "bottomRightRadius",
-    // Fills & strokes
-    "fills", "strokes", "strokeWeight", "strokeJoin", "strokeAlign", "strokeCap", "strokeMiterLimit", "dashPattern", "strokeLeftWeight", "strokeRightWeight", "strokeTopWeight", "strokeBottomWeight", "variableWidthStrokeProperties", "complexStrokeProperties", "fillStyleId", "strokeStyleId",
-    // Effects
-    "effects", "effectStyleId",
-    // Prototyping
-    "reactions", "overflowDirection", "numberOfFixedChildren", "overlayPositionType", "overlayBackground", "overlayBackgroundInteraction", "transitionNodeID", "transitionDuration", "transitionEasing",
-    // Component / instance
-    "componentProperties", "variantProperties", "componentPropertyDefinitions", "exposedInstances", "isExposedInstance", "scaleFactor", "overrides", "description", "descriptionMarkdown", "documentationLinks", "remote", "variantGroupProperties", "mainComponent", "instances",
-    // Text
-    "characters", "fontSize", "fontName", "fontWeight", "lineHeight", "letterSpacing", "paragraphIndent", "paragraphSpacing", "listSpacing", "textCase", "textDecoration", "textAlignHorizontal", "textAlignVertical", "textAutoResize", "autoRename", "maxLines", "textTruncation", "hangingPunctuation", "hangingList", "leadingTrim", "hasMissingFont", "hyperlink", "textDecorationStyle", "textDecorationOffset", "textDecorationThickness", "textDecorationColor", "textDecorationSkipInk", "openTypeFeatures",
-    // Vector
-    "handleMirroring", "vectorNetwork", "vectorPaths", "fillGeometry", "strokeGeometry",
-    // Variables
-    "boundVariables", "explicitVariableModes", "inferredVariables", "resolvedVariableModes", "componentPropertyReferences",
-    // Export & dev metadata
-    "exportSettings", "devStatus", "annotations"
+    "id", "name", "type", "children",
+    ...NODE_DATA_FIELDS,
+    ...RESOLVED_NODE_REFS,
 ]);
 
 

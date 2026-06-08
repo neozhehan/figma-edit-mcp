@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, mock } from "bun:test";
 import { createShape } from "../../../../../figma_plugin/handlers/nodeCreators.js";
 import { transformNode } from "../../../../../figma_plugin/handlers/nodeModifiers.js";
 import { getNodesInfo } from "../../../../../figma_plugin/handlers/nodeReaders.js";
-import { deleteStyle } from "../../../../../figma_plugin/handlers/styleHandlers.js";
+import { deleteStyle, createStyle } from "../../../../../figma_plugin/handlers/styleHandlers.js";
 import { deleteComponentProperty, manageComponentProperty, exportNodeAsImage } from "../../../../../figma_plugin/handlers/componentHandlers.js";
 
 // Global stub setup for Figma
@@ -509,6 +509,54 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
             const res = await exportNodeAsImage({ nodeId: "exp-1", format: "svg" });
             expect(res.format).toBe("SVG");
             await expect(exportNodeAsImage({ nodeId: "exp-1", format: "GIF" })).rejects.toThrow(/Unsupported export format/);
+        });
+    });
+
+    // --- createStyle (WS5): TEXT font load + orphan rollback ---
+    describe("createStyle: TEXT font load + rollback", () => {
+        let mockTextStyle: any;
+        let loadFontCalls: any[];
+
+        beforeEach(() => {
+            loadFontCalls = [];
+            mockTextStyle = {
+                id: "style-text-1", type: "TEXT", name: "",
+                // a fresh TextStyle has a concrete default font
+                fontName: { family: "Inter", style: "Regular" },
+                fontSize: 12,
+                remove: mock(() => {}),
+            };
+            (globalThis as any).figma.createTextStyle = mock(() => mockTextStyle);
+            (globalThis as any).figma.loadFontAsync = mock(async (f: any) => { loadFontCalls.push(f); });
+        });
+
+        it("loads the style's default font when no fontName is given (no 'unloaded font' error)", async () => {
+            const res = await createStyle({ type: "TEXT", name: "Body", properties: { fontSize: 24, textCase: "UPPER" } });
+            expect(loadFontCalls).toContainEqual({ family: "Inter", style: "Regular" });
+            expect(mockTextStyle.fontSize).toBe(24);
+            expect(mockTextStyle.textCase).toBe("UPPER");
+            expect(res.id).toBe("style-text-1");
+        });
+
+        it("removes a freshly-created style if a property write throws (no orphan)", async () => {
+            Object.defineProperty(mockTextStyle, "fontSize", {
+                set() { throw new Error("boom"); }, get() { return 12; }, configurable: true,
+            });
+            await expect(
+                createStyle({ type: "TEXT", name: "Body", properties: { fontSize: 24 } })
+            ).rejects.toThrow("boom");
+            expect(mockTextStyle.remove).toHaveBeenCalled();
+        });
+
+        it("does NOT remove an existing style (styleId given) on failure", async () => {
+            (globalThis as any).figma.getStyleByIdAsync = mock(async () => mockTextStyle);
+            Object.defineProperty(mockTextStyle, "fontSize", {
+                set() { throw new Error("boom"); }, get() { return 12; }, configurable: true,
+            });
+            await expect(
+                createStyle({ type: "TEXT", name: "Body", styleId: "style-text-1", properties: { fontSize: 24 } })
+            ).rejects.toThrow("boom");
+            expect(mockTextStyle.remove).not.toHaveBeenCalled();
         });
     });
 });

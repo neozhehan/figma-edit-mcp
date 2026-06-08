@@ -368,8 +368,10 @@ export async function createText(params: any) {
     } catch (error: any) {
         console.error("Error setting font size", error);
     }
+    // setCharacters is async (loads fonts + writes characters); must be awaited
+    // or the node has no text when we read/return it (characters:"", width:0).
     // @ts-ignore
-    setCharacters(textNode, text);
+    await setCharacters(textNode, text);
 
     // Set text color
     const paintStyle: any = {

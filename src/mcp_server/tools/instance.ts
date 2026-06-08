@@ -118,20 +118,20 @@ This strategy enables transferring content and property overrides from a source 
 ## Step-by-Step Process
 
 ### 1. Selection Analysis
-- Use \`page.info()\` to explore the document structure and identify node IDs.
+- Use \`page_info()\` to explore the document structure and identify node IDs.
 - Determine which is the source node (with content to copy) and which are targets (where to apply content).
 
 ### 2. Extract Source Overrides
-- Use \`instance.get_overrides()\` to extract customizations from the source instance
+- Use \`instance_get_overrides()\` to extract customizations from the source instance
 - This captures text content, property values, and style overrides
-- Command syntax: \`instance.get_overrides({ nodeId: "source-instance-id" })\`
+- Command syntax: \`instance_get_overrides({ nodeId: "source-instance-id" })\`
 - Look for successful response like "Got component information from [instance name]"
 
 ### 3. Apply Overrides to Targets
-- Apply captured overrides using \`instance.set_overrides()\`
+- Apply captured overrides using \`instance_set_overrides()\`
 - Command syntax:
   \`\`\`
-  instance.set_overrides({
+  instance_set_overrides({
     sourceInstanceId: "source-instance-id",
     targetNodes: [
       { nodeId: "target-id-1", nodeName: "Target Name 1" },
@@ -141,12 +141,12 @@ This strategy enables transferring content and property overrides from a source 
   \`\`\`
 
 ### 4. Verification
-- Verify results with \`node.info({ nodeIds, fields: ["componentProperties", "characters", "overrides"] })\`
+- Verify results with \`node_info({ nodeIds, fields: ["componentProperties", "characters", "overrides"] })\`
 - Confirm text content and style overrides have transferred successfully
 
 ## Key Tips
-- Always join the appropriate channel first with \`channel.join()\`
-- When working with multiple targets, verify their IDs with \`page.info()\`.
+- Always join the appropriate channel first with \`channel_join()\`
+- When working with multiple targets, verify their IDs with \`page_info()\`.
 - Preserve component relationships by using instance overrides rather than direct text manipulation`,
                         },
                     },

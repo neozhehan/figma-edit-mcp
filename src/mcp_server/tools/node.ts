@@ -3,6 +3,22 @@ import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
 import { toolResult } from "./_result.js";
 
+// A node_info result entry. The entry shape is typed (so callers know each node
+// carries id/name/type and optional properties/children/path/descendantCount),
+// but `properties` values are heterogeneous (reference fields resolve to id /
+// {id,name}; other fields are arbitrary) and children are the same recursive
+// shape — both kept loose (z.any + .catchall) so output validation never rejects
+// a valid live result.
+const nodeInfoEntry = z.object({
+    id: z.string().describe("Node ID"),
+    name: z.string().describe("Node name"),
+    type: z.string().describe("Node type"),
+    properties: z.record(z.string(), z.any()).optional().describe("Requested fields → values; reference fields resolved to id / {id, name}"),
+    children: z.array(z.any()).optional().describe("Recursive child entries (same shape) when the subtree is traversed"),
+    path: z.array(z.array(z.string())).optional().describe("Ancestor path as [type, id, name] tuples"),
+    descendantCount: z.number().optional().describe("Total descendant count"),
+}).catchall(z.any());
+
 export function registerNodeTools(server: McpServer) {
     // 1. Get Node Info Tool
     server.registerTool(
@@ -31,8 +47,8 @@ export function registerNodeTools(server: McpServer) {
                     .describe("Maximum depth for recursive child traversal. 0 = self only, 1 = self and immediate children, etc."),
             }),
             outputSchema: z.object({
-                nodes: z.array(z.any()).describe("List of node entries"),
-                missingNodeIds: z.array(z.string()).optional().describe("List of missing node IDs"),
+                nodes: z.array(nodeInfoEntry).describe("Node entries (id/name/type + optional properties/children/path/descendantCount)"),
+                missingNodeIds: z.array(z.string()).optional().describe("Requested IDs that weren't found"),
             }),
             annotations: {
                 readOnlyHint: true,
@@ -562,7 +578,7 @@ export function registerNodeTools(server: McpServer) {
         "node_apply_style",
         {
             title: "Apply Style",
-            description: "Link a node to a shared library style (paint/text/effect/grid) by `styleId`. Use the raw `node.set_*` setters for ad-hoc values not backed by a style.",
+            description: "Link a node to a shared library style (paint/text/effect/grid) by `styleId`. Use the raw `node_set_*` setters for ad-hoc values not backed by a style.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to apply style to"),
                 nodeName: z.string().describe("Name of the node to verify against"),
@@ -591,7 +607,7 @@ export function registerNodeTools(server: McpServer) {
         "node_bind_variable",
         {
             title: "Bind Variable",
-            description: "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node.set_*` when the value should track a design token.",
+            description: "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node_set_*` when the value should track a design token.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to bind variables to"),
                 nodeName: z.string().describe("Name of the node to verify against"),

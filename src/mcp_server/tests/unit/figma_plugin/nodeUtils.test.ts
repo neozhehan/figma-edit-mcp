@@ -139,6 +139,27 @@ describe("SAFE_LIST_PROPERTIES classifier", () => {
         expect(SAFE_LIST_PROPERTIES.has("")).toBe(false);
         expect(SAFE_LIST_PROPERTIES.has("definitely-not-a-real-property")).toBe(false);
     });
+
+    it("R3.8: includes shape-specific fields generated from the typings (the live gap)", () => {
+        // These were missing from the hand-maintained list → node_info couldn't
+        // read them (confirmed live). Now generated from @figma/plugin-typings.
+        expect(SAFE_LIST_PROPERTIES.has("pointCount")).toBe(true);
+        expect(SAFE_LIST_PROPERTIES.has("innerRadius")).toBe(true);
+        expect(SAFE_LIST_PROPERTIES.has("arcData")).toBe(true);
+    });
+
+    it("R3.8: resolved node-refs present; raw-only node-refs and library-refs handled", () => {
+        // Serialized to id / id[] by extractProperties → safe-list members.
+        for (const ref of ["parent", "mainComponent", "instances", "exposedInstances", "stuckNodes", "attachedConnectors"]) {
+            expect(SAFE_LIST_PROPERTIES.has(ref)).toBe(true);
+        }
+        // Other node-typed fields must NOT be raw-readable (DataCloneError risk).
+        expect(SAFE_LIST_PROPERTIES.has("defaultVariant")).toBe(false);
+        expect(SAFE_LIST_PROPERTIES.has("textBackground")).toBe(false);
+        // Library references stay (extractProperties resolves them to {id, name}).
+        expect(SAFE_LIST_PROPERTIES.has("fillStyleId")).toBe(true);
+        expect(SAFE_LIST_PROPERTIES.has("explicitVariableModes")).toBe(true);
+    });
 });
 
 describe("buildPathArray", () => {
