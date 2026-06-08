@@ -55,16 +55,16 @@ export async function createShape(params: any) {
         throw new Error(`innerRadius is only supported for shape type STAR, got ${type}`);
     }
 
-    let parent = figma.currentPage;
-    if (parentId) {
-        // @ts-ignore
-        parent = await figma.getNodeByIdAsync(parentId);
-        if (!parent) {
-            throw new Error(`Parent node not found with ID: ${parentId}`);
-        }
-        if (!("appendChild" in parent)) {
-            throw new Error(`Parent node does not support children: ${parentId}`);
-        }
+    if (!parentId) {
+        throw new Error("Missing parentId parameter");
+    }
+    // @ts-ignore
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) {
+        throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parent)) {
+        throw new Error(`Parent node does not support children: ${parentId}`);
     }
 
     let node: RectangleNode | EllipseNode | PolygonNode | StarNode;
@@ -268,20 +268,18 @@ export async function createFrame(params: any) {
         frame.strokeWeight = strokeWeight;
     }
 
-    // If parentId is provided, append to that node, otherwise append to current page
-    if (parentId) {
-        const parentNode = await figma.getNodeByIdAsync(parentId);
-        if (!parentNode) {
-            throw new Error(`Parent node not found with ID: ${parentId}`);
-        }
-        if (!("appendChild" in parentNode)) {
-            throw new Error(`Parent node does not support children: ${parentId}`);
-        }
-        // @ts-ignore
-        parentNode.appendChild(frame);
-    } else {
-        figma.currentPage.appendChild(frame);
+    if (!parentId) {
+        throw new Error("Missing parentId parameter");
     }
+    const parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+        throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+        throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    // @ts-ignore
+    parentNode.appendChild(frame);
 
     return {
         id: frame.id,
@@ -385,20 +383,18 @@ export async function createText(params: any) {
     };
     textNode.fills = [paintStyle];
 
-    // If parentId is provided, append to that node, otherwise append to current page
-    if (parentId) {
-        const parentNode = await figma.getNodeByIdAsync(parentId);
-        if (!parentNode) {
-            throw new Error(`Parent node not found with ID: ${parentId}`);
-        }
-        if (!("appendChild" in parentNode)) {
-            throw new Error(`Parent node does not support children: ${parentId}`);
-        }
-        // @ts-ignore
-        parentNode.appendChild(textNode);
-    } else {
-        figma.currentPage.appendChild(textNode);
+    if (!parentId) {
+        throw new Error("Missing parentId parameter");
     }
+    const parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+        throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+        throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    // @ts-ignore
+    parentNode.appendChild(textNode);
 
     return {
         id: textNode.id,
@@ -454,7 +450,7 @@ export async function cloneNode(params: any) {
     if (node.parent) {
         node.parent.appendChild(clone);
     } else {
-        figma.currentPage.appendChild(clone);
+        throw new Error(`Cloned node ${nodeId} has no parent and cannot be cloned`);
     }
 
     return {

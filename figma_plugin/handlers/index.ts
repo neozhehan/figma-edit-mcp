@@ -23,7 +23,6 @@ export {
 // Node readers
 export {
     getPagesInfo,
-    getSelection,
     getNodesInfo
 } from './nodeReaders.js';
 
@@ -39,7 +38,7 @@ export {
 export {
     transformNode,
     deleteMultipleNodes,
-    setSelections,
+    viewNavigate,
     setNodeName
 } from './nodeModifiers.js';
 

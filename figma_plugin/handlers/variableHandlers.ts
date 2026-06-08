@@ -323,7 +323,7 @@ async function findVariableConsumers(
 }
 
 export async function getVariables(params: any) {
-    const { variableId, includeConsumers, commandId } = params || {};
+    const { variableId, includeConsumers, pageId, commandId } = params || {};
 
     try {
         // 1. Lookup Mode
@@ -376,8 +376,18 @@ export async function getVariables(params: any) {
                 
                 let nodeConsumerMap = new Map<string, any[]>();
                 
-                if (includeConsumers === 'current_page') {
-                    nodeConsumerMap = await findVariableConsumers(figma.currentPage, idSet);
+                if (includeConsumers === 'page') {
+                    if (!pageId) {
+                        throw new Error("pageId is required when includeConsumers is 'page'");
+                    }
+                    const pageNode = await figma.getNodeByIdAsync(pageId);
+                    if (!pageNode) {
+                        throw new Error(`pageId with ID ${pageId} not found`);
+                    }
+                    if (pageNode.type !== 'PAGE') {
+                        throw new Error("pageId does not resolve to a PAGE");
+                    }
+                    nodeConsumerMap = await findVariableConsumers(pageNode, idSet);
                 } else {
                     // includeConsumers === 'document'
                     const pages = figma.root.children;

@@ -333,6 +333,89 @@ async function main() {
         }
         console.log("✅ Component property management and deletion (split) verified successfully.");
 
+        // 6.5 Phase 1 v2.1.0 Enhancements Verification
+        console.log("\n--- Step 6.5: Phase 1 v2.1.0 Enhancements Verification ---");
+
+        // A. Creation tools require parentId
+        console.log("Checking that creation tools reject missing parentId...");
+        try {
+            await sendCommandToFigma("create_shape", { type: "RECTANGLE" });
+            console.log("❌ Error: create_shape with missing parentId did not throw.");
+        } catch (err: any) {
+            console.log("   create_shape rejected missing parentId (expected)");
+        }
+
+        try {
+            await sendCommandToFigma("create_shape", { type: "RECTANGLE", parentId: "nonexistent-parent", parentNodeName: "Nonexistent" });
+            console.log("❌ Error: create_shape with unresolved parentId did not throw.");
+        } catch (err: any) {
+            console.log("   create_shape rejected unresolved parentId (expected)");
+        }
+
+        // B. view_navigate validation
+        console.log("Checking that view_navigate rejects invalid/mixed targets...");
+        try {
+            // Mixed PAGE and node
+            await sendCommandToFigma("view_navigate", { ids: [scopeRootId, rect.id] });
+            console.log("❌ Error: view_navigate with mixed PAGE and node did not throw.");
+        } catch (err: any) {
+            console.log("   view_navigate rejected mixed targets (expected)");
+        }
+
+        // C. component_list scope: 'page' validation
+        console.log("Checking that component_list scope: 'page' validates pageId...");
+        try {
+            await sendCommandToFigma("component_list", { scope: "page" });
+            console.log("❌ Error: component_list scope: 'page' without pageId did not throw.");
+        } catch (err: any) {
+            console.log("   component_list rejected missing pageId (expected)");
+        }
+
+        // D. annotation_list validation
+        console.log("Checking that annotation_list requires exactly one of pageId or nodeId...");
+        try {
+            await sendCommandToFigma("annotation_list", {});
+            console.log("❌ Error: annotation_list with neither pageId nor nodeId did not throw.");
+        } catch (err: any) {
+            console.log("   annotation_list rejected neither parameter (expected)");
+        }
+
+        try {
+            await sendCommandToFigma("annotation_list", { pageId: scopeRootId, nodeId: rect.id });
+            console.log("❌ Error: annotation_list with both pageId and nodeId did not throw.");
+        } catch (err: any) {
+            console.log("   annotation_list rejected both parameters (expected)");
+        }
+
+        // E. variable_list includeConsumers: 'page' validation
+        console.log("Checking that variable_list includeConsumers: 'page' validates pageId...");
+        try {
+            await sendCommandToFigma("variable_list", { variableId: ["nonexistent-var"], includeConsumers: "page" });
+            console.log("❌ Error: variable_list includeConsumers: 'page' without pageId did not throw.");
+        } catch (err: any) {
+            console.log("   variable_list rejected missing pageId (expected)");
+        }
+
+        // F. instance_get_overrides validation
+        console.log("Checking that instance_get_overrides rejects missing instanceNodeId...");
+        try {
+            await sendCommandToFigma("instance_get_overrides", {});
+            console.log("❌ Error: instance_get_overrides with missing instanceNodeId did not throw.");
+        } catch (err: any) {
+            console.log("   instance_get_overrides rejected missing ID (expected)");
+        }
+
+        // G. component_list document scope (the new default) must succeed across ALL
+        //    pages. In dynamic-page documents each page needs an explicit loadAsync()
+        //    before findAllWithCriteria(); a missing load throws only on pages that
+        //    were never opened, so this positive check guards that regression.
+        console.log("Checking that component_list document scope succeeds across all pages...");
+        const docComponents: any = await sendCommandToFigma("component_list", {});
+        if (docComponents.scope !== "document" || typeof docComponents.count !== "number") {
+            throw new Error(`component_list document scope failed: ${JSON.stringify(docComponents)}`);
+        }
+        console.log(`   ✅ component_list document scope returned ${docComponents.count} components (no load error)`);
+
         // 7. Cleanup
         console.log("\n--- Step 7: Cleanup ---");
         console.log("Deleting created test nodes...");

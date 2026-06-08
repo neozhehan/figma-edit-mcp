@@ -49,14 +49,15 @@ export async function getStyles() {
  * Optimised to avoid heavy loadAllPagesAsync() by iterating page-by-page.
  * @param {Object} params - Parameters object
  * @param {string} params.filter - 'local' or 'remote' (undefined = all)
- * @param {string} params.scope - 'current_page' (default) or 'document'
+ * @param {string} params.scope - 'page' or 'document' (default); 'page' requires pageId
+ * @param {string} params.pageId - Required when scope is 'page'; the page to scan
  * @param {string} params.commandId - Optional command ID for progress updates
  * @returns {Promise<Object>} Object containing component count and list
  */
 export async function getComponents(params: any) {
-    const { filter, scope = 'current_page', commandId } = params || {};
+    const { filter, scope = 'document', pageId, commandId } = params || {};
     // Per spec §get_components rule 2: only the 'document' scope streams.
-    // 'current_page' is a single-pass non-streaming call — no bookends, no yield.
+    // 'page' is a single-pass non-streaming call — no bookends, no yield.
     const isStreaming = scope === 'document';
 
     // 1. Started event (document scope only)
@@ -74,9 +75,21 @@ export async function getComponents(params: any) {
 
     const allComponents: any[] = [];
     
-    if (scope === 'current_page') {
-        const components = figma.currentPage.findAllWithCriteria({ 
-            types: ["COMPONENT", "COMPONENT_SET"] 
+    if (scope === 'page') {
+        if (!pageId) {
+            throw new Error("pageId is required when scope is 'page'");
+        }
+        const pageNode = await figma.getNodeByIdAsync(pageId);
+        if (!pageNode) {
+            throw new Error(`pageId with ID ${pageId} not found`);
+        }
+        if (pageNode.type !== 'PAGE') {
+            throw new Error("pageId does not resolve to a PAGE");
+        }
+        // dynamic-page documents require explicit loading before findAllWithCriteria
+        await pageNode.loadAsync();
+        const components = pageNode.findAllWithCriteria({
+            types: ["COMPONENT", "COMPONENT_SET"]
         });
         allComponents.push(...components);
     } else {
@@ -84,8 +97,10 @@ export async function getComponents(params: any) {
         // MANDATORY: Do NOT use loadAllPagesAsync(). Iterate pages instead.
         const pages = figma.root.children;
         for (const [index, page] of pages.entries()) {
-            const components = page.findAllWithCriteria({ 
-                types: ["COMPONENT", "COMPONENT_SET"] 
+            // dynamic-page documents require explicit loading before findAllWithCriteria
+            await page.loadAsync();
+            const components = page.findAllWithCriteria({
+                types: ["COMPONENT", "COMPONENT_SET"]
             });
             allComponents.push(...components);
 
@@ -140,15 +155,10 @@ export async function getComponents(params: any) {
     };
 }
 
-/**
- * Helper to find the containing page ID for a node.
- */
+import { getContainingPageNode } from '../utils/nodeUtils.js';
+
 function getContainingPageId(node: BaseNode): string {
-    let current: BaseNode | null = node;
-    while (current && current.type !== 'PAGE' && current.type !== 'DOCUMENT') {
-        current = current.parent;
-    }
-    return (current && current.type === 'PAGE') ? current.id : 'unknown';
+    return getContainingPageNode(node)?.id ?? 'unknown';
 }
 
 import { sendProgressUpdate } from '../utils/progressUtils.js';
@@ -193,14 +203,18 @@ export async function createComponentInstance(params: any) {
 
         const instance = component.createInstance();
 
-        if (parentId) {
-            const parent = await figma.getNodeByIdAsync(parentId);
-            if (!parent) {
-                throw new Error(`Parent node not found with ID: ${parentId}`);
-            }
-            // @ts-ignore
-            parent.appendChild(instance);
+        if (!parentId) {
+            throw new Error("Missing parentId parameter");
         }
+        const parent = await figma.getNodeByIdAsync(parentId);
+        if (!parent) {
+            throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+        if (!("appendChild" in parent)) {
+            throw new Error(`Parent node does not support children: ${parentId}`);
+        }
+        // @ts-ignore
+        parent.appendChild(instance);
 
         instance.x = x;
         instance.y = y;
@@ -301,53 +315,24 @@ export async function exportNodeAsImage(params: any) {
 
 /**
  * Gets override properties from a component instance
- * @param {InstanceNode|null} instanceNode - Optional instance node
+ * @param {InstanceNode} instanceNode - Instance node
  * @returns {Promise<Object>} Override information
  */
-export async function getInstanceOverrides(instanceNode = null) {
+export async function getInstanceOverrides(instanceNode: any) {
     console.log("=== getInstanceOverrides called ===");
 
-    let sourceInstance = null;
-
-    // Check if an instance node was passed directly
-    if (instanceNode) {
-        console.log("Using provided instance node");
-
-        // Validate that the provided node is an instance
-        // @ts-ignore
-        if (instanceNode.type !== "INSTANCE") {
-            console.error("Provided node is not an instance");
-            figma.notify("Provided node is not a component instance");
-            return { success: false, message: "Provided node is not a component instance" };
-        }
-
-        sourceInstance = instanceNode;
-    } else {
-        // No node provided, use selection
-        console.log("No node provided, using current selection");
-
-        // Get the current selection
-        const selection = figma.currentPage.selection;
-
-        // Check if there's anything selected
-        if (selection.length === 0) {
-            console.log("No nodes selected");
-            figma.notify("Please select at least one instance");
-            return { success: false, message: "No nodes selected" };
-        }
-
-        // Filter for instances in the selection
-        const instances = selection.filter((node: any) => node.type === "INSTANCE");
-
-        if (instances.length === 0) {
-            console.log("No instances found in selection");
-            figma.notify("Please select at least one component instance");
-            return { success: false, message: "No instances found in selection" };
-        }
-
-        // Take the first instance from the selection
-        sourceInstance = instances[0];
+    if (!instanceNode) {
+        throw new Error("Missing instance node parameter");
     }
+
+    // Validate that the provided node is an instance
+    if (instanceNode.type !== "INSTANCE") {
+        console.error("Provided node is not an instance");
+        figma.notify("Provided node is not a component instance");
+        return { success: false, message: "Provided node is not a component instance" };
+    }
+
+    const sourceInstance = instanceNode;
 
     try {
         console.log(`Getting instance information:`);
@@ -757,7 +742,11 @@ export async function createComponentSet(params: any) {
     }
 
     // Create ComponentSet
-    const componentSet = figma.combineAsVariants(figmaComponents, figma.currentPage);
+    const containingPage = getContainingPageNode(figmaComponents[0]);
+    if (!containingPage) {
+        throw new Error("First component is not on a page (detached)");
+    }
+    const componentSet = figma.combineAsVariants(figmaComponents, containingPage);
 
     // Rename ComponentSet
     if (componentSetName) {

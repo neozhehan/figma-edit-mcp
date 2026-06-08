@@ -122,6 +122,26 @@ export function buildPathArray(node: any): PathTuple[] {
 }
 
 /**
+ * Resolves the containing page of a node.
+ * If the node itself is of type 'PAGE', returns the node itself.
+ * Otherwise walks node.parent until it reaches the containing PAGE.
+ * Returns null if the node is not under a page (e.g. detached or DOCUMENT root).
+ */
+export function getContainingPageNode(node: any): any | null {
+    let current = node;
+    while (current) {
+        if (current.type === 'PAGE') {
+            return current;
+        }
+        if (current.type === 'DOCUMENT') {
+            return null;
+        }
+        current = current.parent;
+    }
+    return null;
+}
+
+/**
  * Performs a synchronous recursive walk of node.children to count all descendants.
  * Does not include the node itself.
  */

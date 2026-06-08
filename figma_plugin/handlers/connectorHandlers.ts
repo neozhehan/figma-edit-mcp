@@ -238,7 +238,10 @@ async function activeSetDefaultConnector(params: any) {
 
         // If there is no stored default connector or it is invalid, find one in the current page
         try {
-            // Find CONNECTOR type nodes in the current page
+            // v2.1.0 Decision: Fallback to scanning figma.currentPage here is explicitly accepted.
+            // This reads a style template/connector prototype (not an edit target) to clone style settings,
+            // the result is cached in clientStorage, and no node ID is available here to resolve a page.
+            // Eliminating this would require a new required connectorId discovery step on a low-value path.
             const currentPageConnectors = figma.currentPage.findAllWithCriteria({ types: ['CONNECTOR'] });
 
             if (currentPageConnectors && currentPageConnectors.length > 0) {

@@ -8,9 +8,9 @@ import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js
 import { sanitizeForPostMessage } from '../utils/sanitize.js';
 
 // Import handlers
-import { getSelection, getNodesInfo, getPagesInfo } from '../handlers/nodeReaders.js';
+import { getNodesInfo, getPagesInfo } from '../handlers/nodeReaders.js';
 import { createShape, createFrame, createText, cloneNode } from '../handlers/nodeCreators.js';
-import { transformNode, deleteMultipleNodes, setSelections, setNodeName, groupNodes, ungroupNodes, flattenNode, insertChild } from '../handlers/nodeModifiers.js';
+import { transformNode, deleteMultipleNodes, viewNavigate, setNodeName, groupNodes, ungroupNodes, flattenNode, insertChild } from '../handlers/nodeModifiers.js';
 import { setFillColor, setStroke, setCornerRadius, setEffects } from '../handlers/stylingHandlers.js';
 
 import { setAutoLayout } from '../handlers/layoutHandlers.js';
@@ -471,8 +471,6 @@ async function handleCommand(command: any, params: any) {
 
         case "page_info":
             return await getPagesInfo(params);
-        case "get_selection":
-            return await getSelection();
         case "node_info":
             // 1. Prepare nodeIds (Empty-args dispatch)
             const effectiveNodeIds = (params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0) 
@@ -500,18 +498,16 @@ async function handleCommand(command: any, params: any) {
         case "annotation_list":
             return await getAnnotations(params);
         case "instance_get_overrides":
-            // Check if instanceNode parameter is provided
-            if (params && params.instanceNodeId) {
-                // Get the instance node by ID
-                const instanceNode = await figma.getNodeByIdAsync(params.instanceNodeId);
-                if (!instanceNode) {
-                    throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
-                }
-                // @ts-ignore
-                return await getInstanceOverrides(instanceNode);
+            if (!params || !params.instanceNodeId) {
+                throw new Error("Missing instanceNodeId parameter");
             }
-            // Call without instance node if not provided
-            return await getInstanceOverrides();
+            // Get the instance node by ID
+            const instanceNode = await figma.getNodeByIdAsync(params.instanceNodeId);
+            if (!instanceNode) {
+                throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
+            }
+            // @ts-ignore
+            return await getInstanceOverrides(instanceNode);
         case "reaction_list":
             if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
                 throw new Error(ERRORS.MISSING_NODE_IDS);
@@ -522,8 +518,8 @@ async function handleCommand(command: any, params: any) {
             if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
             return await updateReactions(params);
 
-        case "node_select":
-            return await setSelections(params);
+        case "view_navigate":
+            return await viewNavigate(params);
         case "variable_list":
             return await getVariables(params);
 

@@ -256,6 +256,19 @@
     }
     return path;
   }
+  function getContainingPageNode(node) {
+    let current = node;
+    while (current) {
+      if (current.type === "PAGE") {
+        return current;
+      }
+      if (current.type === "DOCUMENT") {
+        return null;
+      }
+      current = current.parent;
+    }
+    return null;
+  }
   function countDescendants(node) {
     let count = 0;
     if (node && "children" in node && Array.isArray(node.children)) {
@@ -349,17 +362,6 @@
       pageCount,
       pages,
       missingPageIds
-    };
-  }
-  async function getSelection() {
-    return {
-      selectionCount: figma.currentPage.selection.length,
-      selection: figma.currentPage.selection.map((node) => ({
-        id: node.id,
-        name: node.name,
-        type: node.type,
-        visible: node.visible
-      }))
     };
   }
   async function getNodesInfo(params) {
@@ -879,15 +881,15 @@
     if (innerRadius !== void 0 && upperType !== "STAR") {
       throw new Error(`innerRadius is only supported for shape type STAR, got ${type}`);
     }
-    let parent = figma.currentPage;
-    if (parentId) {
-      parent = await figma.getNodeByIdAsync(parentId);
-      if (!parent) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-      }
-      if (!("appendChild" in parent)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-      }
+    if (!parentId) {
+      throw new Error("Missing parentId parameter");
+    }
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parent)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
     }
     let node;
     switch (upperType) {
@@ -1046,18 +1048,17 @@
     if (strokeWeight !== void 0) {
       frame.strokeWeight = strokeWeight;
     }
-    if (parentId) {
-      const parentNode = await figma.getNodeByIdAsync(parentId);
-      if (!parentNode) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-      }
-      if (!("appendChild" in parentNode)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-      }
-      parentNode.appendChild(frame);
-    } else {
-      figma.currentPage.appendChild(frame);
+    if (!parentId) {
+      throw new Error("Missing parentId parameter");
     }
+    const parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parentNode.appendChild(frame);
     return {
       id: frame.id,
       name: frame.name,
@@ -1135,18 +1136,17 @@
       opacity: (_a = parseFloat(fontColor.a)) != null ? _a : 1
     };
     textNode.fills = [paintStyle];
-    if (parentId) {
-      const parentNode = await figma.getNodeByIdAsync(parentId);
-      if (!parentNode) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-      }
-      if (!("appendChild" in parentNode)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-      }
-      parentNode.appendChild(textNode);
-    } else {
-      figma.currentPage.appendChild(textNode);
+    if (!parentId) {
+      throw new Error("Missing parentId parameter");
     }
+    const parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parentNode.appendChild(textNode);
     return {
       id: textNode.id,
       name: textNode.name,
@@ -1183,7 +1183,7 @@
     if (node.parent) {
       node.parent.appendChild(clone);
     } else {
-      figma.currentPage.appendChild(clone);
+      throw new Error(`Cloned node ${nodeId} has no parent and cannot be cloned`);
     }
     return {
       id: clone.id,
@@ -1391,39 +1391,67 @@
       commandId
     };
   }
-  async function setSelections(params) {
-    if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
-      throw new Error("Missing or invalid nodeIds parameter");
+  async function viewNavigate(params) {
+    if (!params || !params.ids || !Array.isArray(params.ids)) {
+      throw new Error("Missing or invalid ids parameter");
     }
-    if (params.nodeIds.length === 0) {
-      throw new Error("nodeIds array cannot be empty");
+    if (params.ids.length === 0) {
+      throw new Error("ids array cannot be empty");
     }
-    const nodes = [];
-    const notFoundIds = [];
-    for (const nodeId of params.nodeIds) {
-      const node = await figma.getNodeByIdAsync(nodeId);
-      if (node) {
-        nodes.push(node);
+    const resolvedNodes = [];
+    const pageNodes = [];
+    for (const id of params.ids) {
+      const node = await figma.getNodeByIdAsync(id);
+      if (!node) {
+        throw new Error(`Node not found with ID: ${id}`);
+      }
+      if (node.type === "DOCUMENT") {
+        throw new Error("Cannot navigate to DOCUMENT root");
+      }
+      if (node.type === "PAGE") {
+        pageNodes.push(node);
       } else {
-        notFoundIds.push(nodeId);
+        resolvedNodes.push(node);
       }
     }
-    if (nodes.length === 0) {
-      throw new Error(`No valid nodes found for the provided IDs: ${params.nodeIds.join(", ")}`);
+    if (pageNodes.length > 0) {
+      if (pageNodes.length > 1 || resolvedNodes.length > 0) {
+        throw new Error("Cannot navigate to mixed targets or multiple pages");
+      }
+      const page = pageNodes[0];
+      await figma.setCurrentPageAsync(page);
+      return {
+        pageId: page.id,
+        pageName: page.name
+      };
+    } else {
+      const pages = resolvedNodes.map((node) => {
+        const page = getContainingPageNode(node);
+        if (!page) {
+          throw new Error(`Node ${node.id} is detached and not on a page`);
+        }
+        return page;
+      });
+      const firstPage = pages[0];
+      for (const page of pages) {
+        if (page.id !== firstPage.id) {
+          throw new Error("Selected nodes must belong to the same page");
+        }
+      }
+      await figma.setCurrentPageAsync(firstPage);
+      figma.currentPage.selection = resolvedNodes;
+      figma.viewport.scrollAndZoomIntoView(resolvedNodes);
+      const selectedNodes = resolvedNodes.map((node) => ({
+        name: node.name,
+        id: node.id
+      }));
+      return {
+        success: true,
+        count: resolvedNodes.length,
+        selectedNodes,
+        message: `Selected ${resolvedNodes.length} nodes`
+      };
     }
-    figma.currentPage.selection = nodes;
-    figma.viewport.scrollAndZoomIntoView(nodes);
-    const selectedNodes = nodes.map((node) => ({
-      name: node.name,
-      id: node.id
-    }));
-    return {
-      success: true,
-      count: nodes.length,
-      selectedNodes,
-      notFoundIds,
-      message: `Selected ${nodes.length} nodes${notFoundIds.length > 0 ? ` (${notFoundIds.length} not found)` : ""}`
-    };
   }
   async function setNodeName(params) {
     const { nodeId, name } = params || {};
@@ -1880,7 +1908,7 @@
     };
   }
   async function getComponents(params) {
-    const { filter, scope = "current_page", commandId } = params || {};
+    const { filter, scope = "document", pageId, commandId } = params || {};
     const isStreaming = scope === "document";
     if (commandId && isStreaming) {
       await sendProgressUpdate(
@@ -1894,14 +1922,26 @@
       );
     }
     const allComponents = [];
-    if (scope === "current_page") {
-      const components = figma.currentPage.findAllWithCriteria({
+    if (scope === "page") {
+      if (!pageId) {
+        throw new Error("pageId is required when scope is 'page'");
+      }
+      const pageNode = await figma.getNodeByIdAsync(pageId);
+      if (!pageNode) {
+        throw new Error(`pageId with ID ${pageId} not found`);
+      }
+      if (pageNode.type !== "PAGE") {
+        throw new Error("pageId does not resolve to a PAGE");
+      }
+      await pageNode.loadAsync();
+      const components = pageNode.findAllWithCriteria({
         types: ["COMPONENT", "COMPONENT_SET"]
       });
       allComponents.push(...components);
     } else {
       const pages = figma.root.children;
       for (const [index, page] of pages.entries()) {
+        await page.loadAsync();
         const components = page.findAllWithCriteria({
           types: ["COMPONENT", "COMPONENT_SET"]
         });
@@ -1951,11 +1991,8 @@
     };
   }
   function getContainingPageId(node) {
-    let current = node;
-    while (current && current.type !== "PAGE" && current.type !== "DOCUMENT") {
-      current = current.parent;
-    }
-    return current && current.type === "PAGE" ? current.id : "unknown";
+    var _a, _b;
+    return (_b = (_a = getContainingPageNode(node)) == null ? void 0 : _a.id) != null ? _b : "unknown";
   }
   async function createComponentInstance(params) {
     const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
@@ -1977,13 +2014,17 @@
         component = await figma.importComponentByKeyAsync(componentKey);
       }
       const instance = component.createInstance();
-      if (parentId) {
-        const parent = await figma.getNodeByIdAsync(parentId);
-        if (!parent) {
-          throw new Error(`Parent node not found with ID: ${parentId}`);
-        }
-        parent.appendChild(instance);
+      if (!parentId) {
+        throw new Error("Missing parentId parameter");
       }
+      const parent = await figma.getNodeByIdAsync(parentId);
+      if (!parent) {
+        throw new Error(`Parent node not found with ID: ${parentId}`);
+      }
+      if (!("appendChild" in parent)) {
+        throw new Error(`Parent node does not support children: ${parentId}`);
+      }
+      parent.appendChild(instance);
       instance.x = x;
       instance.y = y;
       return {
@@ -2056,33 +2097,17 @@
       throw new Error(`Error exporting node as image: ${error.message}`);
     }
   }
-  async function getInstanceOverrides(instanceNode = null) {
+  async function getInstanceOverrides(instanceNode) {
     console.log("=== getInstanceOverrides called ===");
-    let sourceInstance = null;
-    if (instanceNode) {
-      console.log("Using provided instance node");
-      if (instanceNode.type !== "INSTANCE") {
-        console.error("Provided node is not an instance");
-        figma.notify("Provided node is not a component instance");
-        return { success: false, message: "Provided node is not a component instance" };
-      }
-      sourceInstance = instanceNode;
-    } else {
-      console.log("No node provided, using current selection");
-      const selection = figma.currentPage.selection;
-      if (selection.length === 0) {
-        console.log("No nodes selected");
-        figma.notify("Please select at least one instance");
-        return { success: false, message: "No nodes selected" };
-      }
-      const instances = selection.filter((node) => node.type === "INSTANCE");
-      if (instances.length === 0) {
-        console.log("No instances found in selection");
-        figma.notify("Please select at least one component instance");
-        return { success: false, message: "No instances found in selection" };
-      }
-      sourceInstance = instances[0];
+    if (!instanceNode) {
+      throw new Error("Missing instance node parameter");
     }
+    if (instanceNode.type !== "INSTANCE") {
+      console.error("Provided node is not an instance");
+      figma.notify("Provided node is not a component instance");
+      return { success: false, message: "Provided node is not a component instance" };
+    }
+    const sourceInstance = instanceNode;
     try {
       console.log(`Getting instance information:`);
       console.log(sourceInstance);
@@ -2368,7 +2393,11 @@
       component.name = nameParts.join(", ");
       figmaComponents.push(component);
     }
-    const componentSet = figma.combineAsVariants(figmaComponents, figma.currentPage);
+    const containingPage = getContainingPageNode(figmaComponents[0]);
+    if (!containingPage) {
+      throw new Error("First component is not on a page (detached)");
+    }
+    const componentSet = figma.combineAsVariants(figmaComponents, containingPage);
     if (componentSetName) {
       componentSet.name = componentSetName;
     }
@@ -3276,7 +3305,10 @@
   // figma_plugin/handlers/annotationHandlers.ts
   async function getAnnotations(params) {
     try {
-      const { nodeId, includeCategories = true } = params;
+      const { nodeId, pageId, includeCategories = true } = params || {};
+      if (nodeId && pageId || !nodeId && !pageId) {
+        throw new Error("Exactly one of pageId or nodeId is required");
+      }
       let categoriesMap = {};
       if (includeCategories) {
         const categories = await figma.annotations.getAnnotationCategoriesAsync();
@@ -3290,7 +3322,38 @@
           return map;
         }, {});
       }
-      if (nodeId) {
+      if (pageId) {
+        const page = await figma.getNodeByIdAsync(pageId);
+        if (!page) {
+          throw new Error(`pageId with ID ${pageId} not found`);
+        }
+        if (page.type !== "PAGE") {
+          throw new Error("pageId does not resolve to a PAGE");
+        }
+        const annotations = [];
+        const processNode = async (node) => {
+          if ("annotations" in node && node.annotations && node.annotations.length > 0) {
+            annotations.push({
+              nodeId: node.id,
+              name: node.name,
+              annotations: node.annotations
+            });
+          }
+          if ("children" in node) {
+            for (const child of node.children) {
+              await processNode(child);
+            }
+          }
+        };
+        await processNode(page);
+        const result = {
+          annotatedNodes: annotations
+        };
+        if (includeCategories) {
+          result.categories = Object.values(categoriesMap);
+        }
+        return result;
+      } else {
         const node = await figma.getNodeByIdAsync(nodeId);
         if (!node) {
           throw new Error(`Node not found: ${nodeId}`);
@@ -3316,30 +3379,6 @@
           nodeId: node.id,
           name: node.name,
           annotations: mergedAnnotations
-        };
-        if (includeCategories) {
-          result.categories = Object.values(categoriesMap);
-        }
-        return result;
-      } else {
-        const annotations = [];
-        const processNode = async (node) => {
-          if ("annotations" in node && node.annotations && node.annotations.length > 0) {
-            annotations.push({
-              nodeId: node.id,
-              name: node.name,
-              annotations: node.annotations
-            });
-          }
-          if ("children" in node) {
-            for (const child of node.children) {
-              await processNode(child);
-            }
-          }
-        };
-        await processNode(figma.currentPage);
-        const result = {
-          annotatedNodes: annotations
         };
         if (includeCategories) {
           result.categories = Object.values(categoriesMap);
@@ -3732,7 +3771,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     return consumerMap;
   }
   async function getVariables(params) {
-    const { variableId, includeConsumers, commandId } = params || {};
+    const { variableId, includeConsumers, pageId, commandId } = params || {};
     try {
       if (variableId && variableId.length > 0) {
         const variables2 = [];
@@ -3772,8 +3811,18 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           const stylePromise = findStyleConsumers(idSet);
           const aliasPromise = findAliasConsumers(idSet);
           let nodeConsumerMap = /* @__PURE__ */ new Map();
-          if (includeConsumers === "current_page") {
-            nodeConsumerMap = await findVariableConsumers(figma.currentPage, idSet);
+          if (includeConsumers === "page") {
+            if (!pageId) {
+              throw new Error("pageId is required when includeConsumers is 'page'");
+            }
+            const pageNode = await figma.getNodeByIdAsync(pageId);
+            if (!pageNode) {
+              throw new Error(`pageId with ID ${pageId} not found`);
+            }
+            if (pageNode.type !== "PAGE") {
+              throw new Error("pageId does not resolve to a PAGE");
+            }
+            nodeConsumerMap = await findVariableConsumers(pageNode, idSet);
           } else {
             const pages = figma.root.children;
             for (const [index, page] of pages.entries()) {
@@ -4297,16 +4346,17 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     if (name) {
       node.name = name;
     }
-    if (parentId) {
-      const parent = await figma.getNodeByIdAsync(parentId);
-      if (parent) {
-        parent.appendChild(node);
-      } else {
-        figma.currentPage.appendChild(node);
-      }
-    } else {
-      figma.currentPage.appendChild(node);
+    if (!parentId) {
+      throw new Error("Missing parentId parameter");
     }
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parent)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parent.appendChild(node);
     node.x = x;
     node.y = y;
     return {
@@ -4755,8 +4805,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         return await deleteComponentProperty(params);
       case "page_info":
         return await getPagesInfo(params);
-      case "get_selection":
-        return await getSelection();
       case "node_info":
         const effectiveNodeIds = params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0 ? params.nodeIds : state.scopeRootId ? [state.scopeRootId] : [];
         if (effectiveNodeIds.length === 0 && state.readOnly) {
@@ -4775,14 +4823,14 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "annotation_list":
         return await getAnnotations(params);
       case "instance_get_overrides":
-        if (params && params.instanceNodeId) {
-          const instanceNode = await figma.getNodeByIdAsync(params.instanceNodeId);
-          if (!instanceNode) {
-            throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
-          }
-          return await getInstanceOverrides(instanceNode);
+        if (!params || !params.instanceNodeId) {
+          throw new Error("Missing instanceNodeId parameter");
         }
-        return await getInstanceOverrides();
+        const instanceNode = await figma.getNodeByIdAsync(params.instanceNodeId);
+        if (!instanceNode) {
+          throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
+        }
+        return await getInstanceOverrides(instanceNode);
       case "reaction_list":
         if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
           throw new Error(ERRORS.MISSING_NODE_IDS);
@@ -4792,8 +4840,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         return await updateReactions(params);
-      case "node_select":
-        return await setSelections(params);
+      case "view_navigate":
+        return await viewNavigate(params);
       case "variable_list":
         return await getVariables(params);
       case "variable_manage":

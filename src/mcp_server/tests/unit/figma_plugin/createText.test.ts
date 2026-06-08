@@ -27,11 +27,17 @@ describe("createText (WS5): awaits setCharacters", () => {
             })),
             loadFontAsync: mock(async () => {}),
             currentPage: { appendChild: mock(() => {}) },
+            getNodeByIdAsync: mock(async (id: string) => {
+                if (id === "page-1") {
+                    return { id: "page-1", type: "PAGE", appendChild: mock(() => {}) };
+                }
+                return null;
+            }),
         };
     });
 
     it("returns the text content (proves setCharacters was awaited)", async () => {
-        const res = await createText({ x: 5, y: 6, text: "hello typed style" });
+        const res = await createText({ parentId: "page-1", x: 5, y: 6, text: "hello typed style" });
         expect(res.characters).toBe("hello typed style");
         expect(res.width).toBeGreaterThan(0);
     });

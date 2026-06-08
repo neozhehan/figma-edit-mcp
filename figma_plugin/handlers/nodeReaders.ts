@@ -112,21 +112,7 @@ export async function getPagesInfo(params: any) {
     };
 }
 
-/**
- * Gets the current selection
- * @returns {Promise<Object>} Selection information
- */
-export async function getSelection() {
-    return {
-        selectionCount: figma.currentPage.selection.length,
-        selection: figma.currentPage.selection.map((node: any) => ({
-            id: node.id,
-            name: node.name,
-            type: node.type,
-            visible: node.visible,
-        })),
-    };
-}
+
 
 /**
  * Gets detailed information about multiple nodes with recursive children, filtering, and streaming.

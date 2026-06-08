@@ -11,18 +11,19 @@ export async function createNodeFromSvg(params: any) {
         node.name = name;
     }
 
-    if (parentId) {
-        const parent = await figma.getNodeByIdAsync(parentId);
-        if (parent) {
-            // @ts-ignore
-            parent.appendChild(node);
-        } else {
-            // If parent not found, append to current page or root
-            figma.currentPage.appendChild(node);
-        }
-    } else {
-        figma.currentPage.appendChild(node);
+    if (!parentId) {
+        throw new Error("Missing parentId parameter");
     }
+
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) {
+        throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parent)) {
+        throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    // @ts-ignore
+    parent.appendChild(node);
 
     node.x = x;
     node.y = y;
