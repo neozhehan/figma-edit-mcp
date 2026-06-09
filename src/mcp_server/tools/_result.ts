@@ -15,6 +15,32 @@
 export function toolResult(result: unknown) {
     const payload: Record<string, unknown> =
         result && typeof result === "object" ? (result as Record<string, unknown>) : {};
+
+    const isRasterImage =
+        payload &&
+        (payload.format === "PNG" || payload.format === "JPG") &&
+        typeof payload.imageData === "string" &&
+        typeof payload.mimeType === "string";
+
+    if (isRasterImage) {
+        // Create a copy of payload without imageData for the text block summary
+        const { imageData, ...summary } = payload;
+        return {
+            content: [
+                {
+                    type: "text" as const,
+                    text: JSON.stringify(summary),
+                },
+                {
+                    type: "image" as const,
+                    data: imageData as string,
+                    mimeType: payload.mimeType as string,
+                }
+            ],
+            structuredContent: payload,
+        };
+    }
+
     return {
         content: [{ type: "text" as const, text: JSON.stringify(result ?? {}) }],
         structuredContent: payload,

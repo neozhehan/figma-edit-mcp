@@ -66,12 +66,12 @@
 - [x] **Live test (§3)** — after rebuilding/reloading the plugin, extend `scripts/live-verify.ts` (run via `bun run test:live <channel>`) to assert: a `text_set_content`/`annotation_set`/`instance_set_overrides` batch containing one wrong-typed target aborts with **zero** mutations (confirm the valid targets are untouched via `node_info`); and a `node_delete` over a mix of valid + **not-found** ids aborts at dispatch with "Node X not found" (**validation-atomic** — zero deletions; the resilient partial `successCount`/`failureCount` path applies only to **mutation-phase** failures on already-validated nodes — a node deleted/locked mid-run — and is covered by unit tests, not stageable live). Clean up any created nodes.
 
 ## Phase 5: MCP Image Content Blocks
-- [ ] Update `toolResult` in `src/mcp_server/tools/_result.ts` to detect raster formats (`PNG` and `JPG` only) containing `imageData` and `mimeType`.
-- [ ] Format `content` array for PNG/JPG results to return:
+- [x] Update `toolResult` in `src/mcp_server/tools/_result.ts` to detect raster formats (`PNG` and `JPG` only) containing `imageData` and `mimeType`.
+- [x] Format `content` array for PNG/JPG results to return:
   1. A text block with trimmed metadata summary (excluding base64 `imageData`).
   2. A native MCP `image` block with base64 data and mime type.
-- [ ] Ensure `structuredContent` still carries the full JSON response (including `imageData`).
-- [ ] Ensure SVG and PDF outputs fall through to the standard text content blocks.
+- [x] Ensure `structuredContent` still carries the full JSON response (including `imageData`).
+- [x] Ensure SVG and PDF outputs fall through to the standard text content blocks.
 
 ## Phase 6: Documentation, Builds, and Verification
 
