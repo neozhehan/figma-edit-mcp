@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
-import { setComponentInstanceProperty, manageComponentProperty } from "../../../../../figma_plugin/handlers/componentHandlers.js";
+import { setComponentInstanceProperty, manageComponentProperty, getComponents } from "../../../../../figma_plugin/handlers/componentHandlers.js";
 
 // === Setup for Security Gate tests via main.ts routing ===
 // main.ts must be imported once with globalThis.figma + __html__ already in place,
@@ -279,6 +279,50 @@ describe("Component Handlers", () => {
                     propertyName: "Missing Prop"
                 })).rejects.toThrow('Property "Missing Prop" not found. Available properties: Show Icon, State');
             });
+        });
+    });
+
+    describe("getComponents", () => {
+        it("throws when scope is 'page' and pageId is missing", async () => {
+            expect(getComponents({ scope: "page" })).rejects.toThrow("pageId is required when scope is 'page'");
+        });
+
+        it("throws when scope is 'page' and pageId does not exist", async () => {
+            (globalThis as any).figma.getNodeByIdAsync = mock(async () => null);
+            expect(getComponents({ scope: "page", pageId: "nonexistent" })).rejects.toThrow("pageId with ID nonexistent not found");
+        });
+
+        it("throws when scope is 'page' and pageId resolves to a non-PAGE node", async () => {
+            const mockRect = { id: "rect-1", type: "RECTANGLE" };
+            (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockRect);
+            expect(getComponents({ scope: "page", pageId: "rect-1" })).rejects.toThrow("pageId does not resolve to a PAGE");
+        });
+
+        it("returns components from the specified page", async () => {
+            const mockPageNode = {
+                id: "page-1",
+                type: "PAGE",
+                loadAsync: mock(async () => {}),
+                findAllWithCriteria: null as any
+            };
+            const mockComp = { id: "comp-1", name: "Button", type: "COMPONENT", key: "k1", remote: false, parent: mockPageNode };
+            mockPageNode.findAllWithCriteria = mock(() => [mockComp]);
+            (globalThis as any).figma.getNodeByIdAsync = mock(async (id: string) => {
+                if (id === "page-1") return mockPageNode;
+                if (id === "comp-1") return mockComp;
+                return null;
+            });
+
+            const result = await getComponents({ scope: "page", pageId: "page-1" });
+            expect(result.components).toEqual([{
+                id: "comp-1",
+                name: "Button",
+                key: "k1",
+                remote: false,
+                type: "COMPONENT",
+                pageId: "page-1"
+            }]);
+            expect(mockPageNode.findAllWithCriteria).toHaveBeenCalled();
         });
     });
 });

@@ -596,3 +596,152 @@ describe("Phase 6.2 — get_pages_info descendantCount field", () => {
         }
     });
 });
+
+// ---------------- Phase 3: Bounded Parallelism & Streaming Contract ----------------
+
+describe("Phase 3 — Bounded Parallelism and Progress Streaming", () => {
+    let postMessageCalls: any[] = [];
+
+    beforeEach(() => {
+        postMessageCalls = [];
+    });
+
+    it("returns nodes in exact input order even when processed in parallel", async () => {
+        const page = attachParents({
+            id: "0:1", name: "Home", type: "PAGE",
+            children: [
+                { id: "100:1", name: "A", type: "FRAME" },
+                { id: "100:2", name: "B", type: "FRAME" },
+                { id: "100:3", name: "C", type: "FRAME" },
+            ],
+        });
+        installFigma([page]);
+        (globalThis as any).figma.ui = {
+            postMessage: (msg: any) => {
+                postMessageCalls.push(msg);
+            }
+        };
+
+        const result = await getNodesInfo({
+            nodeIds: ["100:2", "100:1", "100:3"],
+            concurrencyLimit: 2,
+        });
+
+        expect(result.nodes.map((n: any) => n.id)).toEqual(["100:2", "100:1", "100:3"]);
+    });
+
+    it("isolates errors: a failing subtree does not crash the command and records the id as missing", async () => {
+        const page = attachParents({
+            id: "0:1", name: "Home", type: "PAGE",
+            children: [
+                { id: "100:1", name: "A", type: "FRAME" },
+                { id: "100:3", name: "C", type: "FRAME" },
+            ],
+        });
+        const { byId } = installFigma([page]);
+        (globalThis as any).figma.ui = {
+            postMessage: (msg: any) => {
+                postMessageCalls.push(msg);
+            }
+        };
+
+        // Mock getNodeByIdAsync to throw for "100:2"
+        const originalGetNode = figma.getNodeByIdAsync;
+        figma.getNodeByIdAsync = async (id: string) => {
+            if (id === "100:2") {
+                throw new Error("Mock database error");
+            }
+            return byId.get(id) ?? null;
+        };
+
+        const result = await getNodesInfo({
+            nodeIds: ["100:1", "100:2", "100:3"],
+            concurrencyLimit: 2,
+        });
+
+        // Restore
+        figma.getNodeByIdAsync = originalGetNode;
+
+        // "100:2" errored, so it should be missing, but "100:1" and "100:3" are returned successfully
+        expect(result.nodes.map((n: any) => n.id)).toEqual(["100:1", "100:3"]);
+        expect(result.missingNodeIds).toEqual(["100:2"]);
+    });
+
+    it("progress percentages are monotonic and include missing/errored nodes", async () => {
+        const page = attachParents({
+            id: "0:1", name: "Home", type: "PAGE",
+            children: [
+                { id: "100:1", name: "A", type: "FRAME" },
+            ],
+        });
+        const { byId } = installFigma([page]);
+        (globalThis as any).figma.ui = {
+            postMessage: (msg: any) => {
+                postMessageCalls.push(msg);
+            }
+        };
+
+        const originalGetNode = figma.getNodeByIdAsync;
+        figma.getNodeByIdAsync = async (id: string) => {
+            if (id === "100:2") {
+                throw new Error("Mock error");
+            }
+            return byId.get(id) ?? null;
+        };
+
+        await getNodesInfo({
+            nodeIds: ["100:1", "100:2", "ghost"],
+            commandId: "cmd-test-123",
+            concurrencyLimit: 2,
+        });
+
+        figma.getNodeByIdAsync = originalGetNode;
+
+        // Verify progress updates
+        const progressEvents = postMessageCalls.filter((msg: any) => msg.type === "command_progress");
+        expect(progressEvents.length).toBeGreaterThan(0);
+
+        // First event should be started
+        expect(progressEvents[0].status).toBe("started");
+
+        // Intermediate events should have monotonic percentages
+        const inProgressEvents = progressEvents.filter((msg: any) => msg.status === "in_progress");
+        let lastPercent = -1;
+        for (const ev of inProgressEvents) {
+            expect(ev.progress).toBeGreaterThanOrEqual(lastPercent);
+            lastPercent = ev.progress;
+            expect(ev.totalItems).toBe(3);
+        }
+
+        // Final event should be completed
+        const completedEvent = progressEvents[progressEvents.length - 1];
+        expect(completedEvent.status).toBe("completed");
+        expect(completedEvent.progress).toBe(100);
+        expect(completedEvent.processedItems).toBe(3);
+    });
+
+    it("exportCache memoizes concurrent exports of the same node id (caches the pending promise, not resolved data)", async () => {
+        const exportCalls: Record<string, number> = {};
+        const mkExport = (id: string) => async () => {
+            exportCalls[id] = (exportCalls[id] ?? 0) + 1;
+            await new Promise(r => setTimeout(r, 5)); // keep the export pending across the await
+            return { document: { style: { f: 1 } } };
+        };
+        const C: any = { id: "C", name: "C", type: "TEXT", exportAsync: mkExport("C") };
+        const P: any = { id: "P", name: "P", type: "FRAME", children: [C], exportAsync: mkExport("P") };
+        C.parent = P;
+        (globalThis as any).figma = {
+            getNodeByIdAsync: async (id: string) => ({ P, C } as any)[id] ?? null,
+            root: { children: [] },
+        };
+
+        // Top-level ids [P, C] with concurrencyLimit 2: worker A walks P and recurses
+        // into C; worker B walks C directly — both call extractProperties("C")
+        // concurrently. `style` is non-safe-list, so each triggers an export.
+        await getNodesInfo({ nodeIds: ["P", "C"], properties: ["style"], concurrencyLimit: 2 });
+
+        // Exactly one export despite two concurrent walkers. A regression that caches
+        // resolved data (awaiting before set) would export "C" twice.
+        expect(exportCalls["C"]).toBe(1);
+    });
+});

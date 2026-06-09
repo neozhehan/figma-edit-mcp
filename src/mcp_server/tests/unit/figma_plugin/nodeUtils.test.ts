@@ -4,6 +4,7 @@ import {
     buildPathArray,
     countDescendants,
     SAFE_LIST_PROPERTIES,
+    getContainingPageNode,
 } from "../../../../../figma_plugin/utils/nodeUtils.js";
 
 describe("filterFigmaNode", () => {
@@ -251,5 +252,26 @@ describe("countDescendants", () => {
         };
         // 6 descendants: a, b, b1, b2, b2a, c, c1 → 7. Recount: a + b + b1 + b2 + b2a + c + c1 = 7.
         expect(countDescendants(tree)).toBe(7);
+    });
+});
+
+describe("getContainingPageNode", () => {
+    it("returns the node itself if it is a PAGE", () => {
+        const page = { id: "0:1", name: "Home", type: "PAGE" };
+        expect(getContainingPageNode(page)).toBe(page);
+    });
+
+    it("walks up the parent chain to find the PAGE", () => {
+        const page = { id: "0:1", name: "Home", type: "PAGE" };
+        const frame = { id: "100:1", name: "Section", type: "FRAME", parent: page };
+        const rect = { id: "100:2", name: "Rect", type: "RECTANGLE", parent: frame };
+        expect(getContainingPageNode(rect)).toBe(page);
+    });
+
+    it("returns null for detached or document root nodes", () => {
+        const doc = { id: "0:0", name: "Doc", type: "DOCUMENT" };
+        const detached = { id: "100:1", name: "Detached", type: "FRAME" };
+        expect(getContainingPageNode(doc)).toBeNull();
+        expect(getContainingPageNode(detached)).toBeNull();
     });
 });

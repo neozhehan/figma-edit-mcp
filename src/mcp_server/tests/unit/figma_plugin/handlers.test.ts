@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
 import { createShape } from "../../../../../figma_plugin/handlers/nodeCreators.js";
-import { transformNode } from "../../../../../figma_plugin/handlers/nodeModifiers.js";
+import { transformNode, viewNavigate } from "../../../../../figma_plugin/handlers/nodeModifiers.js";
 import { getNodesInfo } from "../../../../../figma_plugin/handlers/nodeReaders.js";
 import { deleteStyle, createStyle } from "../../../../../figma_plugin/handlers/styleHandlers.js";
 import { deleteComponentProperty, manageComponentProperty, exportNodeAsImage } from "../../../../../figma_plugin/handlers/componentHandlers.js";
@@ -101,6 +101,7 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
         it("should create a RECTANGLE and apply fills and strokes", async () => {
             const params = {
                 type: "RECTANGLE",
+                parentId: "page-1",
                 x: 10,
                 y: 20,
                 width: 200,
@@ -137,6 +138,7 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
         it("should create an ELLIPSE with optional arcData and reject arcData on others", async () => {
             const params = {
                 type: "ELLIPSE",
+                parentId: "page-1",
                 arcData: { startingAngle: 0.1, endingAngle: 0.5, innerRadius: 0.2 }
             };
 
@@ -152,6 +154,7 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
             // Rejects arcData on non-ellipses
             expect(createShape({
                 type: "RECTANGLE",
+                parentId: "page-1",
                 arcData: { startingAngle: 0, endingAngle: 1, innerRadius: 0 }
             })).rejects.toThrow("arcData is only supported for shape type ELLIPSE");
         });
@@ -160,6 +163,7 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
             // STAR with pointCount 5 (an odd count!)
             const params = {
                 type: "STAR",
+                parentId: "page-1",
                 pointCount: 5,
                 innerRadius: 0.45
             };
@@ -174,6 +178,7 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
             // Rejects innerRadius on non-stars
             expect(createShape({
                 type: "POLYGON",
+                parentId: "page-1",
                 pointCount: 5,
                 innerRadius: 0.5
             })).rejects.toThrow("innerRadius is only supported for shape type STAR");
@@ -181,11 +186,13 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
             // Rejects if pointCount < 3
             expect(createShape({
                 type: "POLYGON",
+                parentId: "page-1",
                 pointCount: 2
             })).rejects.toThrow("Polygons require pointCount >= 3");
 
             expect(createShape({
                 type: "STAR",
+                parentId: "page-1",
                 pointCount: 2
             })).rejects.toThrow("Stars require pointCount >= 3");
         });
@@ -557,6 +564,92 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
                 createStyle({ type: "TEXT", name: "Body", styleId: "style-text-1", properties: { fontSize: 24 } })
             ).rejects.toThrow("boom");
             expect(mockTextStyle.remove).not.toHaveBeenCalled();
+        });
+    });
+
+    // --- viewNavigate ---
+    describe("viewNavigate", () => {
+        let page1: any;
+        let page2: any;
+        let rect1: any;
+        let rect2: any;
+        let detachedNode: any;
+        let scrollAndZoomCalledWith: any[] = [];
+
+        beforeEach(() => {
+            scrollAndZoomCalledWith = [];
+            page1 = { id: "page-1", name: "Page 1", type: "PAGE" };
+            page2 = { id: "page-2", name: "Page 2", type: "PAGE" };
+            rect1 = { id: "rect-1", name: "Rect 1", type: "RECTANGLE", parent: page1 };
+            rect2 = { id: "rect-2", name: "Rect 2", type: "RECTANGLE", parent: page2 };
+            detachedNode = { id: "detached-1", name: "Detached", type: "FRAME", parent: null };
+
+            (globalThis as any).figma = {
+                currentPage: page1,
+                viewport: {
+                    scrollAndZoomIntoView: mock((nodes: any) => {
+                        scrollAndZoomCalledWith = nodes;
+                    })
+                },
+                setCurrentPageAsync: mock(async (page: any) => {
+                    (globalThis as any).figma.currentPage = page;
+                }),
+                getNodeByIdAsync: mock(async (id: string) => {
+                    if (id === "page-1") return page1;
+                    if (id === "page-2") return page2;
+                    if (id === "rect-1") return rect1;
+                    if (id === "rect-2") return rect2;
+                    if (id === "detached-1") return detachedNode;
+                    if (id === "doc-1") return { id: "doc-1", type: "DOCUMENT" };
+                    return null;
+                })
+            };
+        });
+
+        it("navigates to a single PAGE target", async () => {
+            const result = await viewNavigate({ ids: ["page-2"] });
+            expect(figma.currentPage).toBe(page2);
+            expect(result).toEqual({ pageId: "page-2", pageName: "Page 2" });
+        });
+
+        it("navigates to scene nodes on the same page", async () => {
+            const result = await viewNavigate({ ids: ["rect-1"] });
+            expect(figma.currentPage).toBe(page1);
+            expect(figma.currentPage.selection).toEqual([rect1]);
+            expect(scrollAndZoomCalledWith).toEqual([rect1]);
+            expect(result.success).toBe(true);
+        });
+
+        it("switches page and navigates to scene nodes on another page", async () => {
+            const result = await viewNavigate({ ids: ["rect-2"] });
+            expect(figma.currentPage).toBe(page2);
+            expect(figma.currentPage.selection).toEqual([rect2]);
+            expect(scrollAndZoomCalledWith).toEqual([rect2]);
+            expect(result.success).toBe(true);
+        });
+
+        it("throws before write on not-found id", async () => {
+            await expect(viewNavigate({ ids: ["nonexistent"] })).rejects.toThrow("Node not found with ID: nonexistent");
+        });
+
+        it("throws before write on DOCUMENT root", async () => {
+            await expect(viewNavigate({ ids: ["doc-1"] })).rejects.toThrow("Cannot navigate to DOCUMENT root");
+        });
+
+        it("throws before write on PAGE mixed with other nodes", async () => {
+            await expect(viewNavigate({ ids: ["page-1", "rect-1"] })).rejects.toThrow("Cannot navigate to mixed targets or multiple pages");
+        });
+
+        it("throws before write on multiple PAGES", async () => {
+            await expect(viewNavigate({ ids: ["page-1", "page-2"] })).rejects.toThrow("Cannot navigate to mixed targets or multiple pages");
+        });
+
+        it("throws before write on a detached node", async () => {
+            await expect(viewNavigate({ ids: ["detached-1"] })).rejects.toThrow("Node detached-1 is detached and not on a page");
+        });
+
+        it("throws before write on nodes from different pages", async () => {
+            await expect(viewNavigate({ ids: ["rect-1", "rect-2"] })).rejects.toThrow("Selected nodes must belong to the same page");
         });
     });
 });

@@ -256,6 +256,19 @@
     }
     return path;
   }
+  function getContainingPageNode(node) {
+    let current = node;
+    while (current) {
+      if (current.type === "PAGE") {
+        return current;
+      }
+      if (current.type === "DOCUMENT") {
+        return null;
+      }
+      current = current.parent;
+    }
+    return null;
+  }
   function countDescendants(node) {
     let count = 0;
     if (node && "children" in node && Array.isArray(node.children)) {
@@ -351,16 +364,90 @@
       missingPageIds
     };
   }
-  async function getSelection() {
-    return {
-      selectionCount: figma.currentPage.selection.length,
-      selection: figma.currentPage.selection.map((node) => ({
-        id: node.id,
-        name: node.name,
-        type: node.type,
-        visible: node.visible
-      }))
+  async function getNodesInfoParallel(uniqueIds, properties, filter, maxDepth, concurrencyLimit, commandId, exportCache, stats) {
+    const results = new Array(uniqueIds.length);
+    let nextIndex = 0;
+    let completedCount = 0;
+    let lastEmittedPercentage = 0;
+    const runWorker = async () => {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= uniqueIds.length) {
+          break;
+        }
+        const id = uniqueIds[index];
+        try {
+          const node = await figma.getNodeByIdAsync(id);
+          if (!node) {
+            results[index] = { missing: true, id };
+          } else {
+            const mappedSubtree = await mapNodeRecursive(
+              node,
+              0,
+              maxDepth,
+              properties,
+              filter,
+              exportCache,
+              stats
+            );
+            let entry = mappedSubtree;
+            if (!entry) {
+              entry = {
+                id: node.id,
+                name: node.name,
+                type: node.type
+              };
+              if (Array.isArray(properties) && properties.length > 0) {
+                const props = await extractProperties(node, properties, exportCache);
+                if (Object.keys(props).length > 0) {
+                  entry.properties = props;
+                }
+              }
+            }
+            entry.path = buildPathArray(node);
+            entry.descendantCount = countDescendants(node);
+            results[index] = entry;
+          }
+        } catch (error) {
+          console.error(`[getNodesInfoParallel] Error processing node ${id}: ${error.message}`);
+          results[index] = { missing: true, id };
+        } finally {
+          completedCount++;
+          if (commandId && uniqueIds.length > 1) {
+            const rawPercentage = Math.round(completedCount / uniqueIds.length * 100);
+            const progressPercent = Math.max(lastEmittedPercentage, rawPercentage);
+            lastEmittedPercentage = progressPercent;
+            await sendProgressUpdate(
+              commandId,
+              "get_nodes_info",
+              "in_progress",
+              progressPercent,
+              uniqueIds.length,
+              completedCount,
+              `Processed ${completedCount}/${uniqueIds.length} top-level nodes`
+            );
+            await new Promise((r) => setTimeout(r, 0));
+          }
+        }
+      }
     };
+    const poolLimit = Math.min(concurrencyLimit, uniqueIds.length);
+    const workers = [];
+    for (let i = 0; i < poolLimit; i++) {
+      workers.push(runWorker());
+    }
+    await Promise.all(workers);
+    const nodes = [];
+    const missingNodeIds = [];
+    for (let i = 0; i < uniqueIds.length; i++) {
+      const res = results[i];
+      if (res && res.missing) {
+        missingNodeIds.push(res.id);
+      } else if (res) {
+        nodes.push(res);
+      }
+    }
+    return { nodes, missingNodeIds };
   }
   async function getNodesInfo(params) {
     const {
@@ -368,6 +455,7 @@
       properties = [],
       filter = {},
       maxDepth,
+      concurrencyLimit = 4,
       commandId
     } = params || {};
     try {
@@ -375,10 +463,6 @@
       const uniqueIds = (Array.isArray(nodeIds) ? nodeIds : []).filter(
         (id) => id && typeof id === "string" && !seen.has(id) && (seen.add(id), true)
       );
-      const nodes = [];
-      const missingNodeIds = [];
-      const exportCache = /* @__PURE__ */ new Map();
-      const stats = { processed: 0, commandId };
       if (commandId) {
         await sendProgressUpdate(
           commandId,
@@ -390,51 +474,19 @@
           `Starting node info retrieval for ${uniqueIds.length} nodes`
         );
       }
-      for (const [index, id] of uniqueIds.entries()) {
-        const node = await figma.getNodeByIdAsync(id);
-        if (!node) {
-          missingNodeIds.push(id);
-          continue;
-        }
-        const mappedSubtree = await mapNodeRecursive(
-          node,
-          0,
-          maxDepth,
-          properties,
-          filter,
-          exportCache,
-          stats
-        );
-        let entry = mappedSubtree;
-        if (!entry) {
-          entry = {
-            id: node.id,
-            name: node.name,
-            type: node.type
-          };
-          if (Array.isArray(properties) && properties.length > 0) {
-            const props = await extractProperties(node, properties, exportCache);
-            if (Object.keys(props).length > 0) {
-              entry.properties = props;
-            }
-          }
-        }
-        entry.path = buildPathArray(node);
-        entry.descendantCount = countDescendants(node);
-        nodes.push(entry);
-        if (commandId && uniqueIds.length > 1) {
-          await sendProgressUpdate(
-            commandId,
-            "get_nodes_info",
-            "in_progress",
-            Math.round((index + 1) / uniqueIds.length * 100),
-            uniqueIds.length,
-            index + 1,
-            `Processed ${index + 1}/${uniqueIds.length} top-level nodes`
-          );
-          await new Promise((r) => setTimeout(r, 0));
-        }
-      }
+      const exportCache = /* @__PURE__ */ new Map();
+      const stats = { processed: 0, commandId };
+      const limit = Math.max(1, typeof concurrencyLimit === "number" ? concurrencyLimit : 4);
+      const { nodes, missingNodeIds } = await getNodesInfoParallel(
+        uniqueIds,
+        properties,
+        filter,
+        maxDepth,
+        limit,
+        commandId,
+        exportCache,
+        stats
+      );
       if (commandId) {
         await sendProgressUpdate(
           commandId,
@@ -560,15 +612,13 @@
     const needsExport = requestedProps.some((p) => !SAFE_LIST_PROPERTIES.has(p));
     let exportedData = null;
     if (needsExport) {
-      if (exportCache.has(node.id)) {
-        exportedData = exportCache.get(node.id);
-      } else {
-        const response = await node.exportAsync({
+      if (!exportCache.has(node.id)) {
+        const promise = node.exportAsync({
           format: "JSON_REST_V1"
-        });
-        exportedData = response.document;
-        exportCache.set(node.id, exportedData);
+        }).then((r) => r.document);
+        exportCache.set(node.id, promise);
       }
+      exportedData = await exportCache.get(node.id);
     }
     const STRUCTURAL_KEYS = /* @__PURE__ */ new Set(["id", "name", "type", "children", "path"]);
     for (const key of requestedProps) {
@@ -879,15 +929,15 @@
     if (innerRadius !== void 0 && upperType !== "STAR") {
       throw new Error(`innerRadius is only supported for shape type STAR, got ${type}`);
     }
-    let parent = figma.currentPage;
-    if (parentId) {
-      parent = await figma.getNodeByIdAsync(parentId);
-      if (!parent) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-      }
-      if (!("appendChild" in parent)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-      }
+    if (!parentId) {
+      throw new Error("Missing parentId parameter");
+    }
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parent)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
     }
     let node;
     switch (upperType) {
@@ -1046,18 +1096,17 @@
     if (strokeWeight !== void 0) {
       frame.strokeWeight = strokeWeight;
     }
-    if (parentId) {
-      const parentNode = await figma.getNodeByIdAsync(parentId);
-      if (!parentNode) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-      }
-      if (!("appendChild" in parentNode)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-      }
-      parentNode.appendChild(frame);
-    } else {
-      figma.currentPage.appendChild(frame);
+    if (!parentId) {
+      throw new Error("Missing parentId parameter");
     }
+    const parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parentNode.appendChild(frame);
     return {
       id: frame.id,
       name: frame.name,
@@ -1135,18 +1184,17 @@
       opacity: (_a = parseFloat(fontColor.a)) != null ? _a : 1
     };
     textNode.fills = [paintStyle];
-    if (parentId) {
-      const parentNode = await figma.getNodeByIdAsync(parentId);
-      if (!parentNode) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-      }
-      if (!("appendChild" in parentNode)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-      }
-      parentNode.appendChild(textNode);
-    } else {
-      figma.currentPage.appendChild(textNode);
+    if (!parentId) {
+      throw new Error("Missing parentId parameter");
     }
+    const parentNode = await figma.getNodeByIdAsync(parentId);
+    if (!parentNode) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parentNode.appendChild(textNode);
     return {
       id: textNode.id,
       name: textNode.name,
@@ -1183,7 +1231,7 @@
     if (node.parent) {
       node.parent.appendChild(clone);
     } else {
-      figma.currentPage.appendChild(clone);
+      throw new Error(`Cloned node ${nodeId} has no parent and cannot be cloned`);
     }
     return {
       id: clone.id,
@@ -1391,39 +1439,67 @@
       commandId
     };
   }
-  async function setSelections(params) {
-    if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
-      throw new Error("Missing or invalid nodeIds parameter");
+  async function viewNavigate(params) {
+    if (!params || !params.ids || !Array.isArray(params.ids)) {
+      throw new Error("Missing or invalid ids parameter");
     }
-    if (params.nodeIds.length === 0) {
-      throw new Error("nodeIds array cannot be empty");
+    if (params.ids.length === 0) {
+      throw new Error("ids array cannot be empty");
     }
-    const nodes = [];
-    const notFoundIds = [];
-    for (const nodeId of params.nodeIds) {
-      const node = await figma.getNodeByIdAsync(nodeId);
-      if (node) {
-        nodes.push(node);
+    const resolvedNodes = [];
+    const pageNodes = [];
+    for (const id of params.ids) {
+      const node = await figma.getNodeByIdAsync(id);
+      if (!node) {
+        throw new Error(`Node not found with ID: ${id}`);
+      }
+      if (node.type === "DOCUMENT") {
+        throw new Error("Cannot navigate to DOCUMENT root");
+      }
+      if (node.type === "PAGE") {
+        pageNodes.push(node);
       } else {
-        notFoundIds.push(nodeId);
+        resolvedNodes.push(node);
       }
     }
-    if (nodes.length === 0) {
-      throw new Error(`No valid nodes found for the provided IDs: ${params.nodeIds.join(", ")}`);
+    if (pageNodes.length > 0) {
+      if (pageNodes.length > 1 || resolvedNodes.length > 0) {
+        throw new Error("Cannot navigate to mixed targets or multiple pages");
+      }
+      const page = pageNodes[0];
+      await figma.setCurrentPageAsync(page);
+      return {
+        pageId: page.id,
+        pageName: page.name
+      };
+    } else {
+      const pages = resolvedNodes.map((node) => {
+        const page = getContainingPageNode(node);
+        if (!page) {
+          throw new Error(`Node ${node.id} is detached and not on a page`);
+        }
+        return page;
+      });
+      const firstPage = pages[0];
+      for (const page of pages) {
+        if (page.id !== firstPage.id) {
+          throw new Error("Selected nodes must belong to the same page");
+        }
+      }
+      await figma.setCurrentPageAsync(firstPage);
+      figma.currentPage.selection = resolvedNodes;
+      figma.viewport.scrollAndZoomIntoView(resolvedNodes);
+      const selectedNodes = resolvedNodes.map((node) => ({
+        name: node.name,
+        id: node.id
+      }));
+      return {
+        success: true,
+        count: resolvedNodes.length,
+        selectedNodes,
+        message: `Selected ${resolvedNodes.length} nodes`
+      };
     }
-    figma.currentPage.selection = nodes;
-    figma.viewport.scrollAndZoomIntoView(nodes);
-    const selectedNodes = nodes.map((node) => ({
-      name: node.name,
-      id: node.id
-    }));
-    return {
-      success: true,
-      count: nodes.length,
-      selectedNodes,
-      notFoundIds,
-      message: `Selected ${nodes.length} nodes${notFoundIds.length > 0 ? ` (${notFoundIds.length} not found)` : ""}`
-    };
   }
   async function setNodeName(params) {
     const { nodeId, name } = params || {};
@@ -1880,7 +1956,7 @@
     };
   }
   async function getComponents(params) {
-    const { filter, scope = "current_page", commandId } = params || {};
+    const { filter, scope = "document", pageId, commandId } = params || {};
     const isStreaming = scope === "document";
     if (commandId && isStreaming) {
       await sendProgressUpdate(
@@ -1894,14 +1970,26 @@
       );
     }
     const allComponents = [];
-    if (scope === "current_page") {
-      const components = figma.currentPage.findAllWithCriteria({
+    if (scope === "page") {
+      if (!pageId) {
+        throw new Error("pageId is required when scope is 'page'");
+      }
+      const pageNode = await figma.getNodeByIdAsync(pageId);
+      if (!pageNode) {
+        throw new Error(`pageId with ID ${pageId} not found`);
+      }
+      if (pageNode.type !== "PAGE") {
+        throw new Error("pageId does not resolve to a PAGE");
+      }
+      await pageNode.loadAsync();
+      const components = pageNode.findAllWithCriteria({
         types: ["COMPONENT", "COMPONENT_SET"]
       });
       allComponents.push(...components);
     } else {
       const pages = figma.root.children;
       for (const [index, page] of pages.entries()) {
+        await page.loadAsync();
         const components = page.findAllWithCriteria({
           types: ["COMPONENT", "COMPONENT_SET"]
         });
@@ -1951,11 +2039,8 @@
     };
   }
   function getContainingPageId(node) {
-    let current = node;
-    while (current && current.type !== "PAGE" && current.type !== "DOCUMENT") {
-      current = current.parent;
-    }
-    return current && current.type === "PAGE" ? current.id : "unknown";
+    var _a, _b;
+    return (_b = (_a = getContainingPageNode(node)) == null ? void 0 : _a.id) != null ? _b : "unknown";
   }
   async function createComponentInstance(params) {
     const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
@@ -1977,13 +2062,17 @@
         component = await figma.importComponentByKeyAsync(componentKey);
       }
       const instance = component.createInstance();
-      if (parentId) {
-        const parent = await figma.getNodeByIdAsync(parentId);
-        if (!parent) {
-          throw new Error(`Parent node not found with ID: ${parentId}`);
-        }
-        parent.appendChild(instance);
+      if (!parentId) {
+        throw new Error("Missing parentId parameter");
       }
+      const parent = await figma.getNodeByIdAsync(parentId);
+      if (!parent) {
+        throw new Error(`Parent node not found with ID: ${parentId}`);
+      }
+      if (!("appendChild" in parent)) {
+        throw new Error(`Parent node does not support children: ${parentId}`);
+      }
+      parent.appendChild(instance);
       instance.x = x;
       instance.y = y;
       return {
@@ -2056,33 +2145,17 @@
       throw new Error(`Error exporting node as image: ${error.message}`);
     }
   }
-  async function getInstanceOverrides(instanceNode = null) {
+  async function getInstanceOverrides(instanceNode) {
     console.log("=== getInstanceOverrides called ===");
-    let sourceInstance = null;
-    if (instanceNode) {
-      console.log("Using provided instance node");
-      if (instanceNode.type !== "INSTANCE") {
-        console.error("Provided node is not an instance");
-        figma.notify("Provided node is not a component instance");
-        return { success: false, message: "Provided node is not a component instance" };
-      }
-      sourceInstance = instanceNode;
-    } else {
-      console.log("No node provided, using current selection");
-      const selection = figma.currentPage.selection;
-      if (selection.length === 0) {
-        console.log("No nodes selected");
-        figma.notify("Please select at least one instance");
-        return { success: false, message: "No nodes selected" };
-      }
-      const instances = selection.filter((node) => node.type === "INSTANCE");
-      if (instances.length === 0) {
-        console.log("No instances found in selection");
-        figma.notify("Please select at least one component instance");
-        return { success: false, message: "No instances found in selection" };
-      }
-      sourceInstance = instances[0];
+    if (!instanceNode) {
+      throw new Error("Missing instance node parameter");
     }
+    if (instanceNode.type !== "INSTANCE") {
+      console.error("Provided node is not an instance");
+      figma.notify("Provided node is not a component instance");
+      return { success: false, message: "Provided node is not a component instance" };
+    }
+    const sourceInstance = instanceNode;
     try {
       console.log(`Getting instance information:`);
       console.log(sourceInstance);
@@ -2172,94 +2245,88 @@
       console.log(`Overrides:`, overrides);
       const results = [];
       let totalAppliedCount = 0;
+      let successCount = 0;
+      let failureCount = 0;
       for (const targetInstance of targetInstances) {
+        let appliedCount = 0;
+        let hasFailure = false;
+        let failureMsg = "";
         try {
           try {
             targetInstance.swapComponent(mainComponent);
             console.log(`Swapped component for instance "${targetInstance.name}"`);
           } catch (error) {
-            console.error(`Error swapping component for instance "${targetInstance.name}":`, error);
-            results.push({
-              success: false,
-              instanceId: targetInstance.id,
-              instanceName: targetInstance.name,
-              message: `Error: ${error.message}`
-            });
+            hasFailure = true;
+            failureMsg = `Swap component error: ${error.message}`;
           }
-          let appliedCount = 0;
-          for (const override of overrides) {
-            if (!override.id || !override.overriddenFields || override.overriddenFields.length === 0) {
-              continue;
-            }
-            const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
-            const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
-            if (!overrideNode) {
-              console.log(`Override node not found: ${overrideNodeId}`);
-              continue;
-            }
-            const sourceNode = await figma.getNodeByIdAsync(override.id);
-            if (!sourceNode) {
-              console.log(`Source node not found: ${override.id}`);
-              continue;
-            }
-            let fieldApplied = false;
-            for (const field of override.overriddenFields) {
-              try {
-                if (field === "componentProperties") {
-                  if (sourceNode.componentProperties && overrideNode.componentProperties) {
-                    const properties = {};
-                    for (const key in sourceNode.componentProperties) {
-                      properties[key] = sourceNode.componentProperties[key].value;
-                    }
-                    overrideNode.setProperties(properties);
-                    fieldApplied = true;
-                  }
-                } else if (field === "characters" && overrideNode.type === "TEXT") {
-                  await figma.loadFontAsync(overrideNode.fontName);
-                  overrideNode.characters = sourceNode.characters;
-                  fieldApplied = true;
-                } else if (field in overrideNode) {
-                  overrideNode[field] = sourceNode[field];
-                  fieldApplied = true;
-                }
-              } catch (fieldError) {
-                console.error(`Error applying field ${field}:`, fieldError);
+          if (!hasFailure) {
+            for (const override of overrides) {
+              if (!override.id || !override.overriddenFields || override.overriddenFields.length === 0) {
+                continue;
               }
-            }
-            if (fieldApplied) {
+              const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
+              const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
+              if (!overrideNode) {
+                continue;
+              }
+              const sourceNode = await figma.getNodeByIdAsync(override.id);
+              if (!sourceNode) {
+                continue;
+              }
+              for (const field of override.overriddenFields) {
+                try {
+                  if (field === "componentProperties") {
+                    if (sourceNode.componentProperties && overrideNode.componentProperties) {
+                      const properties = {};
+                      for (const key in sourceNode.componentProperties) {
+                        properties[key] = sourceNode.componentProperties[key].value;
+                      }
+                      overrideNode.setProperties(properties);
+                    }
+                  } else if (field === "characters" && overrideNode.type === "TEXT") {
+                    await figma.loadFontAsync(overrideNode.fontName);
+                    overrideNode.characters = sourceNode.characters;
+                  } else if (field in overrideNode) {
+                    overrideNode[field] = sourceNode[field];
+                  }
+                } catch (fieldError) {
+                  hasFailure = true;
+                  failureMsg = `Field ${field} error: ${fieldError.message}`;
+                  break;
+                }
+              }
+              if (hasFailure) {
+                break;
+              }
               appliedCount++;
             }
           }
-          if (appliedCount > 0) {
-            totalAppliedCount += appliedCount;
-            results.push({
-              success: true,
-              instanceId: targetInstance.id,
-              instanceName: targetInstance.name,
-              appliedCount
-            });
-            console.log(`Applied ${appliedCount} overrides to "${targetInstance.name}"`);
-          } else {
-            results.push({
-              success: false,
-              instanceId: targetInstance.id,
-              instanceName: targetInstance.name,
-              message: "No overrides were applied"
-            });
-          }
         } catch (instanceError) {
-          console.error(`Error processing instance "${targetInstance.name}":`, instanceError);
+          hasFailure = true;
+          failureMsg = instanceError.message;
+        }
+        if (hasFailure) {
+          failureCount++;
           results.push({
             success: false,
             instanceId: targetInstance.id,
             instanceName: targetInstance.name,
-            message: `Error: ${instanceError.message}`
+            message: `Error: ${failureMsg}`
+          });
+          break;
+        } else {
+          successCount++;
+          totalAppliedCount += appliedCount;
+          results.push({
+            success: true,
+            instanceId: targetInstance.id,
+            instanceName: targetInstance.name,
+            appliedCount
           });
         }
       }
-      if (totalAppliedCount > 0) {
-        const instanceCount = results.filter((r) => r.success).length;
-        const message = `Applied ${totalAppliedCount} overrides to ${instanceCount} instances`;
+      if (successCount > 0 && failureCount === 0) {
+        const message = `Applied ${totalAppliedCount} overrides to ${successCount} instances`;
         figma.notify(message);
         return {
           success: true,
@@ -2268,7 +2335,7 @@
           results
         };
       } else {
-        const message = "No overrides applied to any instance";
+        const message = failureCount > 0 ? `Failed to apply overrides: ${results[results.length - 1].message}` : "No overrides applied to any instance";
         figma.notify(message);
         return { success: false, message, results };
       }
@@ -2368,7 +2435,11 @@
       component.name = nameParts.join(", ");
       figmaComponents.push(component);
     }
-    const componentSet = figma.combineAsVariants(figmaComponents, figma.currentPage);
+    const containingPage = getContainingPageNode(figmaComponents[0]);
+    if (!containingPage) {
+      throw new Error("First component is not on a page (detached)");
+    }
+    const componentSet = figma.combineAsVariants(figmaComponents, containingPage);
     if (componentSetName) {
       componentSet.name = componentSetName;
     }
@@ -3016,7 +3087,10 @@
     if (node.type !== "TEXT") {
       throw new Error(`Node is not a text node: ${nodeId} (type: ${node.type})`);
     }
-    await setCharacters(node, text);
+    const success = await setCharacters(node, text);
+    if (!success) {
+      throw new Error(`Failed to set characters on node ${nodeId}`);
+    }
     return {
       success: true,
       nodeId,
@@ -3056,145 +3130,75 @@
     const results = [];
     let successCount = 0;
     let failureCount = 0;
-    const CHUNK_SIZE = 10;
-    const chunks = [];
-    for (let i = 0; i < text.length; i += CHUNK_SIZE) {
-      chunks.push(text.slice(i, i + CHUNK_SIZE));
-    }
-    console.log(`Split ${text.length} replacements into ${chunks.length} chunks`);
-    await sendProgressUpdate(
-      commandId,
-      "set_multiple_text_contents",
-      "in_progress",
-      5,
-      // 5% progress for planning phase
-      text.length,
-      0,
-      `Preparing to replace text in ${text.length} nodes using ${chunks.length} chunks`,
-      {
-        totalReplacements: text.length,
-        chunks: chunks.length,
-        chunkSize: CHUNK_SIZE
+    for (let i = 0; i < text.length; i++) {
+      const replacement = text[i];
+      if (!replacement.nodeId || replacement.text === void 0) {
+        failureCount++;
+        results.push({
+          success: false,
+          nodeId: replacement.nodeId || "unknown",
+          error: "Missing nodeId or text in replacement entry"
+        });
+        break;
       }
-    );
-    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-      const chunk = chunks[chunkIndex];
-      console.log(
-        `Processing chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.length} replacements`
-      );
-      await sendProgressUpdate(
-        commandId,
-        "set_multiple_text_contents",
-        "in_progress",
-        Math.round(5 + chunkIndex / chunks.length * 90),
-        // 5-95% for processing
-        text.length,
-        successCount + failureCount,
-        `Processing text replacements chunk ${chunkIndex + 1}/${chunks.length}`,
-        {
-          currentChunk: chunkIndex + 1,
-          totalChunks: chunks.length,
-          successCount,
-          failureCount
-        }
-      );
-      const chunkPromises = chunk.map(async (replacement) => {
-        if (!replacement.nodeId || replacement.text === void 0) {
-          console.error(`Missing nodeId or text for replacement`);
-          return {
-            success: false,
-            nodeId: replacement.nodeId || "unknown",
-            error: "Missing nodeId or text in replacement entry"
-          };
-        }
-        try {
-          console.log(
-            `Attempting to replace text in node: ${replacement.nodeId}`
-          );
-          const textNode = await figma.getNodeByIdAsync(replacement.nodeId);
-          if (!textNode) {
-            console.error(`Text node not found: ${replacement.nodeId}`);
-            return {
-              success: false,
-              nodeId: replacement.nodeId,
-              error: `Node not found: ${replacement.nodeId}`
-            };
-          }
-          if (textNode.type !== "TEXT") {
-            console.error(
-              `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`
-            );
-            return {
-              success: false,
-              nodeId: replacement.nodeId,
-              error: `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`
-            };
-          }
-          const originalText = textNode.characters;
-          console.log(`Original text: "${originalText}"`);
-          console.log(`Will translate to: "${replacement.text}"`);
-          await setTextContent({
-            nodeId: replacement.nodeId,
-            text: replacement.text
-          });
-          console.log(
-            `Successfully replaced text in node: ${replacement.nodeId}`
-          );
-          return {
-            success: true,
-            nodeId: replacement.nodeId,
-            originalText,
-            translatedText: replacement.text
-          };
-        } catch (error) {
-          console.error(
-            `Error replacing text in node ${replacement.nodeId}: ${error.message}`
-          );
-          return {
-            success: false,
-            nodeId: replacement.nodeId,
-            error: `Error applying replacement: ${error.message}`
-          };
-        }
-      });
-      const chunkResults = await Promise.all(chunkPromises);
-      chunkResults.forEach((result) => {
-        if (result.success) {
-          successCount++;
-        } else {
+      try {
+        console.log(`Attempting to replace text in node: ${replacement.nodeId}`);
+        const textNode = await figma.getNodeByIdAsync(replacement.nodeId);
+        if (!textNode) {
           failureCount++;
+          results.push({
+            success: false,
+            nodeId: replacement.nodeId,
+            error: `Node not found: ${replacement.nodeId}`
+          });
+          break;
         }
-        results.push(result);
-      });
-      await sendProgressUpdate(
-        commandId,
-        "set_multiple_text_contents",
-        "in_progress",
-        Math.round(5 + (chunkIndex + 1) / chunks.length * 90),
-        // 5-95% for processing
-        text.length,
-        successCount + failureCount,
-        `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
-        {
-          currentChunk: chunkIndex + 1,
-          totalChunks: chunks.length,
-          successCount,
-          failureCount,
-          chunkResults
+        if (textNode.type !== "TEXT") {
+          failureCount++;
+          results.push({
+            success: false,
+            nodeId: replacement.nodeId,
+            error: `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`
+          });
+          break;
         }
-      );
-      if (chunkIndex < chunks.length - 1) {
-        console.log("Pausing between chunks to avoid overloading Figma...");
-        await delay(20);
+        const originalText = textNode.characters;
+        await setTextContent({
+          nodeId: replacement.nodeId,
+          text: replacement.text
+        });
+        successCount++;
+        results.push({
+          success: true,
+          nodeId: replacement.nodeId,
+          originalText,
+          translatedText: replacement.text
+        });
+        await sendProgressUpdate(
+          commandId,
+          "set_multiple_text_contents",
+          "in_progress",
+          Math.round((i + 1) / text.length * 100),
+          text.length,
+          successCount + failureCount,
+          `Processed ${i + 1}/${text.length} text replacements`
+        );
+        await new Promise((r) => setTimeout(r, 0));
+      } catch (error) {
+        console.error(`Error replacing text in node ${replacement.nodeId}: ${error.message}`);
+        failureCount++;
+        results.push({
+          success: false,
+          nodeId: replacement.nodeId,
+          error: `Error applying replacement: ${error.message}`
+        });
+        break;
       }
     }
-    console.log(
-      `Replacement complete: ${successCount} successful, ${failureCount} failed`
-    );
     await sendProgressUpdate(
       commandId,
       "set_multiple_text_contents",
-      "completed",
+      failureCount > 0 ? "error" : "completed",
       100,
       text.length,
       successCount + failureCount,
@@ -3203,18 +3207,16 @@
         totalReplacements: text.length,
         replacementsApplied: successCount,
         replacementsFailed: failureCount,
-        completedInChunks: chunks.length,
         results
       }
     );
     return {
-      success: successCount > 0,
+      success: successCount > 0 && failureCount === 0,
       nodeId,
       replacementsApplied: successCount,
       replacementsFailed: failureCount,
       totalReplacements: text.length,
       results,
-      completedInChunks: chunks.length,
       commandId
     };
   }
@@ -3276,7 +3278,10 @@
   // figma_plugin/handlers/annotationHandlers.ts
   async function getAnnotations(params) {
     try {
-      const { nodeId, includeCategories = true } = params;
+      const { nodeId, pageId, includeCategories = true } = params || {};
+      if (nodeId && pageId || !nodeId && !pageId) {
+        throw new Error("Exactly one of pageId or nodeId is required");
+      }
       let categoriesMap = {};
       if (includeCategories) {
         const categories = await figma.annotations.getAnnotationCategoriesAsync();
@@ -3290,7 +3295,38 @@
           return map;
         }, {});
       }
-      if (nodeId) {
+      if (pageId) {
+        const page = await figma.getNodeByIdAsync(pageId);
+        if (!page) {
+          throw new Error(`pageId with ID ${pageId} not found`);
+        }
+        if (page.type !== "PAGE") {
+          throw new Error("pageId does not resolve to a PAGE");
+        }
+        const annotations = [];
+        const processNode = async (node) => {
+          if ("annotations" in node && node.annotations && node.annotations.length > 0) {
+            annotations.push({
+              nodeId: node.id,
+              name: node.name,
+              annotations: node.annotations
+            });
+          }
+          if ("children" in node) {
+            for (const child of node.children) {
+              await processNode(child);
+            }
+          }
+        };
+        await processNode(page);
+        const result = {
+          annotatedNodes: annotations
+        };
+        if (includeCategories) {
+          result.categories = Object.values(categoriesMap);
+        }
+        return result;
+      } else {
         const node = await figma.getNodeByIdAsync(nodeId);
         if (!node) {
           throw new Error(`Node not found: ${nodeId}`);
@@ -3316,30 +3352,6 @@
           nodeId: node.id,
           name: node.name,
           annotations: mergedAnnotations
-        };
-        if (includeCategories) {
-          result.categories = Object.values(categoriesMap);
-        }
-        return result;
-      } else {
-        const annotations = [];
-        const processNode = async (node) => {
-          if ("annotations" in node && node.annotations && node.annotations.length > 0) {
-            annotations.push({
-              nodeId: node.id,
-              name: node.name,
-              annotations: node.annotations
-            });
-          }
-          if ("children" in node) {
-            for (const child of node.children) {
-              await processNode(child);
-            }
-          }
-        };
-        await processNode(figma.currentPage);
-        const result = {
-          annotatedNodes: annotations
         };
         if (includeCategories) {
           result.categories = Object.values(categoriesMap);
@@ -3438,6 +3450,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             error: result.error
           });
           console.error(`\u2717 Annotation ${i + 1} failed:`, result.error);
+          break;
         }
       } catch (error) {
         failureCount++;
@@ -3448,14 +3461,11 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         };
         results.push(errorResult);
         console.error(`\u2717 Annotation ${i + 1} failed with error:`, error);
-        console.error("Error details:", {
-          message: error.message,
-          stack: error.stack
-        });
+        break;
       }
     }
     const summary = {
-      success: successCount > 0,
+      success: successCount > 0 && failureCount === 0,
       annotationsApplied: successCount,
       annotationsFailed: failureCount,
       totalAnnotations: annotations.length,
@@ -3732,10 +3742,11 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     return consumerMap;
   }
   async function getVariables(params) {
-    const { variableId, includeConsumers, commandId } = params || {};
+    const { variableId, includeConsumers, pageId, commandId } = params || {};
     try {
       if (variableId && variableId.length > 0) {
         const variables2 = [];
+        const missingIds = [];
         const idSet = new Set(variableId);
         const isStreaming = includeConsumers === "document";
         if (commandId && isStreaming) {
@@ -3751,7 +3762,10 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         for (const [index, id] of variableId.entries()) {
           const variable = await figma.variables.getVariableByIdAsync(id);
-          if (!variable) continue;
+          if (!variable) {
+            missingIds.push(id);
+            continue;
+          }
           const collection = await figma.variables.getVariableCollectionByIdAsync(
             variable.variableCollectionId
           );
@@ -3772,8 +3786,18 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           const stylePromise = findStyleConsumers(idSet);
           const aliasPromise = findAliasConsumers(idSet);
           let nodeConsumerMap = /* @__PURE__ */ new Map();
-          if (includeConsumers === "current_page") {
-            nodeConsumerMap = await findVariableConsumers(figma.currentPage, idSet);
+          if (includeConsumers === "page") {
+            if (!pageId) {
+              throw new Error("pageId is required when includeConsumers is 'page'");
+            }
+            const pageNode = await figma.getNodeByIdAsync(pageId);
+            if (!pageNode) {
+              throw new Error(`pageId with ID ${pageId} not found`);
+            }
+            if (pageNode.type !== "PAGE") {
+              throw new Error("pageId does not resolve to a PAGE");
+            }
+            nodeConsumerMap = await findVariableConsumers(pageNode, idSet);
           } else {
             const pages = figma.root.children;
             for (const [index, page] of pages.entries()) {
@@ -3814,7 +3838,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             `Completed fetching variable information`
           );
         }
-        return variables2;
+        return missingIds.length > 0 ? { variables: variables2, missingIds } : { variables: variables2 };
       }
       const collections = await figma.variables.getLocalVariableCollectionsAsync();
       const variables = await figma.variables.getLocalVariablesAsync();
@@ -4297,16 +4321,17 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     if (name) {
       node.name = name;
     }
-    if (parentId) {
-      const parent = await figma.getNodeByIdAsync(parentId);
-      if (parent) {
-        parent.appendChild(node);
-      } else {
-        figma.currentPage.appendChild(node);
-      }
-    } else {
-      figma.currentPage.appendChild(node);
+    if (!parentId) {
+      throw new Error("Missing parentId parameter");
     }
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) {
+      throw new Error(`Parent node not found with ID: ${parentId}`);
+    }
+    if (!("appendChild" in parent)) {
+      throw new Error(`Parent node does not support children: ${parentId}`);
+    }
+    parent.appendChild(node);
     node.x = x;
     node.y = y;
     return {
@@ -4425,7 +4450,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     OUTSIDE_SCOPE: "Operation Denied: Node outside editable scope. Verify if user intends for changes to be made to this particular node. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
     PARENT_OUTSIDE_SCOPE: "Operation Denied: Parent outside editable scope. Verify if user intends for changes to be made to the parent node. If so, advise user to disconnect plugin, paste a link to the parent page/layer into Link to Selection field, then reconnect plugin.",
     CLONING_SOURCE_NODE_OUTSIDE_SCOPE: "Operation Denied: Node to be cloned is outside editable scope. Verify if user intends for this node to be cloned. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
-    ROOT_INSTANCE_DISALLOWED: "Operation Denied: Cannot create instance at root with current editable scope. Verify if user intends for the instance to be created on this page. If so, advise user to disconnect plugin, paste a link to this page into Link to Selection field, then reconnect plugin.",
     SCOPE_DELETED: "Operation Denied: The specific Node set as the Editable Scope no longer exists/cannot be found. Advise user to disconnect the plugin and Select a new Editable Scope.",
     // Node ID Errors
     NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
@@ -4461,6 +4485,15 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     while (node) {
       if (node.id === state.scopeRootId) return true;
       node = node.parent;
+    }
+    return false;
+  }
+  function checkScopeAccessRef(node, scopeRootNode) {
+    if (state.readOnly) return false;
+    let curr = node;
+    while (curr) {
+      if (curr.id === scopeRootNode.id) return true;
+      curr = curr.parent;
     }
     return false;
   }
@@ -4656,12 +4689,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         return await createText(params);
       case "create_instance":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
-        if (params && params.parentId) {
-          if (!await checkScopeAccess(params.parentId)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-          if (!await verifyParentName(params.parentId, params.parentNodeName)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
-        } else {
-          if (state.scopeRootId) throw new Error(formatScopeError(ERRORS.ROOT_INSTANCE_DISALLOWED));
-        }
+        if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
+        if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createComponentInstance(params);
       case "create_connection":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
@@ -4680,9 +4709,25 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "text_set_content":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.text || !Array.isArray(params.text)) throw new Error("Missing or Invalid text parameter");
+        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        const textScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+        if (!textScopeRoot) {
+          throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+        }
         for (const item of params.text) {
-          if (!await checkScopeAccess(item.nodeId)) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
-          if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
+          const node = await figma.getNodeByIdAsync(item.nodeId);
+          if (!node) {
+            throw new Error(`Node ${item.nodeId} not found`);
+          }
+          if (!checkScopeAccessRef(node, textScopeRoot)) {
+            throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+          }
+          if (node.name !== item.nodeName) {
+            throw new Error(ERRORS.NAME_MISMATCH);
+          }
+          if (node.type !== "TEXT") {
+            throw new Error(`Node is not a text node: ${node.id} (type: ${node.type})`);
+          }
         }
         return await setMultipleTextContents(params);
       case "text_set_style":
@@ -4693,18 +4738,47 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "annotation_set":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.annotations || !Array.isArray(params.annotations)) throw new Error("Missing or Invalid annotations parameter");
+        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        const annScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+        if (!annScopeRoot) {
+          throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+        }
         for (const item of params.annotations) {
-          if (!await checkScopeAccess(item.nodeId)) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
-          if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
+          const node = await figma.getNodeByIdAsync(item.nodeId);
+          if (!node) {
+            throw new Error(`Node ${item.nodeId} not found`);
+          }
+          if (!checkScopeAccessRef(node, annScopeRoot)) {
+            throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+          }
+          if (node.name !== item.nodeName) {
+            throw new Error(ERRORS.NAME_MISMATCH);
+          }
+          if (!("annotations" in node)) {
+            throw new Error(`Node type ${node.type} does not support annotations`);
+          }
         }
         return await setMultipleAnnotations(params);
       case "node_delete":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
+        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        const deleteScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+        if (!deleteScopeRoot) {
+          throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+        }
         const nodeIdsToDelete = [];
         for (const item of params.nodes) {
-          if (!await checkScopeAccess(item.nodeId)) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
-          if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
+          const node = await figma.getNodeByIdAsync(item.nodeId);
+          if (!node) {
+            throw new Error(`Node ${item.nodeId} not found`);
+          }
+          if (!checkScopeAccessRef(node, deleteScopeRoot)) {
+            throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+          }
+          if (node.name !== item.nodeName) {
+            throw new Error(ERRORS.NAME_MISMATCH);
+          }
           nodeIdsToDelete.push(item.nodeId);
         }
         return await deleteMultipleNodes({ nodeIds: nodeIdsToDelete });
@@ -4714,10 +4788,36 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (!Array.isArray(params.targetNodes)) {
             throw new Error("targetNodes must be an array");
           }
+          if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+          const instScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+          if (!instScopeRoot) {
+            throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+          }
+          if (!params.sourceInstanceId) {
+            throw new Error(ERRORS.MISSING_SOURCE_INSTANCE_ID);
+          }
+          const sourceNode = await figma.getNodeByIdAsync(params.sourceInstanceId);
+          if (!sourceNode) {
+            throw new Error(`Node ${params.sourceInstanceId} not found`);
+          }
+          if (sourceNode.type !== "INSTANCE") {
+            throw new Error(`Source node is not an instance: ${sourceNode.id} (type: ${sourceNode.type})`);
+          }
           const targetNodeIds = [];
           for (const item of params.targetNodes) {
-            if (!await checkScopeAccess(item.nodeId)) throw new Error(formatScopeError(`Operation denied: Target instance ${item.nodeId} outside editable scope`));
-            if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
+            const node = await figma.getNodeByIdAsync(item.nodeId);
+            if (!node) {
+              throw new Error(`Node ${item.nodeId} not found`);
+            }
+            if (!checkScopeAccessRef(node, instScopeRoot)) {
+              throw new Error(formatScopeError(`Operation denied: Target instance ${item.nodeId} outside editable scope`));
+            }
+            if (node.name !== item.nodeName) {
+              throw new Error(ERRORS.NAME_MISMATCH);
+            }
+            if (node.type !== "INSTANCE") {
+              throw new Error(`Target is not an instance node: ${node.id} (type: ${node.type})`);
+            }
             targetNodeIds.push(item.nodeId);
           }
           const targetNodesResult = await getValidTargetInstances(targetNodeIds);
@@ -4725,17 +4825,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             figma.notify(targetNodesResult.message);
             return { success: false, message: targetNodesResult.message };
           }
-          if (params.sourceInstanceId) {
-            let sourceInstanceData = null;
-            sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
-            if (!sourceInstanceData.success) {
-              figma.notify(sourceInstanceData.message);
-              return { success: false, message: sourceInstanceData.message };
-            }
-            return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
-          } else {
-            throw new Error(ERRORS.MISSING_SOURCE_INSTANCE_ID);
+          let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
+          if (!sourceInstanceData.success) {
+            figma.notify(sourceInstanceData.message);
+            return { success: false, message: sourceInstanceData.message };
           }
+          return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
         }
         throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
       case "instance_set_property":
@@ -4755,8 +4850,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         return await deleteComponentProperty(params);
       case "page_info":
         return await getPagesInfo(params);
-      case "get_selection":
-        return await getSelection();
       case "node_info":
         const effectiveNodeIds = params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0 ? params.nodeIds : state.scopeRootId ? [state.scopeRootId] : [];
         if (effectiveNodeIds.length === 0 && state.readOnly) {
@@ -4775,14 +4868,14 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "annotation_list":
         return await getAnnotations(params);
       case "instance_get_overrides":
-        if (params && params.instanceNodeId) {
-          const instanceNode = await figma.getNodeByIdAsync(params.instanceNodeId);
-          if (!instanceNode) {
-            throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
-          }
-          return await getInstanceOverrides(instanceNode);
+        if (!params || !params.instanceNodeId) {
+          throw new Error("Missing instanceNodeId parameter");
         }
-        return await getInstanceOverrides();
+        const instanceNode = await figma.getNodeByIdAsync(params.instanceNodeId);
+        if (!instanceNode) {
+          throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
+        }
+        return await getInstanceOverrides(instanceNode);
       case "reaction_list":
         if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
           throw new Error(ERRORS.MISSING_NODE_IDS);
@@ -4792,8 +4885,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         return await updateReactions(params);
-      case "node_select":
-        return await setSelections(params);
+      case "view_navigate":
+        return await viewNavigate(params);
       case "variable_list":
         return await getVariables(params);
       case "variable_manage":
@@ -4820,20 +4913,41 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         return await createComponent(params);
       case "create_component_set":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        const compSetScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+        if (!compSetScopeRoot) {
+          throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+        }
         const props = params.properties || [];
         if (params.components) {
           if (!Array.isArray(params.components)) throw new Error("components must be an array");
           for (const comp of params.components) {
-            if (!await checkScopeAccess(comp.nodeId)) throw new Error(formatScopeError(`Operation denied: Component ${comp.nodeId} outside editable scope`));
-            if (!await verifyNodeName(comp.nodeId, comp.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
+            const node = await figma.getNodeByIdAsync(comp.nodeId);
+            if (!node) {
+              throw new Error(`Node ${comp.nodeId} not found`);
+            }
+            if (!checkScopeAccessRef(node, compSetScopeRoot)) {
+              throw new Error(formatScopeError(`Operation denied: Component ${comp.nodeId} outside editable scope`));
+            }
+            if (node.name !== comp.nodeName) {
+              throw new Error(ERRORS.NAME_MISMATCH);
+            }
             if (!comp.propertyValues || comp.propertyValues.length !== props.length) {
               throw new Error(`Property values count for component ${comp.nodeName} does not match properties count`);
             }
           }
         }
         if (params.parentId) {
-          if (!await checkScopeAccess(params.parentId)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-          if (!await verifyParentName(params.parentId, params.parentNodeName)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+          const parentNode = await figma.getNodeByIdAsync(params.parentId);
+          if (!parentNode) {
+            throw new Error(`Node ${params.parentId} not found`);
+          }
+          if (!checkScopeAccessRef(parentNode, compSetScopeRoot)) {
+            throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
+          }
+          if (parentNode.name !== params.parentNodeName) {
+            throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+          }
         }
         return await createComponentSet(params);
       case "create_svg":

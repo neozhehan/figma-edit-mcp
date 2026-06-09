@@ -28,6 +28,7 @@ type FakePage = {
     type: "PAGE";
     children: FakeComponent[];
     findAllWithCriteria: (opts: { types: string[] }) => FakeComponent[];
+    loadAsync: () => Promise<void>;
 };
 
 function makeFixture(): FakePage[] {
@@ -43,6 +44,7 @@ function makeFixture(): FakePage[] {
                 types.includes("COMPONENT")
                     ? components
                     : [],
+            loadAsync: async () => {},
         };
         for (let c = 1; c <= 3; c++) {
             components.push({

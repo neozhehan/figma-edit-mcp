@@ -17,7 +17,7 @@ export function registerCreateTools(server: McpServer) {
                 width: z.number().describe("Width of the shape"),
                 height: z.number().describe("Height of the shape"),
                 name: z.string().optional().describe("Optional name for the shape"),
-                parentId: z.string().optional().describe("Optional parent node ID to append the shape to"),
+                parentId: z.string().describe("Parent node ID to append the shape to"),
                 parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
                 useAbsolutePosition: z.boolean().optional().describe("If true and parent is an auto-layout frame, forces absolute positioning to prevent layout shifts."),
                 fillColor: z.object({
@@ -66,7 +66,7 @@ export function registerCreateTools(server: McpServer) {
                 width: z.number().describe("Width of the frame"),
                 height: z.number().describe("Height of the frame"),
                 name: z.string().optional().describe("Optional name for the frame"),
-                parentId: z.string().optional().describe("Optional parent node ID to append the frame to"),
+                parentId: z.string().describe("Parent node ID to append the frame to"),
                 parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
                 fillColor: z.object({
                     r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -130,7 +130,7 @@ export function registerCreateTools(server: McpServer) {
                     a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
                 }).optional().describe("Font color in RGBA format"),
                 name: z.string().optional().describe("Semantic layer name for the text node"),
-                parentId: z.string().optional().describe("Optional parent node ID to append the text to"),
+                parentId: z.string().describe("Parent node ID to append the text to"),
                 parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
             }),
             outputSchema: z.object({
@@ -162,7 +162,7 @@ export function registerCreateTools(server: McpServer) {
             inputSchema: z.object({
                 svg: z.string().describe("The SVG XML string"),
                 name: z.string().optional().describe("Name for the new node"),
-                parentId: z.string().optional().describe("Parent ID to append to"),
+                parentId: z.string().describe("Parent ID to append to"),
                 parentNodeName: z.string().optional().describe("Parent Name to verify against"),
                 x: z.number().optional().describe("X position"),
                 y: z.number().optional().describe("Y position"),
@@ -216,7 +216,7 @@ export function registerCreateTools(server: McpServer) {
                 componentId: z.string().optional().describe("Node ID of the component to instantiate (preferred for local components)"),
                 x: z.number().describe("X position"),
                 y: z.number().describe("Y position"),
-                parentId: z.string().optional().describe("Optional parent node ID to append the instance to"),
+                parentId: z.string().describe("Parent node ID to append the instance to"),
                 parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
             }),
             outputSchema: z.object({

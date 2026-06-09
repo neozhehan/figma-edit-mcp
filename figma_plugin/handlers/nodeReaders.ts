@@ -112,33 +112,124 @@ export async function getPagesInfo(params: any) {
     };
 }
 
-/**
- * Gets the current selection
- * @returns {Promise<Object>} Selection information
- */
-export async function getSelection() {
-    return {
-        selectionCount: figma.currentPage.selection.length,
-        selection: figma.currentPage.selection.map((node: any) => ({
-            id: node.id,
-            name: node.name,
-            type: node.type,
-            visible: node.visible,
-        })),
-    };
-}
+
 
 /**
  * Gets detailed information about multiple nodes with recursive children, filtering, and streaming.
  * @param {Object} params - Parameters including nodeIds, properties, filter, maxDepth, and commandId
  * @returns {Promise<Object>} Response envelope with nodes and missingNodeIds
  */
+/**
+ * Worker pool implementation for parallel subtree walk.
+ */
+async function getNodesInfoParallel(
+    uniqueIds: string[],
+    properties: string[],
+    filter: Record<string, string[]>,
+    maxDepth: number | undefined,
+    concurrencyLimit: number,
+    commandId: string | undefined,
+    exportCache: Map<string, any>,
+    stats: { processed: number; commandId?: string }
+): Promise<{ nodes: NodeEntry[]; missingNodeIds: string[] }> {
+    const results = new Array(uniqueIds.length);
+    let nextIndex = 0;
+    let completedCount = 0;
+    let lastEmittedPercentage = 0;
+
+    const runWorker = async () => {
+        while (true) {
+            const index = nextIndex++;
+            if (index >= uniqueIds.length) {
+                break;
+            }
+            const id = uniqueIds[index];
+            try {
+                const node = await figma.getNodeByIdAsync(id);
+                if (!node) {
+                    results[index] = { missing: true, id };
+                } else {
+                    const mappedSubtree = await mapNodeRecursive(
+                        node,
+                        0,
+                        maxDepth,
+                        properties,
+                        filter,
+                        exportCache,
+                        stats
+                    );
+
+                    let entry = mappedSubtree;
+                    if (!entry) {
+                        entry = {
+                            id: node.id,
+                            name: node.name,
+                            type: node.type
+                        };
+                        if (Array.isArray(properties) && properties.length > 0) {
+                            const props = await extractProperties(node, properties, exportCache);
+                            if (Object.keys(props).length > 0) {
+                                entry.properties = props;
+                            }
+                        }
+                    }
+                    entry.path = buildPathArray(node);
+                    entry.descendantCount = countDescendants(node);
+                    results[index] = entry;
+                }
+            } catch (error: any) {
+                console.error(`[getNodesInfoParallel] Error processing node ${id}: ${error.message}`);
+                results[index] = { missing: true, id };
+            } finally {
+                completedCount++;
+                if (commandId && uniqueIds.length > 1) {
+                    const rawPercentage = Math.round((completedCount / uniqueIds.length) * 100);
+                    const progressPercent = Math.max(lastEmittedPercentage, rawPercentage);
+                    lastEmittedPercentage = progressPercent;
+
+                    await sendProgressUpdate(
+                        commandId,
+                        'get_nodes_info',
+                        'in_progress',
+                        progressPercent,
+                        uniqueIds.length,
+                        completedCount,
+                        `Processed ${completedCount}/${uniqueIds.length} top-level nodes`
+                    );
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
+        }
+    };
+
+    const poolLimit = Math.min(concurrencyLimit, uniqueIds.length);
+    const workers = [];
+    for (let i = 0; i < poolLimit; i++) {
+        workers.push(runWorker());
+    }
+    await Promise.all(workers);
+
+    const nodes: NodeEntry[] = [];
+    const missingNodeIds: string[] = [];
+    for (let i = 0; i < uniqueIds.length; i++) {
+        const res = results[i];
+        if (res && res.missing) {
+            missingNodeIds.push(res.id);
+        } else if (res) {
+            nodes.push(res);
+        }
+    }
+
+    return { nodes, missingNodeIds };
+}
+
 export async function getNodesInfo(params: any) {
     const { 
         nodeIds = [], 
         properties = [], 
         filter = {}, 
         maxDepth, 
+        concurrencyLimit = 4,
         commandId 
     } = params || {};
 
@@ -148,11 +239,6 @@ export async function getNodesInfo(params: any) {
         const uniqueIds = (Array.isArray(nodeIds) ? nodeIds : []).filter((id: any) => 
             id && typeof id === 'string' && !seen.has(id) && (seen.add(id), true)
         );
-
-        const nodes: NodeEntry[] = [];
-        const missingNodeIds: string[] = [];
-        const exportCache = new Map<string, any>();
-        const stats = { processed: 0, commandId };
 
         if (commandId) {
             await sendProgressUpdate(
@@ -166,68 +252,20 @@ export async function getNodesInfo(params: any) {
             );
         }
 
-        // 2. Process each top-level node ID
-        for (const [index, id] of uniqueIds.entries()) {
-            const node = await figma.getNodeByIdAsync(id);
-            if (!node) {
-                missingNodeIds.push(id);
-                continue;
-            }
+        const exportCache = new Map<string, any>();
+        const stats = { processed: 0, commandId };
+        const limit = Math.max(1, typeof concurrencyLimit === 'number' ? concurrencyLimit : 4);
 
-            // Subtree walk starting at depth 0
-            const mappedSubtree = await mapNodeRecursive(
-                node, 
-                0, 
-                maxDepth, 
-                properties, 
-                filter, 
-                exportCache, 
-                stats
-            );
-
-            // 3. Top-level result construction
-            // Per spec §Filtering: requested ids ALWAYS appear in the response,
-            // even when neither the node nor any descendant matches the filter.
-            // mapNodeRecursive returns null in that case — synthesize a
-            // passthrough entry so the requested id is preserved.
-            let entry = mappedSubtree;
-            if (!entry) {
-                entry = {
-                    id: node.id,
-                    name: node.name,
-                    type: node.type
-                };
-                if (Array.isArray(properties) && properties.length > 0) {
-                    const props = await extractProperties(node, properties, exportCache);
-                    if (Object.keys(props).length > 0) {
-                        entry.properties = props;
-                    }
-                }
-            }
-            // Ensure top-level entries have the mandatory path and descendantCount
-            entry.path = buildPathArray(node);
-            entry.descendantCount = countDescendants(node);
-            nodes.push(entry);
-
-            // Multi-id streaming: per spec §Loading rule 2, emit `in_progress`
-            // + yield AFTER EACH id (not every-25). Order matters — emit first
-            // resets the MCP 60s inactivity timer, yield then flushes the
-            // sandbox postMessage queue so the event isn't coalesced.
-            // Skipped for single-id calls (the intra-subtree pair inside
-            // mapNodeRecursive carries the timeout reset for the lone iteration).
-            if (commandId && uniqueIds.length > 1) {
-                await sendProgressUpdate(
-                    commandId,
-                    'get_nodes_info',
-                    'in_progress',
-                    Math.round(((index + 1) / uniqueIds.length) * 100),
-                    uniqueIds.length,
-                    index + 1,
-                    `Processed ${index + 1}/${uniqueIds.length} top-level nodes`
-                );
-                await new Promise(r => setTimeout(r, 0));
-            }
-        }
+        const { nodes, missingNodeIds } = await getNodesInfoParallel(
+            uniqueIds,
+            properties,
+            filter,
+            maxDepth,
+            limit,
+            commandId,
+            exportCache,
+            stats
+        );
 
         // 4. Final completion event
         if (commandId) {
@@ -417,16 +455,13 @@ async function extractProperties(
 
     let exportedData: any = null;
     if (needsExport) {
-        if (exportCache.has(node.id)) {
-            exportedData = exportCache.get(node.id);
-        } else {
-            // Using JSON_REST_V1 export to get comprehensive property data
-            const response = await (node as any).exportAsync({
+        if (!exportCache.has(node.id)) {
+            const promise = (node as any).exportAsync({
                 format: "JSON_REST_V1",
-            });
-            exportedData = response.document;
-            exportCache.set(node.id, exportedData);
+            }).then((r: any) => r.document);
+            exportCache.set(node.id, promise);
         }
+        exportedData = await exportCache.get(node.id);
     }
 
     // Spec §Per-node entry, with `properties`: these keys are silently excluded

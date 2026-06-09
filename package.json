@@ -63,6 +63,7 @@
     "plugin:build": "node figma_plugin/build.js",
     "plugin:watch": "node figma_plugin/build.js --watch",
     "build:all": "bun run gen:node-fields && bun run build && bun run plugin:build",
+    "check:plugin": "bun run scripts/check-plugin-build.ts",
     "gen:node-fields": "bun run scripts/gen-node-fields.ts",
     "gen:manifest": "bun run scripts/gen-manifest-tools.ts",
     "build:smithery": "bash scripts/build-smithery-bundle.sh",

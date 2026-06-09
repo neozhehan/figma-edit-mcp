@@ -13,4 +13,4 @@ export {
     setCharactersWithStrictMatchFont,
     setCharactersWithSmartMatchFont
 } from './textUtils.js';
-export { filterFigmaNode, collectNodesToProcess } from './nodeUtils.js';
+export { filterFigmaNode, collectNodesToProcess, getContainingPageNode } from './nodeUtils.js';

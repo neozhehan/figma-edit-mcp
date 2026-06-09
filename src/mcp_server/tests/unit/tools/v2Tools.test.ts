@@ -30,7 +30,7 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             "page_info",
             // node
             "node_info", "node_transform", "node_rename", "node_delete", "node_clone",
-            "node_select", "node_group", "node_ungroup", "node_flatten", "node_insert_child",
+            "view_navigate", "node_group", "node_ungroup", "node_flatten", "node_insert_child",
             "node_set_auto_layout", "node_set_fill", "node_set_stroke", "node_set_corner_radius",
             "node_set_effects", "node_apply_style", "node_bind_variable", "node_export_visual",
             // create
@@ -157,6 +157,58 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
                 }
             }
         }
+    });
+
+    describe("v2.1.0 schema constraints", () => {
+        it("all five creation tools require parentId", () => {
+            const registered = (server as any)._registeredTools;
+            // Superset of every creator's required fields; zod strips unknown keys,
+            // so the only thing missing is parentId.
+            const base = { type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10, text: "hi", svg: "<svg/>", componentId: "c1" };
+            for (const t of ["create_shape", "create_frame", "create_text", "create_svg", "create_instance"]) {
+                const schema = registered[t].inputSchema;
+                expect(schema.safeParse({ ...base }).success).toBe(false);          // no parentId → rejected
+                expect(schema.safeParse({ ...base, parentId: "p1" }).success).toBe(true);
+            }
+        });
+
+        it("instance_get_overrides requires nodeId", () => {
+            const schema = (server as any)._registeredTools["instance_get_overrides"].inputSchema;
+            expect(schema.safeParse({}).success).toBe(false);
+            expect(schema.safeParse({ nodeId: "i1" }).success).toBe(true);
+        });
+
+        it("node_export_visual caps scale to [0.1, 4]", () => {
+            const schema = (server as any)._registeredTools["node_export_visual"].inputSchema;
+            expect(schema.safeParse({ nodeId: "n1", scale: 5 }).success).toBe(false);
+            expect(schema.safeParse({ nodeId: "n1", scale: 0.05 }).success).toBe(false);
+            expect(schema.safeParse({ nodeId: "n1", scale: 4 }).success).toBe(true);
+            expect(schema.safeParse({ nodeId: "n1", scale: 0.1 }).success).toBe(true);
+        });
+
+        it("component_list defaults scope to 'document' and only accepts 'page'|'document'", () => {
+            const schema = (server as any)._registeredTools["component_list"].inputSchema;
+            const parsed = schema.safeParse({});
+            expect(parsed.success).toBe(true);
+            expect((parsed as any).data.scope).toBe("document");
+            expect(schema.safeParse({ scope: "current_page" }).success).toBe(false); // old value retired
+        });
+
+        it("variable_list.includeConsumers is optional with no default (off when omitted)", () => {
+            const schema = (server as any)._registeredTools["variable_list"].inputSchema;
+            const parsed = schema.safeParse({});
+            expect(parsed.success).toBe(true);
+            expect((parsed as any).data.includeConsumers).toBeUndefined();
+            expect(schema.safeParse({ includeConsumers: "page" }).success).toBe(true);
+            expect(schema.safeParse({ includeConsumers: "current_page" }).success).toBe(false);
+        });
+
+        it("view_navigate is registered with input `ids` and node_select is absent", () => {
+            const registered = (server as any)._registeredTools;
+            expect("view_navigate" in registered).toBe(true);
+            expect("node_select" in registered).toBe(false);
+            expect("ids" in registered["view_navigate"].inputSchema.shape).toBe(true);
+        });
     });
 
     describe("Tool routing & payload verification", () => {

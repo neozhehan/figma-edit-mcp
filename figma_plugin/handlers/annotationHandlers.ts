@@ -14,7 +14,11 @@ import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js
  */
 export async function getAnnotations(params: any) {
     try {
-        const { nodeId, includeCategories = true } = params;
+        const { nodeId, pageId, includeCategories = true } = params || {};
+
+        if ((nodeId && pageId) || (!nodeId && !pageId)) {
+            throw new Error("Exactly one of pageId or nodeId is required");
+        }
 
         // Get categories first if needed
         let categoriesMap: any = {};
@@ -31,7 +35,48 @@ export async function getAnnotations(params: any) {
             }, {});
         }
 
-        if (nodeId) {
+        if (pageId) {
+            const page = await figma.getNodeByIdAsync(pageId);
+            if (!page) {
+                throw new Error(`pageId with ID ${pageId} not found`);
+            }
+            if (page.type !== 'PAGE') {
+                throw new Error("pageId does not resolve to a PAGE");
+            }
+
+            // Get all annotations in the page
+            const annotations: any[] = [];
+            const processNode = async (node: any) => {
+                if (
+                    "annotations" in node &&
+                    node.annotations &&
+                    node.annotations.length > 0
+                ) {
+                    annotations.push({
+                        nodeId: node.id,
+                        name: node.name,
+                        annotations: node.annotations,
+                    });
+                }
+                if ("children" in node) {
+                    for (const child of node.children) {
+                        await processNode(child);
+                    }
+                }
+            };
+
+            await processNode(page);
+
+            const result: any = {
+                annotatedNodes: annotations,
+            };
+
+            if (includeCategories) {
+                result.categories = Object.values(categoriesMap);
+            }
+
+            return result;
+        } else {
             // Get annotations for a specific node
             const node = await figma.getNodeByIdAsync(nodeId);
             if (!node) {
@@ -62,40 +107,6 @@ export async function getAnnotations(params: any) {
                 nodeId: node.id,
                 name: node.name,
                 annotations: mergedAnnotations,
-            };
-
-            if (includeCategories) {
-                result.categories = Object.values(categoriesMap);
-            }
-
-            return result;
-        } else {
-            // Get all annotations in the current page
-            const annotations: any[] = [];
-            const processNode = async (node: any) => {
-                if (
-                    "annotations" in node &&
-                    node.annotations &&
-                    node.annotations.length > 0
-                ) {
-                    annotations.push({
-                        nodeId: node.id,
-                        name: node.name,
-                        annotations: node.annotations,
-                    });
-                }
-                if ("children" in node) {
-                    for (const child of node.children) {
-                        await processNode(child);
-                    }
-                }
-            };
-
-            // Start from current page
-            await processNode(figma.currentPage);
-
-            const result: any = {
-                annotatedNodes: annotations,
             };
 
             if (includeCategories) {
@@ -238,6 +249,7 @@ export async function setMultipleAnnotations(params: any) {
                     error: result.error,
                 });
                 console.error(`✗ Annotation ${i + 1} failed:`, result.error);
+                break; // Stop on first failure
             }
         } catch (error: any) {
             failureCount++;
@@ -248,15 +260,12 @@ export async function setMultipleAnnotations(params: any) {
             };
             results.push(errorResult);
             console.error(`✗ Annotation ${i + 1} failed with error:`, error);
-            console.error("Error details:", {
-                message: error.message,
-                stack: error.stack,
-            });
+            break; // Stop on first failure
         }
     }
 
     const summary: any = {
-        success: successCount > 0,
+        success: successCount > 0 && failureCount === 0,
         annotationsApplied: successCount,
         annotationsFailed: failureCount,
         totalAnnotations: annotations.length,
