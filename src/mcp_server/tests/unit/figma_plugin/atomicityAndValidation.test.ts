@@ -315,4 +315,19 @@ describe("Phase 4: Stop on first failure in batch handlers", () => {
         expect(result.nodesDeleted).toBe(2);
         expect(result.nodesFailed).toBe(1);
     });
+
+    it("setInstanceOverrides stops on the first failure and returns a standardized report (no rollback)", async () => {
+        const t1: any = { id: "t1", name: "T1", swapComponent: () => {} };
+        const t2: any = { id: "t2", name: "T2", swapComponent: () => { throw new Error("swap fail"); } };
+        const t3: any = { id: "t3", name: "T3", swapComponent: () => {} };
+        const sourceResult = { sourceInstance: { id: "src" }, mainComponent: { id: "main" }, overrides: [] };
+
+        const result: any = await setInstanceOverrides([t1, t2, t3], sourceResult);
+
+        // t1 succeeds, t2 fails → stop. t3 is never processed.
+        expect(result.success).toBe(false);
+        expect(result.results.length).toBe(2);
+        expect(result.results[0].success).toBe(true);
+        expect(result.results[1].success).toBe(false);
+    });
 });

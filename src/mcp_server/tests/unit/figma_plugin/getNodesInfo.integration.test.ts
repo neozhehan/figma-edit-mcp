@@ -719,4 +719,29 @@ describe("Phase 3 — Bounded Parallelism and Progress Streaming", () => {
         expect(completedEvent.progress).toBe(100);
         expect(completedEvent.processedItems).toBe(3);
     });
+
+    it("exportCache memoizes concurrent exports of the same node id (caches the pending promise, not resolved data)", async () => {
+        const exportCalls: Record<string, number> = {};
+        const mkExport = (id: string) => async () => {
+            exportCalls[id] = (exportCalls[id] ?? 0) + 1;
+            await new Promise(r => setTimeout(r, 5)); // keep the export pending across the await
+            return { document: { style: { f: 1 } } };
+        };
+        const C: any = { id: "C", name: "C", type: "TEXT", exportAsync: mkExport("C") };
+        const P: any = { id: "P", name: "P", type: "FRAME", children: [C], exportAsync: mkExport("P") };
+        C.parent = P;
+        (globalThis as any).figma = {
+            getNodeByIdAsync: async (id: string) => ({ P, C } as any)[id] ?? null,
+            root: { children: [] },
+        };
+
+        // Top-level ids [P, C] with concurrencyLimit 2: worker A walks P and recurses
+        // into C; worker B walks C directly — both call extractProperties("C")
+        // concurrently. `style` is non-safe-list, so each triggers an export.
+        await getNodesInfo({ nodeIds: ["P", "C"], properties: ["style"], concurrencyLimit: 2 });
+
+        // Exactly one export despite two concurrent walkers. A regression that caches
+        // resolved data (awaiting before set) would export "C" twice.
+        expect(exportCalls["C"]).toBe(1);
+    });
 });

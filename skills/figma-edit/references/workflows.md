@@ -18,6 +18,26 @@ Every workflow that touches a node should start with a read. There is no excepti
 
 ---
 
+## Editor Navigation (view_navigate)
+
+You can navigate the editor view using **`view_navigate`**:
+* **Page Target**: Pass a single `PAGE` node ID in `ids` to switch the user's active page. No selection is made.
+* **Node Target(s)**: Pass one or more scene node IDs (which must all share the same containing page). The plugin will automatically switch to that page, select the nodes, and center the editor viewport on them (`scrollAndZoomIntoView`).
+
+*Note*: Navigation is exempt from scope locks and works even in `READ_ONLY_MODE`.
+
+---
+
+## Visual Image Block Exports (node_export_visual)
+
+When exporting nodes to verify changes visually, using `PNG` or `JPG` format is extremely powerful:
+* The `node_export_visual` tool will return a **native MCP image block** containing the base64-encoded image and its correct MIME type (`image/png` or `image/jpeg`).
+* Supporting MCP clients will automatically render this image inline within your chat response.
+* Always request `PNG` or `JPG` when you need to visually verify a layout change or present the current design state to the user.
+* Request `SVG` or `PDF` when you need the raw structural markup or a vector file format.
+
+---
+
 ## Recipes
 
 These are the canonical shapes. Adapt parameters; do not skip steps.
@@ -29,8 +49,8 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
 2. node_info({ nodeIds: [pageId],
                filter: { type: "TEXT" },
                fields: ["characters", "name"] })         → list text nodes
-3. text_set_content({ nodeId: parentId, text: [
-     { nodeId, nodeName, text }, ...                     → names verbatim from step 2
+3. text_set_content({ text: [
+     { nodeId, nodeName, characters }, ...               → names verbatim from step 2
    ]})
 ```
 

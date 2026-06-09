@@ -76,44 +76,44 @@
 ## Phase 6: Documentation, Builds, and Verification
 
 ### Documentation & build
-- [ ] Update agent-facing guides in `skills/figma-edit/references/`:
+- [x] Update agent-facing guides in `skills/figma-edit/references/`:
   - `constraints.md` (required `parentId`, overrides `nodeId`, no-scope selection).
   - `tool-selection.md` (`component_list` defaults/scopes, `variable_list` opt-ins, `annotation_list` targets).
   - `error-playbook.md` (add missing page/parent/node type error strings, retire `ROOT_INSTANCE_DISALLOWED`).
   - `workflows.md` (discovery mandate, page-switching navigations, visual image block exports).
-- [ ] Rebuild plugin bundle `figma_plugin/code.js` via `npm run build:all` (or `bun run build:all`).
-- [ ] Add a CI/check that fails if `figma_plugin/code.js` is out of date relative to its sources (`figma_plugin/src/main.ts` + `figma_plugin/handlers/*.ts`).
+- [x] Rebuild plugin bundle `figma_plugin/code.js` via `npm run build:all` (or `bun run build:all`).
+- [x] Add a CI/check that fails if `figma_plugin/code.js` is out of date relative to its sources (`figma_plugin/src/main.ts` + `figma_plugin/handlers/*.ts`).
 
 ### Automated tests
 Every functional change in this release needs unit coverage. Plugin handlers are unit-testable with the figma-stub + dynamic-import pattern under `src/mcp_server/tests/unit/figma_plugin/`; MCP tools under `src/mcp_server/tests/unit/tools/`.
 
 **Unit — plugin handlers (`figma.currentPage` elimination, §1):**
-- [ ] `getContainingPageNode` (`nodeUtils.test.ts`): returns the containing `PAGE`; returns the node itself when it is a `PAGE`; returns `null` for detached/document-root nodes.
-- [ ] Creation tools reject bad parents (`nodeCreators`/`vectorHandlers`/`componentHandlers`): `create_shape`/`create_frame`/`create_text`/`create_svg`/`create_instance` throw when `parentId` is missing **and** when it does not resolve — and never append to `figma.currentPage`.
-- [ ] `node_clone` throws when the source node is parentless (no `figma.currentPage` fallback).
-- [ ] `createComponentSet` combines variants on the **first component's containing page**, not `figma.currentPage`.
-- [ ] `getComponents` with `scope: 'page'`: throws on missing `pageId`, throws when `pageId` is not a `PAGE`, and queries the given page (not `figma.currentPage`).
-- [ ] `getAnnotations`: requires exactly one of `pageId`/`nodeId` (throws on neither and on both); verifies `pageId` is a `PAGE`; no `figma.currentPage` fallback.
-- [ ] `getVariables` with `includeConsumers: 'page'`: throws on missing/non-`PAGE` `pageId`; omitting `includeConsumers` runs **no** consumer scan.
-- [ ] `getInstanceOverrides`: errors when no instance id is supplied (selection fallback removed); the no-arg dispatch branch is gone.
-- [ ] `view_navigate` (`setSelections`): page target switches page with no selection; node target(s) switch to the shared page + select + `scrollAndZoomIntoView`; throws **before any write** on not-found id, `DOCUMENT` id, `PAGE` mixed with nodes/another page, detached node, and multi-page node sets; remains un-scope-gated.
-- [ ] `getSelection` / the `"get_selection"` command are removed (no longer exported or dispatched).
+- [x] `getContainingPageNode` (`nodeUtils.test.ts`): returns the containing `PAGE`; returns the node itself when it is a `PAGE`; returns `null` for detached/document-root nodes.
+- [x] Creation tools reject bad parents (`nodeCreators`/`vectorHandlers`/`componentHandlers`): `create_shape`/`create_frame`/`create_text`/`create_svg`/`create_instance` throw when `parentId` is missing **and** when it does not resolve — and never append to `figma.currentPage`.
+- [x] `node_clone` throws when the source node is parentless (no `figma.currentPage` fallback).
+- [x] `createComponentSet` combines variants on the **first component's containing page**, not `figma.currentPage`.
+- [x] `getComponents` with `scope: 'page'`: throws on missing `pageId`, throws when `pageId` is not a `PAGE`, and queries the given page (not `figma.currentPage`).
+- [x] `getAnnotations`: requires exactly one of `pageId`/`nodeId` (throws on neither and on both); verifies `pageId` is a `PAGE`; no `figma.currentPage` fallback.
+- [x] `getVariables` with `includeConsumers: 'page'`: throws on missing/non-`PAGE` `pageId`; omitting `includeConsumers` runs **no** consumer scan.
+- [x] `getInstanceOverrides`: errors when no instance id is supplied (selection fallback removed); the no-arg dispatch branch is gone.
+- [x] `view_navigate` (`setSelections`): page target switches page with no selection; node target(s) switch to the shared page + select + `scrollAndZoomIntoView`; throws **before any write** on not-found id, `DOCUMENT` id, `PAGE` mixed with nodes/another page, detached node, and multi-page node sets; remains un-scope-gated.
+- [x] `getSelection` / the `"get_selection"` command are removed (no longer exported or dispatched).
 
 **Unit — parallelism & atomicity (§2/§3, `nodeReaders` + `main.ts` dispatch):**
-- [ ] `exportCache` promise-memoization: an overlapping subtree / duplicate instance calls a stubbed `exportAsync` **once** per node id (assert call count).
-- [ ] Batch not-found error: a stale id in `node_delete`/`text_set_content`/etc. throws an explicit "Node X not found" (not "outside scope"/"name mismatch").
-- [ ] Type-integrity pre-validation aborts with **zero** mutations: `text_set_content` on a non-`TEXT` target, `annotation_set` on an unsupported target, `instance_set_overrides` on a non-`INSTANCE` target/source.
-- [ ] Mutation-phase stop-and-report: `setMultipleTextContents`/`setMultipleAnnotations`/`setInstanceOverrides` stop on the first runtime failure and return the standardized completed-vs-failed report; no rollback.
-- [ ] `node_delete` stays resilient: a mix of valid/invalid nodes returns partial `successCount`/`failureCount` (excluded from stop-on-first-failure).
+- [x] `exportCache` promise-memoization: an overlapping subtree / duplicate instance calls a stubbed `exportAsync` **once** per node id (assert call count).
+- [x] Batch not-found error: a stale id in `node_delete`/`text_set_content`/etc. throws an explicit "Node X not found" (not "outside scope"/"name mismatch").
+- [x] Type-integrity pre-validation aborts with **zero** mutations: `text_set_content` on a non-`TEXT` target, `annotation_set` on an unsupported target, `instance_set_overrides` on a non-`INSTANCE` target/source.
+- [x] Mutation-phase stop-and-report: `setMultipleTextContents`/`setMultipleAnnotations`/`setInstanceOverrides` stop on the first runtime failure and return the standardized completed-vs-failed report; no rollback.
+- [x] `node_delete` stays resilient: a mix of valid/invalid nodes returns partial `successCount`/`failureCount` (excluded from stop-on-first-failure).
 
 **Unit — MCP tools & schemas (§1/§4, `tools/`):**
-- [ ] Schemas updated: required `parentId` on all 5 creation tools; required `nodeId` on `instance_get_overrides`; `component_list.scope = 'page'|'document'` (default `'document'`); `variable_list.includeConsumers = 'page'|'document'` (optional, no default); `annotation_list` accepts `pageId`/`nodeId`; `node_export_visual.scale` = `.min(0.1).max(4)`.
-- [ ] Tool registry: `view_navigate` is registered with input `ids`, and `node_select` is absent (update `v2Tools.test.ts`).
-- [ ] `toolResult`: PNG/JPG → text-summary + native `image` block (text block omits `imageData`); `structuredContent` keeps the full payload incl. `imageData`; SVG and PDF fall through to text; image `data` is bare base64 (no `data:` prefix).
+- [x] Schemas updated: required `parentId` on all 5 creation tools; required `nodeId` on `instance_get_overrides`; `component_list.scope = 'page'|'document'` (default `'document'`); `variable_list.includeConsumers = 'page'|'document'` (optional, no default); `annotation_list` accepts `pageId`/`nodeId`; `node_export_visual.scale` = `.min(0.1).max(4)`.
+- [x] Tool registry: `view_navigate` is registered with input `ids`, and `node_select` is absent (update `v2Tools.test.ts`).
+- [x] `toolResult`: PNG/JPG → text-summary + native `image` block (text block omits `imageData`); `structuredContent` keeps the full payload incl. `imageData`; SVG and PDF fall through to text; image `data` is bare base64 (no `data:` prefix).
 
 **Integration:**
-- [ ] Rewrite the streaming tests in `getNodesInfo.integration.test.ts` to the parallel contract: `nodes` input-ordered; missing ids in `missingNodeIds`; progress count monotonic (missing ids included); a failing subtree is isolated (recorded missing/errored, others unaffected).
-- [ ] Add a micro-benchmark comparing `P = 4` vs `P = 1` on a representative multi-id export workload (gates the parallelism win; flips to `P = 1` on regression).
+- [x] Rewrite the streaming tests in `getNodesInfo.integration.test.ts` to the parallel contract: `nodes` input-ordered; missing ids in `missingNodeIds`; progress count monotonic (missing ids included); a failing subtree is isolated (recorded missing/errored, others unaffected).
+- [x] Add a micro-benchmark comparing `P = 4` vs `P = 1` on a representative multi-id export workload (gates the parallelism win; flips to `P = 1` on regression).
 
 ### Manual verification
 - [ ] Manually verify UI creators require `parentId`, `view_navigate` page jumps (page target and cross-page node target), and PNG/JPG rendering as inline images in an MCP client.
