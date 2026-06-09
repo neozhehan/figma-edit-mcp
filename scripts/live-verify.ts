@@ -442,6 +442,81 @@ async function main() {
         
         console.log("✅ Bounded Parallelism & Streaming verified successfully on live channel.");
 
+        // 6.7 Phase 4 v2.1.0 Atomicity & Type Pre-Validation Verification
+        console.log("\n--- Step 6.7: Phase 4 Atomicity & Type Pre-Validation Verification ---");
+
+        // A text node for the atomicity tests. The existing `rect` (RECTANGLE) is the wrong-typed target.
+        console.log("Creating a text node for atomicity tests...");
+        const atomicText: any = await sendCommandToFigma("create_text", {
+            parentId: scopeRootId,
+            parentNodeName: scopeRootName,
+            x: 50,
+            y: 500,
+            text: "ATOMIC_ORIGINAL",
+            name: "AtomicText"
+        });
+        console.log(`Created text node: ID=${atomicText.id}`);
+
+        // A. Type pre-validation: a batch with one wrong-typed (non-TEXT) target must abort with
+        //    ZERO mutations. The valid text node is listed FIRST, so a non-atomic implementation
+        //    would mutate it before hitting the failing entry.
+        console.log("Checking text_set_content aborts (zero mutations) when a batch contains a non-TEXT target...");
+        let textBatchThrew = false;
+        try {
+            await sendCommandToFigma("text_set_content", {
+                text: [
+                    { nodeId: atomicText.id, nodeName: "AtomicText", characters: "ATOMIC_MUTATED" },
+                    { nodeId: rect.id, nodeName: rect.name, characters: "ATOMIC_MUTATED" } // RECTANGLE — wrong type
+                ]
+            });
+        } catch (err: any) {
+            textBatchThrew = true;
+            console.log("   text_set_content rejected wrong-typed batch (expected):", err.message);
+        }
+        if (!textBatchThrew) {
+            throw new Error("Expected text_set_content to reject a batch containing a non-TEXT target.");
+        }
+
+        // Confirm zero mutations: the valid (first) text node must be UNCHANGED.
+        const atomicCheck: any = await sendCommandToFigma("node_info", {
+            nodeIds: [atomicText.id],
+            properties: ["characters"]
+        });
+        const atomicChars = atomicCheck.nodes[0].properties?.characters;
+        if (atomicChars !== "ATOMIC_ORIGINAL") {
+            throw new Error(`Expected text node untouched ("ATOMIC_ORIGINAL"), got "${atomicChars}" — batch was not atomic!`);
+        }
+        console.log("   ✅ Valid target untouched (zero mutations) — type check aborts before any write.");
+
+        // B. node_delete is validation-atomic: a not-found id aborts the whole batch at dispatch
+        //    ("Node X not found") BEFORE any deletion — it does NOT return partial successCount.
+        //    (Resilient partial successCount/failureCount applies only to mutation-phase races on
+        //    already-validated nodes — covered by the unit tests, not stageable live.)
+        console.log("Checking node_delete is validation-atomic: a not-found id aborts without deleting valid targets...");
+        let deleteThrew = false;
+        try {
+            await sendCommandToFigma("node_delete", {
+                nodes: [
+                    { nodeId: "ghost-delete-id-99999", nodeName: "Ghost" },
+                    { nodeId: atomicText.id, nodeName: "AtomicText" }
+                ]
+            });
+        } catch (err: any) {
+            deleteThrew = true;
+            console.log("   node_delete rejected stale id (expected):", err.message);
+        }
+        if (!deleteThrew) {
+            throw new Error("Expected node_delete to reject a batch containing a not-found id.");
+        }
+        // Confirm zero deletions: the valid node must survive the aborted batch.
+        const survived: any = await sendCommandToFigma("node_info", { nodeIds: [atomicText.id], properties: ["type"] });
+        if (!survived.nodes || survived.nodes.length !== 1 || survived.nodes[0].id !== atomicText.id) {
+            throw new Error("Expected the valid text node to survive the aborted node_delete batch.");
+        }
+        console.log("   ✅ node_delete validation-atomic: stale id aborted the batch, valid node survived.");
+
+        console.log("✅ Phase 4 Atomicity & Type Pre-Validation verified successfully on live channel.");
+
         // 7. Cleanup
         console.log("\n--- Step 7: Cleanup ---");
         console.log("Deleting created test nodes...");
@@ -450,7 +525,8 @@ async function main() {
                 { nodeId: rect.id, nodeName: rect.name },
                 { nodeId: star5.id, nodeName: star5.name },
                 { nodeId: star7.id, nodeName: star7.name },
-                { nodeId: comp.id, nodeName: comp.name }
+                { nodeId: comp.id, nodeName: comp.name },
+                { nodeId: atomicText.id, nodeName: "AtomicText" }
             ]
         });
         console.log("✅ Cleanup complete.");

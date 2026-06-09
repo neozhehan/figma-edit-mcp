@@ -249,6 +249,7 @@ export async function setMultipleAnnotations(params: any) {
                     error: result.error,
                 });
                 console.error(`✗ Annotation ${i + 1} failed:`, result.error);
+                break; // Stop on first failure
             }
         } catch (error: any) {
             failureCount++;
@@ -259,15 +260,12 @@ export async function setMultipleAnnotations(params: any) {
             };
             results.push(errorResult);
             console.error(`✗ Annotation ${i + 1} failed with error:`, error);
-            console.error("Error details:", {
-                message: error.message,
-                stack: error.stack,
-            });
+            break; // Stop on first failure
         }
     }
 
     const summary: any = {
-        success: successCount > 0,
+        success: successCount > 0 && failureCount === 0,
         annotationsApplied: successCount,
         annotationsFailed: failureCount,
         totalAnnotations: annotations.length,

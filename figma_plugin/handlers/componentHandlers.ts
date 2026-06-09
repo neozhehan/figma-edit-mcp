@@ -465,122 +465,115 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
         // Process all instances
         const results: any[] = [];
         let totalAppliedCount = 0;
+        let successCount = 0;
+        let failureCount = 0;
 
         for (const targetInstance of targetInstances) {
+            let appliedCount = 0;
+            let hasFailure = false;
+            let failureMsg = "";
+
             try {
                 // Swap component
                 try {
                     targetInstance.swapComponent(mainComponent);
                     console.log(`Swapped component for instance "${targetInstance.name}"`);
                 } catch (error: any) {
-                    console.error(`Error swapping component for instance "${targetInstance.name}":`, error);
-                    results.push({
-                        success: false,
-                        instanceId: targetInstance.id,
-                        instanceName: targetInstance.name,
-                        message: `Error: ${error.message}`
-                    });
+                    hasFailure = true;
+                    failureMsg = `Swap component error: ${error.message}`;
                 }
 
-                // Prepare overrides by replacing node IDs
-                let appliedCount = 0;
-
-                // Apply each override
-                for (const override of overrides) {
-                    // Skip if no ID or overriddenFields
-                    if (!override.id || !override.overriddenFields || override.overriddenFields.length === 0) {
-                        continue;
-                    }
-
-                    // Replace source instance ID with target instance ID in the node path
-                    const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
-                    const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
-
-                    if (!overrideNode) {
-                        console.log(`Override node not found: ${overrideNodeId}`);
-                        continue;
-                    }
-
-                    // Get source node to copy properties from
-                    const sourceNode = await figma.getNodeByIdAsync(override.id);
-                    if (!sourceNode) {
-                        console.log(`Source node not found: ${override.id}`);
-                        continue;
-                    }
-
-                    // Apply each overridden field
-                    let fieldApplied = false;
-                    for (const field of override.overriddenFields) {
-                        try {
-                            if (field === "componentProperties") {
-                                // Apply component properties
-                                // @ts-ignore
-                                if (sourceNode.componentProperties && overrideNode.componentProperties) {
-                                    const properties: any = {};
-                                    // @ts-ignore
-                                    for (const key in sourceNode.componentProperties) {
-                                        // @ts-ignore
-                                        properties[key] = sourceNode.componentProperties[key].value;
-                                    }
-                                    // @ts-ignore
-                                    overrideNode.setProperties(properties);
-                                    fieldApplied = true;
-                                }
-                            } else if (field === "characters" && overrideNode.type === "TEXT") {
-                                // For text nodes, need to load fonts first
-                                // @ts-ignore
-                                await figma.loadFontAsync(overrideNode.fontName);
-                                // @ts-ignore
-                                overrideNode.characters = sourceNode.characters;
-                                fieldApplied = true;
-                            } else if (field in overrideNode) {
-                                // Direct property assignment
-                                // @ts-ignore
-                                overrideNode[field] = sourceNode[field];
-                                fieldApplied = true;
-                            }
-                        } catch (fieldError: any) {
-                            console.error(`Error applying field ${field}:`, fieldError);
+                if (!hasFailure) {
+                    // Apply each override
+                    for (const override of overrides) {
+                        // Skip if no ID or overriddenFields
+                        if (!override.id || !override.overriddenFields || override.overriddenFields.length === 0) {
+                            continue;
                         }
-                    }
 
-                    if (fieldApplied) {
+                        // Replace source instance ID with target instance ID in the node path
+                        const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
+                        const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
+
+                        if (!overrideNode) {
+                            continue;
+                        }
+
+                        // Get source node to copy properties from
+                        const sourceNode = await figma.getNodeByIdAsync(override.id);
+                        if (!sourceNode) {
+                            continue;
+                        }
+
+                        // Apply each overridden field
+                        for (const field of override.overriddenFields) {
+                            try {
+                                if (field === "componentProperties") {
+                                    // Apply component properties
+                                    // @ts-ignore
+                                    if (sourceNode.componentProperties && overrideNode.componentProperties) {
+                                        const properties: any = {};
+                                        // @ts-ignore
+                                        for (const key in sourceNode.componentProperties) {
+                                            // @ts-ignore
+                                            properties[key] = sourceNode.componentProperties[key].value;
+                                        }
+                                        // @ts-ignore
+                                        overrideNode.setProperties(properties);
+                                    }
+                                } else if (field === "characters" && overrideNode.type === "TEXT") {
+                                    // For text nodes, need to load fonts first
+                                    // @ts-ignore
+                                    await figma.loadFontAsync(overrideNode.fontName);
+                                    // @ts-ignore
+                                    overrideNode.characters = sourceNode.characters;
+                                } else if (field in overrideNode) {
+                                    // Direct property assignment
+                                    // @ts-ignore
+                                    overrideNode[field] = sourceNode[field];
+                                }
+                            } catch (fieldError: any) {
+                                hasFailure = true;
+                                failureMsg = `Field ${field} error: ${fieldError.message}`;
+                                break;
+                            }
+                        }
+
+                        if (hasFailure) {
+                            break;
+                        }
                         appliedCount++;
                     }
                 }
-
-                if (appliedCount > 0) {
-                    totalAppliedCount += appliedCount;
-                    results.push({
-                        success: true,
-                        instanceId: targetInstance.id,
-                        instanceName: targetInstance.name,
-                        appliedCount
-                    });
-                    console.log(`Applied ${appliedCount} overrides to "${targetInstance.name}"`);
-                } else {
-                    results.push({
-                        success: false,
-                        instanceId: targetInstance.id,
-                        instanceName: targetInstance.name,
-                        message: "No overrides were applied"
-                    });
-                }
             } catch (instanceError: any) {
-                console.error(`Error processing instance "${targetInstance.name}":`, instanceError);
+                hasFailure = true;
+                failureMsg = instanceError.message;
+            }
+
+            if (hasFailure) {
+                failureCount++;
                 results.push({
                     success: false,
                     instanceId: targetInstance.id,
                     instanceName: targetInstance.name,
-                    message: `Error: ${instanceError.message}`
+                    message: `Error: ${failureMsg}`
+                });
+                break; // Stop on first failure
+            } else {
+                successCount++;
+                totalAppliedCount += appliedCount;
+                results.push({
+                    success: true,
+                    instanceId: targetInstance.id,
+                    instanceName: targetInstance.name,
+                    appliedCount
                 });
             }
         }
 
         // Return results
-        if (totalAppliedCount > 0) {
-            const instanceCount = results.filter((r: any) => r.success).length;
-            const message = `Applied ${totalAppliedCount} overrides to ${instanceCount} instances`;
+        if (successCount > 0 && failureCount === 0) {
+            const message = `Applied ${totalAppliedCount} overrides to ${successCount} instances`;
             figma.notify(message);
             return {
                 success: true,
@@ -589,7 +582,9 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
                 results
             };
         } else {
-            const message = "No overrides applied to any instance";
+            const message = failureCount > 0
+                ? `Failed to apply overrides: ${results[results.length - 1].message}`
+                : "No overrides applied to any instance";
             figma.notify(message);
             return { success: false, message, results };
         }

@@ -103,6 +103,17 @@ async function checkScopeAccess(nodeId: any) {
     return false;
 }
 
+// Helper: Reference-based scope check (Phase 4 additive helper)
+function checkScopeAccessRef(node: BaseNode, scopeRootNode: BaseNode): boolean {
+    if (state.readOnly) return false;
+    let curr: BaseNode | null = node;
+    while (curr) {
+        if (curr.id === scopeRootNode.id) return true;
+        curr = curr.parent;
+    }
+    return false;
+}
+
 // Helper: Verify node name matches expected name
 async function verifyNodeName(nodeId: any, expectedName: any) {
     const node = await figma.getNodeByIdAsync(nodeId);
@@ -368,9 +379,27 @@ async function handleCommand(command: any, params: any) {
         case "text_set_content":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!params || !params.text || !Array.isArray(params.text)) throw new Error("Missing or Invalid text parameter");
+            
+            if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            const textScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+            if (!textScopeRoot) {
+                throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+            }
+
             for (const item of params.text) {
-                if (!(await checkScopeAccess(item.nodeId))) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
-                if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+                const node = await figma.getNodeByIdAsync(item.nodeId);
+                if (!node) {
+                    throw new Error(`Node ${item.nodeId} not found`);
+                }
+                if (!checkScopeAccessRef(node, textScopeRoot)) {
+                    throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+                }
+                if (node.name !== item.nodeName) {
+                    throw new Error(ERRORS.NAME_MISMATCH);
+                }
+                if (node.type !== "TEXT") {
+                    throw new Error(`Node is not a text node: ${node.id} (type: ${node.type})`);
+                }
             }
             return await setMultipleTextContents(params);
 
@@ -383,9 +412,27 @@ async function handleCommand(command: any, params: any) {
         case "annotation_set":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!params || !params.annotations || !Array.isArray(params.annotations)) throw new Error("Missing or Invalid annotations parameter");
+            
+            if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            const annScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+            if (!annScopeRoot) {
+                throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+            }
+
             for (const item of params.annotations) {
-                if (!(await checkScopeAccess(item.nodeId))) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
-                if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+                const node = await figma.getNodeByIdAsync(item.nodeId);
+                if (!node) {
+                    throw new Error(`Node ${item.nodeId} not found`);
+                }
+                if (!checkScopeAccessRef(node, annScopeRoot)) {
+                    throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+                }
+                if (node.name !== item.nodeName) {
+                    throw new Error(ERRORS.NAME_MISMATCH);
+                }
+                if (!("annotations" in node)) {
+                    throw new Error(`Node type ${node.type} does not support annotations`);
+                }
             }
             return await setMultipleAnnotations(params);
 
@@ -393,10 +440,24 @@ async function handleCommand(command: any, params: any) {
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
 
+            if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            const deleteScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+            if (!deleteScopeRoot) {
+                throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+            }
+
             const nodeIdsToDelete: any[] = [];
             for (const item of params.nodes) {
-                if (!(await checkScopeAccess(item.nodeId))) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
-                if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+                const node = await figma.getNodeByIdAsync(item.nodeId);
+                if (!node) {
+                    throw new Error(`Node ${item.nodeId} not found`);
+                }
+                if (!checkScopeAccessRef(node, deleteScopeRoot)) {
+                    throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+                }
+                if (node.name !== item.nodeName) {
+                    throw new Error(ERRORS.NAME_MISMATCH);
+                }
                 nodeIdsToDelete.push(item.nodeId);
             }
 
@@ -405,43 +466,60 @@ async function handleCommand(command: any, params: any) {
         case "instance_set_overrides":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
 
-            // Check if targetNodes parameter is provided
             if (params && params.targetNodes) {
-                // Validate that targetNodes is an array
                 if (!Array.isArray(params.targetNodes)) {
                     throw new Error("targetNodes must be an array");
                 }
 
-                const targetNodeIds: any[] = [];
+                if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+                const instScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+                if (!instScopeRoot) {
+                    throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+                }
 
-                // Permission check and name verification
+                // Verify source instance exists and is an INSTANCE node
+                if (!params.sourceInstanceId) {
+                    throw new Error(ERRORS.MISSING_SOURCE_INSTANCE_ID);
+                }
+                const sourceNode = await figma.getNodeByIdAsync(params.sourceInstanceId);
+                if (!sourceNode) {
+                    throw new Error(`Node ${params.sourceInstanceId} not found`);
+                }
+                if (sourceNode.type !== "INSTANCE") {
+                    throw new Error(`Source node is not an instance: ${sourceNode.id} (type: ${sourceNode.type})`);
+                }
+
+                const targetNodeIds: any[] = [];
                 for (const item of params.targetNodes) {
-                    if (!(await checkScopeAccess(item.nodeId))) throw new Error(formatScopeError(`Operation denied: Target instance ${item.nodeId} outside editable scope`));
-                    if (!(await verifyNodeName(item.nodeId, item.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+                    const node = await figma.getNodeByIdAsync(item.nodeId);
+                    if (!node) {
+                        throw new Error(`Node ${item.nodeId} not found`);
+                    }
+                    if (!checkScopeAccessRef(node, instScopeRoot)) {
+                        throw new Error(formatScopeError(`Operation denied: Target instance ${item.nodeId} outside editable scope`));
+                    }
+                    if (node.name !== item.nodeName) {
+                        throw new Error(ERRORS.NAME_MISMATCH);
+                    }
+                    if (node.type !== "INSTANCE") {
+                        throw new Error(`Target is not an instance node: ${node.id} (type: ${node.type})`);
+                    }
                     targetNodeIds.push(item.nodeId);
                 }
 
-                // Get the instance nodes by IDs
                 const targetNodesResult = await getValidTargetInstances(targetNodeIds);
                 if (!targetNodesResult.success) {
                     figma.notify(targetNodesResult.message);
                     return { success: false, message: targetNodesResult.message };
                 }
 
-                if (params.sourceInstanceId) {
-                    // get source instance data
-                    let sourceInstanceData = null;
-                    sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
-
-                    if (!sourceInstanceData.success) {
-                        // @ts-ignore
-                        figma.notify(sourceInstanceData.message);
-                        return { success: false, message: sourceInstanceData.message };
-                    }
-                    return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
-                } else {
-                    throw new Error(ERRORS.MISSING_SOURCE_INSTANCE_ID);
+                let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
+                if (!sourceInstanceData.success) {
+                    // @ts-ignore
+                    figma.notify(sourceInstanceData.message);
+                    return { success: false, message: sourceInstanceData.message };
                 }
+                return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
             }
             throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
 
@@ -552,27 +630,45 @@ async function handleCommand(command: any, params: any) {
         case "create_component_set":
             if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
 
-            // Validate properties match
+            if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            const compSetScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+            if (!compSetScopeRoot) {
+                throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+            }
+
             const props = params.properties || [];
             if (params.components) {
                 if (!Array.isArray(params.components)) throw new Error("components must be an array");
 
                 for (const comp of params.components) {
-                    // Check scope and name for each component
-                    if (!(await checkScopeAccess(comp.nodeId))) throw new Error(formatScopeError(`Operation denied: Component ${comp.nodeId} outside editable scope`));
-                    if (!(await verifyNodeName(comp.nodeId, comp.nodeName))) throw new Error(ERRORS.NAME_MISMATCH);
+                    const node = await figma.getNodeByIdAsync(comp.nodeId);
+                    if (!node) {
+                        throw new Error(`Node ${comp.nodeId} not found`);
+                    }
+                    if (!checkScopeAccessRef(node, compSetScopeRoot)) {
+                        throw new Error(formatScopeError(`Operation denied: Component ${comp.nodeId} outside editable scope`));
+                    }
+                    if (node.name !== comp.nodeName) {
+                        throw new Error(ERRORS.NAME_MISMATCH);
+                    }
 
-                    // Check property count
                     if (!comp.propertyValues || comp.propertyValues.length !== props.length) {
                         throw new Error(`Property values count for component ${comp.nodeName} does not match properties count`);
                     }
                 }
             }
 
-            // Check parent scope if provided
             if (params.parentId) {
-                if (!(await checkScopeAccess(params.parentId))) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-                if (!(await verifyParentName(params.parentId, params.parentNodeName))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+                const parentNode = await figma.getNodeByIdAsync(params.parentId);
+                if (!parentNode) {
+                    throw new Error(`Node ${params.parentId} not found`);
+                }
+                if (!checkScopeAccessRef(parentNode, compSetScopeRoot)) {
+                    throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
+                }
+                if (parentNode.name !== params.parentNodeName) {
+                    throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+                }
             }
 
             return await createComponentSet(params);

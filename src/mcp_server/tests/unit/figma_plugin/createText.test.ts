@@ -10,6 +10,7 @@ mock.module("../../../../../figma_plugin/utils/textUtils.js", () => ({
         await Promise.resolve(); // async boundary — value set only after await
         node.characters = chars;
         node.width = String(chars).length * 7;
+        return true;
     }),
 }));
 

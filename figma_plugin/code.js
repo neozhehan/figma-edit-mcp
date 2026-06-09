@@ -2245,94 +2245,88 @@
       console.log(`Overrides:`, overrides);
       const results = [];
       let totalAppliedCount = 0;
+      let successCount = 0;
+      let failureCount = 0;
       for (const targetInstance of targetInstances) {
+        let appliedCount = 0;
+        let hasFailure = false;
+        let failureMsg = "";
         try {
           try {
             targetInstance.swapComponent(mainComponent);
             console.log(`Swapped component for instance "${targetInstance.name}"`);
           } catch (error) {
-            console.error(`Error swapping component for instance "${targetInstance.name}":`, error);
-            results.push({
-              success: false,
-              instanceId: targetInstance.id,
-              instanceName: targetInstance.name,
-              message: `Error: ${error.message}`
-            });
+            hasFailure = true;
+            failureMsg = `Swap component error: ${error.message}`;
           }
-          let appliedCount = 0;
-          for (const override of overrides) {
-            if (!override.id || !override.overriddenFields || override.overriddenFields.length === 0) {
-              continue;
-            }
-            const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
-            const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
-            if (!overrideNode) {
-              console.log(`Override node not found: ${overrideNodeId}`);
-              continue;
-            }
-            const sourceNode = await figma.getNodeByIdAsync(override.id);
-            if (!sourceNode) {
-              console.log(`Source node not found: ${override.id}`);
-              continue;
-            }
-            let fieldApplied = false;
-            for (const field of override.overriddenFields) {
-              try {
-                if (field === "componentProperties") {
-                  if (sourceNode.componentProperties && overrideNode.componentProperties) {
-                    const properties = {};
-                    for (const key in sourceNode.componentProperties) {
-                      properties[key] = sourceNode.componentProperties[key].value;
-                    }
-                    overrideNode.setProperties(properties);
-                    fieldApplied = true;
-                  }
-                } else if (field === "characters" && overrideNode.type === "TEXT") {
-                  await figma.loadFontAsync(overrideNode.fontName);
-                  overrideNode.characters = sourceNode.characters;
-                  fieldApplied = true;
-                } else if (field in overrideNode) {
-                  overrideNode[field] = sourceNode[field];
-                  fieldApplied = true;
-                }
-              } catch (fieldError) {
-                console.error(`Error applying field ${field}:`, fieldError);
+          if (!hasFailure) {
+            for (const override of overrides) {
+              if (!override.id || !override.overriddenFields || override.overriddenFields.length === 0) {
+                continue;
               }
-            }
-            if (fieldApplied) {
+              const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
+              const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
+              if (!overrideNode) {
+                continue;
+              }
+              const sourceNode = await figma.getNodeByIdAsync(override.id);
+              if (!sourceNode) {
+                continue;
+              }
+              for (const field of override.overriddenFields) {
+                try {
+                  if (field === "componentProperties") {
+                    if (sourceNode.componentProperties && overrideNode.componentProperties) {
+                      const properties = {};
+                      for (const key in sourceNode.componentProperties) {
+                        properties[key] = sourceNode.componentProperties[key].value;
+                      }
+                      overrideNode.setProperties(properties);
+                    }
+                  } else if (field === "characters" && overrideNode.type === "TEXT") {
+                    await figma.loadFontAsync(overrideNode.fontName);
+                    overrideNode.characters = sourceNode.characters;
+                  } else if (field in overrideNode) {
+                    overrideNode[field] = sourceNode[field];
+                  }
+                } catch (fieldError) {
+                  hasFailure = true;
+                  failureMsg = `Field ${field} error: ${fieldError.message}`;
+                  break;
+                }
+              }
+              if (hasFailure) {
+                break;
+              }
               appliedCount++;
             }
           }
-          if (appliedCount > 0) {
-            totalAppliedCount += appliedCount;
-            results.push({
-              success: true,
-              instanceId: targetInstance.id,
-              instanceName: targetInstance.name,
-              appliedCount
-            });
-            console.log(`Applied ${appliedCount} overrides to "${targetInstance.name}"`);
-          } else {
-            results.push({
-              success: false,
-              instanceId: targetInstance.id,
-              instanceName: targetInstance.name,
-              message: "No overrides were applied"
-            });
-          }
         } catch (instanceError) {
-          console.error(`Error processing instance "${targetInstance.name}":`, instanceError);
+          hasFailure = true;
+          failureMsg = instanceError.message;
+        }
+        if (hasFailure) {
+          failureCount++;
           results.push({
             success: false,
             instanceId: targetInstance.id,
             instanceName: targetInstance.name,
-            message: `Error: ${instanceError.message}`
+            message: `Error: ${failureMsg}`
+          });
+          break;
+        } else {
+          successCount++;
+          totalAppliedCount += appliedCount;
+          results.push({
+            success: true,
+            instanceId: targetInstance.id,
+            instanceName: targetInstance.name,
+            appliedCount
           });
         }
       }
-      if (totalAppliedCount > 0) {
-        const instanceCount = results.filter((r) => r.success).length;
-        const message = `Applied ${totalAppliedCount} overrides to ${instanceCount} instances`;
+      if (successCount > 0 && failureCount === 0) {
+        const message = `Applied ${totalAppliedCount} overrides to ${successCount} instances`;
         figma.notify(message);
         return {
           success: true,
@@ -2341,7 +2335,7 @@
           results
         };
       } else {
-        const message = "No overrides applied to any instance";
+        const message = failureCount > 0 ? `Failed to apply overrides: ${results[results.length - 1].message}` : "No overrides applied to any instance";
         figma.notify(message);
         return { success: false, message, results };
       }
@@ -3093,7 +3087,10 @@
     if (node.type !== "TEXT") {
       throw new Error(`Node is not a text node: ${nodeId} (type: ${node.type})`);
     }
-    await setCharacters(node, text);
+    const success = await setCharacters(node, text);
+    if (!success) {
+      throw new Error(`Failed to set characters on node ${nodeId}`);
+    }
     return {
       success: true,
       nodeId,
@@ -3133,145 +3130,75 @@
     const results = [];
     let successCount = 0;
     let failureCount = 0;
-    const CHUNK_SIZE = 10;
-    const chunks = [];
-    for (let i = 0; i < text.length; i += CHUNK_SIZE) {
-      chunks.push(text.slice(i, i + CHUNK_SIZE));
-    }
-    console.log(`Split ${text.length} replacements into ${chunks.length} chunks`);
-    await sendProgressUpdate(
-      commandId,
-      "set_multiple_text_contents",
-      "in_progress",
-      5,
-      // 5% progress for planning phase
-      text.length,
-      0,
-      `Preparing to replace text in ${text.length} nodes using ${chunks.length} chunks`,
-      {
-        totalReplacements: text.length,
-        chunks: chunks.length,
-        chunkSize: CHUNK_SIZE
+    for (let i = 0; i < text.length; i++) {
+      const replacement = text[i];
+      if (!replacement.nodeId || replacement.text === void 0) {
+        failureCount++;
+        results.push({
+          success: false,
+          nodeId: replacement.nodeId || "unknown",
+          error: "Missing nodeId or text in replacement entry"
+        });
+        break;
       }
-    );
-    for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-      const chunk = chunks[chunkIndex];
-      console.log(
-        `Processing chunk ${chunkIndex + 1}/${chunks.length} with ${chunk.length} replacements`
-      );
-      await sendProgressUpdate(
-        commandId,
-        "set_multiple_text_contents",
-        "in_progress",
-        Math.round(5 + chunkIndex / chunks.length * 90),
-        // 5-95% for processing
-        text.length,
-        successCount + failureCount,
-        `Processing text replacements chunk ${chunkIndex + 1}/${chunks.length}`,
-        {
-          currentChunk: chunkIndex + 1,
-          totalChunks: chunks.length,
-          successCount,
-          failureCount
-        }
-      );
-      const chunkPromises = chunk.map(async (replacement) => {
-        if (!replacement.nodeId || replacement.text === void 0) {
-          console.error(`Missing nodeId or text for replacement`);
-          return {
-            success: false,
-            nodeId: replacement.nodeId || "unknown",
-            error: "Missing nodeId or text in replacement entry"
-          };
-        }
-        try {
-          console.log(
-            `Attempting to replace text in node: ${replacement.nodeId}`
-          );
-          const textNode = await figma.getNodeByIdAsync(replacement.nodeId);
-          if (!textNode) {
-            console.error(`Text node not found: ${replacement.nodeId}`);
-            return {
-              success: false,
-              nodeId: replacement.nodeId,
-              error: `Node not found: ${replacement.nodeId}`
-            };
-          }
-          if (textNode.type !== "TEXT") {
-            console.error(
-              `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`
-            );
-            return {
-              success: false,
-              nodeId: replacement.nodeId,
-              error: `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`
-            };
-          }
-          const originalText = textNode.characters;
-          console.log(`Original text: "${originalText}"`);
-          console.log(`Will translate to: "${replacement.text}"`);
-          await setTextContent({
-            nodeId: replacement.nodeId,
-            text: replacement.text
-          });
-          console.log(
-            `Successfully replaced text in node: ${replacement.nodeId}`
-          );
-          return {
-            success: true,
-            nodeId: replacement.nodeId,
-            originalText,
-            translatedText: replacement.text
-          };
-        } catch (error) {
-          console.error(
-            `Error replacing text in node ${replacement.nodeId}: ${error.message}`
-          );
-          return {
-            success: false,
-            nodeId: replacement.nodeId,
-            error: `Error applying replacement: ${error.message}`
-          };
-        }
-      });
-      const chunkResults = await Promise.all(chunkPromises);
-      chunkResults.forEach((result) => {
-        if (result.success) {
-          successCount++;
-        } else {
+      try {
+        console.log(`Attempting to replace text in node: ${replacement.nodeId}`);
+        const textNode = await figma.getNodeByIdAsync(replacement.nodeId);
+        if (!textNode) {
           failureCount++;
+          results.push({
+            success: false,
+            nodeId: replacement.nodeId,
+            error: `Node not found: ${replacement.nodeId}`
+          });
+          break;
         }
-        results.push(result);
-      });
-      await sendProgressUpdate(
-        commandId,
-        "set_multiple_text_contents",
-        "in_progress",
-        Math.round(5 + (chunkIndex + 1) / chunks.length * 90),
-        // 5-95% for processing
-        text.length,
-        successCount + failureCount,
-        `Completed chunk ${chunkIndex + 1}/${chunks.length}. ${successCount} successful, ${failureCount} failed so far.`,
-        {
-          currentChunk: chunkIndex + 1,
-          totalChunks: chunks.length,
-          successCount,
-          failureCount,
-          chunkResults
+        if (textNode.type !== "TEXT") {
+          failureCount++;
+          results.push({
+            success: false,
+            nodeId: replacement.nodeId,
+            error: `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`
+          });
+          break;
         }
-      );
-      if (chunkIndex < chunks.length - 1) {
-        console.log("Pausing between chunks to avoid overloading Figma...");
-        await delay(20);
+        const originalText = textNode.characters;
+        await setTextContent({
+          nodeId: replacement.nodeId,
+          text: replacement.text
+        });
+        successCount++;
+        results.push({
+          success: true,
+          nodeId: replacement.nodeId,
+          originalText,
+          translatedText: replacement.text
+        });
+        await sendProgressUpdate(
+          commandId,
+          "set_multiple_text_contents",
+          "in_progress",
+          Math.round((i + 1) / text.length * 100),
+          text.length,
+          successCount + failureCount,
+          `Processed ${i + 1}/${text.length} text replacements`
+        );
+        await new Promise((r) => setTimeout(r, 0));
+      } catch (error) {
+        console.error(`Error replacing text in node ${replacement.nodeId}: ${error.message}`);
+        failureCount++;
+        results.push({
+          success: false,
+          nodeId: replacement.nodeId,
+          error: `Error applying replacement: ${error.message}`
+        });
+        break;
       }
     }
-    console.log(
-      `Replacement complete: ${successCount} successful, ${failureCount} failed`
-    );
     await sendProgressUpdate(
       commandId,
       "set_multiple_text_contents",
-      "completed",
+      failureCount > 0 ? "error" : "completed",
       100,
       text.length,
       successCount + failureCount,
@@ -3280,18 +3207,16 @@
         totalReplacements: text.length,
         replacementsApplied: successCount,
         replacementsFailed: failureCount,
-        completedInChunks: chunks.length,
         results
       }
     );
     return {
-      success: successCount > 0,
+      success: successCount > 0 && failureCount === 0,
       nodeId,
       replacementsApplied: successCount,
       replacementsFailed: failureCount,
       totalReplacements: text.length,
       results,
-      completedInChunks: chunks.length,
       commandId
     };
   }
@@ -3525,6 +3450,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             error: result.error
           });
           console.error(`\u2717 Annotation ${i + 1} failed:`, result.error);
+          break;
         }
       } catch (error) {
         failureCount++;
@@ -3535,14 +3461,11 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         };
         results.push(errorResult);
         console.error(`\u2717 Annotation ${i + 1} failed with error:`, error);
-        console.error("Error details:", {
-          message: error.message,
-          stack: error.stack
-        });
+        break;
       }
     }
     const summary = {
-      success: successCount > 0,
+      success: successCount > 0 && failureCount === 0,
       annotationsApplied: successCount,
       annotationsFailed: failureCount,
       totalAnnotations: annotations.length,
@@ -4565,6 +4488,15 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     }
     return false;
   }
+  function checkScopeAccessRef(node, scopeRootNode) {
+    if (state.readOnly) return false;
+    let curr = node;
+    while (curr) {
+      if (curr.id === scopeRootNode.id) return true;
+      curr = curr.parent;
+    }
+    return false;
+  }
   async function verifyNodeName(nodeId, expectedName) {
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) return false;
@@ -4777,9 +4709,25 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "text_set_content":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.text || !Array.isArray(params.text)) throw new Error("Missing or Invalid text parameter");
+        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        const textScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+        if (!textScopeRoot) {
+          throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+        }
         for (const item of params.text) {
-          if (!await checkScopeAccess(item.nodeId)) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
-          if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
+          const node = await figma.getNodeByIdAsync(item.nodeId);
+          if (!node) {
+            throw new Error(`Node ${item.nodeId} not found`);
+          }
+          if (!checkScopeAccessRef(node, textScopeRoot)) {
+            throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+          }
+          if (node.name !== item.nodeName) {
+            throw new Error(ERRORS.NAME_MISMATCH);
+          }
+          if (node.type !== "TEXT") {
+            throw new Error(`Node is not a text node: ${node.id} (type: ${node.type})`);
+          }
         }
         return await setMultipleTextContents(params);
       case "text_set_style":
@@ -4790,18 +4738,47 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "annotation_set":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.annotations || !Array.isArray(params.annotations)) throw new Error("Missing or Invalid annotations parameter");
+        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        const annScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+        if (!annScopeRoot) {
+          throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+        }
         for (const item of params.annotations) {
-          if (!await checkScopeAccess(item.nodeId)) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
-          if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
+          const node = await figma.getNodeByIdAsync(item.nodeId);
+          if (!node) {
+            throw new Error(`Node ${item.nodeId} not found`);
+          }
+          if (!checkScopeAccessRef(node, annScopeRoot)) {
+            throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+          }
+          if (node.name !== item.nodeName) {
+            throw new Error(ERRORS.NAME_MISMATCH);
+          }
+          if (!("annotations" in node)) {
+            throw new Error(`Node type ${node.type} does not support annotations`);
+          }
         }
         return await setMultipleAnnotations(params);
       case "node_delete":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
+        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        const deleteScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+        if (!deleteScopeRoot) {
+          throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+        }
         const nodeIdsToDelete = [];
         for (const item of params.nodes) {
-          if (!await checkScopeAccess(item.nodeId)) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
-          if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
+          const node = await figma.getNodeByIdAsync(item.nodeId);
+          if (!node) {
+            throw new Error(`Node ${item.nodeId} not found`);
+          }
+          if (!checkScopeAccessRef(node, deleteScopeRoot)) {
+            throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+          }
+          if (node.name !== item.nodeName) {
+            throw new Error(ERRORS.NAME_MISMATCH);
+          }
           nodeIdsToDelete.push(item.nodeId);
         }
         return await deleteMultipleNodes({ nodeIds: nodeIdsToDelete });
@@ -4811,10 +4788,36 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (!Array.isArray(params.targetNodes)) {
             throw new Error("targetNodes must be an array");
           }
+          if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+          const instScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+          if (!instScopeRoot) {
+            throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+          }
+          if (!params.sourceInstanceId) {
+            throw new Error(ERRORS.MISSING_SOURCE_INSTANCE_ID);
+          }
+          const sourceNode = await figma.getNodeByIdAsync(params.sourceInstanceId);
+          if (!sourceNode) {
+            throw new Error(`Node ${params.sourceInstanceId} not found`);
+          }
+          if (sourceNode.type !== "INSTANCE") {
+            throw new Error(`Source node is not an instance: ${sourceNode.id} (type: ${sourceNode.type})`);
+          }
           const targetNodeIds = [];
           for (const item of params.targetNodes) {
-            if (!await checkScopeAccess(item.nodeId)) throw new Error(formatScopeError(`Operation denied: Target instance ${item.nodeId} outside editable scope`));
-            if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
+            const node = await figma.getNodeByIdAsync(item.nodeId);
+            if (!node) {
+              throw new Error(`Node ${item.nodeId} not found`);
+            }
+            if (!checkScopeAccessRef(node, instScopeRoot)) {
+              throw new Error(formatScopeError(`Operation denied: Target instance ${item.nodeId} outside editable scope`));
+            }
+            if (node.name !== item.nodeName) {
+              throw new Error(ERRORS.NAME_MISMATCH);
+            }
+            if (node.type !== "INSTANCE") {
+              throw new Error(`Target is not an instance node: ${node.id} (type: ${node.type})`);
+            }
             targetNodeIds.push(item.nodeId);
           }
           const targetNodesResult = await getValidTargetInstances(targetNodeIds);
@@ -4822,17 +4825,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             figma.notify(targetNodesResult.message);
             return { success: false, message: targetNodesResult.message };
           }
-          if (params.sourceInstanceId) {
-            let sourceInstanceData = null;
-            sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
-            if (!sourceInstanceData.success) {
-              figma.notify(sourceInstanceData.message);
-              return { success: false, message: sourceInstanceData.message };
-            }
-            return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
-          } else {
-            throw new Error(ERRORS.MISSING_SOURCE_INSTANCE_ID);
+          let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
+          if (!sourceInstanceData.success) {
+            figma.notify(sourceInstanceData.message);
+            return { success: false, message: sourceInstanceData.message };
           }
+          return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
         }
         throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
       case "instance_set_property":
@@ -4915,20 +4913,41 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         return await createComponent(params);
       case "create_component_set":
         if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        const compSetScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
+        if (!compSetScopeRoot) {
+          throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
+        }
         const props = params.properties || [];
         if (params.components) {
           if (!Array.isArray(params.components)) throw new Error("components must be an array");
           for (const comp of params.components) {
-            if (!await checkScopeAccess(comp.nodeId)) throw new Error(formatScopeError(`Operation denied: Component ${comp.nodeId} outside editable scope`));
-            if (!await verifyNodeName(comp.nodeId, comp.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
+            const node = await figma.getNodeByIdAsync(comp.nodeId);
+            if (!node) {
+              throw new Error(`Node ${comp.nodeId} not found`);
+            }
+            if (!checkScopeAccessRef(node, compSetScopeRoot)) {
+              throw new Error(formatScopeError(`Operation denied: Component ${comp.nodeId} outside editable scope`));
+            }
+            if (node.name !== comp.nodeName) {
+              throw new Error(ERRORS.NAME_MISMATCH);
+            }
             if (!comp.propertyValues || comp.propertyValues.length !== props.length) {
               throw new Error(`Property values count for component ${comp.nodeName} does not match properties count`);
             }
           }
         }
         if (params.parentId) {
-          if (!await checkScopeAccess(params.parentId)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-          if (!await verifyParentName(params.parentId, params.parentNodeName)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+          const parentNode = await figma.getNodeByIdAsync(params.parentId);
+          if (!parentNode) {
+            throw new Error(`Node ${params.parentId} not found`);
+          }
+          if (!checkScopeAccessRef(parentNode, compSetScopeRoot)) {
+            throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
+          }
+          if (parentNode.name !== params.parentNodeName) {
+            throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+          }
         }
         return await createComponentSet(params);
       case "create_svg":

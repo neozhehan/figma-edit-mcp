@@ -53,17 +53,17 @@
 - [x] **Live test (§2)** — after rebuilding/reloading the plugin, extend `scripts/live-verify.ts` (run via `bun run test:live <channel>`) to query `node_info` with many top-level ids including one deliberately missing id, asserting `nodes` is input-ordered, the missing id lands in `missingNodeIds`, and the call completes (progress streamed) without hanging.
 
 ## Phase 4: Atomicity in Modify and Delete Tools
-- [ ] In the **batch** dispatch loops in `figma_plugin/src/main.ts` (`node_delete`, `text_set_content`, `annotation_set`, `instance_set_overrides`, `create_component_set`), resolve each item's node **once** and run the checks against that single reference, in order: explicit **not-found** (throw a clear "Node X not found" instead of today's misleading "outside scope"/"name mismatch" for stale ids), scope, name, then type (next item). Hoist the constant scope-root resolve out of the loop. Introduce any reference-based scope check **additively** (a new helper) — do **not** change the shared `checkScopeAccess`/`verifyNodeName` signatures or the single-target dispatch cases. (Justification: clean type-check integration + clearer errors — **not** performance.)
-- [ ] Add type-integrity pre-validation checks in the dispatch loops of `main.ts`:
+- [x] In the **batch** dispatch loops in `figma_plugin/src/main.ts` (`node_delete`, `text_set_content`, `annotation_set`, `instance_set_overrides`, `create_component_set`), resolve each item's node **once** and run the checks against that single reference, in order: explicit **not-found** (throw a clear "Node X not found" instead of today's misleading "outside scope"/"name mismatch" for stale ids), scope, name, then type (next item). Hoist the constant scope-root resolve out of the loop. Introduce any reference-based scope check **additively** (a new helper) — do **not** change the shared `checkScopeAccess`/`verifyNodeName` signatures or the single-target dispatch cases. (Justification: clean type-check integration + clearer errors — **not** performance.)
+- [x] Add type-integrity pre-validation checks in the dispatch loops of `main.ts`:
   - `text_set_content`: verify all targets are `TEXT` nodes.
   - `annotation_set`: verify all targets support `annotations`.
   - `instance_set_overrides`: verify targets and source instance are `INSTANCE` nodes.
-- [ ] Update batch handlers (`setMultipleTextContents`, `setMultipleAnnotations`, `setInstanceOverrides`) to:
+- [x] Update batch handlers (`setMultipleTextContents`, `setMultipleAnnotations`, `setInstanceOverrides`) to:
   - Stop processing on the first mutation failure.
   - Return a standardized report of completed vs. failed items.
   - Never attempt automatic state rollbacks.
-- [ ] Confirm that `node_delete` (`deleteMultipleNodes`) is excluded from stop-on-first-failure, keeping its resilient parallel chunked deletions intact.
-- [ ] **Live test (§3)** — after rebuilding/reloading the plugin, extend `scripts/live-verify.ts` (run via `bun run test:live <channel>`) to assert: a `text_set_content`/`annotation_set`/`instance_set_overrides` batch containing one wrong-typed target aborts with **zero** mutations (confirm the valid targets are untouched via `node_info`); and a `node_delete` over a mix of valid + already-deleted ids returns partial `successCount`/`failureCount` (stays resilient). Clean up any created nodes.
+- [x] Confirm that `node_delete` (`deleteMultipleNodes`) is excluded from stop-on-first-failure, keeping its resilient parallel chunked deletions intact.
+- [x] **Live test (§3)** — after rebuilding/reloading the plugin, extend `scripts/live-verify.ts` (run via `bun run test:live <channel>`) to assert: a `text_set_content`/`annotation_set`/`instance_set_overrides` batch containing one wrong-typed target aborts with **zero** mutations (confirm the valid targets are untouched via `node_info`); and a `node_delete` over a mix of valid + **not-found** ids aborts at dispatch with "Node X not found" (**validation-atomic** — zero deletions; the resilient partial `successCount`/`failureCount` path applies only to **mutation-phase** failures on already-validated nodes — a node deleted/locked mid-run — and is covered by unit tests, not stageable live). Clean up any created nodes.
 
 ## Phase 5: MCP Image Content Blocks
 - [ ] Update `toolResult` in `src/mcp_server/tools/_result.ts` to detect raster formats (`PNG` and `JPG` only) containing `imageData` and `mimeType`.
