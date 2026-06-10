@@ -343,13 +343,13 @@ describe("Security Gates via main.ts routing", () => {
         (globalThis as any).figma = gateFigma;
         gateNodeMap.clear();
         gatePendingPromises.clear();
-        // Reset state to readOnly via set-scope without scopeNodeId.
+        // Reset state to allowEditNode = false via set-scope without scopeNodeId.
         await gateOnMessage({ type: "set-scope" });
     });
 
     describe("instance_set_property", () => {
-        it("blocks when state.readOnly is true", async () => {
-            // beforeEach already put us in readOnly mode.
+        it("blocks when allowEditNode is false", async () => {
+            // beforeEach already put us in read-only mode for nodes.
             const result = await executeCommand("instance_set_property", {
                 nodeId: "1:1",
                 nodeName: "Instance",
@@ -408,7 +408,7 @@ describe("Security Gates via main.ts routing", () => {
             defaultValue: "Default",
         };
 
-        it("blocks when state.readOnly is true (any action)", async () => {
+        it("blocks when allowEditNode is false (any action)", async () => {
             const result = await executeCommand("component_manage_property", {
                 nodeId: "1:1",
                 nodeName: "Component",

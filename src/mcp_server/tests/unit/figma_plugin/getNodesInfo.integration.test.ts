@@ -37,8 +37,8 @@ const mainMod: any = await import("../../../../../figma_plugin/src/main.js");
 const realState: any = mainMod.getPluginState();
 const { getNodesInfo, getPagesInfo } = await import("../../../../../figma_plugin/handlers/nodeReaders.js");
 const { getConnectPayload } = await import("../../../../../figma_plugin/handlers/connectHandlers.js");
-function setState(next: { readOnly: boolean; scopeRootId: string | null }) {
-    realState.readOnly = next.readOnly;
+function setState(next: { allowEditNode: boolean | string; scopeRootId: string | null }) {
+    realState.allowEditNode = next.allowEditNode;
     realState.scopeRootId = next.scopeRootId;
 }
 
@@ -455,10 +455,10 @@ describe("Phase 6.2 — empty-args dispatch + read-only short-circuit (static so
 
     it("node.info dispatch short-circuits to { nodes: [] } in read-only mode with no ids", () => {
         const slice = src.split('case "node_info"')[1] ?? "";
-        // The branch must check both effectiveNodeIds.length === 0 AND state.readOnly,
+        // The branch must check both effectiveNodeIds.length === 0 AND state.allowEditNode,
         // and the return shape is { nodes: [] }.
         expect(slice).toMatch(/effectiveNodeIds\.length\s*===\s*0/);
-        expect(slice).toMatch(/state\.readOnly/);
+        expect(slice).toMatch(/state\.allowEditNode/);
         expect(slice).toMatch(/\{\s*nodes:\s*\[\s*\]\s*\}/);
     });
 
@@ -492,7 +492,7 @@ describe("Phase 6.2 — connect-flow consistency snapshot", () => {
             }],
         });
         installFigma([page]);
-        setState({ readOnly: false, scopeRootId: "100:1" });
+        setState({ allowEditNode: "node", scopeRootId: "100:1" });
 
         const connect: any = await getConnectPayload();
         const fromNodesInfo: any = await getNodesInfo({ nodeIds: ["100:1"] });
@@ -529,7 +529,7 @@ describe("Phase 6.2 — connect-flow consistency snapshot", () => {
             }],
         });
         installFigma([page]);
-        setState({ readOnly: false, scopeRootId: "100:1" });
+        setState({ allowEditNode: "node", scopeRootId: "100:1" });
 
         const connect: any = await getConnectPayload();
         const fromNodesInfo: any = await getNodesInfo({ nodeIds: ["100:1"] });

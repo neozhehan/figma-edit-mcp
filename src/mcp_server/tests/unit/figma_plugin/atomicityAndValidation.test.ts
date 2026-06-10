@@ -39,7 +39,7 @@ const { setInstanceOverrides } = await import("../../../../../figma_plugin/handl
 const { deleteMultipleNodes } = await import("../../../../../figma_plugin/handlers/nodeModifiers.js");
 
 // Set up plugin state
-pluginState.readOnly = false;
+pluginState.allowEditNode = "node";
 pluginState.scopeRootId = "scope-root";
 
 type FakeNode = {
@@ -79,7 +79,7 @@ function installFigma(nodes: FakeNode[]) {
 
 describe("Phase 4: Atomicity & Pre-Validation in dispatch", () => {
     beforeEach(() => {
-        pluginState.readOnly = false;
+        pluginState.allowEditNode = "node";
         pluginState.scopeRootId = "scope-root";
     });
 

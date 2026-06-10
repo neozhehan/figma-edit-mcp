@@ -691,8 +691,36 @@ export async function getNodeVariables(params: any) {
     };
 }
 
+/**
+ * Extracts a human-readable detail from a thrown value. Figma can throw
+ * error-like objects whose `.message` is undefined/empty, which would otherwise
+ * surface as the literal string "undefined". Falls back through name → toString
+ * → JSON so the agent always gets something actionable to recover from.
+ */
+function describeError(e: any): string {
+    if (e == null) return String(e);
+    if (typeof e === 'string') return e;
+    if (typeof e.message === 'string' && e.message.length > 0) {
+        return e.name && e.name !== 'Error' ? `${e.name}: ${e.message}` : e.message;
+    }
+    if (typeof e.toString === 'function') {
+        const s = e.toString();
+        if (s && s !== '[object Object]') return s;
+    }
+    try {
+        const json = JSON.stringify(e);
+        if (json && json !== '{}') return json;
+    } catch { /* not serializable */ }
+    if (e.name) return e.name;
+    return 'unknown error (no message)';
+}
+
 export async function setBoundVariable(params: any) {
-    const { nodeId, field, variableId, collectionId, modeId } = params || {};
+    // Schema contract (src/mcp_server/tools/node.ts): bindVariables is a map of
+    // property → variableId|null, and explicitVariableModes is a map of
+    // collectionId → modeId. Both are forwarded untransformed, so this handler
+    // must consume the maps directly (matches style_manage's bindVariables shape).
+    const { nodeId, bindVariables, explicitVariableModes } = params || {};
 
     if (!nodeId) {
         throw new Error("Missing nodeId parameter");
@@ -703,66 +731,74 @@ export async function setBoundVariable(params: any) {
         throw new Error(`Node not found with ID: ${nodeId}`);
     }
 
-    // Case A: Set Explicit Mode (Theming)
-    if (collectionId !== undefined) {
-        if (modeId === undefined) {
-            throw new Error("Missing modeId when setting collection mode");
-        }
-        try {
-            // If modeId is null/empty string, we clear the mode?
-            // Plugin API: setExplicitVariableModeForCollection(collectionId, modeId)
-            // To clear, we usually don't have a clear method, but passing invalid mode might throw.
-            // Let's assume user sends valid modeId.
-            // @ts-ignore
-            await node.setExplicitVariableModeForCollection(collectionId, modeId);
-            return { success: true, message: `Set mode ${modeId} for collection ${collectionId}` };
-        } catch (e: any) {
-            throw new Error(`Failed to set explicit variable mode: ${e.message}`);
-        }
+    const hasBindings = bindVariables && Object.keys(bindVariables).length > 0;
+    const hasModes = explicitVariableModes && Object.keys(explicitVariableModes).length > 0;
+    if (!hasBindings && !hasModes) {
+        throw new Error("Must provide bindVariables (property → variableId) or explicitVariableModes (collectionId → modeId)");
     }
 
-    // Case B: Set Bound Variable (Property)
-    if (field) {
-        try {
-            let variable = null;
-            if (variableId) {
-                variable = await figma.variables.getVariableByIdAsync(variableId);
-                if (!variable) throw new Error(`Variable ${variableId} not found`);
-            }
+    const results: string[] = [];
 
-            // Special handling for fills and strokes (paints)
-            if (field === 'fills' || field === 'strokes') {
+    // Case A: Set Explicit Modes (Theming) — map of collectionId → modeId.
+    // The Plugin API requires the resolved collection NODE (not the id string)
+    // under dynamic-page/"incremental" mode, so resolve each id first.
+    if (hasModes) {
+        for (const [collectionId, modeId] of Object.entries(explicitVariableModes)) {
+            try {
+                const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+                if (!collection) throw new Error(`Collection ${collectionId} not found`);
                 // @ts-ignore
-                const paints = JSON.parse(JSON.stringify(node[field]));
-                let modified = false;
-                for (let i = 0; i < paints.length; i++) {
-                    if (paints[i].type === 'SOLID') {
-                        paints[i] = figma.variables.setBoundVariableForPaint(paints[i], 'color', variable);
-                        modified = true;
-                    }
-                }
-
-                if (modified) {
-                    // @ts-ignore
-                    node[field] = paints;
-                    const action = variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`;
-                    return { success: true, message: action };
-                }
-                return { success: false, message: `No SOLID paints found in ${field} to bind variable` };
+                await node.setExplicitVariableModeForCollection(collection, modeId);
+                results.push(`Set mode ${modeId} for collection ${collectionId}`);
+            } catch (e: any) {
+                throw new Error(`Failed to set explicit variable mode for collection ${collectionId}: ${describeError(e)}`);
             }
-
-            // Standard properties
-            // @ts-ignore
-            node.setBoundVariable(field, variable);
-            const action = variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`;
-            return { success: true, message: action };
-
-        } catch (e: any) {
-            throw new Error(`Failed to set bound variable: ${e.message}`);
         }
     }
 
-    throw new Error("Must provide either (field + variableId) or (collectionId + modeId)");
+    // Case B: Bind/unbind variables on node properties — map of field → variableId|null
+    if (hasBindings) {
+        for (const [field, variableId] of Object.entries(bindVariables)) {
+            try {
+                let variable: any = null;
+                if (variableId) {
+                    variable = await figma.variables.getVariableByIdAsync(variableId as string);
+                    if (!variable) throw new Error(`Variable ${variableId} not found`);
+                }
+
+                // Special handling for fills and strokes (paints)
+                if (field === 'fills' || field === 'strokes') {
+                    // @ts-ignore
+                    const paints = JSON.parse(JSON.stringify(node[field]));
+                    let modified = false;
+                    for (let i = 0; i < paints.length; i++) {
+                        if (paints[i].type === 'SOLID') {
+                            paints[i] = figma.variables.setBoundVariableForPaint(paints[i], 'color', variable);
+                            modified = true;
+                        }
+                    }
+
+                    if (modified) {
+                        // @ts-ignore
+                        node[field] = paints;
+                        results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
+                    } else {
+                        results.push(`No SOLID paints found in ${field} to bind variable`);
+                    }
+                    continue;
+                }
+
+                // Standard properties
+                // @ts-ignore
+                node.setBoundVariable(field, variable);
+                results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
+            } catch (e: any) {
+                throw new Error(`Failed to set bound variable for ${field}: ${describeError(e)}`);
+            }
+        }
+    }
+
+    return { success: true, name: node.name, message: results.join('; ') };
 }
 
 /**

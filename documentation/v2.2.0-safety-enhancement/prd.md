@@ -82,6 +82,7 @@ Source analysis: `documentation/v2.2.0-safety-enhancement/safety_checks_brainsto
 | §14 | Per-asset edit permissions (Variables/Styles) — permission-model change | **P1** | `main.ts`, `ui.html`, `connectHandlers.ts`, `channel.ts` |
 | §15 | `text_set_style` schema↔handler contract repair (functional bug) | **P1** | `src/mcp_server/tools/text.ts`, `figma_plugin/handlers/textHandlers.ts` |
 | §16 | `text_set_content` schema↔handler contract repair (production-breaking) | **P0** | `src/mcp_server/tools/text.ts`, `figma_plugin/handlers/textHandlers.ts`, `figma_plugin/src/main.ts` |
+| §17 | `node_bind_variable` schema↔handler contract repair (production-breaking) | **P0** | `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/variableHandlers.ts` |
 
 A shared prerequisite helper is defined in §0.
 
@@ -428,6 +429,24 @@ No `"Operation Denied: …"` string — this is a contract repair, not a guard. 
 
 ---
 
+## §17. `node_bind_variable` schema↔handler contract repair (P0 — production-breaking)
+
+**The risk.** `node_bind_variable` is **non-functional through the MCP path** today — every real call throws. Two independent defects in the same handler, both verified live during v2.2.0 verification (combo B):
+
+1. **Schema↔handler shape drift.** The MCP schema (`src/mcp_server/tools/node.ts:622-633`) sends two **maps** — `bindVariables: { property → variableId|null }` and `explicitVariableModes: { collectionId → modeId }` — and forwards them untransformed (`node.ts:645`). The dispatcher (`main.ts:277-281`) runs gate/scope/name checks then calls `setBoundVariable(params)` with no transformation. But the handler `setBoundVariable` (`variableHandlers.ts:694`) destructured a **flat** `{ field, variableId, collectionId, modeId }` it never receives. So `field`/`collectionId` were always `undefined`, every call skipped both branches and hit the final `throw "Must provide either (field + variableId) or (collectionId + modeId)"`. **Both** capabilities — property binding *and* explicit-mode theming — were dead.
+2. **Collection-id vs collection-node (explicit modes).** Once the maps are consumed, `node.setExplicitVariableModeForCollection(collectionId, modeId)` throws under dynamic-page mode: *"Cannot call setExplicitVariableModeForCollection with a collection id in incremental mode. Please pass the collection node instead."* This was latent in the original code too — masked because the handler was entirely unreachable.
+
+**Why CI was green.** No functional test of `setBoundVariable` existed — the only reference (`v2Tools.test.ts:35`) merely asserts the tool is *registered*. Unlike §16 (handler-shaped tests masked the drift), here the path was simply untested end-to-end, so the break went unnoticed until live verification.
+
+**v2.2.0 change.** Reconcile on the schema's **map** contract (chosen over flattening the schema — matches `style_manage`'s `bindVariables` map, and supports batch bindings + unbind in one call):
+1. **`bindVariables`** — iterate `{ field → variableId|null }`; for `fills`/`strokes` bind via `setBoundVariableForPaint` per SOLID paint, else `node.setBoundVariable(field, variable)`; a `null` value **unbinds** (no variable lookup). Preserves all the original per-field logic.
+2. **`explicitVariableModes`** — iterate `{ collectionId → modeId }`; **resolve each id via `getVariableCollectionByIdAsync` and pass the collection NODE** to `setExplicitVariableModeForCollection`; throw `"Collection … not found"` on an unresolved id.
+3. Throw a clear `"Must provide bindVariables (property → variableId) or explicitVariableModes (collectionId → modeId)"` when neither map is present (replaces the stale flat-shape message).
+
+No `"Operation Denied: …"` string — this is a contract repair, not a guard. The fix **must** include regression tests driving the exact MCP map shapes (added to `setBoundVariable` tests in `annotationsAndVariables.test.ts`) so neither drift can recur.
+
+---
+
 ## Provenance — corrections applied to the brainstorm
 
 The three originally-proposed checks (locked layers, component property typing, hierarchy) are carried forward (§2, §5, §3). The "additional gaps" list was corrected:
@@ -442,6 +461,8 @@ New checks added from the codebase pass: §1 (scope-root self-destruction), §4 
 Added from the official Figma MCP cross-check (`figma-documentation-check.md`): §15 (`text_set_style` contract repair); the §8 silent-drop sub-case (and the explicit rejection of a separate `HUG` guard); the §9 resize-sizing-mode-reset warning; the §10 native `getStyledTextSegments` approach (replacing the buggy `buildLinearOrder`); the §5 variant-member guard; and the §6B `skipInvisibleInstanceChildren` caution.
 
 Added from the implementation critique (`critique.md`): §16 (`text_set_content` contract repair — production-breaking); the §1 `create_component` self-destruction case; the §7 `instance_set_property` carve-out (overrides on instances of remote components remain allowed); and the §10 unloadable-font edge-case note. (The critique's schema-consistency items for `reaction_update`/`variable_delete` were already covered by §6A/§6B; its test-working-directory note is a contributor-docs concern, not a spec change.)
+
+Added from **live verification** (combo-B boundary probe, not in the brainstorm/critique): §17 (`node_bind_variable` contract repair — production-breaking; both the map-shape drift and the latent collection-id-vs-node bug in explicit modes). Same class as §15/§16 but for `node_bind_variable`.
 
 ---
 
@@ -494,6 +515,7 @@ Resolutions get promoted back into §Decisions as they land.
 - **§14** Permission matrix (8 cells) enforced: node writes blocked when `allowEditNode === false` regardless of asset flags; `variable_*` require `allowEditVariable`, `style_*` require `allowEditStyle`; remote guard still wins; `node_bind_variable`/`node_apply_style` follow node permission; binding a variable into a style needs only `allowEditStyle`; connect payload surfaces all three axes; checkboxes disabled while connected.
 - **§15** A font change via `text_set_style` actually takes effect (regression test); `lineHeight {unit:"AUTO"}` is accepted; `textAlignHorizontal`/`textAlignVertical` are reachable through the schema; `paragraphIndent` is applied.
 - **§16** `text_set_content` succeeds end-to-end through the MCP schema shape (`{ text: [{ nodeId, nodeName, characters }] }`) — no top-level `nodeId` required, per-item `characters` is written; the old handler-shaped test is updated to the schema shape so the drift cannot recur.
+- **§17** `node_bind_variable` succeeds end-to-end through the MCP map shapes: `{ bindVariables: { fills: "VariableID:…" } }` binds (and `null` unbinds) a property; `{ explicitVariableModes: { collectionId: modeId } }` resolves the collection to a node and sets the mode; neither-map throws the new error; an unresolved variable/collection id throws.
 
 ### Manual (Figma sandbox)
 1. Lock a frame; confirm every edit tool refuses it and names the locked ancestor.

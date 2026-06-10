@@ -3981,8 +3981,26 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       return { success: true, deleted: idsToCheck };
     }
   }
+  function describeError(e) {
+    if (e == null) return String(e);
+    if (typeof e === "string") return e;
+    if (typeof e.message === "string" && e.message.length > 0) {
+      return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
+    }
+    if (typeof e.toString === "function") {
+      const s = e.toString();
+      if (s && s !== "[object Object]") return s;
+    }
+    try {
+      const json = JSON.stringify(e);
+      if (json && json !== "{}") return json;
+    } catch (e2) {
+    }
+    if (e.name) return e.name;
+    return "unknown error (no message)";
+  }
   async function setBoundVariable(params) {
-    const { nodeId, field, variableId, collectionId, modeId } = params || {};
+    const { nodeId, bindVariables, explicitVariableModes } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
     }
@@ -3990,48 +4008,57 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
-    if (collectionId !== void 0) {
-      if (modeId === void 0) {
-        throw new Error("Missing modeId when setting collection mode");
-      }
-      try {
-        await node.setExplicitVariableModeForCollection(collectionId, modeId);
-        return { success: true, message: `Set mode ${modeId} for collection ${collectionId}` };
-      } catch (e) {
-        throw new Error(`Failed to set explicit variable mode: ${e.message}`);
+    const hasBindings = bindVariables && Object.keys(bindVariables).length > 0;
+    const hasModes = explicitVariableModes && Object.keys(explicitVariableModes).length > 0;
+    if (!hasBindings && !hasModes) {
+      throw new Error("Must provide bindVariables (property \u2192 variableId) or explicitVariableModes (collectionId \u2192 modeId)");
+    }
+    const results = [];
+    if (hasModes) {
+      for (const [collectionId, modeId] of Object.entries(explicitVariableModes)) {
+        try {
+          const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+          if (!collection) throw new Error(`Collection ${collectionId} not found`);
+          await node.setExplicitVariableModeForCollection(collection, modeId);
+          results.push(`Set mode ${modeId} for collection ${collectionId}`);
+        } catch (e) {
+          throw new Error(`Failed to set explicit variable mode for collection ${collectionId}: ${describeError(e)}`);
+        }
       }
     }
-    if (field) {
-      try {
-        let variable = null;
-        if (variableId) {
-          variable = await figma.variables.getVariableByIdAsync(variableId);
-          if (!variable) throw new Error(`Variable ${variableId} not found`);
-        }
-        if (field === "fills" || field === "strokes") {
-          const paints = JSON.parse(JSON.stringify(node[field]));
-          let modified = false;
-          for (let i = 0; i < paints.length; i++) {
-            if (paints[i].type === "SOLID") {
-              paints[i] = figma.variables.setBoundVariableForPaint(paints[i], "color", variable);
-              modified = true;
+    if (hasBindings) {
+      for (const [field, variableId] of Object.entries(bindVariables)) {
+        try {
+          let variable = null;
+          if (variableId) {
+            variable = await figma.variables.getVariableByIdAsync(variableId);
+            if (!variable) throw new Error(`Variable ${variableId} not found`);
+          }
+          if (field === "fills" || field === "strokes") {
+            const paints = JSON.parse(JSON.stringify(node[field]));
+            let modified = false;
+            for (let i = 0; i < paints.length; i++) {
+              if (paints[i].type === "SOLID") {
+                paints[i] = figma.variables.setBoundVariableForPaint(paints[i], "color", variable);
+                modified = true;
+              }
             }
+            if (modified) {
+              node[field] = paints;
+              results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
+            } else {
+              results.push(`No SOLID paints found in ${field} to bind variable`);
+            }
+            continue;
           }
-          if (modified) {
-            node[field] = paints;
-            const action2 = variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`;
-            return { success: true, message: action2 };
-          }
-          return { success: false, message: `No SOLID paints found in ${field} to bind variable` };
+          node.setBoundVariable(field, variable);
+          results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
+        } catch (e) {
+          throw new Error(`Failed to set bound variable for ${field}: ${describeError(e)}`);
         }
-        node.setBoundVariable(field, variable);
-        const action = variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`;
-        return { success: true, message: action };
-      } catch (e) {
-        throw new Error(`Failed to set bound variable: ${e.message}`);
       }
     }
-    throw new Error("Must provide either (field + variableId) or (collectionId + modeId)");
+    return { success: true, name: node.name, message: results.join("; ") };
   }
   async function handleVariableRequest(params) {
     const { action } = params || {};
@@ -4345,18 +4372,23 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   async function getConnectPayload() {
     try {
       const state2 = getPluginState();
-      if (state2.readOnly === true) {
+      const basePayload = {
+        allowEditNode: state2.allowEditNode,
+        allowEditVariable: state2.allowEditVariable,
+        allowEditStyle: state2.allowEditStyle,
+        editableScopeType: state2.allowEditNode || "readonly",
+        documentId: figma.root.id,
+        documentName: figma.root.name
+      };
+      if (!state2.allowEditNode) {
         const pages = figma.root.children.map((page) => ({
           pageId: page.id,
           pageName: page.name
         }));
-        return {
-          editableScopeType: "readonly",
-          documentId: figma.root.id,
-          documentName: figma.root.name,
+        return Object.assign({}, basePayload, {
           pageCount: figma.root.children.length,
           pages
-        };
+        });
       }
       if (state2.scopeRootId) {
         const scopeNode = await figma.getNodeByIdAsync(state2.scopeRootId);
@@ -4366,7 +4398,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             errorMessage: "The node previously set as the editable scope no longer exists. Disconnect the plugin and select a new editable scope via the 'Link to Selection' field."
           };
         }
-        if (scopeNode.type === "PAGE" && scopeNode.parent === figma.root) {
+        if (state2.allowEditNode === "page") {
           try {
             await scopeNode.loadAsync();
           } catch (e) {
@@ -4375,15 +4407,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
               errorMessage: "Failed to load the Figma document's pages. The file may be too large or temporarily unavailable. Retry shortly."
             };
           }
-          const children = scopeNode.children.map((child) => ({
+          const children = ("children" in scopeNode ? scopeNode.children : []).map((child) => ({
             id: child.id,
             name: child.name,
             type: child.type
           }));
-          return {
-            editableScopeType: "page",
-            documentId: figma.root.id,
-            documentName: figma.root.name,
+          return Object.assign({}, basePayload, {
             pageCount: figma.root.children.length,
             pages: [{
               pageId: scopeNode.id,
@@ -4391,23 +4420,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
               descendantCount: countDescendants(scopeNode),
               children
             }]
-          };
-        } else {
-          let containingPage = null;
-          let currentNode = scopeNode.parent;
-          while (currentNode) {
-            if (currentNode.type === "PAGE") {
-              containingPage = currentNode;
-              break;
-            }
-            currentNode = currentNode.parent;
-          }
-          if (!containingPage || containingPage.parent !== figma.root) {
-            return {
-              errorCode: "SCOPE_INVALID",
-              errorMessage: "The plugin reported an unrecognized editable scope state. Disconnect and reconnect the plugin to reset its scope."
-            };
-          }
+          });
+        } else if (state2.allowEditNode === "node") {
           let children = [];
           if ("children" in scopeNode) {
             children = scopeNode.children.map((child) => ({
@@ -4416,10 +4430,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
               type: child.type
             }));
           }
-          return {
-            editableScopeType: "node",
-            documentId: figma.root.id,
-            documentName: figma.root.name,
+          return Object.assign({}, basePayload, {
             node: {
               nodeId: scopeNode.id,
               nodeName: scopeNode.name,
@@ -4428,7 +4439,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
               descendantCount: countDescendants(scopeNode),
               children
             }
-          };
+          });
         }
       }
       return {
@@ -4451,6 +4462,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     PARENT_OUTSIDE_SCOPE: "Operation Denied: Parent outside editable scope. Verify if user intends for changes to be made to the parent node. If so, advise user to disconnect plugin, paste a link to the parent page/layer into Link to Selection field, then reconnect plugin.",
     CLONING_SOURCE_NODE_OUTSIDE_SCOPE: "Operation Denied: Node to be cloned is outside editable scope. Verify if user intends for this node to be cloned. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
     SCOPE_DELETED: "Operation Denied: The specific Node set as the Editable Scope no longer exists/cannot be found. Advise user to disconnect the plugin and Select a new Editable Scope.",
+    VARIABLE_EDITS_DISABLED: "Operation Denied: Variable editing is disabled. Ask the user to tick 'Allow AI Agent to modify Variables' in the Figma plugin and reconnect.",
+    STYLE_EDITS_DISABLED: "Operation Denied: Style editing is disabled. Ask the user to tick 'Allow AI Agent to modify Styles' in the Figma plugin and reconnect.",
     // Node ID Errors
     NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
     PARENT_NAME_MISMATCH: "Operation Denied: parentNodeName does not match name of parentId. Refresh context & recheck to ensure correct parentId is passed in.",
@@ -4464,8 +4477,10 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     serverPort: 3055,
     // Default port
     scopeRootId: null,
-    readOnly: false
-    // Default to false, but connection flow will set this
+    allowEditNode: false,
+    // false | "page" | "node"
+    allowEditVariable: false,
+    allowEditStyle: false
   };
   function getPluginState() {
     return state;
@@ -4474,7 +4489,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     return `${errorMessage} (Current Editable Scope Node ID: ${state.scopeRootId || "None"})`;
   }
   async function checkScopeAccess(nodeId) {
-    if (state.readOnly) return false;
+    if (!state.allowEditNode) return false;
     if (!state.scopeRootId) return false;
     const scopeNode = await figma.getNodeByIdAsync(state.scopeRootId);
     if (!scopeNode) {
@@ -4489,7 +4504,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     return false;
   }
   function checkScopeAccessRef(node, scopeRootNode) {
-    if (state.readOnly) return false;
+    if (!state.allowEditNode) return false;
     let curr = node;
     while (curr) {
       if (curr.id === scopeRootNode.id) return true;
@@ -4555,12 +4570,16 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "set-scope":
         if (msg.scopeNodeId) {
           state.scopeRootId = msg.scopeNodeId;
-          state.readOnly = false;
+          state.allowEditNode = msg.scopeNodeType === "PAGE" ? "page" : "node";
+          state.allowEditVariable = !!msg.allowEditVariable;
+          state.allowEditStyle = !!msg.allowEditStyle;
           figma.notify(`Scope locked to node: ${msg.scopeNodeId}`);
         } else {
           state.scopeRootId = null;
-          state.readOnly = true;
-          figma.notify("Connected in Read-Only Mode");
+          state.allowEditNode = false;
+          state.allowEditVariable = !!msg.allowEditVariable;
+          state.allowEditStyle = !!msg.allowEditStyle;
+          figma.notify("Connected in Read-Only Mode for nodes");
         }
         break;
       case "execute-command":
@@ -4599,37 +4618,37 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "get_connect_payload":
         return await getConnectPayload();
       case "node_set_fill":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setFillColor(params);
       case "node_set_stroke":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setStroke(params);
       case "node_set_corner_radius":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setCornerRadius(params);
       case "node_set_auto_layout":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setAutoLayout(params);
       case "node_bind_variable":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setBoundVariable(params);
       case "node_rename":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setNodeName(params);
       case "node_group":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
         if (params.nodes.length > 0) {
           const firstNode = await figma.getNodeByIdAsync(params.nodes[0].nodeId);
@@ -4646,54 +4665,54 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         return await groupNodes(params);
       case "node_ungroup":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await ungroupNodes(params);
       case "node_flatten":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await flattenNode(params);
       case "node_insert_child":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         if (!await checkScopeAccess(params ? params.childId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.childId : null, params ? params.childNodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await insertChild(params);
       case "node_transform":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await transformNode(params);
       case "node_clone":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await cloneNode(params);
       case "create_shape":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createShape(params);
       case "create_frame":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createFrame(params);
       case "create_text":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createText(params);
       case "create_instance":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createComponentInstance(params);
       case "create_connection":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (params && params.connectorId) {
           if (!await checkScopeAccess(params.connectorId)) throw new Error(formatScopeError(`Operation denied: Connector node ${params.connectorId} outside editable scope`));
         }
@@ -4707,7 +4726,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         return await createConnections(params);
       case "text_set_content":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.text || !Array.isArray(params.text)) throw new Error("Missing or Invalid text parameter");
         if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         const textScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
@@ -4731,12 +4750,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         return await setMultipleTextContents(params);
       case "text_set_style":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setTextStyle(params);
       case "annotation_set":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.annotations || !Array.isArray(params.annotations)) throw new Error("Missing or Invalid annotations parameter");
         if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         const annScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
@@ -4760,7 +4779,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         return await setMultipleAnnotations(params);
       case "node_delete":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
         if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         const deleteScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
@@ -4783,7 +4802,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         return await deleteMultipleNodes({ nodeIds: nodeIdsToDelete });
       case "instance_set_overrides":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (params && params.targetNodes) {
           if (!Array.isArray(params.targetNodes)) {
             throw new Error("targetNodes must be an array");
@@ -4834,17 +4853,17 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
       case "instance_set_property":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setComponentInstanceProperty(params);
       case "component_manage_property":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await manageComponentProperty(params);
       case "component_delete_property":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await deleteComponentProperty(params);
@@ -4852,7 +4871,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         return await getPagesInfo(params);
       case "node_info":
         const effectiveNodeIds = params && params.nodeIds && Array.isArray(params.nodeIds) && params.nodeIds.length > 0 ? params.nodeIds : state.scopeRootId ? [state.scopeRootId] : [];
-        if (effectiveNodeIds.length === 0 && state.readOnly) {
+        if (effectiveNodeIds.length === 0 && !state.allowEditNode) {
           return { nodes: [] };
         }
         return await getNodesInfo(Object.assign({}, params, {
@@ -4882,7 +4901,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         return await getReactions(params.nodeIds);
       case "reaction_update":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         return await updateReactions(params);
       case "view_navigate":
@@ -4890,29 +4909,29 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "variable_list":
         return await getVariables(params);
       case "variable_manage":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditVariable) throw new Error(ERRORS.VARIABLE_EDITS_DISABLED);
         return await handleVariableRequest(params);
       case "variable_delete":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditVariable) throw new Error(ERRORS.VARIABLE_EDITS_DISABLED);
         return await deleteVariables(params);
       case "style_manage":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditStyle) throw new Error(ERRORS.STYLE_EDITS_DISABLED);
         return await createStyle(params);
       case "style_delete":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditStyle) throw new Error(ERRORS.STYLE_EDITS_DISABLED);
         return await deleteStyle(params);
       case "node_apply_style":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await applyStyle(params);
       case "create_component":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await createComponent(params);
       case "create_component_set":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         const compSetScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
         if (!compSetScopeRoot) {
@@ -4951,12 +4970,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         return await createComponentSet(params);
       case "create_svg":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
         if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
         return await createNodeFromSvg(params);
       case "node_set_effects":
-        if (state.readOnly) throw new Error(ERRORS.READ_ONLY_MODE);
+        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         return await setEffects(params);

@@ -2,6 +2,10 @@
 
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
+## [Unreleased] — v2.2.0 (in progress)
+### Fixed
+- **`node_bind_variable` was non-functional through the MCP path (production-breaking).** The tool's schema sends `bindVariables` / `explicitVariableModes` **maps**, but the plugin handler (`setBoundVariable`) read a flat `{ field, variableId, collectionId, modeId }` shape it never received — so every real call threw `Must provide either (field + variableId) or (collectionId + modeId)`. The handler now consumes the maps directly: `bindVariables` binds/unbinds node properties (fills/strokes via paint binding, `null` to unbind), and `explicitVariableModes` resolves each collection id to its node before calling `setExplicitVariableModeForCollection` (the Plugin API rejects a raw collection id under dynamic-page mode). Regression tests now drive the real MCP map shapes so the drift cannot recur. (PRD §17; found during live verification.)
+
 ## [2.0.0]
 ### Breaking changes
 This release completely overhauls the Model Context Protocol tool API to use a clean, standardized two-level namespace (`group_action`, 46 tools across 11 taxonomy groups). Tool routing, parameters, schemas, and return formats have been restructured to optimize for agentic consumption.

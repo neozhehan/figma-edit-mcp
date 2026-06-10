@@ -5,20 +5,26 @@ export async function getConnectPayload() {
     try {
         const state = getPluginState();
 
-        if (state.readOnly === true) {
+        const basePayload = {
+            allowEditNode: state.allowEditNode,
+            allowEditVariable: state.allowEditVariable,
+            allowEditStyle: state.allowEditStyle,
+            editableScopeType: state.allowEditNode || "readonly",
+            documentId: figma.root.id,
+            documentName: figma.root.name,
+        };
+
+        if (!state.allowEditNode) {
             const pages = figma.root.children.map(page => ({
                 pageId: page.id,
                 pageName: page.name
             }));
 
             // Read-only mode: no descendantCount (pages are not loaded)
-            return {
-                editableScopeType: "readonly",
-                documentId: figma.root.id,
-                documentName: figma.root.name,
+            return Object.assign({}, basePayload, {
                 pageCount: figma.root.children.length,
                 pages
-            };
+            });
         }
 
         if (state.scopeRootId) {
@@ -31,7 +37,7 @@ export async function getConnectPayload() {
                 };
             }
 
-            if (scopeNode.type === "PAGE" && scopeNode.parent === figma.root) {
+            if (state.allowEditNode === "page") {
                 try {
                     await scopeNode.loadAsync();
                 } catch (e: any) {
@@ -41,16 +47,13 @@ export async function getConnectPayload() {
                     };
                 }
 
-                const children = scopeNode.children.map(child => ({
+                const children = ('children' in scopeNode ? scopeNode.children : []).map((child: any) => ({
                     id: child.id,
                     name: child.name,
                     type: child.type
                 }));
 
-                return {
-                    editableScopeType: "page",
-                    documentId: figma.root.id,
-                    documentName: figma.root.name,
+                return Object.assign({}, basePayload, {
                     pageCount: figma.root.children.length,
                     pages: [{
                         pageId: scopeNode.id,
@@ -58,26 +61,8 @@ export async function getConnectPayload() {
                         descendantCount: countDescendants(scopeNode),
                         children
                     }]
-                };
-            } else {
-                let containingPage: PageNode | null = null;
-                let currentNode: BaseNode | null = scopeNode.parent;
-
-                while (currentNode) {
-                    if (currentNode.type === "PAGE") {
-                        containingPage = currentNode as PageNode;
-                        break;
-                    }
-                    currentNode = currentNode.parent;
-                }
-
-                if (!containingPage || containingPage.parent !== figma.root) {
-                    return {
-                        errorCode: "SCOPE_INVALID",
-                        errorMessage: "The plugin reported an unrecognized editable scope state. Disconnect and reconnect the plugin to reset its scope."
-                    };
-                }
-
+                });
+            } else if (state.allowEditNode === "node") {
                 let children: any[] = [];
                 if ('children' in scopeNode) {
                     children = (scopeNode as any).children.map((child: any) => ({
@@ -88,10 +73,7 @@ export async function getConnectPayload() {
                 }
 
                 // v1.4.0: Replace 5 legacy fields with path array + descendantCount
-                return {
-                    editableScopeType: "node",
-                    documentId: figma.root.id,
-                    documentName: figma.root.name,
+                return Object.assign({}, basePayload, {
                     node: {
                         nodeId: scopeNode.id,
                         nodeName: scopeNode.name,
@@ -100,7 +82,7 @@ export async function getConnectPayload() {
                         descendantCount: countDescendants(scopeNode),
                         children
                     }
-                };
+                });
             }
         }
 
