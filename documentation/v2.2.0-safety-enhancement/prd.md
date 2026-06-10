@@ -80,6 +80,8 @@ Source analysis: `documentation/v2.2.0-safety-enhancement/safety_checks_brainsto
 | §12 | `NaN` opacity bug (`parseFloat(a) ?? 1`) | **P2** | `figma_plugin/handlers/nodeCreators.ts` |
 | §13 | `insert_child` index-bounds guard | **P2** | `figma_plugin/handlers/nodeModifiers.ts` |
 | §14 | Per-asset edit permissions (Variables/Styles) — permission-model change | **P1** | `main.ts`, `ui.html`, `connectHandlers.ts`, `channel.ts` |
+| §15 | `text_set_style` schema↔handler contract repair (functional bug) | **P1** | `src/mcp_server/tools/text.ts`, `figma_plugin/handlers/textHandlers.ts` |
+| §16 | `text_set_content` schema↔handler contract repair (production-breaking) | **P0** | `src/mcp_server/tools/text.ts`, `figma_plugin/handlers/textHandlers.ts`, `figma_plugin/src/main.ts` |
 
 A shared prerequisite helper is defined in §0.
 
@@ -99,16 +101,16 @@ These are pure tree walks over the synchronous `.parent` chain — no `await`, n
 
 ## §1. Scope-root self-destruction guard (P0)
 
-**The risk.** `checkScopeAccessRef` returns `true` when the target node **is** the scope root, so a node that destroys or replaces the scope root passes validation. `node_delete` removes it; `node_flatten` and `node_ungroup` **replace** it with a new node (new id). The instant the scope root's id no longer resolves, every subsequent command throws `SCOPE_DELETED` (`main.ts:90`) and the session is bricked until the user re-links the plugin. This is a self-inflicted denial of service from a single call.
+**The risk.** `checkScopeAccessRef` returns `true` when the target node **is** the scope root, so a node that destroys or replaces the scope root passes validation. `node_delete` removes it; `node_flatten`, `node_ungroup`, and `create_component` **replace** it with a new node (new id). The instant the scope root's id no longer resolves, every subsequent command throws `SCOPE_DELETED` (`main.ts:90`) and the session is bricked until the user re-links the plugin. This is a self-inflicted denial of service from a single call.
 
-**Current behavior.** No guard. `node_delete` (`main.ts:439-464`), `node_flatten` (`main.ts:311-315`), `node_ungroup` (`main.ts:305-309`) all permit the scope root as target.
+**Current behavior.** No guard. `node_delete` (`main.ts:439-464`), `node_flatten` (`main.ts:311-315`), `node_ungroup` (`main.ts:305-309`), and `create_component` (`componentHandlers.ts:679-693` — moves the frame's children into a freshly created component, then `node.remove()`s the source frame and returns the new id) all permit the scope root as target.
 
 **v2.2.0 change.** In the dispatcher, before invoking the handler for any **destructive or node-replacing** op, reject when the resolved target id `=== state.scopeRootId`:
 - `node_delete` — for each item, if `item.nodeId === state.scopeRootId` throw.
-- `node_flatten`, `node_ungroup` — if `params.nodeId === state.scopeRootId` throw.
+- `node_flatten`, `node_ungroup`, `create_component` — if `params.nodeId === state.scopeRootId` throw. (`create_component` added from `critique.md §1`: it replaces the source frame with a new component node, invalidating the scope id exactly like flatten/ungroup. Its dispatch case already resolves `params.nodeId` for scope + name checks, so reuse that reference.)
 
 **Error string:**
-> `Operation Denied: This node is the current Editable Scope root; deleting/flattening/ungrouping it would invalidate the scope for the rest of the session. Re-scope to a parent first, or ask the user to select a different Editable Scope.`
+> `Operation Denied: This node is the current Editable Scope root; deleting/flattening/ungrouping/converting it would invalidate the scope for the rest of the session. Re-scope to a parent first, or ask the user to select a different Editable Scope.`
 
 **Note.** This is *not* the same as the §4 instance guard or the §2 locked guard; it is specifically about preserving `state.scopeRootId` resolvability. Reparenting the scope root (`node_insert_child` with `childId === scopeRootId`) does **not** change its id and is therefore out of scope for §1.
 
@@ -190,6 +192,9 @@ Pure **property** edits on an instance's own exposed/overridable properties are 
 3. **`VARIANT`** — cross-reference against the allowed values from the parent `ComponentSetNode.variantGroupProperties`; on miss, throw listing the valid options. (Note: variant options come from the **component set**, not the instance.)
 4. **`INSTANCE_SWAP`** (D10) — best-effort/advisory: validate the value resolves to a `COMPONENT` id or is a non-empty component key; reject a wrong-type reference (frame id, number, empty string), but pass plausible references through and let Figma arbitrate. Do **not** validate against the property's `preferredValues` (advisory in Figma — swaps outside it are often still legal). The error-playbook must note that a passed swap can still be refused by Figma.
 
+**Node-type guard (`manageComponentProperty` only — added from Figma-doc cross-check).** `addComponentProperty`/`editComponentProperty` are invalid on a **variant member** — a `COMPONENT` whose parent is a `COMPONENT_SET`. The current guard (`componentHandlers.ts:865`) allows any `COMPONENT`/`COMPONENT_SET`, so targeting a variant member degrades to a wrapped raw throw instead of structured guidance. Reject up front when `node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET"`:
+> `Operation Denied: '${node.name}' is a variant inside a component set; manage properties on the set ('${node.parent.name}'), not the individual variant.`
+
 **Error string (example, VARIANT):**
 > `Operation Denied: '${value}' is not a valid value for variant property '${propertyName}'. Valid values: ${options.join(', ')}.`
 
@@ -207,6 +212,9 @@ The codebase's safety invariant is "every write verifies `nodeName` against the 
 **Current behavior.** `deleteVariables` (`variableHandlers.ts:473`) takes only ids — **no name field at all**. `style_delete`'s `styleName` is a *required* schema field (`style.ts:124`); its handler `!== undefined` guard (`styleHandlers.ts:210`) is only defensive. So required-name is the established precedent and `variable_delete` is the outlier: a destructive delete by raw ID with no tripwire (the consumer-scan guards in-use variables, but an unused-variable wrong-id delete is unguarded).
 **Change (required name, both modes).** `variableIds` mode → require a parallel `variableNames: string[]` (same length); verify each by id, reject on mismatch. `collectionId` mode → require `collectionName`; verify it. Throw a `"… does not match name of …"` style error on mismatch. Update `src/mcp_server/tools/variable.ts` (schema) + `deleteVariables`. **Also tighten `style_delete`'s handler** to drop the dead `!== undefined` allowance so it matches `verifyNodeName`'s "block if name absent" (`main.ts:123`) — consistency only, no behavior change for valid calls.
 
+> [!CAUTION]
+> **Do not globally enable `figma.skipInvisibleInstanceChildren` for the consumer scan.** `deleteVariables` runs a full-document consumer scan (`findVariableConsumers`, `variableHandlers.ts:524`) to refuse deleting an in-use variable. That scan **must see hidden nodes** — a variable consumed only by an invisible node inside an instance would otherwise look unused and be deleted, corrupting hidden variant state. If the perf flag from `figma-documentation-check.md §3` is adopted for discovery reads, scope it narrowly and **exclude this scan** (and any other correctness-critical full-tree walk).
+
 ---
 
 ## §7. Remote library-asset guard (P1)
@@ -220,7 +228,8 @@ The codebase's safety invariant is "every write verifies `nodeName` against the 
 **v2.2.0 change.** Add a remote check to the asset-mutation paths only:
 - `style_manage` (edit existing via `styleId`), `style_delete`: if the resolved style `.remote` → throw.
 - `variable_manage` (`UPDATE_VARIABLE`), `variable_delete`: if the resolved variable (or collection) `.remote` → throw.
-- `component_manage_property`, `component_delete_property`, and instance-set-property when it targets a remote main component: if the resolved component `.remote` → throw.
+- `component_manage_property`, `component_delete_property`: if the resolved **main component** `.remote` → throw.
+- **`instance_set_property` is NOT remote-gated (corrected per `critique.md §2`).** It writes a *local override* on the instance via `setProperties` (`componentHandlers.ts:777`) and never mutates the remote main-component definition; gating it would break the standard, legal workflow of overriding instances of shared-library components — and would contradict this section's own accuracy note ("an instance of a remote component is fully editable"). Only writes to the remote main-component *definition* (the two tools above) are blocked.
 
 **Error string:**
 > `Operation Denied: '${name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`
@@ -236,6 +245,12 @@ The codebase's safety invariant is "every write verifies `nodeName` against the 
 **v2.2.0 change.** In `setAutoLayout`, when either sizing is `"FILL"`, verify the parent is auto-layout; else throw:
 > `Operation Denied: Sizing 'FILL' requires the parent to be an Auto-Layout frame (layoutMode HORIZONTAL or VERTICAL). Parent '${parent.name}' has layoutMode '${parentMode}'.`
 
+**Silent-drop on a non-auto-layout frame (added from Figma-doc cross-check).** `setAutoLayout` early-returns when `node.layoutMode === "NONE"` (`layoutHandlers.ts:74-82`), so a call that supplies sizing/padding/alignment **without** also setting `layoutMode` returns `{id,name,layoutMode}` with no error and **no effect** — a silent no-op of the same class as §9. Reject (or surface a `warnings` entry) when auto-layout-only properties are supplied but the frame is and remains `NONE`:
+> `Operation Denied: '${node.name}' is not an Auto-Layout frame (layoutMode NONE); set layoutMode to HORIZONTAL or VERTICAL before configuring sizing/padding/alignment.`
+
+> [!NOTE]
+> **No separate `HUG` guard.** A `HUG`-context guard (the original `figma-documentation-check.md §2` proposal) was considered and **rejected as dead code**: the only reachable sizing path requires `layoutMode !== "NONE"` (the frame *is* auto-layout), where `HUG` on its own axis is always valid; the invalid `HUG` case (a non-`TEXT`, non-auto-layout *child*) is never set by this tool, which only sizes the frame itself. The real defect is the silent drop above, not a missing `HUG` check.
+
 ---
 
 ## §9. Silent no-op on auto-layout child transform (P2)
@@ -245,13 +260,24 @@ The codebase's safety invariant is "every write verifies `nodeName` against the 
 **v2.2.0 change (D8).** Before applying `x`/`y`, detect: parent is auto-layout **and** `node.layoutPositioning !== "ABSOLUTE"`. In that case **hard-reject** the positional change (x/y are *always* a no-op there) with guidance (set `layoutPositioning = "ABSOLUTE"`, reorder via `node_insert_child` index, or adjust spacing/padding). For **resize**, apply the axis Figma honors (FIXED) and return a `warnings: [...]` entry for any axis the parent controls (HUG/FILL) rather than rejecting the whole call.
 > `Operation Denied: '${node.name}' is laid out by its Auto-Layout parent; its x/y are controlled by the layout and cannot be set directly. Use absolute positioning, reorder the child, or adjust parent spacing.`
 
+**Resize resets the node's own sizing modes (added from Figma-doc cross-check).** `node.resize()` (`nodeModifiers.ts:51`) silently reverts the resized node's **own** `layoutSizingHorizontal`/`Vertical` (and the legacy `primaryAxisSizingMode`/`counterAxisSizingMode`) to `FIXED`. This is a second silent side-effect in the same handler, distinct from the layout-controlled-child case above — it hits the node being resized, not its children. When a resize changes a non-`FIXED` sizing axis, read it back and return a `warnings: [...]` entry (e.g. `"resize reset layoutSizingHorizontal from HUG to FIXED"`) so a later relayout doesn't surprise the agent. Do **not** block the resize.
+
 ---
 
 ## §10. Mixed-font loading in `text_set_style` (P2)
 
 **The risk.** Figma requires **all** fonts in a `TextNode`'s ranges to be loaded before modifying *any* text/layout property — even alignment or size. `setTextStyle` (`textHandlers.ts:246-263`) explicitly punts on the mixed-font case ("hope for the best"), so styling a mixed-font node throws an unloaded-font error.
 
-**v2.2.0 change.** When `node.fontName === figma.mixed`, load every font present before writing. **Reuse existing utilities** — `buildLinearOrder(node)` + the font-collection pattern in `setCharactersWithSmartMatchFont` (`textUtils.ts:37, 207`) already enumerate and load all fonts in a node; factor out a `loadAllFontsForNode(node)` helper from that code rather than writing a new traversal.
+**v2.2.0 change (approach revised — see `figma-documentation-check.md §5`).** When `node.fontName === figma.mixed`, load every font present before writing. Use the **native** `node.getStyledTextSegments(['fontName'])` to enumerate the fonts across all ranges, then load them in parallel — do **not** reuse `buildLinearOrder` (`textUtils.ts:37`), which carries a live bug (`getRangeFontName(spacesRangeStart, spacesRangeStart[0])` indexes a number — `textUtils.ts:58-61`). Factor a `loadAllFontsForNode(node)` helper around the native call, and short-circuit the single-font case by loading `node.fontName` directly:
+
+```ts
+const fonts = node.fontName === figma.mixed
+  ? uniqBy(node.getStyledTextSegments(['fontName']).map(s => s.fontName), f => `${f.family}::${f.style}`)
+  : [node.fontName];
+await Promise.all(fonts.map(f => figma.loadFontAsync(f)));
+```
+
+**Unloadable-font edge case (from `critique.md §6`).** If a range uses a now-unavailable family, `loadFontAsync` rejects — and Figma then refuses *any* text-property write on the node (`Cannot write to node with unloaded font`). A `try/catch` around the loads does **not** enable a partial restyle (the later property write still throws), so do not "skip the bad font and proceed." Use the catch only to convert the raw rejection into an actionable error (`'${node.name}' contains an unavailable font; replace it before restyling`). Dedup (the `uniqBy` above) is the only real perf lever; `loadFontAsync` over a handful of distinct families is cheap, so the parallel-load count is not a concern.
 
 ---
 
@@ -366,6 +392,42 @@ Two checkboxes in the connection section (near scope-link, `:261-275`); add `all
 
 ---
 
+## §15. `text_set_style` schema↔handler contract repair (P1 — functional bug)
+
+**The risk.** `text_set_style` silently fails to do its primary job. The MCP schema (`src/mcp_server/tools/text.ts:45-80`) sends `fontName: {family, style}` and `paragraphIndent`, and the dispatcher forwards `params` untransformed (`main.ts:406-410`), but the handler `setTextStyle` (`textHandlers.ts:206-209`) destructures `fontFamily`, `fontStyle`, `textAlignHorizontal`, `textAlignVertical`. Verified against the code:
+- **`fontName` is silently dropped.** `fontFamily`/`fontStyle` are always `undefined`, so the `if (fontFamily || fontStyle)` branch (`textHandlers.ts:223`) never runs — the tool cannot change a font. The else-branch instead reloads the node's *current* font, so the call "succeeds" with no font change.
+- **`paragraphIndent`** is accepted by the schema but never applied.
+- **`textAlignHorizontal`/`textAlignVertical`** are applied by the handler but **absent from the schema**, so the agent cannot reach them.
+
+A tool that reports success while discarding the requested edit is exactly the "silent corruption of intent" this release exists to eliminate; it also undermines §10, which builds on this handler's font-loading path.
+
+**v2.2.0 change.** Reconcile schema and handler in one pass (do this alongside §10 — same file):
+1. **Font.** Make the handler read `fontName.family`/`fontName.style` (preferred — matches `style_manage`'s typed `fontName`), *or* flatten the schema to `fontFamily`/`fontStyle`. Pick one and make schema + handler agree.
+2. **`lineHeight` AUTO.** Replace the value-required `lineHeight` (`text.ts:56-62`) with the union already used in `style.ts:36-39`, so an individual node's line height can be reset to `{unit:"AUTO"}` (resolves `figma-documentation-check.md §1`).
+3. **`textAlignHorizontal`/`textAlignVertical`.** Add to the schema (the handler already applies them).
+4. **`paragraphIndent`.** Apply it in the handler (the schema already sends it).
+
+No structured `"Operation Denied: …"` string is required — this is a contract repair, not a new guard — but the fix **must** include a regression test asserting a font change via `text_set_style` actually takes effect.
+
+---
+
+## §16. `text_set_content` schema↔handler contract repair (P0 — production-breaking)
+
+**The risk.** `text_set_content` is **non-functional in production** today; only handler-shaped unit tests pass, masking it. Two independent schema↔handler drifts, both verified:
+1. **Phantom top-level `nodeId`.** The MCP tool sends `{ text: [...] }` with **no** top-level `nodeId` (`text.ts:13-34`), but the handler `setMultipleTextContents` requires one (`textHandlers.ts:58-61`: `if (!nodeId || …) throw "Missing required parameters: nodeId and text array"`). A real MCP call throws **before** touching any item.
+2. **Per-item `characters` vs `text`.** Schema items carry `characters` (`text.ts:19`); the handler reads `replacement.text` (`textHandlers.ts:101, 138`) — always `undefined`. Even past drift #1, the batch fails with `"Missing nodeId or text in replacement entry"`.
+
+**Why CI is green.** The unit tests feed the handler's *internal* shape, not the schema shape — `{ nodeId: "scope-root", text: [{ nodeId, nodeName, text }] }` (`atomicityAndValidation.test.ts:98-104, 240-247`) — fabricating the phantom top-level `nodeId` and per-item `text` that production never produces. There is no end-to-end coverage through the Zod schema for this tool.
+
+**v2.2.0 change.** Reconcile schema, handler, and tests on one contract — the fix **must** address **both** drifts:
+1. **Field name.** Standardize on `characters` (Figma-native): in `setMultipleTextContents` read `replacement.characters` (currently `replacement.text` at `textHandlers.ts:101, 138`). The internal `setTextContent` (`textHandlers.ts:20-48`) may keep its `text` param — just pass `replacement.characters` into it.
+2. **Drop the phantom top-level `nodeId` guard.** The per-item `nodeId`s are the real targets; the top-level `nodeId` requirement (`textHandlers.ts:61`) and the `nodeId:` echoes in the return payload are dead weight the schema never satisfies. Remove the requirement.
+3. **Test the schema shape.** Add a test that drives `text_set_content` with the exact `{ text: [{ nodeId, nodeName, characters }] }` payload the MCP tool emits, so this drift can't recur silently.
+
+No `"Operation Denied: …"` string — this is a contract repair, not a guard. (Note: the dispatch-level pre-validation loop at `main.ts:389-403` is correct and unaffected; the break is downstream in the handler.)
+
+---
+
 ## Provenance — corrections applied to the brainstorm
 
 The three originally-proposed checks (locked layers, component property typing, hierarchy) are carried forward (§2, §5, §3). The "additional gaps" list was corrected:
@@ -376,6 +438,10 @@ The three originally-proposed checks (locked layers, component property typing, 
 - **Auto-layout FILL** and **mixed-font loading** — carried forward as-is (§8, §10).
 
 New checks added from the codebase pass: §1 (scope-root self-destruction), §4 (instance-interior structural edits), §6 (name-verification consistency), §9 (silent no-op transforms), §11 (duplicate variants), §13 (index bounds).
+
+Added from the official Figma MCP cross-check (`figma-documentation-check.md`): §15 (`text_set_style` contract repair); the §8 silent-drop sub-case (and the explicit rejection of a separate `HUG` guard); the §9 resize-sizing-mode-reset warning; the §10 native `getStyledTextSegments` approach (replacing the buggy `buildLinearOrder`); the §5 variant-member guard; and the §6B `skipInvisibleInstanceChildren` caution.
+
+Added from the implementation critique (`critique.md`): §16 (`text_set_content` contract repair — production-breaking); the §1 `create_component` self-destruction case; the §7 `instance_set_property` carve-out (overrides on instances of remote components remain allowed); and the §10 unloadable-font edge-case note. (The critique's schema-consistency items for `reaction_update`/`variable_delete` were already covered by §6A/§6B; its test-working-directory note is a contributor-docs concern, not a spec change.)
 
 ---
 
@@ -412,20 +478,22 @@ Resolutions get promoted back into §Decisions as they land.
 ## Verification plan
 
 ### Automated
-- **§1** Deleting/flattening/ungrouping a node whose id `=== scopeRootId` is rejected; a non-root node in scope still succeeds.
+- **§1** Deleting/flattening/ungrouping/converting-to-component a node whose id `=== scopeRootId` is rejected; a non-root node in scope still succeeds.
 - **§2** Each mutating command rejects a locked target and a locked-ancestor target, with zero mutation on batch tools; reads succeed on locked nodes; creation under a locked parent is rejected.
 - **§3** Self-parent and cyclic reparent rejected with structured errors; legal reparent still works.
 - **§4** `node_delete`/`node_insert_child`/`node_group` on an instance-interior node rejected; `instance_set_property` on the same instance still succeeds.
-- **§5** Each property type validated; `"true"`→`BOOLEAN` coerces; bad `VARIANT` lists valid options; `INSTANCE_SWAP` rejects a wrong-type reference but passes a plausible component id/key through (advisory).
+- **§5** Each property type validated; `"true"`→`BOOLEAN` coerces; bad `VARIANT` lists valid options; `INSTANCE_SWAP` rejects a wrong-type reference but passes a plausible component id/key through (advisory); managing a property on a variant member (a `COMPONENT` inside a `COMPONENT_SET`) is rejected with set-level guidance.
 - **§6** `reaction_update` rejects on name mismatch; `variable_delete` requires names in both modes (per-id `variableNames`, or `collectionName`) and rejects on mismatch; `style_delete` still rejects on mismatch with the tightened (no-`undefined`) guard.
-- **§7** Editing/deleting a remote style/variable/component rejected; editing a local instance of a remote component still succeeds.
-- **§8** `FILL` under a non-auto-layout parent rejected; under auto-layout parent succeeds.
-- **§9** Setting x/y on a layout-controlled auto-layout child is rejected (not silently dropped); a resize on a HUG/FILL axis returns a `warnings` entry while the FIXED axis applies.
+- **§7** Editing/deleting a remote style/variable/main-component *definition* (via `component_manage_property`/`component_delete_property`) rejected; `instance_set_property` on an instance of a remote component still succeeds (local override); editing a local instance of a remote component still succeeds.
+- **§8** `FILL` under a non-auto-layout parent rejected; under auto-layout parent succeeds; supplying sizing/padding/alignment to a `NONE` frame without `layoutMode` is rejected (not silently dropped).
+- **§9** Setting x/y on a layout-controlled auto-layout child is rejected (not silently dropped); a resize on a HUG/FILL axis returns a `warnings` entry while the FIXED axis applies; a resize that reverts a non-`FIXED` sizing mode to `FIXED` returns a `warnings` entry.
 - **§10** `text_set_style` on a mixed-font node succeeds (all fonts loaded).
 - **§11** Duplicate variant combination rejected with the colliding combo named.
 - **§12** Creating a frame/text without alpha yields opacity `1`, never `NaN`.
 - **§13** `insert_child` with an out-of-range `index` (`< 0` or `> children.length`) throws a structured bounds error; omitted `index` appends; the output `index` reports the actual resolved position.
 - **§14** Permission matrix (8 cells) enforced: node writes blocked when `allowEditNode === false` regardless of asset flags; `variable_*` require `allowEditVariable`, `style_*` require `allowEditStyle`; remote guard still wins; `node_bind_variable`/`node_apply_style` follow node permission; binding a variable into a style needs only `allowEditStyle`; connect payload surfaces all three axes; checkboxes disabled while connected.
+- **§15** A font change via `text_set_style` actually takes effect (regression test); `lineHeight {unit:"AUTO"}` is accepted; `textAlignHorizontal`/`textAlignVertical` are reachable through the schema; `paragraphIndent` is applied.
+- **§16** `text_set_content` succeeds end-to-end through the MCP schema shape (`{ text: [{ nodeId, nodeName, characters }] }`) — no top-level `nodeId` required, per-item `characters` is written; the old handler-shaped test is updated to the schema shape so the drift cannot recur.
 
 ### Manual (Figma sandbox)
 1. Lock a frame; confirm every edit tool refuses it and names the locked ancestor.
