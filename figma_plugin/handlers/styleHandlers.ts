@@ -16,6 +16,9 @@ export async function createStyle(params: any) {
         if (style.type !== type.toUpperCase()) {
             throw new Error(`Style parameter type ${type} does not match retrieved style type ${style.type}`);
         }
+        if (style.remote) {
+            throw new Error(`Operation Denied: '${style.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
+        }
     } else {
         switch (type.toUpperCase()) {
             case 'TEXT':
@@ -207,8 +210,12 @@ export async function deleteStyle(params: any) {
         throw new Error(`Style with ID ${styleId} not found.`);
     }
 
-    if (styleName !== undefined && styleName !== null && style.name !== styleName) {
+    if (styleName === undefined || styleName === null || style.name !== styleName) {
         throw new Error("Operation Denied: styleName does not match name of styleId. Refresh context & recheck to ensure correct styleId is passed in.");
+    }
+
+    if (style.remote) {
+        throw new Error(`Operation Denied: '${style.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
     }
 
     style.remove();

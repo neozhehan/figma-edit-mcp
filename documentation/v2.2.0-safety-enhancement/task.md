@@ -52,22 +52,22 @@ This task list covers **all** requirements in [`prd.md`](./prd.md) for the v2.2.
   - [x] **Visual-only (manual, not scriptable via MCP):** confirm the two checkboxes are greyed-out while connected and not clipped at the 450px window height.
 
 ## Phase 3: Dispatcher-Level Guards — `main.ts` unless noted (P0/P1)
-- [ ] **§1 Scope-root self-destruction:** Reject when the resolved target id `=== state.scopeRootId` for `node_delete` (per item), `node_flatten`, `node_ungroup`, and **`create_component`** (it replaces the source frame with a new id). Reparenting the scope root via `node_insert_child` is **out of scope** (id unchanged). Error string per PRD §1.
-- [ ] **§2 Locked-layer hard block (D2):** Add a single `assertNotLocked(node)` helper invoked **from the dispatcher** (next to `checkScopeAccess`/`verifyNodeName`, **not** per-handler), run **after** scope + name. Reject when `findLockedAncestor(target) !== null`:
-  - [ ] Single-target writes — check `params.nodeId`.
-  - [ ] Batch writes — check **each** target in the pre-validation loop (zero-mutation abort).
-  - [ ] Creation/reparenting — check the **parent** (`parentId`); for `node_insert_child` **also check the child**.
-  - [ ] Confirm reads are unaffected (D5).
-- [ ] **§4 Instance-interior structural block (D7):** Reject **structural** ops only when `findInstanceAncestor(target) !== null` — `node_delete` (each), `node_insert_child` (**both** `childId` and `parentId`), `node_group`, `node_ungroup`, and `create_*` (resolved `parentId`). **Allow** property/override writes (`instance_set_property`, `instance_set_overrides`, fills/text/visibility on overridable descendants) — Figma is the final arbiter. Confirm the structural-op list against the live Plugin API. Error string per PRD §4.
-- [ ] **§6A `reaction_update` name verification:** Add `verifyNodeName(params.nodeId, params.nodeName)` to the dispatch case **and** add `nodeName` to the schema in `src/mcp_server/tools/reaction.ts` (currently absent — without it the call can never satisfy the check).
-- [ ] **§7 Remote library-asset guard:** Reject when the resolved asset `.remote === true` for `style_manage` (edit-existing)/`style_delete`; `variable_manage` (`UPDATE_VARIABLE`)/`variable_delete`; `component_manage_property`/`component_delete_property`. **`instance_set_property` is explicitly NOT gated** (local override, not a definition edit). Stacks on top of §14. Error string per PRD §7.
-- [ ] **Tests:**
-  - [ ] §1: deleting/flattening/ungrouping/`create_component` on `scopeRootId` rejected; a non-root in-scope node still succeeds.
-  - [ ] §2: each mutating command rejects a locked target **and** a locked-ancestor target; **zero mutation** on batch tools; creation under a locked parent rejected; **reads succeed on locked nodes**.
-  - [ ] §4: structural op on an instance-interior node rejected; **an override write on the same instance still succeeds** (the D7 boundary test).
-  - [ ] §6A: `reaction_update` rejects on name mismatch.
-  - [ ] §7: editing/deleting a remote style/variable/component rejected; **editing a local instance of a remote component still succeeds**.
-- [ ] **Live Verification:** Build plugin; in Figma confirm locked layers and instance-interior nodes reject structural mutations, an instance override still applies, and deleting the scope root is blocked.
+- [x] **§1 Scope-root self-destruction:** Reject when the resolved target id `=== state.scopeRootId` for `node_delete` (per item), `node_flatten`, `node_ungroup`, and **`create_component`** (it replaces the source frame with a new id). Reparenting the scope root via `node_insert_child` is **out of scope** (id unchanged). Error string per PRD §1.
+- [x] **§2 Locked-layer hard block (D2):** Add a single `assertNotLocked(node)` helper invoked **from the dispatcher** (next to `checkScopeAccess`/`verifyNodeName`, **not** per-handler), run **after** scope + name. Reject when `findLockedAncestor(target) !== null`:
+  - [x] Single-target writes — check `params.nodeId`.
+  - [x] Batch writes — check **each** target in the pre-validation loop (zero-mutation abort).
+  - [x] Creation/reparenting — check the **parent** (`parentId`); for `node_insert_child` **also check the child**.
+  - [x] Confirm reads are unaffected (D5).
+- [x] **§4 Instance-interior structural block (D7):** Reject **structural** ops only when `findInstanceAncestor(target) !== null` — `node_delete` (each), `node_insert_child` (**both** `childId` and `parentId`), `node_group`, `node_ungroup`, and `create_*` (resolved `parentId`). **Allow** property/override writes (`instance_set_property`, `instance_set_overrides`, fills/text/visibility on overridable descendants) — Figma is the final arbiter. Confirm the structural-op list against the live Plugin API. Error string per PRD §4.
+- [x] **§6A `reaction_update` name verification:** Add `verifyNodeName(params.nodeId, params.nodeName)` to the dispatch case **and** add `nodeName` to the schema in `src/mcp_server/tools/reaction.ts` (currently absent — without it the call can never satisfy the check).
+- [x] **§7 Remote library-asset guard:** Reject when the resolved asset `.remote === true` for `style_manage` (edit-existing)/`style_delete`; `variable_manage` (`UPDATE_VARIABLE`)/`variable_delete`; `component_manage_property`/`component_delete_property`. **`instance_set_property` is explicitly NOT gated** (local override, not a definition edit). Stacks on top of §14. Error string per PRD §7.
+- [x] **Tests:**
+  - [x] §1: deleting/flattening/ungrouping/`create_component` on `scopeRootId` rejected; a non-root in-scope node still succeeds.
+  - [x] §2: each mutating command rejects a locked target **and** a locked-ancestor target; **zero mutation** on batch tools; creation under a locked parent rejected; **reads succeed on locked nodes**.
+  - [x] §4: structural op on an instance-interior node rejected; **an override write on the same instance still succeeds** (the D7 boundary test).
+  - [x] §6A: `reaction_update` rejects on name mismatch.
+  - [x] §7: editing/deleting a remote style/variable/component rejected; **editing a local instance of a remote component still succeeds**.
+- [x] **Live Verification:** Build plugin; in Figma confirm locked layers and instance-interior nodes reject structural mutations, an instance override still applies, and deleting the scope root is blocked.
 
 ## Phase 4: Node Modifiers & Creators Validations (P0/P2)
 - [ ] **§3 Cyclic / self-parent guard (`nodeModifiers.ts` `insertChild`):** Before reparent — reject (1) `parentId === childId`; (2) `isAncestorOf(child, parent)` (cyclic); (3) type-compat belt-and-suspenders (`PAGE` as child of non-`DOCUMENT`, non-`PAGE` as child of `DOCUMENT`). Error strings per PRD §3.

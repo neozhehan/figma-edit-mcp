@@ -488,6 +488,9 @@ export async function deleteVariables(params: any) {
         // Collection mode: resolve all variable IDs from the collection
         collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
         if (!collection) throw new Error(`Collection not found: ${collectionId}`);
+        if (collection.remote) {
+            throw new Error(`Operation Denied: '${collection.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
+        }
         idsToCheck = collection.variableIds || [];
 
         // Empty collection — safe to delete immediately
@@ -508,7 +511,11 @@ export async function deleteVariables(params: any) {
         idsToCheck.map((id: string) => figma.variables.getVariableByIdAsync(id))
     );
     for (let i = 0; i < idsToCheck.length; i++) {
-        if (!variables[i]) throw new Error(`Variable not found: ${idsToCheck[i]}`);
+        const v = variables[i] as any;
+        if (!v) throw new Error(`Variable not found: ${idsToCheck[i]}`);
+        if (v.remote) {
+            throw new Error(`Operation Denied: '${v.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
+        }
     }
 
     // Full-document consumer scan (single pass for all IDs)
@@ -920,6 +927,10 @@ export async function handleVariableRequest(params: any) {
 
             if (currentVariableName && variable.name !== currentVariableName) {
                 throw new Error(`Variable name verification failed. Expected "${variable.name}", got "${currentVariableName}"`);
+            }
+
+            if (variable.remote) {
+                throw new Error(`Operation Denied: '${variable.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
             }
 
             if (name) {
