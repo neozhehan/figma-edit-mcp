@@ -3261,10 +3261,10 @@
     };
   }
   async function setMultipleTextContents(params) {
-    const { nodeId, text } = params || {};
+    const { text } = params || {};
     const commandId = params.commandId || generateCommandId();
-    if (!nodeId || !text || !Array.isArray(text)) {
-      const errorMsg = "Missing required parameters: nodeId and text array";
+    if (!text || !Array.isArray(text)) {
+      const errorMsg = "Missing required parameters: text array";
       await sendProgressUpdate(
         commandId,
         "set_multiple_text_contents",
@@ -3278,7 +3278,7 @@
       throw new Error(errorMsg);
     }
     console.log(
-      `Starting text replacement for node: ${nodeId} with ${text.length} text replacements`
+      `Starting text replacement with ${text.length} text replacements`
     );
     await sendProgressUpdate(
       commandId,
@@ -3295,12 +3295,12 @@
     let failureCount = 0;
     for (let i = 0; i < text.length; i++) {
       const replacement = text[i];
-      if (!replacement.nodeId || replacement.text === void 0) {
+      if (!replacement.nodeId || replacement.characters === void 0) {
         failureCount++;
         results.push({
           success: false,
           nodeId: replacement.nodeId || "unknown",
-          error: "Missing nodeId or text in replacement entry"
+          error: "Missing nodeId or characters in replacement entry"
         });
         break;
       }
@@ -3328,14 +3328,14 @@
         const originalText = textNode.characters;
         await setTextContent({
           nodeId: replacement.nodeId,
-          text: replacement.text
+          text: replacement.characters
         });
         successCount++;
         results.push({
           success: true,
           nodeId: replacement.nodeId,
           originalText,
-          translatedText: replacement.text
+          translatedText: replacement.characters
         });
         await sendProgressUpdate(
           commandId,
@@ -3375,7 +3375,6 @@
     );
     return {
       success: successCount > 0 && failureCount === 0,
-      nodeId,
       replacementsApplied: successCount,
       replacementsFailed: failureCount,
       totalReplacements: text.length,
@@ -3383,11 +3382,31 @@
       commandId
     };
   }
+  async function loadAllFontsForNode(node) {
+    if (node.fontName !== figma.mixed) return;
+    const segments = node.getStyledTextSegments(["fontName"]);
+    const uniqueFonts = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const segment of segments) {
+      const font = segment.fontName;
+      const key = `${font.family}-${font.style}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        uniqueFonts.push(font);
+      }
+    }
+    for (const font of uniqueFonts) {
+      try {
+        await figma.loadFontAsync(font);
+      } catch (error) {
+        throw new Error(`Failed to load font ${font.family} ${font.style}: ${error.message}`);
+      }
+    }
+  }
   async function setTextStyle(params) {
     const {
       nodeId,
-      fontFamily,
-      fontStyle,
+      fontName,
       fontSize,
       letterSpacing,
       lineHeight,
@@ -3395,7 +3414,8 @@
       textCase,
       textDecoration,
       textAlignHorizontal,
-      textAlignVertical
+      textAlignVertical,
+      paragraphIndent
     } = params;
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
@@ -3404,27 +3424,31 @@
     if (node.type !== "TEXT") {
       throw new Error(`Node is not a text node (got ${node.type})`);
     }
-    if (fontFamily || fontStyle) {
-      let currentFamily = "Inter";
-      let currentStyle = "Regular";
-      if (node.fontName !== figma.mixed) {
-        currentFamily = node.fontName.family;
-        currentStyle = node.fontName.style;
+    if (fontName) {
+      const targetFamily = fontName.family;
+      const targetStyle = fontName.style;
+      try {
+        await figma.loadFontAsync({ family: targetFamily, style: targetStyle });
+      } catch (error) {
+        throw new Error(`Failed to load requested font ${targetFamily} ${targetStyle}: ${error.message}`);
       }
-      const targetFamily = fontFamily || currentFamily;
-      const targetStyle = fontStyle || (fontFamily && !fontStyle ? "Regular" : currentStyle);
-      await figma.loadFontAsync({ family: targetFamily, style: targetStyle });
       node.fontName = { family: targetFamily, style: targetStyle };
     } else {
       if (node.fontName !== figma.mixed) {
-        await figma.loadFontAsync(node.fontName);
+        try {
+          await figma.loadFontAsync(node.fontName);
+        } catch (error) {
+          throw new Error(`Failed to load current font ${node.fontName.family} ${node.fontName.style}: ${error.message}`);
+        }
       } else {
+        await loadAllFontsForNode(node);
       }
     }
     if (fontSize !== void 0) node.fontSize = fontSize;
     if (letterSpacing !== void 0) node.letterSpacing = letterSpacing;
     if (lineHeight !== void 0) node.lineHeight = lineHeight;
     if (paragraphSpacing !== void 0) node.paragraphSpacing = paragraphSpacing;
+    if (paragraphIndent !== void 0) node.paragraphIndent = paragraphIndent;
     if (textCase !== void 0) node.textCase = textCase;
     if (textDecoration !== void 0) node.textDecoration = textDecoration;
     if (textAlignHorizontal !== void 0) node.textAlignHorizontal = textAlignHorizontal;

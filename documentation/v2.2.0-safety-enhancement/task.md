@@ -106,15 +106,15 @@ This task list covers **all** requirements in [`prd.md`](./prd.md) for the v2.2.
 - [x] **Live Verification:** In Figma confirm a duplicate variant throws the intended error and `INSTANCE_SWAP` accepts a valid component reference.
 
 ## Phase 6: Tool Contract Repairs — Text + `node_bind_variable` (`textHandlers.ts`, `variableHandlers.ts` + `src/mcp_server/tools/{text,node}.ts`) (P0/P1/P2)
-- [ ] **§10 Mixed-font loading (`setTextStyle`):** Factor a `loadAllFontsForNode(node)` helper using native `node.getStyledTextSegments(['fontName'])` (dedupe via `uniqBy`; short-circuit `node.fontName !== figma.mixed`). Do **not** reuse the buggy `buildLinearOrder` (`textUtils.ts:58-61`). On an unavailable font, surface an actionable error — **do not** skip-and-proceed (a missing font blocks any write regardless).
-- [ ] **§15 `text_set_style` schema↔handler repair (functional bug):**
-  - [ ] Make schema (`text.ts`) and handler agree on the font — read `fontName.family`/`fontName.style` in the handler (preferred; matches `style_manage`) **or** flatten the schema to `fontFamily`/`fontStyle`. (Today `fontName` is silently dropped.)
-  - [ ] Replace value-required `lineHeight` (`text.ts:56-62`) with the `{unit:"AUTO"} | {value, unit:"PIXELS"|"PERCENT"}` union from `style.ts:36-39`.
-  - [ ] Add `textAlignHorizontal`/`textAlignVertical` to the schema (handler already applies them).
-  - [ ] Apply `paragraphIndent` in the handler (schema already sends it).
-- [ ] **§16 `text_set_content` production-breakage repair (P0):**
-  - [ ] Standardize on `characters`: in `setMultipleTextContents` read `replacement.characters` (currently `replacement.text` at `textHandlers.ts:101,138`); pass it into `setTextContent`.
-  - [ ] Drop the phantom top-level `nodeId` requirement (`textHandlers.ts:61`) and the `nodeId:` echoes the schema never supplies.
+- [x] **§10 Mixed-font loading (`setTextStyle`):** Factor a `loadAllFontsForNode(node)` helper using native `node.getStyledTextSegments(['fontName'])` (dedupe via `uniqBy`; short-circuit `node.fontName !== figma.mixed`). Do **not** reuse the buggy `buildLinearOrder` (`textUtils.ts:58-61`). On an unavailable font, surface an actionable error — **do not** skip-and-proceed (a missing font blocks any write regardless).
+- [x] **§15 `text_set_style` schema↔handler repair (functional bug):**
+  - [x] Make schema (`text.ts`) and handler agree on the font — read `fontName.family`/`fontName.style` in the handler (preferred; matches `style_manage`) **or** flatten the schema to `fontFamily`/`fontStyle`. (Today `fontName` is silently dropped.)
+  - [x] Replace value-required `lineHeight` (`text.ts:56-62`) with the `{unit:"AUTO"} | {value, unit:"PIXELS"|"PERCENT"}` union from `style.ts:36-39`.
+  - [x] Add `textAlignHorizontal`/`textAlignVertical` to the schema (handler already applies them).
+  - [x] Apply `paragraphIndent` in the handler (schema already sends it).
+- [x] **§16 `text_set_content` production-breakage repair (P0):**
+  - [x] Standardize on `characters`: in `setMultipleTextContents` read `replacement.characters` (currently `replacement.text` at `textHandlers.ts:101,138`); pass it into `setTextContent`.
+  - [x] Drop the phantom top-level `nodeId` requirement (`textHandlers.ts:61`) and the `nodeId:` echoes the schema never supplies.
 - [x] **§17 `node_bind_variable` production-breakage repair (P0 — found during live verification, combo B):** Handler `setBoundVariable` (`variableHandlers.ts:694`) now consumes the schema's **maps** instead of the flat `{field,variableId,collectionId,modeId}` it never received (every real MCP call previously threw the flat-shape error).
   - [x] `bindVariables` map (property → variableId|null): for `fills`/`strokes` bind each SOLID paint via `setBoundVariableForPaint`, else `node.setBoundVariable(field, variable)`; a `null` value **unbinds** (no variable lookup).
   - [x] `explicitVariableModes` map (collectionId → modeId): resolve each id via `getVariableCollectionByIdAsync` and pass the collection **node** (not the id string) to `setExplicitVariableModeForCollection` (API rejects a raw id under dynamic-page mode); throw `"Collection … not found"` on an unresolved id.
@@ -129,8 +129,8 @@ This task list covers **all** requirements in [`prd.md`](./prd.md) for the v2.2.
   - [x] **`node_info` unify on `properties`:** rename input `fields → properties` (= output key = internal payload); drop the `properties: fields` remap; update description.
   - [x] **Docs/resources:** updated `workflows.md`, `tool-selection.md`, `node-fields.md`, `README.md`, `resources.ts`, and the `instance` prompt to the `properties` param (served `figma-edit://guide/*` resources stay in sync via the skill files).
   - [x] **Tests:** `strictInput.test.ts` — `node_info` accepts `properties` / rejects old `fields`; **all 46 tools** reject an unknown key (via the SDK path). Updated `v2Tools.test.ts` (no longer relies on key-stripping) and the `contractSeam` `node_info` comment.
-- [ ] **Tests:** End-to-end tests driving the **MCP schema shape** — `text_set_style` actually changes a font, accepts `lineHeight {unit:"AUTO"}`, reaches `textAlign*`, applies `paragraphIndent`; `text_set_content` with `{ text: [{ nodeId, nodeName, characters }] }` (no top-level `nodeId`) updates characters. Update the existing handler-shaped tests (`atomicityAndValidation.test.ts:98-104,240-247`) to the schema shape so the drift cannot recur.
-- [ ] **Live Verification:** In Figma confirm `text_set_style` changes the font and `text_set_content` updates characters.
+- [x] **Tests:** End-to-end tests driving the **MCP schema shape** — `text_set_style` actually changes a font, accepts `lineHeight {unit:"AUTO"}`, reaches `textAlign*`, applies `paragraphIndent`; `text_set_content` with `{ text: [{ nodeId, nodeName, characters }] }` (no top-level `nodeId`) updates characters. Update the existing handler-shaped tests (`atomicityAndValidation.test.ts:98-104,240-247`) to the schema shape so the drift cannot recur.
+- [x] **Live Verification:** In Figma confirm `text_set_style` changes the font and `text_set_content` updates characters.
 
 ## Phase 7: Documentation, Build & Release
 - [ ] **Docs — agent guidance (single source):** Update `skills/figma-edit/references/constraints.md` (reframe read-only as **node-only**; the three permission axes; new locked/remote/instance-interior/scope-root constraints), `error-playbook.md` (new codes `VARIABLE_EDITS_DISABLED`/`STYLE_EDITS_DISABLED`; clarify `READ_ONLY_MODE` is node-only; note the **INSTANCE_SWAP advisory** — a passed swap can still be refused by Figma, D10), `workflows.md`, `tool-selection.md`, and `AGENTS.md`. Keep the **`figma-edit://guide/*` MCP resources** in sync (same single source).

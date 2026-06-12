@@ -134,8 +134,8 @@ const CONTRACTS: Record<string, Contract> = {
     style_manage: { reads: ["type", "name"] },                         // createStyle
     style_delete: { reads: ["styleId", "styleName"] },                 // deleteStyle
     // ---- text ----
-    text_set_content: { reads: [], skip: "§16: handler reads top-level nodeId + item.text absent from schema (characters); fix in Phase 6" },
-    text_set_style: { reads: [], skip: "§15: handler reads fontFamily/fontStyle; schema sends fontName; fix in Phase 6" },
+    text_set_content: { reads: ["text"], item: { key: "text", reads: ["nodeId", "characters"] } },
+    text_set_style: { reads: ["nodeId", "fontName", "fontSize", "lineHeight", "letterSpacing", "paragraphIndent", "paragraphSpacing", "textCase", "textDecoration", "textAlignHorizontal", "textAlignVertical"] },
     // ---- component ----
     component_list: { reads: [] },                                     // getComponents (all optional)
     component_manage_property: { reads: ["nodeId", "action", "propertyName"] }, // manageComponentProperty
