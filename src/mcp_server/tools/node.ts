@@ -313,7 +313,7 @@ export function registerNodeTools(server: McpServer) {
         "node_insert_child",
         {
             title: "Reparent Node",
-            description: "Reparent a node under a new parent at an optional `index`.",
+            description: "Reparent a node under a new parent at an optional `index`. Valid range is 0 to parent's child count. Omit `index` to append.",
             inputSchema: z.object({
                 parentId: z.string().describe("ID of the new parent node"),
                 parentNodeName: z.string().describe("Name of the parent node to verify against"),
@@ -322,7 +322,7 @@ export function registerNodeTools(server: McpServer) {
                 index: z
                     .number()
                     .optional()
-                    .describe("Position in parent's children array (default: append)"),
+                    .describe("Position in parent's children array (default: append). The output index reports the actual resolved position (same-parent reorder shifts indices)."),
             }),
             outputSchema: z.object({
                 childId: z.string().describe("ID of the reparented child node"),

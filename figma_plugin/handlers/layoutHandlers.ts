@@ -70,51 +70,55 @@ export async function setAutoLayout(params: any) {
         }
     }
 
-    // Check if we are in auto-layout mode before setting other properties
-    if (node.layoutMode === "NONE") {
-        // If we are in NONE mode, we can't set other auto-layout properties.
-        // We return early, but potentially updated layoutMode if that was the only thing requested.
-        return {
-            id: node.id,
-            name: node.name,
-            layoutMode: node.layoutMode
-        };
+    // Check if we are in auto-layout mode before setting internal layout properties
+    const isNone = node.layoutMode === "NONE";
+    const internalProps = [paddingTop, paddingRight, paddingBottom, paddingLeft, primaryAxisAlignItems, counterAxisAlignItems, itemSpacing, counterAxisSpacing, layoutWrap];
+    
+    if (isNone && internalProps.some(p => p !== undefined)) {
+        throw new Error(`Operation Denied: Cannot apply padding, alignment, wrap, or spacing to '${node.name}' because its layoutMode is NONE (it is not an Auto-layout frame).`);
     }
 
     // 2. Set Padding
-    if (paddingTop !== undefined) node.paddingTop = paddingTop;
-    if (paddingRight !== undefined) node.paddingRight = paddingRight;
-    if (paddingBottom !== undefined) node.paddingBottom = paddingBottom;
-    if (paddingLeft !== undefined) node.paddingLeft = paddingLeft;
+    if (!isNone) {
+        if (paddingTop !== undefined) node.paddingTop = paddingTop;
+        if (paddingRight !== undefined) node.paddingRight = paddingRight;
+        if (paddingBottom !== undefined) node.paddingBottom = paddingBottom;
+        if (paddingLeft !== undefined) node.paddingLeft = paddingLeft;
+    }
 
 
     // 3. Set Axis Alignment
-    if (primaryAxisAlignItems !== undefined) {
-        if (!["MIN", "MAX", "CENTER", "SPACE_BETWEEN"].includes(primaryAxisAlignItems)) {
-            throw new Error("Invalid primaryAxisAlignItems value");
+    if (!isNone) {
+        if (primaryAxisAlignItems !== undefined) {
+            if (!["MIN", "MAX", "CENTER", "SPACE_BETWEEN"].includes(primaryAxisAlignItems)) {
+                throw new Error("Invalid primaryAxisAlignItems value");
+            }
+            node.primaryAxisAlignItems = primaryAxisAlignItems;
         }
-        node.primaryAxisAlignItems = primaryAxisAlignItems;
+
+        if (counterAxisAlignItems !== undefined) {
+            if (!["MIN", "MAX", "CENTER", "BASELINE"].includes(counterAxisAlignItems)) {
+                throw new Error("Invalid counterAxisAlignItems value");
+            }
+            if (counterAxisAlignItems === "BASELINE" && node.layoutMode !== "HORIZONTAL") {
+                throw new Error("BASELINE alignment is only valid for horizontal auto-layout frames");
+            }
+            node.counterAxisAlignItems = counterAxisAlignItems;
+        }
     }
 
-    if (counterAxisAlignItems !== undefined) {
-        if (!["MIN", "MAX", "CENTER", "BASELINE"].includes(counterAxisAlignItems)) {
-            throw new Error("Invalid counterAxisAlignItems value");
-        }
-        // BASELINE is only valid for horizontal layout
-        if (counterAxisAlignItems === "BASELINE" && node.layoutMode !== "HORIZONTAL") {
-            // We won't throw here to be robust, just ignore or maybe warn in validation.
-            // But strict handler says "missing parameters are treated as noops". 
-            // If provided but invalid context, Figma might throw or ignore. 
-            // Let's protect against Figma throwing error.
-            throw new Error("BASELINE alignment is only valid for horizontal auto-layout frames");
-        }
-        node.counterAxisAlignItems = counterAxisAlignItems;
-    }
-
-    // 4. Set Layout Sizing
+    // 4. Set Layout Sizing (Controls how this node behaves in its parent)
     if (layoutSizingHorizontal !== undefined) {
         if (!["FIXED", "HUG", "FILL"].includes(layoutSizingHorizontal)) {
             throw new Error("Invalid layoutSizingHorizontal value");
+        }
+        if (layoutSizingHorizontal === "FILL") {
+            const parent = node.parent;
+            if (!parent || !("layoutMode" in parent) || (parent as any).layoutMode === "NONE") {
+                const parentMode = parent && "layoutMode" in parent ? (parent as any).layoutMode : "NONE";
+                const parentName = parent ? parent.name : "(none)";
+                throw new Error(`Operation Denied: Sizing 'FILL' requires the parent to be an Auto-Layout frame (layoutMode HORIZONTAL or VERTICAL). Parent '${parentName}' has layoutMode '${parentMode}'.`);
+            }
         }
         node.layoutSizingHorizontal = layoutSizingHorizontal;
     }
@@ -123,22 +127,29 @@ export async function setAutoLayout(params: any) {
         if (!["FIXED", "HUG", "FILL"].includes(layoutSizingVertical)) {
             throw new Error("Invalid layoutSizingVertical value");
         }
+        if (layoutSizingVertical === "FILL") {
+            const parent = node.parent;
+            if (!parent || !("layoutMode" in parent) || (parent as any).layoutMode === "NONE") {
+                const parentMode = parent && "layoutMode" in parent ? (parent as any).layoutMode : "NONE";
+                const parentName = parent ? parent.name : "(none)";
+                throw new Error(`Operation Denied: Sizing 'FILL' requires the parent to be an Auto-Layout frame (layoutMode HORIZONTAL or VERTICAL). Parent '${parentName}' has layoutMode '${parentMode}'.`);
+            }
+        }
         node.layoutSizingVertical = layoutSizingVertical;
     }
 
     // 5. Set Spacing
-    if (itemSpacing !== undefined) {
-        node.itemSpacing = itemSpacing;
-    }
+    if (!isNone) {
+        if (itemSpacing !== undefined) {
+            node.itemSpacing = itemSpacing;
+        }
 
-    if (counterAxisSpacing !== undefined) {
-        if (node.layoutWrap === "WRAP") {
-            node.counterAxisSpacing = counterAxisSpacing;
-        } else {
-            // If not wrapping, this property might throw or be ignored. 
-            // Documentation says "Only works when layoutWrap is set to WRAP".
-            // We can check this.
-            throw new Error("Counter axis spacing can only be set on frames with layoutWrap set to WRAP");
+        if (counterAxisSpacing !== undefined) {
+            if (node.layoutWrap === "WRAP") {
+                node.counterAxisSpacing = counterAxisSpacing;
+            } else {
+                throw new Error("Counter axis spacing can only be set on frames with layoutWrap set to WRAP");
+            }
         }
     }
 

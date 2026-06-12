@@ -298,6 +298,17 @@
     }
     return null;
   }
+  function isAncestorOf(maybeAncestor, node) {
+    if (!maybeAncestor || !node) return false;
+    let current = node == null ? void 0 : node.parent;
+    while (current && current.type !== "DOCUMENT") {
+      if (current.id === maybeAncestor.id) {
+        return true;
+      }
+      current = current.parent;
+    }
+    return false;
+  }
 
   // figma_plugin/handlers/nodeReaders.ts
   async function getPagesInfo(params) {
@@ -920,7 +931,7 @@
 
   // figma_plugin/handlers/nodeCreators.ts
   async function createShape(params) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c;
     const {
       type,
       x = 0,
@@ -1014,7 +1025,7 @@
           g: parseFloat(fillColor.g) || 0,
           b: parseFloat(fillColor.b) || 0
         },
-        opacity: (_d = fillColor.a) != null ? _d : 1
+        opacity: typeof fillColor.a === "number" ? fillColor.a : 1
       }];
     }
     if (strokeColor) {
@@ -1025,7 +1036,7 @@
           g: parseFloat(strokeColor.g) || 0,
           b: parseFloat(strokeColor.b) || 0
         },
-        opacity: (_e = strokeColor.a) != null ? _e : 1
+        opacity: typeof strokeColor.a === "number" ? strokeColor.a : 1
       }];
     }
     parent.appendChild(node);
@@ -1048,7 +1059,6 @@
     };
   }
   async function createFrame(params) {
-    var _a, _b;
     const {
       x = 0,
       y = 0,
@@ -1097,7 +1107,7 @@
           g: parseFloat(fillColor.g) || 0,
           b: parseFloat(fillColor.b) || 0
         },
-        opacity: (_a = parseFloat(fillColor.a)) != null ? _a : 1
+        opacity: typeof fillColor.a === "number" ? fillColor.a : 1
       };
       frame.fills = [paintStyle];
     }
@@ -1109,7 +1119,7 @@
           g: parseFloat(strokeColor.g) || 0,
           b: parseFloat(strokeColor.b) || 0
         },
-        opacity: (_b = parseFloat(strokeColor.a)) != null ? _b : 1
+        opacity: typeof strokeColor.a === "number" ? strokeColor.a : 1
       };
       frame.strokes = [strokeStyle];
     }
@@ -1167,7 +1177,6 @@
     }
   }
   async function createText(params) {
-    var _a;
     const {
       x = 0,
       y = 0,
@@ -1201,7 +1210,7 @@
         g: parseFloat(fontColor.g) || 0,
         b: parseFloat(fontColor.b) || 0
       },
-      opacity: (_a = parseFloat(fontColor.a)) != null ? _a : 1
+      opacity: typeof fontColor.a === "number" ? fontColor.a : 1
     };
     textNode.fills = [paintStyle];
     if (!parentId) {
@@ -1273,9 +1282,17 @@
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
+    const warnings = [];
     if (x !== void 0 || y !== void 0) {
       if (!("x" in node) || !("y" in node)) {
         throw new Error(`Node does not support position: ${nodeId}`);
+      }
+      const parent = node.parent;
+      if (parent && "layoutMode" in parent && parent.layoutMode !== "NONE") {
+        const isAbsolute = "layoutPositioning" in node && node.layoutPositioning === "ABSOLUTE";
+        if (!isAbsolute) {
+          throw new Error(`Operation Denied: Cannot set x/y on node '${node.name}' because its parent ('${parent.name}') has Auto-layout applied and the node is not absolutely positioned. To reposition this node, either change its order in the parent's children array, set its layoutPositioning to "ABSOLUTE", or remove Auto-layout from the parent.`);
+        }
       }
       if (x !== void 0) node.x = x;
       if (y !== void 0) node.y = y;
@@ -1284,11 +1301,30 @@
       if (!("resize" in node)) {
         throw new Error(`Node does not support resizing: ${nodeId}`);
       }
-      const currentWidth = node.width;
-      const currentHeight = node.height;
-      node.resize(width != null ? width : currentWidth, height != null ? height : currentHeight);
+      let newWidth = width !== void 0 ? width : node.width;
+      let newHeight = height !== void 0 ? height : node.height;
+      const parent = node.parent;
+      if (parent && "layoutMode" in parent && parent.layoutMode !== "NONE") {
+        const isAbsolute = "layoutPositioning" in node && node.layoutPositioning === "ABSOLUTE";
+        if (!isAbsolute) {
+          if (width !== void 0 && "layoutSizingHorizontal" in node && node.layoutSizingHorizontal !== "FIXED") {
+            warnings.push(`Horizontal resize applied to '${node.name}', which reverted its layoutSizingHorizontal from ${node.layoutSizingHorizontal} to FIXED.`);
+          }
+          if (height !== void 0 && "layoutSizingVertical" in node && node.layoutSizingVertical !== "FIXED") {
+            warnings.push(`Vertical resize applied to '${node.name}', which reverted its layoutSizingVertical from ${node.layoutSizingVertical} to FIXED.`);
+          }
+        }
+      } else if (!parent || "layoutMode" in parent && parent.layoutMode === "NONE") {
+        if (width !== void 0 && "layoutSizingHorizontal" in node && node.layoutSizingHorizontal !== "FIXED") {
+          warnings.push(`Horizontal resize applied to '${node.name}', which reverted its layoutSizingHorizontal from ${node.layoutSizingHorizontal} to FIXED.`);
+        }
+        if (height !== void 0 && "layoutSizingVertical" in node && node.layoutSizingVertical !== "FIXED") {
+          warnings.push(`Vertical resize applied to '${node.name}', which reverted its layoutSizingVertical from ${node.layoutSizingVertical} to FIXED.`);
+        }
+      }
+      node.resize(newWidth, newHeight);
     }
-    return {
+    const result = {
       id: node.id,
       name: node.name,
       x: "x" in node ? node.x : void 0,
@@ -1296,6 +1332,8 @@
       width: "width" in node ? node.width : void 0,
       height: "height" in node ? node.height : void 0
     };
+    if (warnings.length > 0) result.warnings = warnings;
+    return result;
   }
   async function deleteMultipleNodes(params) {
     const { nodeIds } = params || {};
@@ -1596,7 +1634,23 @@
     }
     const child = await figma.getNodeByIdAsync(childId);
     if (!child) throw new Error(`Child not found: ${childId}`);
+    if (parentId === childId) {
+      throw new Error(`Operation Denied: A node cannot be inserted into itself.`);
+    }
+    if (isAncestorOf(child, parent)) {
+      throw new Error(`Operation Denied: Cannot insert node '${child.name}' into '${parent.name}' \u2014 the parent is a descendant of the node (cyclic hierarchy).`);
+    }
+    if (child.type === "PAGE" && parent.type !== "DOCUMENT") {
+      throw new Error(`Operation Denied: A PAGE node can only be inserted into a DOCUMENT.`);
+    }
+    if (child.type !== "PAGE" && parent.type === "DOCUMENT") {
+      throw new Error(`Operation Denied: Only PAGE nodes can be inserted directly into a DOCUMENT.`);
+    }
     if (index !== void 0) {
+      const length = parent.children.length;
+      if (index < 0 || index > length) {
+        throw new Error(`Operation Denied: index ${index} is out of range for parent '${parent.name}' (valid: 0\u2013${length}). Omit 'index' to append.`);
+      }
       parent.insertChild(index, child);
     } else {
       parent.appendChild(child);
@@ -1822,35 +1876,45 @@
         node.layoutWrap = layoutWrap;
       }
     }
-    if (node.layoutMode === "NONE") {
-      return {
-        id: node.id,
-        name: node.name,
-        layoutMode: node.layoutMode
-      };
+    const isNone = node.layoutMode === "NONE";
+    const internalProps = [paddingTop, paddingRight, paddingBottom, paddingLeft, primaryAxisAlignItems, counterAxisAlignItems, itemSpacing, counterAxisSpacing, layoutWrap];
+    if (isNone && internalProps.some((p) => p !== void 0)) {
+      throw new Error(`Operation Denied: Cannot apply padding, alignment, wrap, or spacing to '${node.name}' because its layoutMode is NONE (it is not an Auto-layout frame).`);
     }
-    if (paddingTop !== void 0) node.paddingTop = paddingTop;
-    if (paddingRight !== void 0) node.paddingRight = paddingRight;
-    if (paddingBottom !== void 0) node.paddingBottom = paddingBottom;
-    if (paddingLeft !== void 0) node.paddingLeft = paddingLeft;
-    if (primaryAxisAlignItems !== void 0) {
-      if (!["MIN", "MAX", "CENTER", "SPACE_BETWEEN"].includes(primaryAxisAlignItems)) {
-        throw new Error("Invalid primaryAxisAlignItems value");
-      }
-      node.primaryAxisAlignItems = primaryAxisAlignItems;
+    if (!isNone) {
+      if (paddingTop !== void 0) node.paddingTop = paddingTop;
+      if (paddingRight !== void 0) node.paddingRight = paddingRight;
+      if (paddingBottom !== void 0) node.paddingBottom = paddingBottom;
+      if (paddingLeft !== void 0) node.paddingLeft = paddingLeft;
     }
-    if (counterAxisAlignItems !== void 0) {
-      if (!["MIN", "MAX", "CENTER", "BASELINE"].includes(counterAxisAlignItems)) {
-        throw new Error("Invalid counterAxisAlignItems value");
+    if (!isNone) {
+      if (primaryAxisAlignItems !== void 0) {
+        if (!["MIN", "MAX", "CENTER", "SPACE_BETWEEN"].includes(primaryAxisAlignItems)) {
+          throw new Error("Invalid primaryAxisAlignItems value");
+        }
+        node.primaryAxisAlignItems = primaryAxisAlignItems;
       }
-      if (counterAxisAlignItems === "BASELINE" && node.layoutMode !== "HORIZONTAL") {
-        throw new Error("BASELINE alignment is only valid for horizontal auto-layout frames");
+      if (counterAxisAlignItems !== void 0) {
+        if (!["MIN", "MAX", "CENTER", "BASELINE"].includes(counterAxisAlignItems)) {
+          throw new Error("Invalid counterAxisAlignItems value");
+        }
+        if (counterAxisAlignItems === "BASELINE" && node.layoutMode !== "HORIZONTAL") {
+          throw new Error("BASELINE alignment is only valid for horizontal auto-layout frames");
+        }
+        node.counterAxisAlignItems = counterAxisAlignItems;
       }
-      node.counterAxisAlignItems = counterAxisAlignItems;
     }
     if (layoutSizingHorizontal !== void 0) {
       if (!["FIXED", "HUG", "FILL"].includes(layoutSizingHorizontal)) {
         throw new Error("Invalid layoutSizingHorizontal value");
+      }
+      if (layoutSizingHorizontal === "FILL") {
+        const parent = node.parent;
+        if (!parent || !("layoutMode" in parent) || parent.layoutMode === "NONE") {
+          const parentMode = parent && "layoutMode" in parent ? parent.layoutMode : "NONE";
+          const parentName = parent ? parent.name : "(none)";
+          throw new Error(`Operation Denied: Sizing 'FILL' requires the parent to be an Auto-Layout frame (layoutMode HORIZONTAL or VERTICAL). Parent '${parentName}' has layoutMode '${parentMode}'.`);
+        }
       }
       node.layoutSizingHorizontal = layoutSizingHorizontal;
     }
@@ -1858,16 +1922,26 @@
       if (!["FIXED", "HUG", "FILL"].includes(layoutSizingVertical)) {
         throw new Error("Invalid layoutSizingVertical value");
       }
+      if (layoutSizingVertical === "FILL") {
+        const parent = node.parent;
+        if (!parent || !("layoutMode" in parent) || parent.layoutMode === "NONE") {
+          const parentMode = parent && "layoutMode" in parent ? parent.layoutMode : "NONE";
+          const parentName = parent ? parent.name : "(none)";
+          throw new Error(`Operation Denied: Sizing 'FILL' requires the parent to be an Auto-Layout frame (layoutMode HORIZONTAL or VERTICAL). Parent '${parentName}' has layoutMode '${parentMode}'.`);
+        }
+      }
       node.layoutSizingVertical = layoutSizingVertical;
     }
-    if (itemSpacing !== void 0) {
-      node.itemSpacing = itemSpacing;
-    }
-    if (counterAxisSpacing !== void 0) {
-      if (node.layoutWrap === "WRAP") {
-        node.counterAxisSpacing = counterAxisSpacing;
-      } else {
-        throw new Error("Counter axis spacing can only be set on frames with layoutWrap set to WRAP");
+    if (!isNone) {
+      if (itemSpacing !== void 0) {
+        node.itemSpacing = itemSpacing;
+      }
+      if (counterAxisSpacing !== void 0) {
+        if (node.layoutWrap === "WRAP") {
+          node.counterAxisSpacing = counterAxisSpacing;
+        } else {
+          throw new Error("Counter axis spacing can only be set on frames with layoutWrap set to WRAP");
+        }
       }
     }
     return {
