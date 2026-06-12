@@ -133,11 +133,11 @@ This task list covers **all** requirements in [`prd.md`](./prd.md) for the v2.2.
 - [x] **Live Verification:** In Figma confirm `text_set_style` changes the font and `text_set_content` updates characters.
 
 ## Phase 7: Documentation, Build & Release
-- [ ] **Docs — agent guidance (single source):** Update `skills/figma-edit/references/constraints.md` (reframe read-only as **node-only**; the three permission axes; new locked/remote/instance-interior/scope-root constraints), `error-playbook.md` (new codes `VARIABLE_EDITS_DISABLED`/`STYLE_EDITS_DISABLED`; clarify `READ_ONLY_MODE` is node-only; note the **INSTANCE_SWAP advisory** — a passed swap can still be refused by Figma, D10), `workflows.md`, `tool-selection.md`, and `AGENTS.md`. Keep the **`figma-edit://guide/*` MCP resources** in sync (same single source).
-- [ ] **Docs — Safety Manual:** Promote `documentation/v2.2.0-safety-enhancement/SAFETY.DRAFT.md` to a published `SAFETY.md` (repo root or `skills/figma-edit/references/`); drop the draft once merged.
-- [ ] **Build — plugin bundle:** Rebuild `figma_plugin/code.js` via the esbuild bundle — **source-only edits don't take effect live**; the rebuilt bundle must ship.
-- [ ] **Build — server:** Run `npm run build`; ensure a clean bundle and the full suite passes from the repo root.
-- [ ] **Release:** Update `CHANGELOG.md` with all v2.2.0 changes; confirm `package.json` is `2.2.0` (D1).
+- [x] **Docs — agent guidance (single source):** Update `skills/figma-edit/references/constraints.md` (reframe read-only as **node-only**; the three permission axes; new locked/remote/instance-interior/scope-root constraints), `error-playbook.md` (new codes `VARIABLE_EDITS_DISABLED`/`STYLE_EDITS_DISABLED`; clarify `READ_ONLY_MODE` is node-only; note the **INSTANCE_SWAP advisory** — a passed swap can still be refused by Figma, D10), `workflows.md`, `tool-selection.md`, and `AGENTS.md`. Keep the **`figma-edit://guide/*` MCP resources** in sync (same single source).
+- [x] **Docs — Safety Manual:** Promote `documentation/v2.2.0-safety-enhancement/SAFETY.DRAFT.md` to a published `SAFETY.md` (repo root or `skills/figma-edit/references/`); drop the draft once merged.
+- [x] **Build — plugin bundle:** Rebuild `figma_plugin/code.js` via the esbuild bundle — **source-only edits don't take effect live**; the rebuilt bundle must ship.
+- [x] **Build — server:** Run `npm run build`; ensure a clean bundle and the full suite passes from the repo root.
+- [x] **Release:** Update `CHANGELOG.md` with all v2.2.0 changes; confirm `package.json` is `2.2.0` (D1).
 
 ---
 

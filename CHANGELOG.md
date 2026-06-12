@@ -2,13 +2,36 @@
 
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
-## [Unreleased] — v2.2.0 (in progress)
+## [2.2.0]
+This is a major safety and stability release focused on preventing silent failures, enforcing Figma's strict structural constraints, and closing contract seams between the MCP SDK and the Figma plugin.
+
+### Added
+- **Structural Safety Guards:** The plugin now actively rejects mutations that Figma forbids, returning actionable structured errors rather than failing silently or unpredictably:
+  - **Locked nodes:** Modifying a locked node, or any node with a locked ancestor, is denied (`Operation Denied: Node '…' (or one of its ancestors, '…') is locked.`).
+  - **Instance interiors:** **Structural** edits (delete, reparent, group/ungroup, add children) on nodes inside an instance are denied (`Operation Denied: Node '…' is inside a component instance …`); property/override writes remain allowed.
+  - **Remote components:** Mutating a remote library style/variable/main-component *definition* is denied (`Operation Denied: '…' is a remote library asset …`); instances of remote components stay editable via overrides.
+  - **Scope root:** Deleting, flattening, ungrouping, or converting-to-component the editable scope's root node is denied (`Operation Denied: This node is the current Editable Scope root…`).
+  - **Cyclic reparenting:** `node_insert_child` rejects reparenting a node to itself or its descendant.
+- **Auto-layout Guards:** 
+  - `node_transform` rejects explicit `x`/`y` moves on auto-layout children (unless `ABSOLUTE` positioned).
+  - `node_set_auto_layout` rejects `FILL` sizing if the parent is not an auto-layout frame.
+- **Component Validations:**
+  - `component_manage_property` and `instance_set_property` strictly validate `BOOLEAN`, `TEXT`, and `VARIANT` values (including checking against the `ComponentSetNode`'s allowed variants).
+  - `create_component_set` rejects duplicate variant combinations with a detailed error message.
+- **Granular Permissions:** Connection permissions are now decoupled. Node mutation (`READ_ONLY_MODE`), variable mutation (`VARIABLE_EDITS_DISABLED`), and style mutation (`STYLE_EDITS_DISABLED`) are checked independently.
+- **Contract-Seam Testing:** Added a systemic unit test harness (`contractSeam.test.ts`) that asserts every MCP tool schema perfectly matches its corresponding plugin handler, catching undocumented drift.
+
 ### Changed
 - **Tool inputs are now strict — unknown/misspelled parameter keys are rejected, not silently dropped.** Previously Zod stripped unrecognized keys, so an agent that sent a wrong key (e.g. `node_info({ properties })` when the param was `fields`) had it silently discarded and the tool ran as if the argument were omitted — succeeding while ignoring intent. Every tool now registers a strict input schema; a wrong key fails with `Unrecognized key(s): …`. (PRD §18.)
 - **`node_info`: input parameter renamed `fields` → `properties`** (breaking) so the input name matches the response key and internal payload, removing the mismatch that induced the above hallucination. Pass `node_info({ nodeIds, properties: [...] })`. (PRD §18.)
+- **`text_set_content` Schema:** Standardized on the `characters` property name. Dropped the phantom top-level `nodeId` requirement which the schema never supplied.
+- **`text_set_style` Schema:** Aligned the schema with the handler. It now correctly parses `fontName: { family, style }`, `textAlignHorizontal`, `textAlignVertical`, `paragraphIndent`, and uses the standard `lineHeight` union (`AUTO` or value/unit).
+- **Text Font Loading:** `text_set_style` now properly implements conditional font loading, dynamically resolving and deduping mixed fonts (`figma.mixed`) using `getStyledTextSegments` before applying modifications.
+- **Batch Resiliency:** Batch tools (`text_set_content`, `annotation_set`, `instance_set_overrides`) now strictly stop on the first mutation failure and return a standardized report, rather than proceeding and crashing. (`node_delete` retains its chunked resilience).
 
 ### Fixed
 - **`node_bind_variable` was non-functional through the MCP path (production-breaking).** The tool's schema sends `bindVariables` / `explicitVariableModes` **maps**, but the plugin handler (`setBoundVariable`) read a flat `{ field, variableId, collectionId, modeId }` shape it never received — so every real call threw `Must provide either (field + variableId) or (collectionId + modeId)`. The handler now consumes the maps directly: `bindVariables` binds/unbinds node properties (fills/strokes via paint binding, `null` to unbind), and `explicitVariableModes` resolves each collection id to its node before calling `setExplicitVariableModeForCollection` (the Plugin API rejects a raw collection id under dynamic-page mode). Regression tests now drive the real MCP map shapes so the drift cannot recur. (PRD §17; found during live verification.)
+- **Opacity `NaN` Bug:** Fixed a bug where creating shapes or frames without explicitly providing an opacity value could result in `opacity: NaN` instead of `1`.
 
 ## [2.0.0]
 ### Breaking changes
