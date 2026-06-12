@@ -83,6 +83,7 @@ Source analysis: `documentation/v2.2.0-safety-enhancement/safety_checks_brainsto
 | §15 | `text_set_style` schema↔handler contract repair (functional bug) | **P1** | `src/mcp_server/tools/text.ts`, `figma_plugin/handlers/textHandlers.ts` |
 | §16 | `text_set_content` schema↔handler contract repair (production-breaking) | **P0** | `src/mcp_server/tools/text.ts`, `figma_plugin/handlers/textHandlers.ts`, `figma_plugin/src/main.ts` |
 | §17 | `node_bind_variable` schema↔handler contract repair (production-breaking) | **P0** | `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/variableHandlers.ts` |
+| §18 | Strict tool inputs + `node_info` `fields`→`properties` rename (silent-failure hardening) | **P1** | `src/mcp_server/tools/index.ts`, `src/mcp_server/tools/node.ts`, docs |
 
 A shared prerequisite helper is defined in §0.
 
@@ -447,6 +448,20 @@ No `"Operation Denied: …"` string — this is a contract repair, not a guard. 
 
 ---
 
+## §18. Strict tool inputs + `node_info` parameter naming (P1 — silent-failure hardening)
+
+**The risk.** MCP tool inputs are validated with Zod's default object behavior, which **silently strips unknown keys**. An agent that sends a misremembered or extra parameter on *any* tool has that key dropped and the tool runs as if it were omitted — succeeding while discarding intent, with no error. Surfaced by a real agent hallucination: `node_info({ properties: [...] })` was sent when the input was named `fields`; Zod stripped `properties`, the handler saw no field selection, and the call "succeeded" returning nothing requested. Same "silent corruption of intent" class as §15/§16/§17, but at the **agent↔schema** boundary (not the schema↔handler seam), and it affects **every** tool.
+
+**Two root causes, two fixes:**
+1. **Silent strip (systemic).** Register every tool's input schema as **strict** (reject unknown keys) so a wrong key fails at the MCP boundary with `Unrecognized key(s): …` (and the schema the agent sees lists the valid keys). Applied centrally in `registerAllTools` (`src/mcp_server/tools/index.ts`) via a server-proxy wrapper, so it can't be forgotten per-tool or drift as tools are added. Confirmed the MCP SDK enforces it at runtime (`mcp.js validateToolInput` → `safeParseAsync`) and that `.strict()` survives the SDK's `normalizeObjectSchema` for zod 4.4.3.
+2. **`node_info` naming trap.** The input was `fields` while the output key and internal payload were `properties` — the mismatch that *induced* the wrong key. **Unify on `properties`**: rename the input `fields → properties` (input now equals output equals internal payload; the `properties: fields` remap is dropped). Update docs/skill/`figma-edit://guide/*` resources accordingly.
+
+**Tests.** `strictInput.test.ts` drives the SDK's real validation path and asserts: the `node_info` `properties` key is accepted, the stale `fields` key is rejected, and **all 46 tools** reject an unknown key. `contractSeam.test.ts` and `v2Tools.test.ts` updated for the rename + strict (the latter no longer relies on key-stripping).
+
+No `"Operation Denied: …"` string — this is input-contract hardening. Zero end-users, so the breaking param rename and stricter rejection need no sign-off (informational).
+
+---
+
 ## Provenance — corrections applied to the brainstorm
 
 The three originally-proposed checks (locked layers, component property typing, hierarchy) are carried forward (§2, §5, §3). The "additional gaps" list was corrected:
@@ -463,6 +478,8 @@ Added from the official Figma MCP cross-check (`figma-documentation-check.md`): 
 Added from the implementation critique (`critique.md`): §16 (`text_set_content` contract repair — production-breaking); the §1 `create_component` self-destruction case; the §7 `instance_set_property` carve-out (overrides on instances of remote components remain allowed); and the §10 unloadable-font edge-case note. (The critique's schema-consistency items for `reaction_update`/`variable_delete` were already covered by §6A/§6B; its test-working-directory note is a contributor-docs concern, not a spec change.)
 
 Added from **live verification** (combo-B boundary probe, not in the brainstorm/critique): §17 (`node_bind_variable` contract repair — production-breaking; both the map-shape drift and the latent collection-id-vs-node bug in explicit modes). Same class as §15/§16 but for `node_bind_variable`.
+
+Added from a **live agent hallucination** during verification: §18 (strict tool inputs + `node_info` `fields`→`properties` rename). An agent passed `properties` (the output key) where the input was named `fields`; Zod silently stripped it. Generalizes to all tools (silent key-strip) and is fixed centrally.
 
 ---
 
@@ -516,6 +533,7 @@ Resolutions get promoted back into §Decisions as they land.
 - **§15** A font change via `text_set_style` actually takes effect (regression test); `lineHeight {unit:"AUTO"}` is accepted; `textAlignHorizontal`/`textAlignVertical` are reachable through the schema; `paragraphIndent` is applied.
 - **§16** `text_set_content` succeeds end-to-end through the MCP schema shape (`{ text: [{ nodeId, nodeName, characters }] }`) — no top-level `nodeId` required, per-item `characters` is written; the old handler-shaped test is updated to the schema shape so the drift cannot recur.
 - **§17** `node_bind_variable` succeeds end-to-end through the MCP map shapes: `{ bindVariables: { fills: "VariableID:…" } }` binds (and `null` unbinds) a property; `{ explicitVariableModes: { collectionId: modeId } }` resolves the collection to a node and sets the mode; neither-map throws the new error; an unresolved variable/collection id throws.
+- **§18** Every tool rejects an unknown input key with `Unrecognized key(s): …` (strict), driven through the SDK's validation path; `node_info` accepts `properties` and rejects the old `fields`; the prior strip-reliant `v2Tools` creation-tool test is updated to per-tool valid inputs.
 
 ### Manual (Figma sandbox)
 1. Lock a frame; confirm every edit tool refuses it and names the locked ancestor.

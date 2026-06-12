@@ -22,6 +22,14 @@ Every structured error you may receive, what it means, and the correct recovery.
 | `NAME_MISMATCH` | `nodeName` does not match the actual name of `nodeId`. | Your context is stale or the ID is wrong. Call `node_info({ nodeIds: [<id>] })` to refresh, then retry with the actual name. |
 | `PARENT_NAME_MISMATCH` | `parentNodeName` does not match the actual name of `parentId`. | Refresh via `node_info` and retry. |
 
+## Remote (library) asset errors
+
+| Message | Meaning | Recovery |
+|---|---|---|
+| `'<name>' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.` | You tried to edit or delete a style, variable, or main component that is **subscribed from a library** (not local to this file). Plugins cannot modify remote assets. | Don't retry — edit it in its source library file, or create a local copy for file-specific changes. An *instance* of a remote component is still editable via overrides; only the remote *definition* is blocked. |
+
+> **Finding remote-asset IDs.** `variable_list` and `style_list` return **local** assets only — remote/library assets never appear there. Discover them through a **consuming node**: `node_info({ nodeIds, properties: ["boundVariables", "fillStyleId", "strokeStyleId", "effectStyleId", "textStyleId"] })` resolves each to `{ id, name }`. Recognizable IDs: remote **variables** look like `VariableID:<key>/<subid>`; remote **styles** end with `,<num>:<num>` (e.g. `S:abc…,18499:124`) whereas local styles end with a bare trailing comma (`S:abc…,`).
+
 ## Type & Structure validation errors (Figma Plugin Pre-Validation)
 
 | Message | Meaning | Recovery |

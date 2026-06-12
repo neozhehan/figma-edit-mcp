@@ -25,16 +25,16 @@ export function registerNodeTools(server: McpServer) {
         "node_info",
         {
             title: "Get Node Info",
-            description: "Read one or more nodes — recursive subtree traversal with `fields` selection, `filter`, and `maxDepth`. Returns only requested fields (incl. resolved `boundVariables`/`explicitVariableModes`). The workhorse read; start here before any write.",
+            description: "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. The workhorse read; start here before any write.",
             inputSchema: z.object({
                 nodeIds: z
                     .array(z.string())
                     .optional()
                     .describe("Array of node IDs to inspect. If empty, uses editable scope."),
-                fields: z
+                properties: z
                     .array(z.string())
                     .optional()
-                    .describe("Array of field names to return."),
+                    .describe("Array of property names to return (populates each node's `properties` object in the response)."),
                 filter: z
                     .record(z.array(z.string()))
                     .optional()
@@ -61,10 +61,10 @@ export function registerNodeTools(server: McpServer) {
                 openWorldHint: true
             }
         },
-        async ({ nodeIds, fields, filter, maxDepth, concurrencyLimit }: any) => {
+        async ({ nodeIds, properties, filter, maxDepth, concurrencyLimit }: any) => {
             const result = await sendCommandToFigma("node_info", {
                 nodeIds,
-                properties: fields,
+                properties,
                 filter,
                 maxDepth,
                 concurrencyLimit: concurrencyLimit ?? 4

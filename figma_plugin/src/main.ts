@@ -191,6 +191,26 @@ async function verifyParentName(parentId: any, expectedParentName: any) {
     return node.name === expectedParentName;
 }
 
+// Helper: Extract a human-readable detail from a thrown value. Figma can throw
+// error-like objects whose `.message` is undefined/empty, which would otherwise
+// collapse to the generic "Error executing command" and mask the real cause.
+function describeError(e: any): string {
+    if (e == null) return "Error executing command";
+    if (typeof e === "string") return e;
+    if (typeof e.message === "string" && e.message.length > 0) {
+        return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
+    }
+    if (typeof e.toString === "function") {
+        const s = e.toString();
+        if (s && s !== "[object Object]") return s;
+    }
+    try {
+        const json = JSON.stringify(e);
+        if (json && json !== "{}") return json;
+    } catch { /* not serializable */ }
+    return e.name || "Error executing command";
+}
+
 // Helper: Parse Node ID from URL
 function parseNodeIdFromUrl(url: any) {
     try {
@@ -276,7 +296,7 @@ figma.ui.onmessage = async (msg: any) => {
                     figma.ui.postMessage({
                         type: "command-error",
                         id: msg.id,
-                        error: error.message || "Error executing command",
+                        error: describeError(error),
                     });
                 }
             });

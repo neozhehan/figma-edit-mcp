@@ -102,7 +102,7 @@ const CONTRACTS: Record<string, Contract> = {
     // ---- page ----
     page_info: { reads: ["pageIds"] },                                   // getPagesInfo
     // ---- node ----
-    node_info: { reads: ["nodeIds", "properties"] },                    // getNodesInfo (tool maps fields→properties)
+    node_info: { reads: ["nodeIds", "properties"] },                    // getNodesInfo (input unified on `properties`)
     node_transform: { reads: ["nodeId"] },                              // transformNode
     node_rename: { reads: ["nodeId", "name"] },                         // setNodeName
     node_delete: { reads: ["nodes"], item: { key: "nodes", reads: ["nodeId", "nodeName"] } }, // dispatcher reads params.nodes[]

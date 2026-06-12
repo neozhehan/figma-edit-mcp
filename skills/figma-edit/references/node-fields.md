@@ -1,6 +1,6 @@
 # node_info fields
 
-Generated from `@figma/plugin-typings` — the official Figma node field set. Pass any of these in `node_info`'s `fields`. (`id`, `name`, `type` are always returned.)
+Generated from `@figma/plugin-typings` — the official Figma node field set. Pass any of these in `node_info`'s `properties`. (`id`, `name`, `type` are always returned.)
 
 ## Reference fields (resolved, not raw)
 

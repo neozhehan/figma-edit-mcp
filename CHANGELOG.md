@@ -3,6 +3,10 @@
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
 ## [Unreleased] — v2.2.0 (in progress)
+### Changed
+- **Tool inputs are now strict — unknown/misspelled parameter keys are rejected, not silently dropped.** Previously Zod stripped unrecognized keys, so an agent that sent a wrong key (e.g. `node_info({ properties })` when the param was `fields`) had it silently discarded and the tool ran as if the argument were omitted — succeeding while ignoring intent. Every tool now registers a strict input schema; a wrong key fails with `Unrecognized key(s): …`. (PRD §18.)
+- **`node_info`: input parameter renamed `fields` → `properties`** (breaking) so the input name matches the response key and internal payload, removing the mismatch that induced the above hallucination. Pass `node_info({ nodeIds, properties: [...] })`. (PRD §18.)
+
 ### Fixed
 - **`node_bind_variable` was non-functional through the MCP path (production-breaking).** The tool's schema sends `bindVariables` / `explicitVariableModes` **maps**, but the plugin handler (`setBoundVariable`) read a flat `{ field, variableId, collectionId, modeId }` shape it never received — so every real call threw `Must provide either (field + variableId) or (collectionId + modeId)`. The handler now consumes the maps directly: `bindVariables` binds/unbinds node properties (fills/strokes via paint binding, `null` to unbind), and `explicitVariableModes` resolves each collection id to its node before calling `setExplicitVariableModeForCollection` (the Plugin API rejects a raw collection id under dynamic-page mode). Regression tests now drive the real MCP map shapes so the drift cannot recur. (PRD §17; found during live verification.)
 

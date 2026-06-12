@@ -5,7 +5,7 @@
 Every workflow that touches a node should start with a read. There is no exception worth memorizing.
 
 1. **Discover pages** with `page_info` to learn the page structure.
-2. **Discover nodes** with `node_info({ nodeIds, filter, fields, maxDepth })` to get IDs, names, types, and any properties you need.
+2. **Discover nodes** with `node_info({ nodeIds, filter, properties, maxDepth })` to get IDs, names, types, and any properties you need.
 3. **Plan** the operation using the IDs and names from the read — verbatim, no transformation.
 4. **Act** with the appropriate write tool.
 5. **Verify** with another `node_info` (or `node_export_visual`) when the result matters.
@@ -48,7 +48,7 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
 1. page_info()                                          → find the page
 2. node_info({ nodeIds: [pageId],
                filter: { type: "TEXT" },
-               fields: ["characters", "name"] })         → list text nodes
+               properties: ["characters", "name"] })         → list text nodes
 3. text_set_content({ text: [
      { nodeId, nodeName, characters }, ...               → names verbatim from step 2
    ]})
@@ -75,7 +75,7 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
 
 For replacing many text nodes safely, work in verifiable chunks rather than one giant call:
 
-1. **Map the structure** — `node_info({ nodeIds: [rootId], filter: { type: "TEXT" }, fields: ["characters", "name"], maxDepth: 10 })`.
+1. **Map the structure** — `node_info({ nodeIds: [rootId], filter: { type: "TEXT" }, properties: ["characters", "name"], maxDepth: 10 })`.
 2. **Chunk** by logical grouping (table rows, card groups, form sections) — not arbitrarily.
 3. **Optionally clone first** — `node_clone` the target to keep a safe copy while iterating.
 4. **Replace a chunk** with one `text_set_content` call (names verbatim from step 1).

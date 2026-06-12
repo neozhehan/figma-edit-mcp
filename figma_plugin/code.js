@@ -4602,6 +4602,23 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     if (!node) return false;
     return node.name === expectedParentName;
   }
+  function describeError2(e) {
+    if (e == null) return "Error executing command";
+    if (typeof e === "string") return e;
+    if (typeof e.message === "string" && e.message.length > 0) {
+      return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
+    }
+    if (typeof e.toString === "function") {
+      const s = e.toString();
+      if (s && s !== "[object Object]") return s;
+    }
+    try {
+      const json = JSON.stringify(e);
+      if (json && json !== "{}") return json;
+    } catch (e2) {
+    }
+    return e.name || "Error executing command";
+  }
   function parseNodeIdFromUrl(url) {
     try {
       const urlObj = new URL(url);
@@ -4672,7 +4689,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             figma.ui.postMessage({
               type: "command-error",
               id: msg.id,
-              error: error.message || "Error executing command"
+              error: describeError2(error)
             });
           }
         });

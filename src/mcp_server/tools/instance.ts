@@ -140,7 +140,7 @@ This strategy enables transferring content and property overrides from a source 
   \`\`\`
 
 ### 4. Verification
-- Verify results with \`node_info({ nodeIds, fields: ["componentProperties", "characters", "overrides"] })\`
+- Verify results with \`node_info({ nodeIds, properties: ["componentProperties", "characters", "overrides"] })\`
 - Confirm text content and style overrides have transferred successfully
 
 ## Key Tips
