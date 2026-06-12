@@ -12,6 +12,8 @@ This plugin empowers your AI assistant to become a Figma assistant, executing de
 
 This plugin allows you as a Designer to focus purely on creative decision-making, leaving the error-prone & repetitive manual changes to the automated systems.
 
+📖 **Documentation:** [neozhehan.github.io/figma-edit-mcp](https://neozhehan.github.io/figma-edit-mcp/)
+
 [Read more about our design philosophy here.](DESIGN_PHILOSOPHY.md)  
 
 ## Core Principles
