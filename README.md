@@ -173,7 +173,7 @@ Tools are grouped into a two-level, underscore-separated namespace (`group_actio
 
 | Tool | Description |
 |---|---|
-| `node_info` | Read one or more nodes — recursive traversal with `fields`, `filter`, and `maxDepth` (the workhorse read; also returns bound variables / explicit modes) |
+| `node_info` | Read one or more nodes — recursive traversal with `properties`, `filter`, and `maxDepth` (the workhorse read; also returns bound variables / explicit modes) |
 | `node_transform` | Move and/or resize a node by setting absolute `x` / `y` / `width` / `height` |
 | `node_rename` | Rename a node |
 | `node_delete` | Delete one or more nodes in a single validated batch |

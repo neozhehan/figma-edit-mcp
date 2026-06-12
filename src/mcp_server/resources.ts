@@ -36,7 +36,7 @@ export function registerAllResources(server: McpServer) {
     {
       id: "node-fields",
       title: "Figma Edit node_info field reference",
-      description: "The full set of node_info `fields` (generated from @figma/plugin-typings), with types and how reference fields resolve.",
+      description: "The full set of node_info `properties` (generated from @figma/plugin-typings), with types and how reference fields resolve.",
     },
   ];
 

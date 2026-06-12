@@ -1,6 +1,6 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { getAnnotations } from "../../../../../figma_plugin/handlers/annotationHandlers.js";
-import { getVariables } from "../../../../../figma_plugin/handlers/variableHandlers.js";
+import { getVariables, setBoundVariable } from "../../../../../figma_plugin/handlers/variableHandlers.js";
 
 describe("getAnnotations Handler", () => {
     beforeEach(() => {
@@ -111,5 +111,163 @@ describe("getVariables Handler", () => {
         expect(Array.isArray(result)).toBe(false);
         expect(result).toHaveProperty("collections");
         expect(result).toHaveProperty("variables");
+    });
+});
+
+// =============================================================================
+// setBoundVariable — schema↔handler contract (node_bind_variable).
+//
+// REGRESSION: the MCP tool (src/mcp_server/tools/node.ts) sends two MAPS,
+// `bindVariables: { property → variableId|null }` and
+// `explicitVariableModes: { collectionId → modeId }`, forwarded untransformed.
+// The handler previously destructured a flat `{ field, variableId, collectionId,
+// modeId }` it never received, so EVERY real MCP call fell through to
+// "Must provide either (field + variableId) or (collectionId + modeId)" — the
+// tool was 100% non-functional through MCP. These tests drive the exact map
+// shape the tool emits so the drift cannot recur.
+// =============================================================================
+describe("setBoundVariable Handler (node_bind_variable MCP shape)", () => {
+    let mockNode: any;
+    let setBoundVariableForPaint: any;
+
+    beforeEach(() => {
+        setBoundVariableForPaint = mock((paint: any, _field: string, variable: any) => ({
+            ...paint,
+            boundVariables: { color: variable ? { id: variable.id } : undefined },
+        }));
+        mockNode = {
+            id: "rect-1",
+            name: "Rect",
+            type: "RECTANGLE",
+            fills: [{ type: "SOLID", color: { r: 1, g: 1, b: 1 } }],
+            strokes: [{ type: "SOLID", color: { r: 0, g: 0, b: 0 } }],
+            setBoundVariable: mock(() => { }),
+            setExplicitVariableModeForCollection: mock(async () => { }),
+        };
+        (globalThis as any).figma = {
+            getNodeByIdAsync: mock(async (id: string) => (id === "rect-1" ? mockNode : null)),
+            variables: {
+                getVariableByIdAsync: mock(async (id: string) =>
+                    id === "v-color" ? { id: "v-color", name: "Brand/Primary" } : null),
+                getVariableCollectionByIdAsync: mock(async (id: string) =>
+                    id === "col-1" ? { id: "col-1", name: "Theme" } : null),
+                setBoundVariableForPaint,
+            },
+        };
+    });
+
+    it("binds a COLOR variable to fills via the bindVariables map (the real MCP shape)", async () => {
+        const result: any = await setBoundVariable({
+            nodeId: "rect-1",
+            nodeName: "Rect",
+            bindVariables: { fills: "v-color" },
+        });
+        expect(result.success).toBe(true);
+        expect(result.name).toBe("Rect");
+        expect(result.message).toContain("Bound fills to variable Brand/Primary");
+        expect(setBoundVariableForPaint).toHaveBeenCalledTimes(1);
+        // The node's fills were reassigned with the bound paint.
+        expect(mockNode.fills[0].boundVariables.color).toEqual({ id: "v-color" });
+    });
+
+    it("binds a standard (non-paint) property via node.setBoundVariable", async () => {
+        const result: any = await setBoundVariable({
+            nodeId: "rect-1",
+            nodeName: "Rect",
+            bindVariables: { opacity: "v-color" },
+        });
+        expect(result.success).toBe(true);
+        expect(mockNode.setBoundVariable).toHaveBeenCalledTimes(1);
+        expect(mockNode.setBoundVariable.mock.calls[0][0]).toBe("opacity");
+        expect(result.message).toContain("Bound opacity to variable Brand/Primary");
+    });
+
+    it("applies multiple bindings (fills + strokes) in a single call", async () => {
+        const result: any = await setBoundVariable({
+            nodeId: "rect-1",
+            nodeName: "Rect",
+            bindVariables: { fills: "v-color", strokes: "v-color" },
+        });
+        expect(result.message).toContain("fills");
+        expect(result.message).toContain("strokes");
+        expect(setBoundVariableForPaint).toHaveBeenCalledTimes(2);
+    });
+
+    it("unbinds a property when the map value is null (no variable lookup)", async () => {
+        const result: any = await setBoundVariable({
+            nodeId: "rect-1",
+            nodeName: "Rect",
+            bindVariables: { fills: null },
+        });
+        expect(result.success).toBe(true);
+        expect(result.message).toContain("Unbound variable from fills");
+        expect((globalThis as any).figma.variables.getVariableByIdAsync).not.toHaveBeenCalled();
+    });
+
+    it("sets explicit variable modes, passing the resolved collection NODE (not the id) to the API", async () => {
+        const result: any = await setBoundVariable({
+            nodeId: "rect-1",
+            nodeName: "Rect",
+            explicitVariableModes: { "col-1": "1:3" },
+        });
+        expect(result.success).toBe(true);
+        // The Plugin API requires the collection node, not the id string.
+        expect(mockNode.setExplicitVariableModeForCollection).toHaveBeenCalledWith(
+            { id: "col-1", name: "Theme" },
+            "1:3",
+        );
+        expect(result.message).toContain("Set mode 1:3 for collection col-1");
+    });
+
+    it("throws when the collection id for an explicit mode does not resolve", async () => {
+        await expect(
+            setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", explicitVariableModes: { "ghost-col": "1:3" } })
+        ).rejects.toThrow("Collection ghost-col not found");
+    });
+
+    it("throws a clear error when neither map is provided (no longer the flat-shape message)", async () => {
+        let err: any;
+        try {
+            await setBoundVariable({ nodeId: "rect-1", nodeName: "Rect" });
+        } catch (e) {
+            err = e;
+        }
+        expect(err).toBeDefined();
+        expect(err.message).toContain("Must provide bindVariables");
+        expect(err.message).not.toContain("field + variableId");
+    });
+
+    it("throws when a referenced variable id does not resolve", async () => {
+        await expect(
+            setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { fills: "ghost" } })
+        ).rejects.toThrow("Variable ghost not found");
+    });
+
+    it("reports when fills has no SOLID paint to bind", async () => {
+        mockNode.fills = [{ type: "GRADIENT_LINEAR" }];
+        const result: any = await setBoundVariable({
+            nodeId: "rect-1",
+            nodeName: "Rect",
+            bindVariables: { fills: "v-color" },
+        });
+        expect(result.message).toContain("No SOLID paints found in fills");
+    });
+
+    it("surfaces an actionable detail when the underlying bind throws a message-less error (never the literal 'undefined')", async () => {
+        // Figma can throw error-like objects whose `.message` is undefined; the
+        // handler must not print "undefined" — it should fall back to name/etc.
+        (globalThis as any).figma.variables.setBoundVariableForPaint = mock(() => {
+            throw { name: "FigmaInternalError" };
+        });
+        let err: any;
+        try {
+            await setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { fills: "v-color" } });
+        } catch (e) {
+            err = e;
+        }
+        expect(err).toBeDefined();
+        expect(err.message).toContain("Failed to set bound variable for fills");
+        expect(err.message).toContain("FigmaInternalError");
+        expect(err.message).not.toContain("undefined");
     });
 });

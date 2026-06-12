@@ -176,23 +176,80 @@ import { sendProgressUpdate } from '../utils/progressUtils.js';
  * @param {string} params.parentId - Optional parent node ID to place the instance into
  * @returns {Promise<Object>} Created instance info
  */
-export async function createComponentInstance(params: any) {
-    const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
+async function validateComponentPropertyValue(
+    node: any,
+    propertyName: string,
+    propertyType: string,
+    value: any
+): Promise<any> {
+    if (propertyType === "BOOLEAN") {
+        if (typeof value === "string") {
+            const lower = value.toLowerCase();
+            if (lower === "true") return true;
+            if (lower === "false") return false;
+        }
+        if (typeof value === "boolean") return value;
+        throw new Error(`Operation Denied: BOOLEAN property '${propertyName}' requires true or false.`);
+    }
+    if (propertyType === "TEXT") {
+        if (typeof value !== "string") throw new Error(`Operation Denied: TEXT property '${propertyName}' requires a string.`);
+        return value;
+    }
+    if (propertyType === "VARIANT") {
+        let componentSet = null;
+        if (node.type === "INSTANCE") {
+            const mainComponent = await node.getMainComponentAsync();
+            if (mainComponent && mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
+                componentSet = mainComponent.parent;
+            }
+        } else if (node.type === "COMPONENT" && node.parent && node.parent.type === "COMPONENT_SET") {
+            componentSet = node.parent;
+        } else if (node.type === "COMPONENT_SET") {
+            componentSet = node;
+        }
+        if (componentSet) {
+            const options = componentSet.variantGroupProperties[propertyName]?.values;
+            if (options && !options.includes(String(value))) {
+                throw new Error(`Operation Denied: '${value}' is not a valid value for variant property '${propertyName}'. Valid values: ${options.join(', ')}.`);
+            }
+        }
+        return value;
+    }
+    if (propertyType === "INSTANCE_SWAP") {
+        if (typeof value !== "string" || value.trim() === "") {
+            throw new Error(`Operation Denied: INSTANCE_SWAP property '${propertyName}' requires a non-empty string.`);
+        }
+        let target = null;
+        try {
+            target = await figma.getNodeByIdAsync(value);
+        } catch {
+            // Unresolvable IDs (e.g. library component keys or malformed IDs) are passed through 
+            // as 'plausible refs' so we don't block valid remote component swaps if we can't fetch them.
+        }
+        if (target && target.type !== "COMPONENT" && target.type !== "COMPONENT_SET") {
+            throw new Error(`Operation Denied: INSTANCE_SWAP value must refer to a component, got ${target.type}`);
+        }
+        return value;
+    }
+    return value;
+}
 
-    if (!componentKey && !componentId) {
-        throw new Error("Missing componentKey or componentId parameter");
+export async function createComponentInstance(params: any) {
+    const { componentId, x = 0, y = 0, parentId, componentKey } = params || {};
+
+    if (!componentId && !componentKey) {
+        throw new Error("Missing componentId or componentKey parameter");
     }
 
     try {
-        let component: ComponentNode;
-
+        let component;
+        
         if (componentId) {
-            // Local component: look up directly by node ID
             const node = await figma.getNodeByIdAsync(componentId);
             if (!node) {
-                throw new Error(`Component not found with ID: ${componentId}`);
+                throw new Error(`Component node not found with ID: ${componentId}`);
             }
-            if (node.type !== "COMPONENT") {
+            if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
                 throw new Error(`Node ${componentId} is not a COMPONENT (got ${node.type})`);
             }
             component = node as ComponentNode;
@@ -717,6 +774,7 @@ export async function createComponentSet(params: any) {
     }
 
     const figmaComponents: any[] = [];
+    const seenVariants = new Map<string, string>();
 
     // Process each component: Rename and Collect
     for (const compData of components) {
@@ -731,7 +789,14 @@ export async function createComponentSet(params: any) {
         }
 
         const nameParts = properties.map((prop: any, index: any) => `${prop}=${compData.propertyValues[index]}`);
-        component.name = nameParts.join(", ");
+        const variantName = nameParts.join(", ");
+        
+        if (seenVariants.has(variantName)) {
+            throw new Error(`Operation Denied: Duplicate variant combination '${variantName}' across components '${seenVariants.get(variantName)}' and '${component.name}'. Each component in a set must have a unique property-value combination.`);
+        }
+        seenVariants.set(variantName, component.name);
+        
+        component.name = variantName;
 
         figmaComponents.push(component);
     }
@@ -793,8 +858,8 @@ export async function setComponentInstanceProperty(params: any) {
     const instance = node as InstanceNode;
     const properties = instance.componentProperties;
     
-    // Find qualified name
     let qualifiedName: string | null = null;
+    let propType: string | null = null;
     const validNames: string[] = [];
     
     for (const key in properties) {
@@ -806,22 +871,24 @@ export async function setComponentInstanceProperty(params: any) {
         
         if (readableName === propertyName) {
             qualifiedName = key;
+            propType = properties[key].type;
             break;
         }
     }
 
-    if (!qualifiedName) {
+    if (!qualifiedName || !propType) {
         throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
     }
 
     try {
-        instance.setProperties({ [qualifiedName]: value });
+        const validatedValue = await validateComponentPropertyValue(instance, propertyName, propType, value);
+        instance.setProperties({ [qualifiedName]: validatedValue });
         return {
             id: instance.id,
             name: instance.name,
             type: instance.type,
             updatedProperty: propertyName,
-            value: value
+            value: validatedValue
         };
     } catch (error: any) {
         throw new Error(`Error setting component instance property: ${error.message}`);
@@ -865,12 +932,17 @@ export async function manageComponentProperty(params: any) {
     if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
         throw new Error(`Target node must be a COMPONENT or COMPONENT_SET, got ${node.type}`);
     }
+    
+    if (node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET") {
+        throw new Error(`Operation Denied: '${node.name}' is a variant inside a component set; manage properties on the set ('${node.parent.name}'), not the individual variant.`);
+    }
 
     const targetNode = node as ComponentNode | ComponentSetNode;
     const properties = targetNode.componentPropertyDefinitions;
     
     // Find qualified name for EDIT and DELETE
     let qualifiedName: string | null = null;
+    let existingPropType: string | null = null;
     const validNames: string[] = [];
     
     for (const key in properties) {
@@ -880,6 +952,7 @@ export async function manageComponentProperty(params: any) {
         
         if (readableName === propertyName) {
             qualifiedName = key;
+            existingPropType = properties[key].type;
         }
     }
 
@@ -895,10 +968,12 @@ export async function manageComponentProperty(params: any) {
                 throw new Error("VARIANT properties cannot be added manually. Use create_component_set instead.");
             }
             
+            const validatedDefault = await validateComponentPropertyValue(targetNode, propertyName, propertyType, defaultValue);
+            
             const options: any = {};
             if (preferredValues) options.preferredValues = preferredValues;
             
-            targetNode.addComponentProperty(propertyName, propertyType, defaultValue, options);
+            targetNode.addComponentProperty(propertyName, propertyType, validatedDefault, options);
             
             return {
                 id: targetNode.id,
@@ -906,17 +981,19 @@ export async function manageComponentProperty(params: any) {
                 action: "ADD",
                 propertyName,
                 propertyType,
-                defaultValue
+                defaultValue: validatedDefault
             };
             
         } else if (action === "EDIT") {
-            if (!qualifiedName) {
+            if (!qualifiedName || !existingPropType) {
                 throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
             }
             
             const options: any = {};
             if (newPropertyName !== undefined) options.name = newPropertyName;
-            if (newDefaultValue !== undefined) options.defaultValue = newDefaultValue;
+            if (newDefaultValue !== undefined) {
+                options.defaultValue = await validateComponentPropertyValue(targetNode, propertyName, existingPropType, newDefaultValue);
+            }
             if (preferredValues !== undefined) options.preferredValues = preferredValues;
             
             targetNode.editComponentProperty(qualifiedName, options);

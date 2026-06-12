@@ -162,13 +162,20 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
     describe("v2.1.0 schema constraints", () => {
         it("all five creation tools require parentId", () => {
             const registered = (server as any)._registeredTools;
-            // Superset of every creator's required fields; zod strips unknown keys,
-            // so the only thing missing is parentId.
-            const base = { type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10, text: "hi", svg: "<svg/>", componentId: "c1" };
-            for (const t of ["create_shape", "create_frame", "create_text", "create_svg", "create_instance"]) {
+            // Input schemas are now STRICT (reject unknown keys), so each tool gets
+            // exactly its own required fields — a shared superset would be rejected
+            // for the keys that don't belong to that tool.
+            const requiredByTool: Record<string, any> = {
+                create_shape: { type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10 },
+                create_frame: { x: 0, y: 0, width: 10, height: 10 },
+                create_text: { x: 0, y: 0, text: "hi" },
+                create_svg: { svg: "<svg/>" },
+                create_instance: { x: 0, y: 0 },
+            };
+            for (const [t, fields] of Object.entries(requiredByTool)) {
                 const schema = registered[t].inputSchema;
-                expect(schema.safeParse({ ...base }).success).toBe(false);          // no parentId → rejected
-                expect(schema.safeParse({ ...base, parentId: "p1" }).success).toBe(true);
+                expect(schema.safeParse({ ...fields }).success).toBe(false);          // no parentId → rejected
+                expect(schema.safeParse({ ...fields, parentId: "p1" }).success).toBe(true);
             }
         });
 

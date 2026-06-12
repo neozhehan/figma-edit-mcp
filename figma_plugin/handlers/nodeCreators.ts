@@ -125,7 +125,7 @@ export async function createShape(params: any) {
                 g: parseFloat(fillColor.g) || 0,
                 b: parseFloat(fillColor.b) || 0,
             },
-            opacity: fillColor.a ?? 1
+            opacity: typeof fillColor.a === 'number' ? fillColor.a : 1
         }];
     }
 
@@ -137,7 +137,7 @@ export async function createShape(params: any) {
                 g: parseFloat(strokeColor.g) || 0,
                 b: parseFloat(strokeColor.b) || 0,
             },
-            opacity: strokeColor.a ?? 1
+            opacity: typeof strokeColor.a === 'number' ? strokeColor.a : 1
         }];
     }
 
@@ -244,7 +244,7 @@ export async function createFrame(params: any) {
                 g: parseFloat(fillColor.g) || 0,
                 b: parseFloat(fillColor.b) || 0,
             },
-            opacity: parseFloat(fillColor.a) ?? 1,
+            opacity: typeof fillColor.a === 'number' ? fillColor.a : 1,
         };
         frame.fills = [paintStyle];
     }
@@ -258,7 +258,7 @@ export async function createFrame(params: any) {
                 g: parseFloat(strokeColor.g) || 0,
                 b: parseFloat(strokeColor.b) || 0,
             },
-            opacity: parseFloat(strokeColor.a) ?? 1,
+            opacity: typeof strokeColor.a === 'number' ? strokeColor.a : 1,
         };
         frame.strokes = [strokeStyle];
     }
@@ -379,7 +379,7 @@ export async function createText(params: any) {
             g: parseFloat(fontColor.g) || 0,
             b: parseFloat(fontColor.b) || 0,
         },
-        opacity: parseFloat(fontColor.a) ?? 1,
+        opacity: typeof fontColor.a === 'number' ? fontColor.a : 1,
     };
     textNode.fills = [paintStyle];
 

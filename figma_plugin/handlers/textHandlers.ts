@@ -55,11 +55,11 @@ async function setTextContent(params: any) {
  * @returns {Promise<Object>} Results of the operations
  */
 export async function setMultipleTextContents(params: any) {
-    const { nodeId, text } = params || {};
+    const { text } = params || {};
     const commandId = params.commandId || generateCommandId();
 
-    if (!nodeId || !text || !Array.isArray(text)) {
-        const errorMsg = "Missing required parameters: nodeId and text array";
+    if (!text || !Array.isArray(text)) {
+        const errorMsg = "Missing required parameters: text array";
 
         // Send error progress update
         await sendProgressUpdate(
@@ -77,7 +77,7 @@ export async function setMultipleTextContents(params: any) {
     }
 
     console.log(
-        `Starting text replacement for node: ${nodeId} with ${text.length} text replacements`
+        `Starting text replacement with ${text.length} text replacements`
     );
 
     // Send started progress update
@@ -98,12 +98,12 @@ export async function setMultipleTextContents(params: any) {
 
     for (let i = 0; i < text.length; i++) {
         const replacement = text[i];
-        if (!replacement.nodeId || replacement.text === undefined) {
+        if (!replacement.nodeId || replacement.characters === undefined) {
             failureCount++;
             results.push({
                 success: false,
                 nodeId: replacement.nodeId || "unknown",
-                error: "Missing nodeId or text in replacement entry",
+                error: "Missing nodeId or characters in replacement entry",
             });
             break; // Stop on first failure
         }
@@ -135,7 +135,7 @@ export async function setMultipleTextContents(params: any) {
             const originalText = textNode.characters;
             await setTextContent({
                 nodeId: replacement.nodeId,
-                text: replacement.text,
+                text: replacement.characters,
             });
 
             successCount++;
@@ -143,7 +143,7 @@ export async function setMultipleTextContents(params: any) {
                 success: true,
                 nodeId: replacement.nodeId,
                 originalText: originalText,
-                translatedText: replacement.text,
+                translatedText: replacement.characters,
             });
 
             // Send in progress update
@@ -189,7 +189,6 @@ export async function setMultipleTextContents(params: any) {
 
     return {
         success: successCount > 0 && failureCount === 0,
-        nodeId: nodeId,
         replacementsApplied: successCount,
         replacementsFailed: failureCount,
         totalReplacements: text.length,
@@ -198,15 +197,40 @@ export async function setMultipleTextContents(params: any) {
     };
 }
 
+async function loadAllFontsForNode(node: any) {
+    if (node.fontName !== figma.mixed) return;
+    
+    const segments = node.getStyledTextSegments(['fontName']);
+    const uniqueFonts: any[] = [];
+    const seen = new Set<string>();
+    
+    for (const segment of segments) {
+        const font = segment.fontName;
+        const key = `${font.family}-${font.style}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueFonts.push(font);
+        }
+    }
+    
+    for (const font of uniqueFonts) {
+        try {
+            await figma.loadFontAsync(font);
+        } catch (error: any) {
+            throw new Error(`Failed to load font ${font.family} ${font.style}: ${error.message}`);
+        }
+    }
+}
+
 /**
  * Sets unified text style properties for a node
  * @param {Object} params - Style parameters
  * @returns {Promise<Object>} Result
  */
 export async function setTextStyle(params: any) {
-    const { nodeId, fontFamily, fontStyle, fontSize,
+    const { nodeId, fontName, fontSize,
         letterSpacing, lineHeight, paragraphSpacing, textCase,
-        textDecoration, textAlignHorizontal, textAlignVertical } = params;
+        textDecoration, textAlignHorizontal, textAlignVertical, paragraphIndent } = params;
 
     const node = await figma.getNodeByIdAsync(nodeId);
 
@@ -220,45 +244,26 @@ export async function setTextStyle(params: any) {
     }
 
     // Optimization: Conditional Font Loading
-    if (fontFamily || fontStyle) {
-        // Handle mixed fonts by defaulting to Inter-Regular if we have to, 
-        // or prioritize the provided family/style.
-        // If current font is mixed, we can't easily adhere to "partial update" 
-        // without replacing everything, because we don't know the "base" font.
-
-        let currentFamily = "Inter";
-        let currentStyle = "Regular";
-
-        if (node.fontName !== figma.mixed) {
-            currentFamily = node.fontName.family;
-            currentStyle = node.fontName.style;
+    if (fontName) {
+        const targetFamily = fontName.family;
+        const targetStyle = fontName.style;
+        
+        try {
+            await figma.loadFontAsync({ family: targetFamily, style: targetStyle });
+        } catch (error: any) {
+            throw new Error(`Failed to load requested font ${targetFamily} ${targetStyle}: ${error.message}`);
         }
-
-        const targetFamily = fontFamily || currentFamily;
-        const targetStyle = fontStyle || (fontFamily && !fontStyle ? "Regular" : currentStyle);
-        // If changing family but not style, and current style might not exist in new family, default to Regular? 
-        // Or if current is mixed, we default to Regular.
-
-        // Load the new font
-        await figma.loadFontAsync({ family: targetFamily, style: targetStyle });
         node.fontName = { family: targetFamily, style: targetStyle };
-
     } else {
         // Ensure current font is loaded before modifying other properties
         if (node.fontName !== figma.mixed) {
-            await figma.loadFontAsync(node.fontName);
+            try {
+                await figma.loadFontAsync(node.fontName);
+            } catch (error: any) {
+                throw new Error(`Failed to load current font ${node.fontName.family} ${node.fontName.style}: ${error.message}`);
+            }
         } else {
-            // If it is mixed, we technically need to load all used fonts.
-            // For now, if we are only changing e.g. alignment, it might work without loading?
-            // Actually Figma requires fonts loaded to change almost anything on TextNode.
-            // If mixed, it's hard. But let's try to proceed. 
-            // If it fails, the error will bubble up.
-            // Some properties like textAlign don't require font loading? 
-            // "You can only modify the properties of a TextNode ... if the font ... is currently loaded."
-
-            // Attempt to load all fonts used in the node (if possible) is complex.
-            // We will skip explicit loading for mixed usage and hope for the best 
-            // or let the user know they need to unify fonts first.
+            await loadAllFontsForNode(node);
         }
     }
 
@@ -267,6 +272,7 @@ export async function setTextStyle(params: any) {
     if (letterSpacing !== undefined) node.letterSpacing = letterSpacing;
     if (lineHeight !== undefined) node.lineHeight = lineHeight;
     if (paragraphSpacing !== undefined) node.paragraphSpacing = paragraphSpacing;
+    if (paragraphIndent !== undefined) node.paragraphIndent = paragraphIndent;
     if (textCase !== undefined) node.textCase = textCase;
     if (textDecoration !== undefined) node.textDecoration = textDecoration;
     if (textAlignHorizontal !== undefined) node.textAlignHorizontal = textAlignHorizontal;

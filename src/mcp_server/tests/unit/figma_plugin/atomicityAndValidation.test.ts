@@ -39,7 +39,7 @@ const { setInstanceOverrides } = await import("../../../../../figma_plugin/handl
 const { deleteMultipleNodes } = await import("../../../../../figma_plugin/handlers/nodeModifiers.js");
 
 // Set up plugin state
-pluginState.readOnly = false;
+pluginState.allowEditNode = "node";
 pluginState.scopeRootId = "scope-root";
 
 type FakeNode = {
@@ -79,7 +79,7 @@ function installFigma(nodes: FakeNode[]) {
 
 describe("Phase 4: Atomicity & Pre-Validation in dispatch", () => {
     beforeEach(() => {
-        pluginState.readOnly = false;
+        pluginState.allowEditNode = "node";
         pluginState.scopeRootId = "scope-root";
     });
 
@@ -238,20 +238,24 @@ describe("Phase 4: Stop on first failure in batch handlers", () => {
         });
 
         const result = await setMultipleTextContents({
-            nodeId: "scope-root",
             text: [
-                { nodeId: "100:1", text: "newA" },
-                { nodeId: "100:2", text: "newB" },
-                { nodeId: "100:3", text: "newC" }
+                { nodeId: "100:1", characters: "newA" },
+                { nodeId: "100:2", characters: "newB" },
+                { nodeId: "100:3", characters: "newC" }
             ]
         });
 
         // 100:1 succeeds, 100:2 fails. 100:3 is never reached.
         expect(result.success).toBe(false);
         expect(result.replacementsApplied).toBe(1);
-        expect(result.replacementsFailed).toBe(1);
-        expect(result.results.length).toBe(2);
-        expect(result.results[0].success).toBe(true);
+        // Verify results array matches PRD §4
+        expect(result.results).toHaveLength(2); // stop on first failure means 1 success + 1 failure = 2 items
+        expect(result.results[0]).toEqual({
+            success: true,
+            nodeId: "100:1",
+            originalText: "originalA",
+            translatedText: "newA"
+        });
         expect(result.results[1].success).toBe(false);
         const err = result.results[1].error;
         expect(err.includes("Mock write lock error") || err.includes("Failed to set characters on node 100:2")).toBe(true);

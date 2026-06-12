@@ -56,7 +56,7 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
     });
 
     it("readonly branch does not call loadAsync", () => {
-        const readonlySection = src.split("state.readOnly === true")[1] ?? "";
+        const readonlySection = src.split("!state.allowEditNode")[1] ?? "";
         const beforePageScope = readonlySection.split("if (state.scopeRootId)")[0];
         expect(beforePageScope).not.toMatch(/\.loadAsync\(/);
     });
@@ -125,6 +125,9 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
     it("readonly payload: exact shape", async () => {
         const payload = {
             editableScopeType: "readonly",
+            allowEditNode: false,
+            allowEditVariable: false,
+            allowEditStyle: false,
             documentId: "0:0",
             documentName: "Snapshot Doc",
             pageCount: 3,
@@ -142,6 +145,9 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         expect(parsed.status).toBe("success");
         expect(parsed.channel).toBe("ch1");
         expect(parsed.editableScopeType).toBe("readonly");
+        expect(parsed.allowEditNode).toBe(false);
+        expect(parsed.allowEditVariable).toBe(false);
+        expect(parsed.allowEditStyle).toBe(false);
         expect(parsed.documentId).toBe("0:0");
         expect(parsed.documentName).toBe("Snapshot Doc");
         expect(parsed.pageCount).toBe(3);
@@ -158,6 +164,9 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
     it("page-scope payload: exact shape with children", async () => {
         const payload = {
             editableScopeType: "page",
+            allowEditNode: "page",
+            allowEditVariable: false,
+            allowEditStyle: true,
             documentId: "0:0",
             documentName: "Snapshot Doc",
             pageCount: 3,
@@ -180,6 +189,9 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         expect(parsed.status).toBe("success");
         expect(parsed.channel).toBe("ch2");
         expect(parsed.editableScopeType).toBe("page");
+        expect(parsed.allowEditNode).toBe("page");
+        expect(parsed.allowEditVariable).toBe(false);
+        expect(parsed.allowEditStyle).toBe(true);
         expect(parsed.pages).toHaveLength(1);
         expect(parsed.pages[0].pageId).toBe("sp2");
         expect(parsed.pages[0].children).toEqual([
@@ -194,6 +206,9 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
     it("node-scope payload: exact shape with node block and no pages", async () => {
         const payload = {
             editableScopeType: "node",
+            allowEditNode: "node",
+            allowEditVariable: true,
+            allowEditStyle: true,
             documentId: "0:0",
             documentName: "Snapshot Doc",
             node: {
@@ -218,6 +233,9 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         expect(parsed.status).toBe("success");
         expect(parsed.channel).toBe("ch3");
         expect(parsed.editableScopeType).toBe("node");
+        expect(parsed.allowEditNode).toBe("node");
+        expect(parsed.allowEditVariable).toBe(true);
+        expect(parsed.allowEditStyle).toBe(true);
         expect(parsed.node).toEqual(payload.node);
         // Must not have pages array
         expect(parsed.pages).toBeUndefined();

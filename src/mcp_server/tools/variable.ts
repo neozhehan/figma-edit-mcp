@@ -117,10 +117,18 @@ export function registerVariableTools(server: McpServer) {
                     .array(z.string())
                     .optional()
                     .describe("Array of variable IDs to delete. Mutually exclusive with collectionId."),
+                variableNames: z
+                    .array(z.string())
+                    .optional()
+                    .describe("Array of variable names corresponding to variableIds, for safety verification. Required if variableIds is used."),
                 collectionId: z
                     .string()
                     .optional()
                     .describe("ID of a variable collection to delete. Mutually exclusive with variableIds."),
+                collectionName: z
+                    .string()
+                    .optional()
+                    .describe("Name of the collection to delete, for safety verification. Required if collectionId is used."),
             }),
             outputSchema: z.object({
                 success: z.boolean().optional().describe("Whether variables were deleted successfully"),
