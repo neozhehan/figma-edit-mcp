@@ -210,7 +210,7 @@ export async function deleteStyle(params: any) {
         throw new Error(`Style with ID ${styleId} not found.`);
     }
 
-    if (styleName === undefined || styleName === null || style.name !== styleName) {
+    if (!styleName || style.name !== styleName) {
         throw new Error("Operation Denied: styleName does not match name of styleId. Refresh context & recheck to ensure correct styleId is passed in.");
     }
 

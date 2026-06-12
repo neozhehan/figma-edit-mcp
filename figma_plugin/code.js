@@ -2136,19 +2136,70 @@
     var _a, _b;
     return (_b = (_a = getContainingPageNode(node)) == null ? void 0 : _a.id) != null ? _b : "unknown";
   }
+  async function validateComponentPropertyValue(node, propertyName, propertyType, value) {
+    var _a;
+    if (propertyType === "BOOLEAN") {
+      if (typeof value === "string") {
+        const lower = value.toLowerCase();
+        if (lower === "true") return true;
+        if (lower === "false") return false;
+      }
+      if (typeof value === "boolean") return value;
+      throw new Error(`Operation Denied: BOOLEAN property '${propertyName}' requires true or false.`);
+    }
+    if (propertyType === "TEXT") {
+      if (typeof value !== "string") throw new Error(`Operation Denied: TEXT property '${propertyName}' requires a string.`);
+      return value;
+    }
+    if (propertyType === "VARIANT") {
+      let componentSet = null;
+      if (node.type === "INSTANCE") {
+        const mainComponent = await node.getMainComponentAsync();
+        if (mainComponent && mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
+          componentSet = mainComponent.parent;
+        }
+      } else if (node.type === "COMPONENT" && node.parent && node.parent.type === "COMPONENT_SET") {
+        componentSet = node.parent;
+      } else if (node.type === "COMPONENT_SET") {
+        componentSet = node;
+      }
+      if (componentSet) {
+        const options = (_a = componentSet.variantGroupProperties[propertyName]) == null ? void 0 : _a.values;
+        if (options && !options.includes(String(value))) {
+          throw new Error(`Operation Denied: '${value}' is not a valid value for variant property '${propertyName}'. Valid values: ${options.join(", ")}.`);
+        }
+      }
+      return value;
+    }
+    if (propertyType === "INSTANCE_SWAP") {
+      if (typeof value !== "string" || value.trim() === "") {
+        throw new Error(`Operation Denied: INSTANCE_SWAP property '${propertyName}' requires a non-empty string.`);
+      }
+      let target = null;
+      try {
+        target = await figma.getNodeByIdAsync(value);
+      } catch (e) {
+      }
+      if (target && target.type !== "COMPONENT" && target.type !== "COMPONENT_SET") {
+        throw new Error(`Operation Denied: INSTANCE_SWAP value must refer to a component, got ${target.type}`);
+      }
+      return value;
+    }
+    return value;
+  }
   async function createComponentInstance(params) {
-    const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
-    if (!componentKey && !componentId) {
-      throw new Error("Missing componentKey or componentId parameter");
+    const { componentId, x = 0, y = 0, parentId, componentKey } = params || {};
+    if (!componentId && !componentKey) {
+      throw new Error("Missing componentId or componentKey parameter");
     }
     try {
       let component;
       if (componentId) {
         const node = await figma.getNodeByIdAsync(componentId);
         if (!node) {
-          throw new Error(`Component not found with ID: ${componentId}`);
+          throw new Error(`Component node not found with ID: ${componentId}`);
         }
-        if (node.type !== "COMPONENT") {
+        if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
           throw new Error(`Node ${componentId} is not a COMPONENT (got ${node.type})`);
         }
         component = node;
@@ -2517,6 +2568,7 @@
       throw new Error("Properties array is empty");
     }
     const figmaComponents = [];
+    const seenVariants = /* @__PURE__ */ new Map();
     for (const compData of components) {
       const component = await figma.getNodeByIdAsync(compData.nodeId);
       if (!component || component.type !== "COMPONENT") {
@@ -2526,7 +2578,12 @@
         throw new Error(`Property values count mismatch for component ${component.name}`);
       }
       const nameParts = properties.map((prop, index) => `${prop}=${compData.propertyValues[index]}`);
-      component.name = nameParts.join(", ");
+      const variantName = nameParts.join(", ");
+      if (seenVariants.has(variantName)) {
+        throw new Error(`Operation Denied: Duplicate variant combination '${variantName}' across components '${seenVariants.get(variantName)}' and '${component.name}'. Each component in a set must have a unique property-value combination.`);
+      }
+      seenVariants.set(variantName, component.name);
+      component.name = variantName;
       figmaComponents.push(component);
     }
     const containingPage = getContainingPageNode(figmaComponents[0]);
@@ -2566,6 +2623,7 @@
     const instance = node;
     const properties = instance.componentProperties;
     let qualifiedName = null;
+    let propType = null;
     const validNames = [];
     for (const key in properties) {
       const parts = key.split("#");
@@ -2573,26 +2631,29 @@
       validNames.push(readableName);
       if (readableName === propertyName) {
         qualifiedName = key;
+        propType = properties[key].type;
         break;
       }
     }
-    if (!qualifiedName) {
+    if (!qualifiedName || !propType) {
       throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(", ")}`);
     }
     try {
-      instance.setProperties({ [qualifiedName]: value });
+      const validatedValue = await validateComponentPropertyValue(instance, propertyName, propType, value);
+      instance.setProperties({ [qualifiedName]: validatedValue });
       return {
         id: instance.id,
         name: instance.name,
         type: instance.type,
         updatedProperty: propertyName,
-        value
+        value: validatedValue
       };
     } catch (error) {
       throw new Error(`Error setting component instance property: ${error.message}`);
     }
   }
   async function manageComponentProperty(params) {
+    var _a;
     const {
       nodeId,
       action,
@@ -2613,9 +2674,13 @@
     if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
       throw new Error(`Target node must be a COMPONENT or COMPONENT_SET, got ${node.type}`);
     }
+    if (node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) === "COMPONENT_SET") {
+      throw new Error(`Operation Denied: '${node.name}' is a variant inside a component set; manage properties on the set ('${node.parent.name}'), not the individual variant.`);
+    }
     const targetNode = node;
     const properties = targetNode.componentPropertyDefinitions;
     let qualifiedName = null;
+    let existingPropType = null;
     const validNames = [];
     for (const key in properties) {
       const parts = key.split("#");
@@ -2623,6 +2688,7 @@
       validNames.push(readableName);
       if (readableName === propertyName) {
         qualifiedName = key;
+        existingPropType = properties[key].type;
       }
     }
     try {
@@ -2636,24 +2702,27 @@
         if (propertyType === "VARIANT") {
           throw new Error("VARIANT properties cannot be added manually. Use create_component_set instead.");
         }
+        const validatedDefault = await validateComponentPropertyValue(targetNode, propertyName, propertyType, defaultValue);
         const options = {};
         if (preferredValues) options.preferredValues = preferredValues;
-        targetNode.addComponentProperty(propertyName, propertyType, defaultValue, options);
+        targetNode.addComponentProperty(propertyName, propertyType, validatedDefault, options);
         return {
           id: targetNode.id,
           name: targetNode.name,
           action: "ADD",
           propertyName,
           propertyType,
-          defaultValue
+          defaultValue: validatedDefault
         };
       } else if (action === "EDIT") {
-        if (!qualifiedName) {
+        if (!qualifiedName || !existingPropType) {
           throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(", ")}`);
         }
         const options = {};
         if (newPropertyName !== void 0) options.name = newPropertyName;
-        if (newDefaultValue !== void 0) options.defaultValue = newDefaultValue;
+        if (newDefaultValue !== void 0) {
+          options.defaultValue = await validateComponentPropertyValue(targetNode, propertyName, existingPropType, newDefaultValue);
+        }
         if (preferredValues !== void 0) options.preferredValues = preferredValues;
         targetNode.editComponentProperty(qualifiedName, options);
         return {
@@ -3962,7 +4031,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   }
   async function deleteVariables(params) {
     var _a;
-    const { variableIds, collectionId } = params || {};
+    const { variableIds, variableNames, collectionId, collectionName } = params || {};
     if (variableIds && collectionId) {
       throw new Error("Provide either variableIds or collectionId, not both");
     }
@@ -3972,8 +4041,14 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     let idsToCheck;
     let collection = null;
     if (collectionId) {
+      if (!collectionName) {
+        throw new Error("collectionName is required when deleting a collection by collectionId");
+      }
       collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
       if (!collection) throw new Error(`Collection not found: ${collectionId}`);
+      if (collection.name !== collectionName) {
+        throw new Error(`Operation Denied: collectionName '${collectionName}' does not match name of collectionId '${collection.name}'`);
+      }
       if (collection.remote) {
         throw new Error(`Operation Denied: '${collection.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
       }
@@ -3986,6 +4061,9 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       if (!Array.isArray(variableIds) || variableIds.length === 0) {
         throw new Error("variableIds must be a non-empty array");
       }
+      if (!Array.isArray(variableNames) || variableNames.length !== variableIds.length) {
+        throw new Error("variableNames must be provided as a parallel array of the same length as variableIds");
+      }
       idsToCheck = variableIds;
     }
     const variables = await Promise.all(
@@ -3994,6 +4072,9 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     for (let i = 0; i < idsToCheck.length; i++) {
       const v = variables[i];
       if (!v) throw new Error(`Variable not found: ${idsToCheck[i]}`);
+      if (variableIds && v.name !== variableNames[i]) {
+        throw new Error(`Operation Denied: variableName '${variableNames[i]}' does not match name of variableId '${v.name}'`);
+      }
       if (v.remote) {
         throw new Error(`Operation Denied: '${v.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
       }
@@ -4435,7 +4516,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     if (!style) {
       throw new Error(`Style with ID ${styleId} not found.`);
     }
-    if (styleName === void 0 || styleName === null || style.name !== styleName) {
+    if (!styleName || style.name !== styleName) {
       throw new Error("Operation Denied: styleName does not match name of styleId. Refresh context & recheck to ensure correct styleId is passed in.");
     }
     if (style.remote) {

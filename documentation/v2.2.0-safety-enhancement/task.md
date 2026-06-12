@@ -93,17 +93,17 @@ This task list covers **all** requirements in [`prd.md`](./prd.md) for the v2.2.
 - [x] **Live Verification:** In Figma confirm `FILL`/child-transform respond with proper rejections/warnings rather than silently failing.
 
 ## Phase 5: Component & Asset Validations (`componentHandlers.ts` unless noted) (P1/P2)
-- [ ] **§5 Component property type validation** in **both** `setComponentInstanceProperty` (`:777`) and `manageComponentProperty` (`:844`), **before** the API call:
-  - [ ] `BOOLEAN` — accept real boolean; coerce `"true"`/`"false"` (case-insensitive); reject anything else.
-  - [ ] `TEXT` — require a string.
-  - [ ] `VARIANT` — cross-reference allowed values from the parent **`ComponentSetNode.variantGroupProperties`** (options come from the **set**, not the instance); on miss, throw listing valid options (error string per PRD §5).
-  - [ ] `INSTANCE_SWAP` (D10, **advisory**) — validate the value resolves to a `COMPONENT` id or is a non-empty component key; reject a wrong-type reference (frame id, number, empty string); pass plausible refs through. **Do NOT** validate against `preferredValues`.
-- [ ] **§5 Variant-member node-type guard (`manageComponentProperty`):** Reject when `node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET"` with set-level guidance (error string per PRD §5).
-- [ ] **§11 Duplicate-variant guard (`createComponentSet` `:708`):** Before `combineAsVariants`, build each component's `Prop=Val, …` variant name and detect duplicate combinations; throw listing the colliding combo(s) (error string per PRD §11).
-- [ ] **§6B `variable_delete` required names (D11):** Schema (`src/mcp_server/tools/variable.ts`) — `variableIds` mode requires a parallel `variableNames: string[]` (same length); `collectionId` mode requires `collectionName`. Handler (`variableHandlers.ts` `deleteVariables`) — verify each by id / verify the collection; throw a `"… does not match name of …"` error on mismatch.
-- [ ] **§6B `style_delete` tighten (`styleHandlers.ts:210`):** Drop the dead `!== undefined` allowance so it matches `verifyNodeName`'s "block if name absent" (consistency only).
-- [ ] **Tests:** §5 each type validated, `"true"`→`BOOLEAN` coerces, bad `VARIANT` lists options, `INSTANCE_SWAP` rejects wrong-type but passes a plausible id/key, variant-member rejected; §11 duplicate combo rejected with collision named; §6B `variable_delete` requires names in both modes and rejects on mismatch, `style_delete` rejects on mismatch with the tightened guard.
-- [ ] **Live Verification:** In Figma confirm a duplicate variant throws the intended error and `INSTANCE_SWAP` accepts a valid component reference.
+- [x] **§5 Component property type validation** in **both** `setComponentInstanceProperty` (`:777`) and `manageComponentProperty` (`:844`), **before** the API call:
+  - [x] `BOOLEAN` — accept real boolean; coerce `"true"`/`"false"` (case-insensitive); reject anything else.
+  - [x] `TEXT` — require a string.
+  - [x] `VARIANT` — cross-reference allowed values from the parent **`ComponentSetNode.variantGroupProperties`** (options come from the **set**, not the instance); on miss, throw listing valid options (error string per PRD §5).
+  - [x] `INSTANCE_SWAP` (D10, **advisory**) — validate the value resolves to a `COMPONENT` id or is a non-empty component key; reject a wrong-type reference (frame id, number, empty string); pass plausible refs through. **Do NOT** validate against `preferredValues`.
+- [x] **§5 Variant-member node-type guard (`manageComponentProperty`):** Reject when `node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET"` with set-level guidance (error string per PRD §5).
+- [x] **§11 Duplicate-variant guard (`createComponentSet` `:708`):** Before `combineAsVariants`, build each component's `Prop=Val, …` variant name and detect duplicate combinations; throw listing the colliding combo(s) (error string per PRD §11).
+- [x] **§6B `variable_delete` required names (D11):** Schema (`src/mcp_server/tools/variable.ts`) — `variableIds` mode requires a parallel `variableNames: string[]` (same length); `collectionId` mode requires `collectionName`. Handler (`variableHandlers.ts` `deleteVariables`) — verify each by id / verify the collection; throw a `"… does not match name of …"` error on mismatch.
+- [x] **§6B `style_delete` tighten (`styleHandlers.ts:210`):** Drop the dead `!== undefined` allowance so it matches `verifyNodeName`'s "block if name absent" (consistency only).
+- [x] **Tests:** §5 each type validated, `"true"`→`BOOLEAN` coerces, bad `VARIANT` lists options, `INSTANCE_SWAP` rejects wrong-type but passes a plausible id/key, variant-member rejected; §11 duplicate combo rejected with collision named; §6B `variable_delete` requires names in both modes and rejects on mismatch, `style_delete` rejects on mismatch with the tightened guard.
+- [x] **Live Verification:** In Figma confirm a duplicate variant throws the intended error and `INSTANCE_SWAP` accepts a valid component reference.
 
 ## Phase 6: Tool Contract Repairs — Text + `node_bind_variable` (`textHandlers.ts`, `variableHandlers.ts` + `src/mcp_server/tools/{text,node}.ts`) (P0/P1/P2)
 - [ ] **§10 Mixed-font loading (`setTextStyle`):** Factor a `loadAllFontsForNode(node)` helper using native `node.getStyledTextSegments(['fontName'])` (dedupe via `uniqBy`; short-circuit `node.fontName !== figma.mixed`). Do **not** reuse the buggy `buildLinearOrder` (`textUtils.ts:58-61`). On an unavailable font, surface an actionable error — **do not** skip-and-proceed (a missing font blocks any write regardless).

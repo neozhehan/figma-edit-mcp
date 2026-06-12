@@ -471,7 +471,7 @@ export async function getVariables(params: any) {
 
 
 export async function deleteVariables(params: any) {
-    const { variableIds, collectionId } = params || {};
+    const { variableIds, variableNames, collectionId, collectionName } = params || {};
 
     // Mutual exclusivity check
     if (variableIds && collectionId) {
@@ -485,9 +485,17 @@ export async function deleteVariables(params: any) {
     let collection: any = null;
 
     if (collectionId) {
+        if (!collectionName) {
+            throw new Error("collectionName is required when deleting a collection by collectionId");
+        }
         // Collection mode: resolve all variable IDs from the collection
         collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
         if (!collection) throw new Error(`Collection not found: ${collectionId}`);
+        
+        if (collection.name !== collectionName) {
+            throw new Error(`Operation Denied: collectionName '${collectionName}' does not match name of collectionId '${collection.name}'`);
+        }
+        
         if (collection.remote) {
             throw new Error(`Operation Denied: '${collection.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
         }
@@ -503,6 +511,9 @@ export async function deleteVariables(params: any) {
         if (!Array.isArray(variableIds) || variableIds.length === 0) {
             throw new Error("variableIds must be a non-empty array");
         }
+        if (!Array.isArray(variableNames) || variableNames.length !== variableIds.length) {
+            throw new Error("variableNames must be provided as a parallel array of the same length as variableIds");
+        }
         idsToCheck = variableIds;
     }
 
@@ -513,6 +524,11 @@ export async function deleteVariables(params: any) {
     for (let i = 0; i < idsToCheck.length; i++) {
         const v = variables[i] as any;
         if (!v) throw new Error(`Variable not found: ${idsToCheck[i]}`);
+        
+        if (variableIds && v.name !== variableNames[i]) {
+            throw new Error(`Operation Denied: variableName '${variableNames[i]}' does not match name of variableId '${v.name}'`);
+        }
+        
         if (v.remote) {
             throw new Error(`Operation Denied: '${v.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
         }
