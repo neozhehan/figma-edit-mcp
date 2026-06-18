@@ -29,10 +29,10 @@ Each issue below has been verified against the current code; see **§Provenance*
 > **D1 — Version.** This release is **v2.3.0**. Bump `package.json` `2.2.0 → 2.3.0`.
 
 > [!NOTE]
-> **D2 — Image-fill API shape (§1) — DECIDED.** Extend the existing **`node_set_fill`** tool rather than adding a new tool: the input becomes "one of {solid color, image}". `r/g/b` become optional; a new `image` object carries the source. The plugin creates the `Image` via `figma.createImageAsync(url)` (URL source, **recommended/primary** — the plugin fetches) with an optional raw-bytes path (`figma.createImage(bytes)`), then assigns an `IMAGE` paint with a `scaleMode`. Rationale: this keeps "set a node's fill" one tool with one mental model, mirrors how `create_shape`/`create_frame` already centralise `fillColor`, and avoids a second tool the model has to disambiguate. *(Rejected alternative: a dedicated `node_set_image_fill` tool and/or a standalone `create_image` → imageHash tool feeding `style_manage`'s paint passthrough.)*
+> **D2 — Image-fill API shape (§1) — DECIDED.** Extend the existing **`node_set_fill`** tool rather than adding a new tool: the input becomes "one of {solid color, image}". `r/g/b` become optional; a new `image` object carries the source. The plugin resolves an `Image` from **either** source — `figma.createImageAsync(url)` (URL — the plugin fetches) **or** `figma.createImage(base64ToBytes(bytesBase64))` (raw bytes) — then assigns an `IMAGE` paint with a `scaleMode`. Both sources ship in v2.3.0 (**Option B**). The bytes path requires a hand-rolled **base64 decoder** (`base64ToBytes`): the Figma plugin sandbox has no `atob`, and the repo today has only a base64 *encoder* (`figma_plugin/utils/exportUtils.ts:6-59`). Rationale for one tool: keeps "set a node's fill" one mental model, mirrors how `create_shape`/`create_frame` already centralise `fillColor`, and avoids a second tool the model has to disambiguate. *(Rejected alternative: a dedicated `node_set_image_fill` tool and/or a standalone `create_image` → imageHash tool feeding `style_manage`'s paint passthrough.)*
 
 > [!NOTE]
-> **D3 — `variable_delete` responsiveness (§2).** Three coordinated changes, all plugin-side: (a) replace the fixed every-500-nodes yield in the shared tree walk with a **time-budgeted yield** (yield when ≥~50 ms have elapsed since the last yield), keeping a node-count fallback; (b) scan pages **concurrently** via `Promise.all(figma.root.children.map(...))` instead of the sequential `for…await`; (c) emit periodic `sendProgressUpdate`s during the delete scan so the MCP server's 60 s inactivity timer is reset (the same mechanism `variable_list`'s document scan already uses). (a)+(b) keep the JS thread responsive; (c) is the belt-and-braces safeguard. The fix lands in the **shared** `findVariableConsumers` walk, so `variable_list`'s document consumer scan benefits too.
+> **D3 — `variable_delete` responsiveness (§2).** Three coordinated changes, all plugin-side: (a) replace the fixed every-500-nodes yield in the shared tree walk with a **time-budgeted yield** (yield when ≥~50 ms have elapsed since the last yield), keeping a node-count fallback; (b) scan pages **concurrently** via `Promise.all(figma.root.children.map(...))` instead of the sequential `for…await`; (c) emit `sendProgressUpdate` **during the walk** (on the same time-budget tick as (a), throttled so updates fire at most every ~1 s) so the MCP server's inactivity timer is reset. (a)+(b) keep the JS thread responsive; (c) is the belt-and-braces safeguard. **Why during-walk, not per-page:** the request's *first* timeout is the 30 s default (`figma-client.ts:317`), only extended to 60 s once the first `progress_update` arrives — so on a large **single-page** document, "one update per page" would emit only at the very end and time out before the first heartbeat. The heartbeat therefore lives **inside** the shared walk, not in the page loop. `deleteVariables` already receives `params.commandId` (injected by `sendCommandToFigma`), so it can emit with the correct request id and a `'variable_delete'` commandType — same wiring `getVariables`/`variable_list` already use. The fix lands in the **shared** `findVariableConsumers` walk, so `variable_list`'s document consumer scan benefits too.
 
 > [!NOTE]
 > **D4 — Variable `scopes` (§3).** Add an optional **`scopes`** field (array of `VariableScope` enum values) to `variable_manage`, honoured on both `CREATE_VARIABLE` and `UPDATE_VARIABLE`; the handler sets `variable.scopes`. Schema validates the **enum shape only**; Figma arbitrates type-compatibility (e.g. `ALL_FILLS` is COLOR-only) and any rejection degrades to a normal handler error (same advisory philosophy as v2.2.0 D10). `scopes` is **optional, not required**, so an `UPDATE` that omits it does not wipe existing scopes — but the tool description and the `figma-edit` guidance both instruct agents to **always set `scopes` explicitly on create** (matching the official figma-use guidance). *(`codeSyntax` is a related write gap but is out of scope for v2.3.0 — note as a follow-up.)*
@@ -41,7 +41,10 @@ Each issue below has been verified against the current code; see **§Provenance*
 > **D5 — `style_manage` effect contract (§4).** Fix **both** sides: (a) **plugin** — normalise effects before assigning, injecting `blendMode: "NORMAL"` (and the other shadow defaults) for `DROP_SHADOW`/`INNER_SHADOW` that omit them, so an agent that trusts the schema never hits a hard failure; (b) **schema** — name `blendMode` in the typed effect schema and document it. The normalisation already exists and works in `setEffects` (`node_set_effects`, `stylingHandlers.ts:248-275`); **extract it into one shared helper and reuse it in `createStyle`'s EFFECT branch** so the two effect-writing paths can never diverge again. Primary lever is (a) — the schema fix makes the contract honest, but the plugin default is what removes the failure.
 
 > [!NOTE]
-> **All decisions recorded and confirmed.** D2 (image-fill API shape) is locked to extending `node_set_fill`; D1/D3/D4/D5 carry sensible defaults. No open questions remain for this release.
+> **D6 — Auto-resize oversized image bytes (§1) — DECIDED.** Figma rejects images >4096 px per side on **both** sources and does not resize (confirmed against the API). To make the bytes path forgiving, the **MCP server** auto-downscales an oversized `bytesBase64` image **before** forwarding it to the plugin: decode → if `max(w,h) > 4096`, scale so the longest side = 4096 **preserving aspect ratio** → re-encode in the source format → re-base64. Use **`jimp`** (pure-JS, no native binary) to fit the lean, npx/Bun/Smithery-friendly dependency model — `sharp` was rejected to avoid native prebuilt-binary install friction. Resize covers **PNG/JPEG only**; **GIF is passed through unmodified** (jimp resize would flatten animation) and an oversized GIF still returns Figma's rejection with guidance. A `warnings` entry reports any downscale (original → new dimensions). **The `url` path is NOT resized** — the server never sees those bytes, and fetching agent-controlled URLs server-side would add an SSRF surface; an oversized URL image keeps returning the structured rejection. *(Follow-up, out of scope: optional server-side fetch-resize-retry for the URL path once outbound HTTP + SSRF guards are in place.)*
+
+> [!NOTE]
+> **All decisions recorded and confirmed.** D2 (image-fill API shape) is locked to extending `node_set_fill`; D6 adds `jimp` bytes-path auto-resize; D1/D3/D4/D5 carry sensible defaults. No open questions remain for this release.
 
 ---
 
@@ -49,7 +52,7 @@ Each issue below has been verified against the current code; see **§Provenance*
 
 | # | Change | Priority | Primary location |
 | :- | :- | :-: | :- |
-| §1 | Image fill on `node_set_fill` (feature gap) | **P1** | `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/stylingHandlers.ts` |
+| §1 | Image fill on `node_set_fill` (feature gap) | **P1** | `src/mcp_server/tools/node.ts`, `src/mcp_server/imageResize.ts` (new), `figma_plugin/handlers/stylingHandlers.ts`, `figma_plugin/utils/exportUtils.ts` |
 | §2 | `variable_delete` WS-link stall on large docs (reliability) | **P0** | `figma_plugin/handlers/variableHandlers.ts` |
 | §3 | Variable `scopes` write support (correctness gap) | **P1** | `src/mcp_server/tools/variable.ts`, `figma_plugin/handlers/variableHandlers.ts` |
 | §4 | `style_manage` effect `blendMode` schema↔runtime repair (hard-failure bug) | **P1** | `src/mcp_server/tools/style.ts`, `figma_plugin/handlers/styleHandlers.ts` |
@@ -69,32 +72,56 @@ All four also require doc updates (see **§Documentation impact**).
 
 **v2.3.0 change (D2).** Make `node_set_fill` accept exactly one of {solid color, image}.
 
-*Schema (`node.ts`):* `r/g/b` become `.optional()`; add an `image` object and a `.superRefine` requiring **exactly one** of (`r`+`g`+`b` present) or (`image` present):
+*Schema (`node.ts`):* `r/g/b` become `.optional()`; add an `image` object and a `.superRefine` enforcing: (1) **exactly one** of {solid color — meaning **all three** of `r`,`g`,`b` present (`a` optional) — or `image` present}; partial RGB (e.g. `r`+`g`, no `b`) and alpha-only are **rejected**. (2) within `image`, **exactly one** of `url`/`bytesBase64`:
 
 ```
 image: z.object({
-  url: z.string().url().optional().describe("HTTPS URL the plugin fetches via createImageAsync (recommended source)"),
-  bytesBase64: z.string().optional().describe("Base64-encoded image bytes (alternative to url; heavier over the socket)"),
+  url: z.string().url().optional().describe("HTTP(S) URL to a PNG/JPEG/GIF the plugin fetches via createImageAsync. Max 4096px per side and NOT resized — pre-resize larger images yourself, or use bytesBase64 (which is auto-resized)."),
+  bytesBase64: z.string().optional().describe("Base64-encoded raw PNG/JPEG/GIF bytes. PNG/JPEG over 4096px per side are auto-downscaled server-side (aspect ratio preserved); GIF is not resized. Heavier over the socket."),
   scaleMode: z.enum(["FILL","FIT","CROP","TILE"]).optional().describe("default FILL"),
   opacity: z.number().min(0).max(1).optional(),
 }).optional()
 ```
 
+*MCP server auto-resize (D6, `node.ts` tool handler → `src/mcp_server/imageResize.ts`):* for the **`bytesBase64`** path only, before `sendCommandToFigma`, run a new `resizeIfOversized(base64): { base64, warning? }` helper:
+- Decode the base64; detect format via `jimp`.
+- **PNG/JPEG:** if `max(width,height) > 4096`, downscale so the longest side = 4096 (`scale = 4096 / max(w,h)`, round, **preserve aspect ratio**), re-encode in the **source format** (JPEG quality ~85; PNG lossless), re-base64; set `warning = "image resized {w}×{h} → {w'}×{h'} to meet Figma's 4096px limit"`. If already ≤4096, return the input untouched (no decode/re-encode cost beyond the dimension read).
+- **GIF:** passed through unmodified (jimp resize would flatten animation) — an oversized GIF falls through to Figma's rejection below.
+- The handler attaches any `warning` to the tool result (extend `node_set_fill`'s `outputSchema` with `warnings: z.array(z.string()).optional()`). Resize lives **server-side** (jimp is a Node lib); the `url` path is untouched.
+
 *Plugin (`stylingHandlers.ts`):* in `setFillColor`, branch on the payload:
 - **Solid** (unchanged): build the `SOLID` paint as today.
-- **Image:** resolve an `Image` — `figma.createImageAsync(url)` when `url` is given (the plugin fetches it), or `figma.createImage(base64ToBytes(bytesBase64))` for the bytes path — then assign `node.fills = [{ type:"IMAGE", imageHash: image.hash, scaleMode: scaleMode ?? "FILL", opacity }]`.
+- **Image:** resolve an `Image`:
+  - `url` → `await figma.createImageAsync(url)` (the plugin fetches/decodes).
+  - `bytesBase64` → `figma.createImage(base64ToBytes(bytesBase64))`, where **`base64ToBytes` is a new hand-rolled decoder** (sandbox has no `atob`; mirror the existing encoder in `figma_plugin/utils/exportUtils.ts:6-59`, decode direction). Strip an optional `data:*;base64,` prefix if present.
+  - Then `node.fills = [{ type:"IMAGE", imageHash: image.hash, scaleMode: scaleMode ?? "FILL", opacity }]`.
+- **Both sources share the same Figma constraints (confirmed against the API):** **PNG/JPEG/GIF only**, **max 4096px per side**, and **neither resizes**. `figma.createImage` **throws synchronously**; `figma.createImageAsync` **rejects** — both with Figma's messages `Image is too large` / `Image is too small` / `Image type is unsupported`. Wrap both (try/catch for the sync throw, await-in-try for the rejection) and map to the structured errors below. Setting the fill needs only a `scaleMode`, so we do **not** resize the node and `Image.getSizeAsync()` is not required.
 
 **Error strings.**
 > `node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.`
 
-> `node_set_fill: could not load image from URL '<url>'. Figma's createImageAsync requires a directly fetchable, CORS-accessible image; check the URL is public and points at a raw PNG/JPG.`
+> `node_set_fill: image requires exactly one of 'url' or 'bytesBase64'.`
+
+> `node_set_fill: could not fetch image from URL '<url>' (network/CORS). createImageAsync needs a directly fetchable, public URL to a PNG/JPEG/GIF.`
+
+> `node_set_fill: 'bytesBase64' is not valid base64. Provide base64-encoded raw PNG/JPEG/GIF bytes.`
+
+> `node_set_fill: Figma rejected the image — '<figma message>'. Images must be PNG/JPEG/GIF, ≤4096px per side. PNG/JPEG bytes are auto-resized; this typically means an oversized 'url' image, an oversized GIF, or an unsupported/too-small image — pre-resize or convert it.`
 
 **Notes.**
+- **Update the tool's own `description`** — it currently reads *"Set a node's fill to a literal RGBA color."* (`node.ts:420`), which is no longer accurate. Reword to cover solid **and** image fills (and keep the `node_apply_style` / `node_bind_variable` cross-references).
 - Keep the tool's existing scope/lock/name guards (it is a single-target write covered by v2.2.0 §2) — no change to those.
-- Document the `createImageAsync` caveats (public URL, supported format/size) in the error-playbook so agents recover instead of retrying blindly.
-- Out of scope: gradient fills via this tool (still flow through `style_manage`'s paint passthrough or a future enhancement).
+- `base64ToBytes` lives in `figma_plugin/utils/exportUtils.ts` next to the existing encoder (single base64 home) and is imported by `stylingHandlers.ts`.
+- **`jimp` is a new runtime dependency** (`package.json` `dependencies`) — pure JS, no native binary, consistent with the existing lean install (D6). The server-side `resizeIfOversized` helper is the only consumer; if a future build needs to keep the dependency out of a particular bundle, gate it behind a dynamic import.
+- Document the sources in the error-playbook + workflows: **both** share Figma's PNG/JPEG/GIF-only + 4096px-per-side limits; **PNG/JPEG bytes are auto-resized server-side**, while `url` and GIF are not — so agents pick the right source and pre-resize when needed.
+- Out of scope: gradient fills via this tool (still flow through `style_manage`'s paint passthrough or a future enhancement); URL-path fetch-resize (D6 follow-up).
 
-**Tests.** Unit: solid-only still works; image-via-url produces an `IMAGE` paint with the resolved hash (mock `createImageAsync`); both-provided and neither-provided are rejected by the refine; unsupported-node (`!("fills" in node)`) still throws.
+**Tests.**
+- *Schema (unit):* solid-only validates; image+url validates; image+bytesBase64 validates; both-color-and-image rejected; neither rejected; image with **both** url and bytesBase64 rejected; image with **neither** rejected.
+- *`base64ToBytes` (unit):* round-trips against the existing encoder (`encode(bytes)` → `base64ToBytes` → original `Uint8Array`); decodes with/without padding and with a `data:` prefix; throws on non-base64 / malformed input.
+- *`resizeIfOversized` (unit, server, D6):* a >4096px PNG and a >4096px JPEG are each downscaled so `max(w,h) === 4096` with the **aspect ratio preserved** (assert the resulting dimensions) and a `warning` is returned; a ≤4096px image is returned **byte-identical** with no `warning`; the **source format is preserved** (PNG stays PNG, JPEG stays JPEG); a >4096px **GIF passes through unmodified** (no resize) with no warning; non-square images scale by the longest side. Use tiny fixtures generated in-test via `jimp`.
+- *Tool handler (unit):* an oversized-PNG `bytesBase64` call forwards the **resized** base64 to `sendCommandToFigma` (not the original) and the tool result carries the `warnings` entry; a small image forwards unchanged with no warning.
+- *Plugin `setFillColor` (unit):* solid payload still produces a `SOLID` paint (**regression**); `url` payload produces an `IMAGE` paint with the resolved hash (mock `createImageAsync`); `bytesBase64` payload decodes and produces an `IMAGE` paint (mock `createImage`, assert it receives the decoded `Uint8Array`); a `createImage` **synchronous throw** and a `createImageAsync` **rejection** (each simulating `Image is too large` / `Image type is unsupported`) both surface the structured Figma-rejection error; a URL fetch/CORS failure surfaces the fetch error; unsupported node (`!("fills" in node)`) still throws.
 
 ---
 
@@ -106,14 +133,14 @@ image: z.object({
 - The shared tree walk `findVariableConsumers` yields only **every 500 nodes** (`variableHandlers.ts:125-127`), and `walkCount` is a per-call closure variable, so the cadence resets per page.
 - `deleteVariables` scans pages **sequentially**: `for (const page of figma.root.children) { _nodeMaps.push(await findVariableConsumers(page, idSet)); }` (`variableHandlers.ts:547-549`). (The style and alias scans at `541-544` are already kicked off concurrently; the node walk is the hot path.)
 - `deleteVariables` emits **no** `sendProgressUpdate` during the scan (the progress calls at `variableHandlers.ts:340/406/430` are in `getVariables`, not here), so nothing resets the server's timer.
-- The server arms a **60 s inactivity** timeout that is reset only by `progress_update` messages (`src/mcp_server/figma-client.ts:216-226`), on top of the default per-request timeout (`figma-client.ts:427-432`).
+- The request's **first** timeout is the **30 s default** (`figma-client.ts:317`, `:427-432`); it is extended to a rolling **60 s inactivity** window only *after* the first `progress_update` arrives, and each subsequent `progress_update` resets it (`src/mcp_server/figma-client.ts:216-226`). So the **first** heartbeat must land within 30 s of the call, then at least one every <60 s.
 
 **v2.3.0 change (D3).**
 1. **Time-budgeted yield** in `findVariableConsumers`' `walk`: track `lastYield = Date.now()` and `await new Promise(r => setTimeout(r, 0))` when `Date.now() - lastYield >= ~50ms` (keep a node-count fallback so pathological deep trees still yield). This adapts to node density instead of a fixed count.
 2. **Concurrent page scan** in `deleteVariables`: replace the sequential loop with
    `const _nodeMaps = await Promise.all(figma.root.children.map(p => findVariableConsumers(p, idSet)));`
    so page walks interleave on the event loop and no single page monopolises a long uninterrupted stretch.
-3. **Progress heartbeat:** emit `sendProgressUpdate` periodically during the scan (e.g. per page completed, or on each time-budget yield) so the server's 60 s timer is reset — mirroring the page-by-page streaming `getVariables` already does (`variableHandlers.ts:397-430`).
+3. **Progress heartbeat — emitted *during the walk*, not per page.** Inside `findVariableConsumers`' `walk`, on the same time-budget tick that yields ((a)), call `sendProgressUpdate(params.commandId, 'variable_delete', 'in_progress', …)` — throttled to fire at most ~once/second to avoid flooding the socket. This guarantees the **first** heartbeat lands well within the 30 s initial window even for a single huge page, then keeps the rolling 60 s window alive. **Do not** gate the heartbeat on page completion (the `Promise.all` page loop): a single-page document completes only once, at the very end, which is too late. Thread `commandId` from `params` down into the walk (it is already present on `deleteVariables`' `params`). This mirrors the streaming `getVariables` (`variableHandlers.ts:397-430`) but moves the emit point from the page loop into the walk.
 
 Because the fix lands in the **shared** `findVariableConsumers` walk, `variable_list`'s `includeConsumers:"document"` path inherits the improved responsiveness for free.
 
@@ -121,7 +148,7 @@ Because the fix lands in the **shared** `findVariableConsumers` walk, `variable_
 - This is a responsiveness fix, **not** a semantics change: the consumer set computed, the in-use rejection, and the collection-mode intra-collection alias filtering (`variableHandlers.ts:559-570`) are all unchanged.
 - Verify the time-budget threshold against a large synthetic document; 50 ms is a starting point, tune so the link never goes quiet for more than a fraction of the 60 s window.
 
-**Tests.** Unit/coverage: the walk yields at least once for a tree that exceeds the time budget (fake-timers); concurrent scan returns the same merged consumer map as the previous sequential scan for a fixture document; a progress update is emitted at least once during a multi-page delete scan.
+**Tests.** Unit/coverage: the walk yields at least once for a tree that exceeds the time budget (fake-timers); concurrent scan returns the same merged consumer map as the previous sequential scan for a fixture document; a `sendProgressUpdate` is emitted **from within the walk on a single-page** fixture that exceeds the time budget (proving the heartbeat does not depend on page completion), carrying `params.commandId`; the per-second throttle prevents a flood on a fast scan.
 
 ---
 
@@ -134,9 +161,13 @@ Because the fix lands in the **shared** `findVariableConsumers` walk, `variable_
 - Handler: `handleVariableRequest` `CREATE_VARIABLE` (`variableHandlers.ts:878-935`) and `UPDATE_VARIABLE` (`variableHandlers.ts:937-982`) never read or write `variable.scopes`.
 
 **v2.3.0 change (D4).**
-- *Schema (`variable.ts`):* add
-  `scopes: z.array(z.enum([...VariableScope])).optional().describe("Editor surfaces this variable may bind to. ALWAYS set explicitly on create; omit on update to leave unchanged. e.g. ['ALL_FILLS'] for a color token, ['WIDTH_HEIGHT','GAP'] for spacing.")`
-  using the full `VariableScope` enum (`ALL_SCOPES, TEXT_CONTENT, CORNER_RADIUS, WIDTH_HEIGHT, GAP, ALL_FILLS, FRAME_FILL, SHAPE_FILL, TEXT_FILL, STROKE_COLOR, STROKE_FLOAT, EFFECT_FLOAT, EFFECT_COLOR, OPACITY, FONT_FAMILY, FONT_STYLE, FONT_SIZE, LINE_HEIGHT, LETTER_SPACING, PARAGRAPH_SPACING, PARAGRAPH_INDENT, FONT_WEIGHT, FONT_VARIATIONS`).
+- *Schema (`variable.ts`):* `VariableScope` from `@figma/plugin-typings` is a **type, not a runtime value**, so it cannot be spread into `z.enum`. Declare a literal `as const` array and build the enum from it:
+  ```
+  const VARIABLE_SCOPES = ["ALL_SCOPES","TEXT_CONTENT","CORNER_RADIUS","WIDTH_HEIGHT","GAP","ALL_FILLS","FRAME_FILL","SHAPE_FILL","TEXT_FILL","STROKE_COLOR","STROKE_FLOAT","EFFECT_FLOAT","EFFECT_COLOR","OPACITY","FONT_FAMILY","FONT_STYLE","FONT_SIZE","LINE_HEIGHT","LETTER_SPACING","PARAGRAPH_SPACING","PARAGRAPH_INDENT","FONT_WEIGHT","FONT_VARIATIONS"] as const;
+  // in the inputSchema:
+  scopes: z.array(z.enum(VARIABLE_SCOPES)).optional().describe("Editor surfaces this variable may bind to. ALWAYS set explicitly on create; omit on update to leave unchanged. e.g. ['ALL_FILLS'] for a color token, ['WIDTH_HEIGHT','GAP'] for spacing.")
+  ```
+  (Optionally `satisfies readonly VariableScope[]` to keep the literal list in sync with the typings at compile time.)
 - *Handler:* in `CREATE_VARIABLE`, after `createVariable`, set `if (scopes) variable.scopes = scopes;`. In `UPDATE_VARIABLE`, set `if (scopes !== undefined) variable.scopes = scopes;`.
 
 **Error string (advisory, surfaced from Figma).** Type-incompatible scopes (e.g. `ALL_FILLS` on a `FLOAT`) are passed through and degrade to Figma's own error; the tool description warns that scope/type compatibility is enforced by Figma.
@@ -182,8 +213,8 @@ After (1), an agent that trusts the schema and omits `blendMode` no longer hard-
 
 Update the single source of operational guidance (delivered as MCP resources + the `figma-edit` skill + in-repo `skills/figma-edit/references/`):
 
-- **`tool-selection.md` / `workflows.md`** — `node_set_fill` now sets solid **or** image fills; show the image-fill workflow and the `createImageAsync` URL caveat (§1).
-- **`error-playbook.md`** — recovery entries for: image-load failure (§1), the (now-rare) effect `blendMode` rejection (§4), and scope/type incompatibility on variables (§3).
+- **`tool-selection.md` / `workflows.md`** — `node_set_fill` now sets solid **or** image fills; show the image-fill workflow for **both** sources (`url` vs `bytesBase64`), when to use each, and their caveats: both are PNG/JPEG/GIF-only and ≤4096px per side; **`bytesBase64` PNG/JPEG are auto-resized** (prefer it for large images), while `url` and GIF are not resized; URL adds public/CORS/fetch concerns, bytes add payload weight (§1).
+- **`error-playbook.md`** — recovery entries for: URL fetch/CORS failure, invalid base64, and Figma's image-rejection (too large/small/unsupported; PNG/JPEG/GIF, ≤4096px per side — note PNG/JPEG bytes are auto-resized server-side, so this usually means an oversized `url` image, an oversized GIF, or a too-small/unsupported image) (§1); the (now-rare) effect `blendMode` rejection (§4); and scope/type incompatibility on variables (§3).
 - **`constraints.md` / SKILL guidance** — "Always set `variable.scopes` explicitly on create" (§3), mirroring figma-use.
 - Tool descriptions in `variable.ts`, `style.ts`, `node.ts` carry the inline guidance above.
 
@@ -191,10 +222,11 @@ Update the single source of operational guidance (delivered as MCP resources + t
 
 ## §Testing & rollout
 
-- **Build:** `figma_plugin` bundles to `code.js` (handlers are TS → bundled); rebuild and confirm the `node_set_fill`, `variable_delete`, `variable_manage`, and `style_manage` dispatch cases reflect the changes. MCP server (`src/mcp_server`) rebuilds its `dist/`.
+- **Build:** `figma_plugin` bundles to `code.js` (handlers are TS → bundled); rebuild and confirm the `node_set_fill`, `variable_delete`, `variable_manage`, and `style_manage` dispatch cases reflect the changes. MCP server (`src/mcp_server`) rebuilds its `dist/`; `npm install` first to pull the new `jimp` dependency, and confirm it bundles/resolves under both Node and Bun.
 - **Unit tests:** extend the existing suites — `tests/unit/figma_plugin/annotationsAndVariables.test.ts` (§3), a styling/effects test for the shared `normalizeEffects` (§4), a `variableHandlers` responsiveness test (§2, fake-timers), and a `setFillColor` image test (§1). Tool-schema tests under `tests/unit/tools/` (`strictInput.test.ts`, `v2Tools.test.ts`, `contractSeam.test.ts`) updated for the new `node_set_fill` refine, `variable_manage.scopes`, and `style_manage` effect `blendMode`.
 - **Manual verification (live Figma):** set an image fill from a URL; delete a large collection on a multi-page doc and confirm the link stays alive with streaming progress; create a COLOR variable with `scopes:["ALL_FILLS"]` and confirm in the Figma UI; create an EFFECT style with a shadow that omits `blendMode` and confirm it succeeds.
 - **Version:** bump `package.json` `2.2.0 → 2.3.0` (D1).
+- **CHANGELOG:** add a `v2.3.0` entry to `CHANGELOG.md` covering §1–§4 (image fills + bytes auto-resize, `variable_delete` responsiveness, variable `scopes`, `style_manage` `blendMode` fix) — it shipped a v2.2.0 entry and must not lapse.
 
 ---
 
