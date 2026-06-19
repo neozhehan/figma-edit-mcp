@@ -25,16 +25,16 @@ export function registerNodeTools(server: McpServer) {
         "node_info",
         {
             title: "Get Node Info",
-            description: "Read one or more nodes — recursive subtree traversal with `fields` selection, `filter`, and `maxDepth`. Returns only requested fields (incl. resolved `boundVariables`/`explicitVariableModes`). The workhorse read; start here before any write.",
+            description: "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. The workhorse read; start here before any write.",
             inputSchema: z.object({
                 nodeIds: z
                     .array(z.string())
                     .optional()
                     .describe("Array of node IDs to inspect. If empty, uses editable scope."),
-                fields: z
+                properties: z
                     .array(z.string())
                     .optional()
-                    .describe("Array of field names to return."),
+                    .describe("Array of property names to return (populates each node's `properties` object in the response)."),
                 filter: z
                     .record(z.array(z.string()))
                     .optional()
@@ -45,6 +45,12 @@ export function registerNodeTools(server: McpServer) {
                     .min(0)
                     .optional()
                     .describe("Maximum depth for recursive child traversal. 0 = self only, 1 = self and immediate children, etc."),
+                concurrencyLimit: z
+                    .number()
+                    .int()
+                    .min(1)
+                    .optional()
+                    .describe("Concurrency limit for parallel subtree walk (default: 4)"),
             }),
             outputSchema: z.object({
                 nodes: z.array(nodeInfoEntry).describe("Node entries (id/name/type + optional properties/children/path/descendantCount)"),
@@ -55,12 +61,13 @@ export function registerNodeTools(server: McpServer) {
                 openWorldHint: true
             }
         },
-        async ({ nodeIds, fields, filter, maxDepth }: any) => {
+        async ({ nodeIds, properties, filter, maxDepth, concurrencyLimit }: any) => {
             const result = await sendCommandToFigma("node_info", {
                 nodeIds,
-                properties: fields,
+                properties,
                 filter,
-                maxDepth
+                maxDepth,
+                concurrencyLimit: concurrencyLimit ?? 4
             });
             return toolResult(result);
         }
@@ -184,29 +191,33 @@ export function registerNodeTools(server: McpServer) {
         }
     );
 
-    // 6. Select Nodes Tool
+    // 6. Navigate View Tool
     server.registerTool(
-        "node_select",
+        "view_navigate",
         {
-            title: "Select Nodes",
-            description: "Set the canvas selection to one or more nodes and focus them in the viewport.",
+            title: "Navigate View",
+            description: "Navigate the editor view to a page or node(s).",
             inputSchema: z.object({
-                nodeIds: z.array(z.string()).describe("Array of node IDs to select"),
+                ids: z.array(z.string()).describe("Array of page or node IDs to navigate to"),
             }),
             outputSchema: z.object({
-                count: z.number().describe("Number of selected nodes"),
+                pageId: z.string().optional().describe("The ID of the target page transitioned to"),
+                pageName: z.string().optional().describe("The name of the target page transitioned to"),
+                success: z.boolean().optional().describe("Whether navigation was successful"),
+                count: z.number().optional().describe("Number of selected nodes"),
                 selectedNodes: z.array(z.object({
                     id: z.string().describe("Selected node ID"),
                     name: z.string().describe("Selected node name")
-                })).describe("List of selected nodes"),
+                })).optional().describe("List of selected nodes"),
+                message: z.string().optional().describe("Status message"),
             }),
             annotations: {
                 idempotentHint: true,
                 openWorldHint: true
             }
         },
-        async ({ nodeIds }: any) => {
-            const result = await sendCommandToFigma("node_select", { nodeIds });
+        async ({ ids }: any) => {
+            const result = await sendCommandToFigma("view_navigate", { ids });
             return toolResult(result);
         }
     );
@@ -302,7 +313,7 @@ export function registerNodeTools(server: McpServer) {
         "node_insert_child",
         {
             title: "Reparent Node",
-            description: "Reparent a node under a new parent at an optional `index`.",
+            description: "Reparent a node under a new parent at an optional `index`. Valid range is 0 to parent's child count. Omit `index` to append.",
             inputSchema: z.object({
                 parentId: z.string().describe("ID of the new parent node"),
                 parentNodeName: z.string().describe("Name of the parent node to verify against"),
@@ -311,7 +322,7 @@ export function registerNodeTools(server: McpServer) {
                 index: z
                     .number()
                     .optional()
-                    .describe("Position in parent's children array (default: append)"),
+                    .describe("Position in parent's children array (default: append). The output index reports the actual resolved position (same-parent reorder shifts indices)."),
             }),
             outputSchema: z.object({
                 childId: z.string().describe("ID of the reparented child node"),
@@ -650,8 +661,10 @@ export function registerNodeTools(server: McpServer) {
                     .describe("Export format"),
                 scale: z
                     .number()
+                    .min(0.1)
+                    .max(4)
                     .default(1)
-                    .describe("Export scale (e.g. 1, 2, 0.5)"),
+                    .describe("Export scale, between 0.1 and 4.0 (e.g. 1, 2, 0.5)"),
             }),
             outputSchema: z.object({
                 nodeId: z.string().optional().describe("ID of the exported node"),

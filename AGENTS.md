@@ -6,7 +6,7 @@ The full operational guide lives in one place and is delivered three ways; use w
 
 - **MCP resources** (any client, zero setup): read `figma-edit://guide/constraints`, `figma-edit://guide/error-playbook`, `figma-edit://guide/workflows`, `figma-edit://guide/tool-selection`.
 - **The `figma-edit` skill** (Claude Code, Copilot, Codex, Cursor, Gemini, Antigravity, …): `skills/figma-edit/SKILL.md` and its `references/`.
-- **In this repo:** [skills/figma-edit/references/](skills/figma-edit/references/) — `constraints.md`, `error-playbook.md`, `workflows.md`, `tool-selection.md`.
+- **In this repo:** [skills/figma-edit/references/](skills/figma-edit/references/) — `constraints.md`, `error-playbook.md`, `workflows.md`, `tool-selection.md`, `SAFETY.md`.
 
 Two rules to internalize before anything else:
 

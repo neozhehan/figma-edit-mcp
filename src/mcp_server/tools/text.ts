@@ -54,10 +54,15 @@ export function registerTextTools(server: McpServer) {
                     .optional()
                     .describe("Font family and style"),
                 lineHeight: z
-                    .object({
-                        value: z.number().describe("Line height value"),
-                        unit: z.enum(["PIXELS", "PERCENT"]).describe("Line height unit"),
-                    })
+                    .union([
+                        z.object({
+                            unit: z.literal("AUTO").describe("Auto line height"),
+                        }),
+                        z.object({
+                            value: z.number().describe("Line height value"),
+                            unit: z.enum(["PIXELS", "PERCENT"]).describe("Line height unit"),
+                        })
+                    ])
                     .optional()
                     .describe("Line height settings"),
                 letterSpacing: z
@@ -77,6 +82,14 @@ export function registerTextTools(server: McpServer) {
                     .enum(["NONE", "UNDERLINE", "STRIKETHROUGH"])
                     .optional()
                     .describe("Text decoration"),
+                textAlignHorizontal: z
+                    .enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"])
+                    .optional()
+                    .describe("Horizontal text alignment"),
+                textAlignVertical: z
+                    .enum(["TOP", "CENTER", "BOTTOM"])
+                    .optional()
+                    .describe("Vertical text alignment"),
             }),
             outputSchema: z.object({
                 success: z.boolean().optional().describe("Whether style was set successfully"),

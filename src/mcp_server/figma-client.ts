@@ -76,7 +76,7 @@ export type FigmaCommand =
     | "node_rename"
     | "node_delete"
     | "node_clone"
-    | "node_select"
+    | "view_navigate"
     | "node_group"
     | "node_ungroup"
     | "node_flatten"
@@ -344,6 +344,11 @@ export function sendCommandToFigma(
         // Handle nodeIds array parameter
         if (normalizedParams.nodeIds) {
             normalizedParams.nodeIds = normalizeNodeIds(normalizedParams.nodeIds);
+        }
+
+        // Handle ids array parameter (used in view_navigate)
+        if (normalizedParams.ids) {
+            normalizedParams.ids = normalizeNodeIds(normalizedParams.ids);
         }
 
         // Handle sourceInstanceId (used in set_instance_overrides)

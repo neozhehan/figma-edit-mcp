@@ -323,12 +323,13 @@ async function findVariableConsumers(
 }
 
 export async function getVariables(params: any) {
-    const { variableId, includeConsumers, commandId } = params || {};
+    const { variableId, includeConsumers, pageId, commandId } = params || {};
 
     try {
         // 1. Lookup Mode
         if (variableId && variableId.length > 0) {
             const variables: any[] = [];
+            const missingIds: string[] = [];
             const idSet = new Set(variableId as string[]);
             // Per spec §get_variables rule 2: only includeConsumers: 'document'
             // streams. Lookup mode (no includeConsumers) and current_page mode
@@ -349,8 +350,11 @@ export async function getVariables(params: any) {
 
             for (const [index, id] of (variableId as string[]).entries()) {
                 const variable = await figma.variables.getVariableByIdAsync(id);
-                if (!variable) continue;
-                
+                if (!variable) {
+                    missingIds.push(id);
+                    continue;
+                }
+
                 const collection = await figma.variables.getVariableCollectionByIdAsync(
                     variable.variableCollectionId
                 );
@@ -376,8 +380,18 @@ export async function getVariables(params: any) {
                 
                 let nodeConsumerMap = new Map<string, any[]>();
                 
-                if (includeConsumers === 'current_page') {
-                    nodeConsumerMap = await findVariableConsumers(figma.currentPage, idSet);
+                if (includeConsumers === 'page') {
+                    if (!pageId) {
+                        throw new Error("pageId is required when includeConsumers is 'page'");
+                    }
+                    const pageNode = await figma.getNodeByIdAsync(pageId);
+                    if (!pageNode) {
+                        throw new Error(`pageId with ID ${pageId} not found`);
+                    }
+                    if (pageNode.type !== 'PAGE') {
+                        throw new Error("pageId does not resolve to a PAGE");
+                    }
+                    nodeConsumerMap = await findVariableConsumers(pageNode, idSet);
                 } else {
                     // includeConsumers === 'document'
                     const pages = figma.root.children;
@@ -423,7 +437,7 @@ export async function getVariables(params: any) {
                     `Completed fetching variable information`
                 );
             }
-            return variables;
+            return missingIds.length > 0 ? { variables, missingIds } : { variables };
         }
 
         // 2. List All Mode (Discovery)
@@ -457,7 +471,7 @@ export async function getVariables(params: any) {
 
 
 export async function deleteVariables(params: any) {
-    const { variableIds, collectionId } = params || {};
+    const { variableIds, variableNames, collectionId, collectionName } = params || {};
 
     // Mutual exclusivity check
     if (variableIds && collectionId) {
@@ -471,9 +485,20 @@ export async function deleteVariables(params: any) {
     let collection: any = null;
 
     if (collectionId) {
+        if (!collectionName) {
+            throw new Error("collectionName is required when deleting a collection by collectionId");
+        }
         // Collection mode: resolve all variable IDs from the collection
         collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
         if (!collection) throw new Error(`Collection not found: ${collectionId}`);
+        
+        if (collection.name !== collectionName) {
+            throw new Error(`Operation Denied: collectionName '${collectionName}' does not match name of collectionId '${collection.name}'`);
+        }
+        
+        if (collection.remote) {
+            throw new Error(`Operation Denied: '${collection.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
+        }
         idsToCheck = collection.variableIds || [];
 
         // Empty collection — safe to delete immediately
@@ -486,6 +511,9 @@ export async function deleteVariables(params: any) {
         if (!Array.isArray(variableIds) || variableIds.length === 0) {
             throw new Error("variableIds must be a non-empty array");
         }
+        if (!Array.isArray(variableNames) || variableNames.length !== variableIds.length) {
+            throw new Error("variableNames must be provided as a parallel array of the same length as variableIds");
+        }
         idsToCheck = variableIds;
     }
 
@@ -494,7 +522,16 @@ export async function deleteVariables(params: any) {
         idsToCheck.map((id: string) => figma.variables.getVariableByIdAsync(id))
     );
     for (let i = 0; i < idsToCheck.length; i++) {
-        if (!variables[i]) throw new Error(`Variable not found: ${idsToCheck[i]}`);
+        const v = variables[i] as any;
+        if (!v) throw new Error(`Variable not found: ${idsToCheck[i]}`);
+        
+        if (variableIds && v.name !== variableNames[i]) {
+            throw new Error(`Operation Denied: variableName '${variableNames[i]}' does not match name of variableId '${v.name}'`);
+        }
+        
+        if (v.remote) {
+            throw new Error(`Operation Denied: '${v.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
+        }
     }
 
     // Full-document consumer scan (single pass for all IDs)
@@ -677,8 +714,36 @@ export async function getNodeVariables(params: any) {
     };
 }
 
+/**
+ * Extracts a human-readable detail from a thrown value. Figma can throw
+ * error-like objects whose `.message` is undefined/empty, which would otherwise
+ * surface as the literal string "undefined". Falls back through name → toString
+ * → JSON so the agent always gets something actionable to recover from.
+ */
+function describeError(e: any): string {
+    if (e == null) return String(e);
+    if (typeof e === 'string') return e;
+    if (typeof e.message === 'string' && e.message.length > 0) {
+        return e.name && e.name !== 'Error' ? `${e.name}: ${e.message}` : e.message;
+    }
+    if (typeof e.toString === 'function') {
+        const s = e.toString();
+        if (s && s !== '[object Object]') return s;
+    }
+    try {
+        const json = JSON.stringify(e);
+        if (json && json !== '{}') return json;
+    } catch { /* not serializable */ }
+    if (e.name) return e.name;
+    return 'unknown error (no message)';
+}
+
 export async function setBoundVariable(params: any) {
-    const { nodeId, field, variableId, collectionId, modeId } = params || {};
+    // Schema contract (src/mcp_server/tools/node.ts): bindVariables is a map of
+    // property → variableId|null, and explicitVariableModes is a map of
+    // collectionId → modeId. Both are forwarded untransformed, so this handler
+    // must consume the maps directly (matches style_manage's bindVariables shape).
+    const { nodeId, bindVariables, explicitVariableModes } = params || {};
 
     if (!nodeId) {
         throw new Error("Missing nodeId parameter");
@@ -689,66 +754,74 @@ export async function setBoundVariable(params: any) {
         throw new Error(`Node not found with ID: ${nodeId}`);
     }
 
-    // Case A: Set Explicit Mode (Theming)
-    if (collectionId !== undefined) {
-        if (modeId === undefined) {
-            throw new Error("Missing modeId when setting collection mode");
-        }
-        try {
-            // If modeId is null/empty string, we clear the mode?
-            // Plugin API: setExplicitVariableModeForCollection(collectionId, modeId)
-            // To clear, we usually don't have a clear method, but passing invalid mode might throw.
-            // Let's assume user sends valid modeId.
-            // @ts-ignore
-            await node.setExplicitVariableModeForCollection(collectionId, modeId);
-            return { success: true, message: `Set mode ${modeId} for collection ${collectionId}` };
-        } catch (e: any) {
-            throw new Error(`Failed to set explicit variable mode: ${e.message}`);
-        }
+    const hasBindings = bindVariables && Object.keys(bindVariables).length > 0;
+    const hasModes = explicitVariableModes && Object.keys(explicitVariableModes).length > 0;
+    if (!hasBindings && !hasModes) {
+        throw new Error("Must provide bindVariables (property → variableId) or explicitVariableModes (collectionId → modeId)");
     }
 
-    // Case B: Set Bound Variable (Property)
-    if (field) {
-        try {
-            let variable = null;
-            if (variableId) {
-                variable = await figma.variables.getVariableByIdAsync(variableId);
-                if (!variable) throw new Error(`Variable ${variableId} not found`);
-            }
+    const results: string[] = [];
 
-            // Special handling for fills and strokes (paints)
-            if (field === 'fills' || field === 'strokes') {
+    // Case A: Set Explicit Modes (Theming) — map of collectionId → modeId.
+    // The Plugin API requires the resolved collection NODE (not the id string)
+    // under dynamic-page/"incremental" mode, so resolve each id first.
+    if (hasModes) {
+        for (const [collectionId, modeId] of Object.entries(explicitVariableModes)) {
+            try {
+                const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
+                if (!collection) throw new Error(`Collection ${collectionId} not found`);
                 // @ts-ignore
-                const paints = JSON.parse(JSON.stringify(node[field]));
-                let modified = false;
-                for (let i = 0; i < paints.length; i++) {
-                    if (paints[i].type === 'SOLID') {
-                        paints[i] = figma.variables.setBoundVariableForPaint(paints[i], 'color', variable);
-                        modified = true;
-                    }
-                }
-
-                if (modified) {
-                    // @ts-ignore
-                    node[field] = paints;
-                    const action = variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`;
-                    return { success: true, message: action };
-                }
-                return { success: false, message: `No SOLID paints found in ${field} to bind variable` };
+                await node.setExplicitVariableModeForCollection(collection, modeId);
+                results.push(`Set mode ${modeId} for collection ${collectionId}`);
+            } catch (e: any) {
+                throw new Error(`Failed to set explicit variable mode for collection ${collectionId}: ${describeError(e)}`);
             }
-
-            // Standard properties
-            // @ts-ignore
-            node.setBoundVariable(field, variable);
-            const action = variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`;
-            return { success: true, message: action };
-
-        } catch (e: any) {
-            throw new Error(`Failed to set bound variable: ${e.message}`);
         }
     }
 
-    throw new Error("Must provide either (field + variableId) or (collectionId + modeId)");
+    // Case B: Bind/unbind variables on node properties — map of field → variableId|null
+    if (hasBindings) {
+        for (const [field, variableId] of Object.entries(bindVariables)) {
+            try {
+                let variable: any = null;
+                if (variableId) {
+                    variable = await figma.variables.getVariableByIdAsync(variableId as string);
+                    if (!variable) throw new Error(`Variable ${variableId} not found`);
+                }
+
+                // Special handling for fills and strokes (paints)
+                if (field === 'fills' || field === 'strokes') {
+                    // @ts-ignore
+                    const paints = JSON.parse(JSON.stringify(node[field]));
+                    let modified = false;
+                    for (let i = 0; i < paints.length; i++) {
+                        if (paints[i].type === 'SOLID') {
+                            paints[i] = figma.variables.setBoundVariableForPaint(paints[i], 'color', variable);
+                            modified = true;
+                        }
+                    }
+
+                    if (modified) {
+                        // @ts-ignore
+                        node[field] = paints;
+                        results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
+                    } else {
+                        results.push(`No SOLID paints found in ${field} to bind variable`);
+                    }
+                    continue;
+                }
+
+                // Standard properties
+                // @ts-ignore
+                node.setBoundVariable(field, variable);
+                results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
+            } catch (e: any) {
+                throw new Error(`Failed to set bound variable for ${field}: ${describeError(e)}`);
+            }
+        }
+    }
+
+    return { success: true, name: node.name, message: results.join('; ') };
 }
 
 /**
@@ -870,6 +943,10 @@ export async function handleVariableRequest(params: any) {
 
             if (currentVariableName && variable.name !== currentVariableName) {
                 throw new Error(`Variable name verification failed. Expected "${variable.name}", got "${currentVariableName}"`);
+            }
+
+            if (variable.remote) {
+                throw new Error(`Operation Denied: '${variable.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
             }
 
             if (name) {

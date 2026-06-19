@@ -49,14 +49,15 @@ export async function getStyles() {
  * Optimised to avoid heavy loadAllPagesAsync() by iterating page-by-page.
  * @param {Object} params - Parameters object
  * @param {string} params.filter - 'local' or 'remote' (undefined = all)
- * @param {string} params.scope - 'current_page' (default) or 'document'
+ * @param {string} params.scope - 'page' or 'document' (default); 'page' requires pageId
+ * @param {string} params.pageId - Required when scope is 'page'; the page to scan
  * @param {string} params.commandId - Optional command ID for progress updates
  * @returns {Promise<Object>} Object containing component count and list
  */
 export async function getComponents(params: any) {
-    const { filter, scope = 'current_page', commandId } = params || {};
+    const { filter, scope = 'document', pageId, commandId } = params || {};
     // Per spec §get_components rule 2: only the 'document' scope streams.
-    // 'current_page' is a single-pass non-streaming call — no bookends, no yield.
+    // 'page' is a single-pass non-streaming call — no bookends, no yield.
     const isStreaming = scope === 'document';
 
     // 1. Started event (document scope only)
@@ -74,9 +75,21 @@ export async function getComponents(params: any) {
 
     const allComponents: any[] = [];
     
-    if (scope === 'current_page') {
-        const components = figma.currentPage.findAllWithCriteria({ 
-            types: ["COMPONENT", "COMPONENT_SET"] 
+    if (scope === 'page') {
+        if (!pageId) {
+            throw new Error("pageId is required when scope is 'page'");
+        }
+        const pageNode = await figma.getNodeByIdAsync(pageId);
+        if (!pageNode) {
+            throw new Error(`pageId with ID ${pageId} not found`);
+        }
+        if (pageNode.type !== 'PAGE') {
+            throw new Error("pageId does not resolve to a PAGE");
+        }
+        // dynamic-page documents require explicit loading before findAllWithCriteria
+        await pageNode.loadAsync();
+        const components = pageNode.findAllWithCriteria({
+            types: ["COMPONENT", "COMPONENT_SET"]
         });
         allComponents.push(...components);
     } else {
@@ -84,8 +97,10 @@ export async function getComponents(params: any) {
         // MANDATORY: Do NOT use loadAllPagesAsync(). Iterate pages instead.
         const pages = figma.root.children;
         for (const [index, page] of pages.entries()) {
-            const components = page.findAllWithCriteria({ 
-                types: ["COMPONENT", "COMPONENT_SET"] 
+            // dynamic-page documents require explicit loading before findAllWithCriteria
+            await page.loadAsync();
+            const components = page.findAllWithCriteria({
+                types: ["COMPONENT", "COMPONENT_SET"]
             });
             allComponents.push(...components);
 
@@ -140,15 +155,10 @@ export async function getComponents(params: any) {
     };
 }
 
-/**
- * Helper to find the containing page ID for a node.
- */
+import { getContainingPageNode } from '../utils/nodeUtils.js';
+
 function getContainingPageId(node: BaseNode): string {
-    let current: BaseNode | null = node;
-    while (current && current.type !== 'PAGE' && current.type !== 'DOCUMENT') {
-        current = current.parent;
-    }
-    return (current && current.type === 'PAGE') ? current.id : 'unknown';
+    return getContainingPageNode(node)?.id ?? 'unknown';
 }
 
 import { sendProgressUpdate } from '../utils/progressUtils.js';
@@ -166,23 +176,80 @@ import { sendProgressUpdate } from '../utils/progressUtils.js';
  * @param {string} params.parentId - Optional parent node ID to place the instance into
  * @returns {Promise<Object>} Created instance info
  */
-export async function createComponentInstance(params: any) {
-    const { componentKey, componentId, x = 0, y = 0, parentId } = params || {};
+async function validateComponentPropertyValue(
+    node: any,
+    propertyName: string,
+    propertyType: string,
+    value: any
+): Promise<any> {
+    if (propertyType === "BOOLEAN") {
+        if (typeof value === "string") {
+            const lower = value.toLowerCase();
+            if (lower === "true") return true;
+            if (lower === "false") return false;
+        }
+        if (typeof value === "boolean") return value;
+        throw new Error(`Operation Denied: BOOLEAN property '${propertyName}' requires true or false.`);
+    }
+    if (propertyType === "TEXT") {
+        if (typeof value !== "string") throw new Error(`Operation Denied: TEXT property '${propertyName}' requires a string.`);
+        return value;
+    }
+    if (propertyType === "VARIANT") {
+        let componentSet = null;
+        if (node.type === "INSTANCE") {
+            const mainComponent = await node.getMainComponentAsync();
+            if (mainComponent && mainComponent.parent && mainComponent.parent.type === "COMPONENT_SET") {
+                componentSet = mainComponent.parent;
+            }
+        } else if (node.type === "COMPONENT" && node.parent && node.parent.type === "COMPONENT_SET") {
+            componentSet = node.parent;
+        } else if (node.type === "COMPONENT_SET") {
+            componentSet = node;
+        }
+        if (componentSet) {
+            const options = componentSet.variantGroupProperties[propertyName]?.values;
+            if (options && !options.includes(String(value))) {
+                throw new Error(`Operation Denied: '${value}' is not a valid value for variant property '${propertyName}'. Valid values: ${options.join(', ')}.`);
+            }
+        }
+        return value;
+    }
+    if (propertyType === "INSTANCE_SWAP") {
+        if (typeof value !== "string" || value.trim() === "") {
+            throw new Error(`Operation Denied: INSTANCE_SWAP property '${propertyName}' requires a non-empty string.`);
+        }
+        let target = null;
+        try {
+            target = await figma.getNodeByIdAsync(value);
+        } catch {
+            // Unresolvable IDs (e.g. library component keys or malformed IDs) are passed through 
+            // as 'plausible refs' so we don't block valid remote component swaps if we can't fetch them.
+        }
+        if (target && target.type !== "COMPONENT" && target.type !== "COMPONENT_SET") {
+            throw new Error(`Operation Denied: INSTANCE_SWAP value must refer to a component, got ${target.type}`);
+        }
+        return value;
+    }
+    return value;
+}
 
-    if (!componentKey && !componentId) {
-        throw new Error("Missing componentKey or componentId parameter");
+export async function createComponentInstance(params: any) {
+    const { componentId, x = 0, y = 0, parentId, componentKey } = params || {};
+
+    if (!componentId && !componentKey) {
+        throw new Error("Missing componentId or componentKey parameter");
     }
 
     try {
-        let component: ComponentNode;
-
+        let component;
+        
         if (componentId) {
-            // Local component: look up directly by node ID
             const node = await figma.getNodeByIdAsync(componentId);
             if (!node) {
-                throw new Error(`Component not found with ID: ${componentId}`);
+                throw new Error(`Component node not found with ID: ${componentId}`);
             }
-            if (node.type !== "COMPONENT") {
+            if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
                 throw new Error(`Node ${componentId} is not a COMPONENT (got ${node.type})`);
             }
             component = node as ComponentNode;
@@ -193,14 +260,18 @@ export async function createComponentInstance(params: any) {
 
         const instance = component.createInstance();
 
-        if (parentId) {
-            const parent = await figma.getNodeByIdAsync(parentId);
-            if (!parent) {
-                throw new Error(`Parent node not found with ID: ${parentId}`);
-            }
-            // @ts-ignore
-            parent.appendChild(instance);
+        if (!parentId) {
+            throw new Error("Missing parentId parameter");
         }
+        const parent = await figma.getNodeByIdAsync(parentId);
+        if (!parent) {
+            throw new Error(`Parent node not found with ID: ${parentId}`);
+        }
+        if (!("appendChild" in parent)) {
+            throw new Error(`Parent node does not support children: ${parentId}`);
+        }
+        // @ts-ignore
+        parent.appendChild(instance);
 
         instance.x = x;
         instance.y = y;
@@ -301,53 +372,24 @@ export async function exportNodeAsImage(params: any) {
 
 /**
  * Gets override properties from a component instance
- * @param {InstanceNode|null} instanceNode - Optional instance node
+ * @param {InstanceNode} instanceNode - Instance node
  * @returns {Promise<Object>} Override information
  */
-export async function getInstanceOverrides(instanceNode = null) {
+export async function getInstanceOverrides(instanceNode: any) {
     console.log("=== getInstanceOverrides called ===");
 
-    let sourceInstance = null;
-
-    // Check if an instance node was passed directly
-    if (instanceNode) {
-        console.log("Using provided instance node");
-
-        // Validate that the provided node is an instance
-        // @ts-ignore
-        if (instanceNode.type !== "INSTANCE") {
-            console.error("Provided node is not an instance");
-            figma.notify("Provided node is not a component instance");
-            return { success: false, message: "Provided node is not a component instance" };
-        }
-
-        sourceInstance = instanceNode;
-    } else {
-        // No node provided, use selection
-        console.log("No node provided, using current selection");
-
-        // Get the current selection
-        const selection = figma.currentPage.selection;
-
-        // Check if there's anything selected
-        if (selection.length === 0) {
-            console.log("No nodes selected");
-            figma.notify("Please select at least one instance");
-            return { success: false, message: "No nodes selected" };
-        }
-
-        // Filter for instances in the selection
-        const instances = selection.filter((node: any) => node.type === "INSTANCE");
-
-        if (instances.length === 0) {
-            console.log("No instances found in selection");
-            figma.notify("Please select at least one component instance");
-            return { success: false, message: "No instances found in selection" };
-        }
-
-        // Take the first instance from the selection
-        sourceInstance = instances[0];
+    if (!instanceNode) {
+        throw new Error("Missing instance node parameter");
     }
+
+    // Validate that the provided node is an instance
+    if (instanceNode.type !== "INSTANCE") {
+        console.error("Provided node is not an instance");
+        figma.notify("Provided node is not a component instance");
+        return { success: false, message: "Provided node is not a component instance" };
+    }
+
+    const sourceInstance = instanceNode;
 
     try {
         console.log(`Getting instance information:`);
@@ -480,122 +522,115 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
         // Process all instances
         const results: any[] = [];
         let totalAppliedCount = 0;
+        let successCount = 0;
+        let failureCount = 0;
 
         for (const targetInstance of targetInstances) {
+            let appliedCount = 0;
+            let hasFailure = false;
+            let failureMsg = "";
+
             try {
                 // Swap component
                 try {
                     targetInstance.swapComponent(mainComponent);
                     console.log(`Swapped component for instance "${targetInstance.name}"`);
                 } catch (error: any) {
-                    console.error(`Error swapping component for instance "${targetInstance.name}":`, error);
-                    results.push({
-                        success: false,
-                        instanceId: targetInstance.id,
-                        instanceName: targetInstance.name,
-                        message: `Error: ${error.message}`
-                    });
+                    hasFailure = true;
+                    failureMsg = `Swap component error: ${error.message}`;
                 }
 
-                // Prepare overrides by replacing node IDs
-                let appliedCount = 0;
-
-                // Apply each override
-                for (const override of overrides) {
-                    // Skip if no ID or overriddenFields
-                    if (!override.id || !override.overriddenFields || override.overriddenFields.length === 0) {
-                        continue;
-                    }
-
-                    // Replace source instance ID with target instance ID in the node path
-                    const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
-                    const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
-
-                    if (!overrideNode) {
-                        console.log(`Override node not found: ${overrideNodeId}`);
-                        continue;
-                    }
-
-                    // Get source node to copy properties from
-                    const sourceNode = await figma.getNodeByIdAsync(override.id);
-                    if (!sourceNode) {
-                        console.log(`Source node not found: ${override.id}`);
-                        continue;
-                    }
-
-                    // Apply each overridden field
-                    let fieldApplied = false;
-                    for (const field of override.overriddenFields) {
-                        try {
-                            if (field === "componentProperties") {
-                                // Apply component properties
-                                // @ts-ignore
-                                if (sourceNode.componentProperties && overrideNode.componentProperties) {
-                                    const properties: any = {};
-                                    // @ts-ignore
-                                    for (const key in sourceNode.componentProperties) {
-                                        // @ts-ignore
-                                        properties[key] = sourceNode.componentProperties[key].value;
-                                    }
-                                    // @ts-ignore
-                                    overrideNode.setProperties(properties);
-                                    fieldApplied = true;
-                                }
-                            } else if (field === "characters" && overrideNode.type === "TEXT") {
-                                // For text nodes, need to load fonts first
-                                // @ts-ignore
-                                await figma.loadFontAsync(overrideNode.fontName);
-                                // @ts-ignore
-                                overrideNode.characters = sourceNode.characters;
-                                fieldApplied = true;
-                            } else if (field in overrideNode) {
-                                // Direct property assignment
-                                // @ts-ignore
-                                overrideNode[field] = sourceNode[field];
-                                fieldApplied = true;
-                            }
-                        } catch (fieldError: any) {
-                            console.error(`Error applying field ${field}:`, fieldError);
+                if (!hasFailure) {
+                    // Apply each override
+                    for (const override of overrides) {
+                        // Skip if no ID or overriddenFields
+                        if (!override.id || !override.overriddenFields || override.overriddenFields.length === 0) {
+                            continue;
                         }
-                    }
 
-                    if (fieldApplied) {
+                        // Replace source instance ID with target instance ID in the node path
+                        const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
+                        const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
+
+                        if (!overrideNode) {
+                            continue;
+                        }
+
+                        // Get source node to copy properties from
+                        const sourceNode = await figma.getNodeByIdAsync(override.id);
+                        if (!sourceNode) {
+                            continue;
+                        }
+
+                        // Apply each overridden field
+                        for (const field of override.overriddenFields) {
+                            try {
+                                if (field === "componentProperties") {
+                                    // Apply component properties
+                                    // @ts-ignore
+                                    if (sourceNode.componentProperties && overrideNode.componentProperties) {
+                                        const properties: any = {};
+                                        // @ts-ignore
+                                        for (const key in sourceNode.componentProperties) {
+                                            // @ts-ignore
+                                            properties[key] = sourceNode.componentProperties[key].value;
+                                        }
+                                        // @ts-ignore
+                                        overrideNode.setProperties(properties);
+                                    }
+                                } else if (field === "characters" && overrideNode.type === "TEXT") {
+                                    // For text nodes, need to load fonts first
+                                    // @ts-ignore
+                                    await figma.loadFontAsync(overrideNode.fontName);
+                                    // @ts-ignore
+                                    overrideNode.characters = sourceNode.characters;
+                                } else if (field in overrideNode) {
+                                    // Direct property assignment
+                                    // @ts-ignore
+                                    overrideNode[field] = sourceNode[field];
+                                }
+                            } catch (fieldError: any) {
+                                hasFailure = true;
+                                failureMsg = `Field ${field} error: ${fieldError.message}`;
+                                break;
+                            }
+                        }
+
+                        if (hasFailure) {
+                            break;
+                        }
                         appliedCount++;
                     }
                 }
-
-                if (appliedCount > 0) {
-                    totalAppliedCount += appliedCount;
-                    results.push({
-                        success: true,
-                        instanceId: targetInstance.id,
-                        instanceName: targetInstance.name,
-                        appliedCount
-                    });
-                    console.log(`Applied ${appliedCount} overrides to "${targetInstance.name}"`);
-                } else {
-                    results.push({
-                        success: false,
-                        instanceId: targetInstance.id,
-                        instanceName: targetInstance.name,
-                        message: "No overrides were applied"
-                    });
-                }
             } catch (instanceError: any) {
-                console.error(`Error processing instance "${targetInstance.name}":`, instanceError);
+                hasFailure = true;
+                failureMsg = instanceError.message;
+            }
+
+            if (hasFailure) {
+                failureCount++;
                 results.push({
                     success: false,
                     instanceId: targetInstance.id,
                     instanceName: targetInstance.name,
-                    message: `Error: ${instanceError.message}`
+                    message: `Error: ${failureMsg}`
+                });
+                break; // Stop on first failure
+            } else {
+                successCount++;
+                totalAppliedCount += appliedCount;
+                results.push({
+                    success: true,
+                    instanceId: targetInstance.id,
+                    instanceName: targetInstance.name,
+                    appliedCount
                 });
             }
         }
 
         // Return results
-        if (totalAppliedCount > 0) {
-            const instanceCount = results.filter((r: any) => r.success).length;
-            const message = `Applied ${totalAppliedCount} overrides to ${instanceCount} instances`;
+        if (successCount > 0 && failureCount === 0) {
+            const message = `Applied ${totalAppliedCount} overrides to ${successCount} instances`;
             figma.notify(message);
             return {
                 success: true,
@@ -604,7 +639,9 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
                 results
             };
         } else {
-            const message = "No overrides applied to any instance";
+            const message = failureCount > 0
+                ? `Failed to apply overrides: ${results[results.length - 1].message}`
+                : "No overrides applied to any instance";
             figma.notify(message);
             return { success: false, message, results };
         }
@@ -737,6 +774,7 @@ export async function createComponentSet(params: any) {
     }
 
     const figmaComponents: any[] = [];
+    const seenVariants = new Map<string, string>();
 
     // Process each component: Rename and Collect
     for (const compData of components) {
@@ -751,13 +789,24 @@ export async function createComponentSet(params: any) {
         }
 
         const nameParts = properties.map((prop: any, index: any) => `${prop}=${compData.propertyValues[index]}`);
-        component.name = nameParts.join(", ");
+        const variantName = nameParts.join(", ");
+        
+        if (seenVariants.has(variantName)) {
+            throw new Error(`Operation Denied: Duplicate variant combination '${variantName}' across components '${seenVariants.get(variantName)}' and '${component.name}'. Each component in a set must have a unique property-value combination.`);
+        }
+        seenVariants.set(variantName, component.name);
+        
+        component.name = variantName;
 
         figmaComponents.push(component);
     }
 
     // Create ComponentSet
-    const componentSet = figma.combineAsVariants(figmaComponents, figma.currentPage);
+    const containingPage = getContainingPageNode(figmaComponents[0]);
+    if (!containingPage) {
+        throw new Error("First component is not on a page (detached)");
+    }
+    const componentSet = figma.combineAsVariants(figmaComponents, containingPage);
 
     // Rename ComponentSet
     if (componentSetName) {
@@ -809,8 +858,8 @@ export async function setComponentInstanceProperty(params: any) {
     const instance = node as InstanceNode;
     const properties = instance.componentProperties;
     
-    // Find qualified name
     let qualifiedName: string | null = null;
+    let propType: string | null = null;
     const validNames: string[] = [];
     
     for (const key in properties) {
@@ -822,22 +871,24 @@ export async function setComponentInstanceProperty(params: any) {
         
         if (readableName === propertyName) {
             qualifiedName = key;
+            propType = properties[key].type;
             break;
         }
     }
 
-    if (!qualifiedName) {
+    if (!qualifiedName || !propType) {
         throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
     }
 
     try {
-        instance.setProperties({ [qualifiedName]: value });
+        const validatedValue = await validateComponentPropertyValue(instance, propertyName, propType, value);
+        instance.setProperties({ [qualifiedName]: validatedValue });
         return {
             id: instance.id,
             name: instance.name,
             type: instance.type,
             updatedProperty: propertyName,
-            value: value
+            value: validatedValue
         };
     } catch (error: any) {
         throw new Error(`Error setting component instance property: ${error.message}`);
@@ -881,12 +932,17 @@ export async function manageComponentProperty(params: any) {
     if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
         throw new Error(`Target node must be a COMPONENT or COMPONENT_SET, got ${node.type}`);
     }
+    
+    if (node.type === "COMPONENT" && node.parent?.type === "COMPONENT_SET") {
+        throw new Error(`Operation Denied: '${node.name}' is a variant inside a component set; manage properties on the set ('${node.parent.name}'), not the individual variant.`);
+    }
 
     const targetNode = node as ComponentNode | ComponentSetNode;
     const properties = targetNode.componentPropertyDefinitions;
     
     // Find qualified name for EDIT and DELETE
     let qualifiedName: string | null = null;
+    let existingPropType: string | null = null;
     const validNames: string[] = [];
     
     for (const key in properties) {
@@ -896,6 +952,7 @@ export async function manageComponentProperty(params: any) {
         
         if (readableName === propertyName) {
             qualifiedName = key;
+            existingPropType = properties[key].type;
         }
     }
 
@@ -911,10 +968,12 @@ export async function manageComponentProperty(params: any) {
                 throw new Error("VARIANT properties cannot be added manually. Use create_component_set instead.");
             }
             
+            const validatedDefault = await validateComponentPropertyValue(targetNode, propertyName, propertyType, defaultValue);
+            
             const options: any = {};
             if (preferredValues) options.preferredValues = preferredValues;
             
-            targetNode.addComponentProperty(propertyName, propertyType, defaultValue, options);
+            targetNode.addComponentProperty(propertyName, propertyType, validatedDefault, options);
             
             return {
                 id: targetNode.id,
@@ -922,17 +981,19 @@ export async function manageComponentProperty(params: any) {
                 action: "ADD",
                 propertyName,
                 propertyType,
-                defaultValue
+                defaultValue: validatedDefault
             };
             
         } else if (action === "EDIT") {
-            if (!qualifiedName) {
+            if (!qualifiedName || !existingPropType) {
                 throw new Error(`Property "${propertyName}" not found. Available properties: ${validNames.join(', ')}`);
             }
             
             const options: any = {};
             if (newPropertyName !== undefined) options.name = newPropertyName;
-            if (newDefaultValue !== undefined) options.defaultValue = newDefaultValue;
+            if (newDefaultValue !== undefined) {
+                options.defaultValue = await validateComponentPropertyValue(targetNode, propertyName, existingPropType, newDefaultValue);
+            }
             if (preferredValues !== undefined) options.preferredValues = preferredValues;
             
             targetNode.editComponentProperty(qualifiedName, options);

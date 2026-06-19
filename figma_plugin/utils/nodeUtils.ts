@@ -122,6 +122,26 @@ export function buildPathArray(node: any): PathTuple[] {
 }
 
 /**
+ * Resolves the containing page of a node.
+ * If the node itself is of type 'PAGE', returns the node itself.
+ * Otherwise walks node.parent until it reaches the containing PAGE.
+ * Returns null if the node is not under a page (e.g. detached or DOCUMENT root).
+ */
+export function getContainingPageNode(node: any): any | null {
+    let current = node;
+    while (current) {
+        if (current.type === 'PAGE') {
+            return current;
+        }
+        if (current.type === 'DOCUMENT') {
+            return null;
+        }
+        current = current.parent;
+    }
+    return null;
+}
+
+/**
  * Performs a synchronous recursive walk of node.children to count all descendants.
  * Does not include the node itself.
  */
@@ -135,3 +155,45 @@ export function countDescendants(node: any): number {
     return count;
 }
 
+/**
+ * Returns the node itself or nearest ancestor with locked === true, else null.
+ */
+export function findLockedAncestor(node: any): any | null {
+    let current = node;
+    while (current && current.type !== 'DOCUMENT') {
+        if (current.locked === true) {
+            return current;
+        }
+        current = current.parent;
+    }
+    return null;
+}
+
+/**
+ * Returns the nearest ancestor (excluding the node itself) of type INSTANCE, else null.
+ */
+export function findInstanceAncestor(node: any): any | null {
+    let current = node?.parent;
+    while (current && current.type !== 'DOCUMENT') {
+        if (current.type === 'INSTANCE') {
+            return current;
+        }
+        current = current.parent;
+    }
+    return null;
+}
+
+/**
+ * Walks node.parent up; true if maybeAncestor is encountered.
+ */
+export function isAncestorOf(maybeAncestor: any, node: any): boolean {
+    if (!maybeAncestor || !node) return false;
+    let current = node?.parent;
+    while (current && current.type !== 'DOCUMENT') {
+        if (current.id === maybeAncestor.id) {
+            return true;
+        }
+        current = current.parent;
+    }
+    return false;
+}

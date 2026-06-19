@@ -76,6 +76,7 @@ export function registerReactionTools(server: McpServer) {
             description: "Replace a node's prototype reactions with a full new reactions array (read first via `reaction_list`).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to update reactions for"),
+                nodeName: z.string().describe("Name of the node to update reactions for (for verification)"),
                 reactions: z.array(ReactionSchema).describe("The full array of Reaction objects to set"),
             }),
             outputSchema: z.object({

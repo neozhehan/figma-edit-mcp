@@ -333,6 +333,190 @@ async function main() {
         }
         console.log("✅ Component property management and deletion (split) verified successfully.");
 
+        // 6.5 Phase 1 v2.1.0 Enhancements Verification
+        console.log("\n--- Step 6.5: Phase 1 v2.1.0 Enhancements Verification ---");
+
+        // A. Creation tools require parentId
+        console.log("Checking that creation tools reject missing parentId...");
+        try {
+            await sendCommandToFigma("create_shape", { type: "RECTANGLE" });
+            console.log("❌ Error: create_shape with missing parentId did not throw.");
+        } catch (err: any) {
+            console.log("   create_shape rejected missing parentId (expected)");
+        }
+
+        try {
+            await sendCommandToFigma("create_shape", { type: "RECTANGLE", parentId: "nonexistent-parent", parentNodeName: "Nonexistent" });
+            console.log("❌ Error: create_shape with unresolved parentId did not throw.");
+        } catch (err: any) {
+            console.log("   create_shape rejected unresolved parentId (expected)");
+        }
+
+        // B. view_navigate validation
+        console.log("Checking that view_navigate rejects invalid/mixed targets...");
+        try {
+            // Mixed PAGE and node
+            await sendCommandToFigma("view_navigate", { ids: [scopeRootId, rect.id] });
+            console.log("❌ Error: view_navigate with mixed PAGE and node did not throw.");
+        } catch (err: any) {
+            console.log("   view_navigate rejected mixed targets (expected)");
+        }
+
+        // C. component_list scope: 'page' validation
+        console.log("Checking that component_list scope: 'page' validates pageId...");
+        try {
+            await sendCommandToFigma("component_list", { scope: "page" });
+            console.log("❌ Error: component_list scope: 'page' without pageId did not throw.");
+        } catch (err: any) {
+            console.log("   component_list rejected missing pageId (expected)");
+        }
+
+        // D. annotation_list validation
+        console.log("Checking that annotation_list requires exactly one of pageId or nodeId...");
+        try {
+            await sendCommandToFigma("annotation_list", {});
+            console.log("❌ Error: annotation_list with neither pageId nor nodeId did not throw.");
+        } catch (err: any) {
+            console.log("   annotation_list rejected neither parameter (expected)");
+        }
+
+        try {
+            await sendCommandToFigma("annotation_list", { pageId: scopeRootId, nodeId: rect.id });
+            console.log("❌ Error: annotation_list with both pageId and nodeId did not throw.");
+        } catch (err: any) {
+            console.log("   annotation_list rejected both parameters (expected)");
+        }
+
+        // E. variable_list includeConsumers: 'page' validation
+        console.log("Checking that variable_list includeConsumers: 'page' validates pageId...");
+        try {
+            await sendCommandToFigma("variable_list", { variableId: ["nonexistent-var"], includeConsumers: "page" });
+            console.log("❌ Error: variable_list includeConsumers: 'page' without pageId did not throw.");
+        } catch (err: any) {
+            console.log("   variable_list rejected missing pageId (expected)");
+        }
+
+        // F. instance_get_overrides validation
+        console.log("Checking that instance_get_overrides rejects missing instanceNodeId...");
+        try {
+            await sendCommandToFigma("instance_get_overrides", {});
+            console.log("❌ Error: instance_get_overrides with missing instanceNodeId did not throw.");
+        } catch (err: any) {
+            console.log("   instance_get_overrides rejected missing ID (expected)");
+        }
+
+        // G. component_list document scope (the new default) must succeed across ALL
+        //    pages. In dynamic-page documents each page needs an explicit loadAsync()
+        //    before findAllWithCriteria(); a missing load throws only on pages that
+        //    were never opened, so this positive check guards that regression.
+        console.log("Checking that component_list document scope succeeds across all pages...");
+        const docComponents: any = await sendCommandToFigma("component_list", {});
+        if (docComponents.scope !== "document" || typeof docComponents.count !== "number") {
+            throw new Error(`component_list document scope failed: ${JSON.stringify(docComponents)}`);
+        }
+        console.log(`   ✅ component_list document scope returned ${docComponents.count} components (no load error)`);
+
+        // 6.6 Phase 3 v2.1.0 Bounded Parallelism & Streaming Verification
+        console.log("\n--- Step 6.6: Phase 3 Bounded Parallelism & Streaming Verification ---");
+        
+        console.log("Querying node_info with multiple IDs including a missing ID...");
+        const queryRes: any = await sendCommandToFigma("node_info", {
+            nodeIds: [star5.id, "ghost-id-12345", rect.id, star7.id],
+            concurrencyLimit: 2
+        });
+        
+        console.log("Returned nodes:", JSON.stringify(queryRes.nodes.map((n: any) => n.id)));
+        console.log("Returned missingNodeIds:", JSON.stringify(queryRes.missingNodeIds));
+        
+        // Assert exact order in nodes
+        const expectedNodeOrder = [star5.id, rect.id, star7.id];
+        const actualNodeOrder = queryRes.nodes.map((n: any) => n.id);
+        if (JSON.stringify(actualNodeOrder) !== JSON.stringify(expectedNodeOrder)) {
+            throw new Error(`Expected nodes order ${JSON.stringify(expectedNodeOrder)}, but got ${JSON.stringify(actualNodeOrder)}`);
+        }
+        
+        // Assert missing ID is returned
+        if (!queryRes.missingNodeIds || !queryRes.missingNodeIds.includes("ghost-id-12345")) {
+            throw new Error(`Expected missingNodeIds to contain "ghost-id-12345", but got ${JSON.stringify(queryRes.missingNodeIds)}`);
+        }
+        
+        console.log("✅ Bounded Parallelism & Streaming verified successfully on live channel.");
+
+        // 6.7 Phase 4 v2.1.0 Atomicity & Type Pre-Validation Verification
+        console.log("\n--- Step 6.7: Phase 4 Atomicity & Type Pre-Validation Verification ---");
+
+        // A text node for the atomicity tests. The existing `rect` (RECTANGLE) is the wrong-typed target.
+        console.log("Creating a text node for atomicity tests...");
+        const atomicText: any = await sendCommandToFigma("create_text", {
+            parentId: scopeRootId,
+            parentNodeName: scopeRootName,
+            x: 50,
+            y: 500,
+            text: "ATOMIC_ORIGINAL",
+            name: "AtomicText"
+        });
+        console.log(`Created text node: ID=${atomicText.id}`);
+
+        // A. Type pre-validation: a batch with one wrong-typed (non-TEXT) target must abort with
+        //    ZERO mutations. The valid text node is listed FIRST, so a non-atomic implementation
+        //    would mutate it before hitting the failing entry.
+        console.log("Checking text_set_content aborts (zero mutations) when a batch contains a non-TEXT target...");
+        let textBatchThrew = false;
+        try {
+            await sendCommandToFigma("text_set_content", {
+                text: [
+                    { nodeId: atomicText.id, nodeName: "AtomicText", characters: "ATOMIC_MUTATED" },
+                    { nodeId: rect.id, nodeName: rect.name, characters: "ATOMIC_MUTATED" } // RECTANGLE — wrong type
+                ]
+            });
+        } catch (err: any) {
+            textBatchThrew = true;
+            console.log("   text_set_content rejected wrong-typed batch (expected):", err.message);
+        }
+        if (!textBatchThrew) {
+            throw new Error("Expected text_set_content to reject a batch containing a non-TEXT target.");
+        }
+
+        // Confirm zero mutations: the valid (first) text node must be UNCHANGED.
+        const atomicCheck: any = await sendCommandToFigma("node_info", {
+            nodeIds: [atomicText.id],
+            properties: ["characters"]
+        });
+        const atomicChars = atomicCheck.nodes[0].properties?.characters;
+        if (atomicChars !== "ATOMIC_ORIGINAL") {
+            throw new Error(`Expected text node untouched ("ATOMIC_ORIGINAL"), got "${atomicChars}" — batch was not atomic!`);
+        }
+        console.log("   ✅ Valid target untouched (zero mutations) — type check aborts before any write.");
+
+        // B. node_delete is validation-atomic: a not-found id aborts the whole batch at dispatch
+        //    ("Node X not found") BEFORE any deletion — it does NOT return partial successCount.
+        //    (Resilient partial successCount/failureCount applies only to mutation-phase races on
+        //    already-validated nodes — covered by the unit tests, not stageable live.)
+        console.log("Checking node_delete is validation-atomic: a not-found id aborts without deleting valid targets...");
+        let deleteThrew = false;
+        try {
+            await sendCommandToFigma("node_delete", {
+                nodes: [
+                    { nodeId: "ghost-delete-id-99999", nodeName: "Ghost" },
+                    { nodeId: atomicText.id, nodeName: "AtomicText" }
+                ]
+            });
+        } catch (err: any) {
+            deleteThrew = true;
+            console.log("   node_delete rejected stale id (expected):", err.message);
+        }
+        if (!deleteThrew) {
+            throw new Error("Expected node_delete to reject a batch containing a not-found id.");
+        }
+        // Confirm zero deletions: the valid node must survive the aborted batch.
+        const survived: any = await sendCommandToFigma("node_info", { nodeIds: [atomicText.id], properties: ["type"] });
+        if (!survived.nodes || survived.nodes.length !== 1 || survived.nodes[0].id !== atomicText.id) {
+            throw new Error("Expected the valid text node to survive the aborted node_delete batch.");
+        }
+        console.log("   ✅ node_delete validation-atomic: stale id aborted the batch, valid node survived.");
+
+        console.log("✅ Phase 4 Atomicity & Type Pre-Validation verified successfully on live channel.");
+
         // 7. Cleanup
         console.log("\n--- Step 7: Cleanup ---");
         console.log("Deleting created test nodes...");
@@ -341,7 +525,8 @@ async function main() {
                 { nodeId: rect.id, nodeName: rect.name },
                 { nodeId: star5.id, nodeName: star5.name },
                 { nodeId: star7.id, nodeName: star7.name },
-                { nodeId: comp.id, nodeName: comp.name }
+                { nodeId: comp.id, nodeName: comp.name },
+                { nodeId: atomicText.id, nodeName: "AtomicText" }
             ]
         });
         console.log("✅ Cleanup complete.");

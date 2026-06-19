@@ -5,6 +5,7 @@
 
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { delay } from '../utils/helpers.js';
+import { getContainingPageNode, isAncestorOf } from '../utils/nodeUtils.js';
 
 /**
  * Moves and/or resizes a node (sets absolute coordinates and dimensions)
@@ -28,11 +29,22 @@ export async function transformNode(params: any) {
         throw new Error(`Node not found with ID: ${nodeId}`);
     }
 
+    const warnings: string[] = [];
+
     // Apply X and Y if provided
     if (x !== undefined || y !== undefined) {
         if (!("x" in node) || !("y" in node)) {
             throw new Error(`Node does not support position: ${nodeId}`);
         }
+        
+        const parent = node.parent;
+        if (parent && "layoutMode" in parent && (parent as any).layoutMode !== "NONE") {
+            const isAbsolute = "layoutPositioning" in node && (node as any).layoutPositioning === "ABSOLUTE";
+            if (!isAbsolute) {
+                throw new Error(`Operation Denied: Cannot set x/y on node '${node.name}' because its parent ('${parent.name}') has Auto-layout applied and the node is not absolutely positioned. To reposition this node, either change its order in the parent's children array, set its layoutPositioning to "ABSOLUTE", or remove Auto-layout from the parent.`);
+            }
+        }
+
         if (x !== undefined) node.x = x;
         if (y !== undefined) node.y = y;
     }
@@ -42,15 +54,36 @@ export async function transformNode(params: any) {
         if (!("resize" in node)) {
             throw new Error(`Node does not support resizing: ${nodeId}`);
         }
+        
+        let newWidth = width !== undefined ? width : (node as any).width;
+        let newHeight = height !== undefined ? height : (node as any).height;
+
+        const parent = node.parent;
+        if (parent && "layoutMode" in parent && (parent as any).layoutMode !== "NONE") {
+            const isAbsolute = "layoutPositioning" in node && (node as any).layoutPositioning === "ABSOLUTE";
+            if (!isAbsolute) {
+                if (width !== undefined && "layoutSizingHorizontal" in node && (node as any).layoutSizingHorizontal !== "FIXED") {
+                    warnings.push(`Horizontal resize applied to '${node.name}', which reverted its layoutSizingHorizontal from ${(node as any).layoutSizingHorizontal} to FIXED.`);
+                }
+                if (height !== undefined && "layoutSizingVertical" in node && (node as any).layoutSizingVertical !== "FIXED") {
+                    warnings.push(`Vertical resize applied to '${node.name}', which reverted its layoutSizingVertical from ${(node as any).layoutSizingVertical} to FIXED.`);
+                }
+            }
+        } else if (!parent || ("layoutMode" in parent && (parent as any).layoutMode === "NONE")) {
+            // Also warn if we resize a node itself that has auto-layout hugging, which breaks the hug.
+            if (width !== undefined && "layoutSizingHorizontal" in node && (node as any).layoutSizingHorizontal !== "FIXED") {
+                warnings.push(`Horizontal resize applied to '${node.name}', which reverted its layoutSizingHorizontal from ${(node as any).layoutSizingHorizontal} to FIXED.`);
+            }
+            if (height !== undefined && "layoutSizingVertical" in node && (node as any).layoutSizingVertical !== "FIXED") {
+                warnings.push(`Vertical resize applied to '${node.name}', which reverted its layoutSizingVertical from ${(node as any).layoutSizingVertical} to FIXED.`);
+            }
+        }
+
         // @ts-ignore
-        const currentWidth = node.width;
-        // @ts-ignore
-        const currentHeight = node.height;
-        // @ts-ignore
-        node.resize(width ?? currentWidth, height ?? currentHeight);
+        node.resize(newWidth, newHeight);
     }
 
-    return {
+    const result: any = {
         id: node.id,
         name: node.name,
         x: "x" in node ? node.x : undefined,
@@ -58,6 +91,8 @@ export async function transformNode(params: any) {
         width: "width" in node ? node.width : undefined,
         height: "height" in node ? node.height : undefined,
     };
+    if (warnings.length > 0) result.warnings = warnings;
+    return result;
 }
 
 /**
@@ -267,55 +302,90 @@ export async function deleteMultipleNodes(params: any) {
 }
 
 /**
- * Sets selection to multiple nodes
+ * Navigates the editor view to a page or node(s).
  * @param {Object} params - Parameters object
- * @param {string[]} params.nodeIds - Array of node IDs to select
- * @returns {Promise<Object>} Selection result
+ * @param {string[]} params.ids - Array of target IDs
+ * @returns {Promise<Object>} Navigation result
  */
-export async function setSelections(params: any) {
-    if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
-        throw new Error("Missing or invalid nodeIds parameter");
+export async function viewNavigate(params: any) {
+    if (!params || !params.ids || !Array.isArray(params.ids)) {
+        throw new Error("Missing or invalid ids parameter");
     }
 
-    if (params.nodeIds.length === 0) {
-        throw new Error("nodeIds array cannot be empty");
+    if (params.ids.length === 0) {
+        throw new Error("ids array cannot be empty");
     }
 
-    // Get all valid nodes
-    const nodes: any[] = [];
-    const notFoundIds: any[] = [];
+    // Resolve all ids first
+    const resolvedNodes: any[] = [];
+    const pageNodes: any[] = [];
 
-    for (const nodeId of params.nodeIds) {
-        const node = await figma.getNodeByIdAsync(nodeId);
-        if (node) {
-            nodes.push(node);
+    for (const id of params.ids) {
+        const node = await figma.getNodeByIdAsync(id);
+        if (!node) {
+            throw new Error(`Node not found with ID: ${id}`);
+        }
+        if (node.type === 'DOCUMENT') {
+            throw new Error("Cannot navigate to DOCUMENT root");
+        }
+        if (node.type === 'PAGE') {
+            pageNodes.push(node);
         } else {
-            notFoundIds.push(nodeId);
+            resolvedNodes.push(node);
         }
     }
 
-    if (nodes.length === 0) {
-        throw new Error(`No valid nodes found for the provided IDs: ${params.nodeIds.join(', ')}`);
+    // Branch by resolved types
+    if (pageNodes.length > 0) {
+        // Validation: cannot mix pages and nodes, or have multiple pages
+        if (pageNodes.length > 1 || resolvedNodes.length > 0) {
+            throw new Error("Cannot navigate to mixed targets or multiple pages");
+        }
+        const page = pageNodes[0];
+        await figma.setCurrentPageAsync(page);
+        return {
+            pageId: page.id,
+            pageName: page.name
+        };
+    } else {
+        // All targets are scene nodes. Resolve containing page node for each
+        const pages = resolvedNodes.map(node => {
+            const page = getContainingPageNode(node);
+            if (!page) {
+                throw new Error(`Node ${node.id} is detached and not on a page`);
+            }
+            return page;
+        });
+
+        // Ensure all nodes share the same page
+        const firstPage = pages[0];
+        for (const page of pages) {
+            if (page.id !== firstPage.id) {
+                throw new Error("Selected nodes must belong to the same page");
+            }
+        }
+
+        // Switch page first
+        await figma.setCurrentPageAsync(firstPage);
+
+        // Set selection
+        figma.currentPage.selection = resolvedNodes;
+
+        // Scroll and zoom into view
+        figma.viewport.scrollAndZoomIntoView(resolvedNodes);
+
+        const selectedNodes = resolvedNodes.map((node: any) => ({
+            name: node.name,
+            id: node.id
+        }));
+
+        return {
+            success: true,
+            count: resolvedNodes.length,
+            selectedNodes: selectedNodes,
+            message: `Selected ${resolvedNodes.length} nodes`
+        };
     }
-
-    // Set selection to the nodes
-    figma.currentPage.selection = nodes;
-
-    // Scroll and zoom to show all nodes in viewport
-    figma.viewport.scrollAndZoomIntoView(nodes);
-
-    const selectedNodes = nodes.map((node: any) => ({
-        name: node.name,
-        id: node.id
-    }));
-
-    return {
-        success: true,
-        count: nodes.length,
-        selectedNodes: selectedNodes,
-        notFoundIds: notFoundIds,
-        message: `Selected ${nodes.length} nodes${notFoundIds.length > 0 ? ` (${notFoundIds.length} not found)` : ''}`
-    };
 }
 
 /**
@@ -458,8 +528,27 @@ export async function insertChild(params: any) {
     const child = await figma.getNodeByIdAsync(childId);
     if (!child) throw new Error(`Child not found: ${childId}`);
 
+    if (parentId === childId) {
+        throw new Error(`Operation Denied: A node cannot be inserted into itself.`);
+    }
+
+    if (isAncestorOf(child, parent)) {
+        throw new Error(`Operation Denied: Cannot insert node '${child.name}' into '${parent.name}' — the parent is a descendant of the node (cyclic hierarchy).`);
+    }
+
+    if (child.type === 'PAGE' && parent.type !== 'DOCUMENT') {
+        throw new Error(`Operation Denied: A PAGE node can only be inserted into a DOCUMENT.`);
+    }
+    if (child.type !== 'PAGE' && parent.type === 'DOCUMENT') {
+        throw new Error(`Operation Denied: Only PAGE nodes can be inserted directly into a DOCUMENT.`);
+    }
+
     // Perform reparenting
     if (index !== undefined) {
+        const length = (parent as any).children.length;
+        if (index < 0 || index > length) {
+            throw new Error(`Operation Denied: index ${index} is out of range for parent '${parent.name}' (valid: 0–${length}). Omit 'index' to append.`);
+        }
         // @ts-ignore
         parent.insertChild(index, child);
     } else {

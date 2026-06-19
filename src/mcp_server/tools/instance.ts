@@ -40,8 +40,7 @@ export function registerInstanceTools(server: McpServer) {
             inputSchema: z.object({
                 nodeId: z
                     .string()
-                    .optional()
-                    .describe("Optional ID of the component instance to get overrides from. If not provided, currently selected instance will be used."),
+                    .describe("The ID of the component instance to get overrides from."),
             }),
             outputSchema: z.object({
                 success: z.boolean().optional().describe("Whether overrides retrieval was successful"),
@@ -141,7 +140,7 @@ This strategy enables transferring content and property overrides from a source 
   \`\`\`
 
 ### 4. Verification
-- Verify results with \`node_info({ nodeIds, fields: ["componentProperties", "characters", "overrides"] })\`
+- Verify results with \`node_info({ nodeIds, properties: ["componentProperties", "characters", "overrides"] })\`
 - Confirm text content and style overrides have transferred successfully
 
 ## Key Tips

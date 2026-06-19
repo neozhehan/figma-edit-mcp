@@ -2,13 +2,17 @@
 
 [![npm version](https://img.shields.io/npm/v/figma-edit-mcp.svg)](https://www.npmjs.com/package/figma-edit-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/figma-edit-mcp.svg)](https://www.npmjs.com/package/figma-edit-mcp)
-[![CI](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml)  
+
+[![figma-edit-mcp MCP server](https://glama.ai/mcp/servers/neozhehan/figma-edit-mcp/badges/card.svg)](https://glama.ai/mcp/servers/neozhehan/figma-edit-mcp)
 
 Connect AI assistants to Figma via Model Context Protocol to read designs, create and modify elements, and manage design systems programmatically. 
   
 This plugin empowers your AI assistant to become a Figma assistant, executing design updates **Safer**, **Cleaner**, and **Faster** than a human ever could.
 
 This plugin allows you as a Designer to focus purely on creative decision-making, leaving the error-prone & repetitive manual changes to the automated systems.
+
+📖 **Documentation:** [neozhehan.github.io/figma-edit-mcp](https://neozhehan.github.io/figma-edit-mcp/)
 
 [Read more about our design philosophy here.](DESIGN_PHILOSOPHY.md)  
 
@@ -173,12 +177,12 @@ Tools are grouped into a two-level, underscore-separated namespace (`group_actio
 
 | Tool | Description |
 |---|---|
-| `node_info` | Read one or more nodes — recursive traversal with `fields`, `filter`, and `maxDepth` (the workhorse read; also returns bound variables / explicit modes) |
+| `node_info` | Read one or more nodes — recursive traversal with `properties`, `filter`, and `maxDepth` (the workhorse read; also returns bound variables / explicit modes) |
 | `node_transform` | Move and/or resize a node by setting absolute `x` / `y` / `width` / `height` |
 | `node_rename` | Rename a node |
 | `node_delete` | Delete one or more nodes in a single validated batch |
 | `node_clone` | Duplicate a node, optionally at a new position |
-| `node_select` | Set the canvas selection and focus the nodes in the viewport |
+| `view_navigate` | Navigate the editor view to a page or node(s) |
 | `node_group` | Wrap nodes in a new group |
 | `node_ungroup` | Dissolve a group, promoting its children |
 | `node_flatten` | Flatten a node and its children into a single vector |

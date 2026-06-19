@@ -1,0 +1,28 @@
+# GitHub Pages (Jekyll) configuration for https://neozhehan.github.io/figma-edit-mcp/
+# Primary purpose: enable jekyll-sitemap so Google can discover and crawl the docs site.
+title: Figma Edit MCP
+description: >-
+  Read, create, and modify Figma designs programmatically via MCP, empowering
+  AI to execute Figma changes safer, cleaner, and faster.
+url: "https://neozhehan.github.io"
+baseurl: "/figma-edit-mcp"
+
+# Generates /sitemap.xml automatically. Submit it in Google Search Console.
+plugins:
+  - jekyll-sitemap
+
+# Keep the rendered docs focused on the README homepage; exclude repo internals.
+exclude:
+  - node_modules
+  - dist
+  - src
+  - scripts
+  - test
+  - skills
+  - documentation
+  - figma_plugin
+  - "*.mcpb"
+  - package.json
+  - bun.lock
+  - tsconfig.json
+  - tsup.config.ts

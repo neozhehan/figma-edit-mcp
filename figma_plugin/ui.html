@@ -78,6 +78,11 @@
       color: #e0e0e0;
     }
 
+    input[type="checkbox"] {
+      width: auto;
+      cursor: pointer;
+    }
+
     label {
       display: block;
       margin-bottom: 4px;
@@ -260,7 +265,7 @@
 
     <div id="content-connection" class="tab-content active">
       <div class="section">
-        <label for="scope-link">Link to Selection (Leave blank for Read-Only Mode)</label>
+        <label for="scope-link">Link to Selection (Leave blank for Read-Only Mode for Nodes)</label>
         <div style="display: flex; gap: 8px; align-items: stretch;">
           <input type="text" id="scope-link" placeholder="Paste Figma Link for Editing" style="flex: 1;" />
           <button id="btn-copy-link" class="secondary" disabled title="Copy Link">
@@ -272,6 +277,16 @@
           </button>
         </div>
         <div id="scope-status" style="font-size: 11px; margin-top: 4px; display: none;"></div>
+        <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+          <label style="display: flex; align-items: center; gap: 6px; font-weight: normal; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" id="allow-edit-variable" />
+            Allow AI Agent to modify Variables
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; font-weight: normal; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" id="allow-edit-style" />
+            Allow AI Agent to modify Styles
+          </label>
+        </div>
       </div>
 
       <div class="section" style="margin-bottom: 20px;">
@@ -314,7 +329,7 @@
           AI-assisted design operations.
           <a class="link" onclick="window.open(`https://github.com/neozhehan/figma-edit-mcp`, '_blank')">Github</a>
         </p>
-        <p>Version: 1.0.0</p>
+        <p>Version: 2.2.0</p>
 
         <h2>How to Use</h2>
         <ol>
@@ -335,6 +350,7 @@
       socket: null,
       serverPort: 3055,
       verifiedNodeId: null,
+      verifiedNodeType: null,
       pendingRequests: new Map(),
       channel: null,
       activeRequestId: null,
@@ -390,6 +406,8 @@
       }
       portInput.disabled = isConnected;
       scopeLinkInput.disabled = isConnected;
+      document.getElementById("allow-edit-variable").disabled = isConnected;
+      document.getElementById("allow-edit-style").disabled = isConnected;
     }
 
     function showToast(message = "Copied to clipboard!") {
@@ -710,8 +728,19 @@
         return;
       }
 
+      const allowEditVariable = document.getElementById("allow-edit-variable").checked;
+      const allowEditStyle = document.getElementById("allow-edit-style").checked;
+
       // Set the scope in the plugin logic
-      parent.postMessage({ pluginMessage: { type: 'set-scope', scopeNodeId: state.verifiedNodeId } }, '*');
+      parent.postMessage({ 
+        pluginMessage: { 
+          type: 'set-scope', 
+          scopeNodeId: state.verifiedNodeId,
+          scopeNodeType: state.verifiedNodeType,
+          allowEditVariable,
+          allowEditStyle
+        } 
+      }, '*');
 
       const port = parseInt(portInput.value, 10);
       updateConnectionStatus(false, "Connecting...");
@@ -729,6 +758,7 @@
 
       if (link.length === 0) {
         state.verifiedNodeId = null;
+        state.verifiedNodeType = null;
         scopeStatus.style.display = 'none';
         return;
       }
@@ -841,12 +871,14 @@
           const scopeStatus = document.getElementById("scope-status");
           if (message.valid) {
             state.verifiedNodeId = message.nodeId;
+            state.verifiedNodeType = message.nodeType;
             const scopeLabel = message.nodeType === 'PAGE' ? 'Page' : 'Layer';
             scopeStatus.textContent = `✓ Editable Scope: [${scopeLabel}] ${message.nodeName}`;
             scopeStatus.style.color = '#4ade80'; // Green
             scopeStatus.style.display = 'block';
           } else {
             state.verifiedNodeId = null;
+            state.verifiedNodeType = null;
             scopeStatus.textContent = `✗ ${message.reason}`;
             scopeStatus.style.color = '#ff9999'; // Red
             scopeStatus.style.display = 'block';

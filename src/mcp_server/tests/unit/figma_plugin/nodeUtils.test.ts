@@ -4,6 +4,10 @@ import {
     buildPathArray,
     countDescendants,
     SAFE_LIST_PROPERTIES,
+    getContainingPageNode,
+    findLockedAncestor,
+    findInstanceAncestor,
+    isAncestorOf,
 } from "../../../../../figma_plugin/utils/nodeUtils.js";
 
 describe("filterFigmaNode", () => {
@@ -251,5 +255,95 @@ describe("countDescendants", () => {
         };
         // 6 descendants: a, b, b1, b2, b2a, c, c1 → 7. Recount: a + b + b1 + b2 + b2a + c + c1 = 7.
         expect(countDescendants(tree)).toBe(7);
+    });
+});
+
+describe("getContainingPageNode", () => {
+    it("returns the node itself if it is a PAGE", () => {
+        const page = { id: "0:1", name: "Home", type: "PAGE" };
+        expect(getContainingPageNode(page)).toBe(page);
+    });
+
+    it("walks up the parent chain to find the PAGE", () => {
+        const page = { id: "0:1", name: "Home", type: "PAGE" };
+        const frame = { id: "100:1", name: "Section", type: "FRAME", parent: page };
+        const rect = { id: "100:2", name: "Rect", type: "RECTANGLE", parent: frame };
+        expect(getContainingPageNode(rect)).toBe(page);
+    });
+
+    it("returns null for detached or document root nodes", () => {
+        const doc = { id: "0:0", name: "Doc", type: "DOCUMENT" };
+        const detached = { id: "100:1", name: "Detached", type: "FRAME" };
+        expect(getContainingPageNode(doc)).toBeNull();
+        expect(getContainingPageNode(detached)).toBeNull();
+    });
+});
+
+describe("findLockedAncestor", () => {
+    it("returns node itself if locked", () => {
+        const node = { id: "1", type: "FRAME", locked: true };
+        expect(findLockedAncestor(node)).toBe(node);
+    });
+    it("returns nearest locked ancestor", () => {
+        const page = { id: "0", type: "PAGE" };
+        const lockedParent = { id: "1", type: "FRAME", locked: true, parent: page };
+        const unlockedParent = { id: "2", type: "FRAME", parent: lockedParent };
+        const node = { id: "3", type: "TEXT", parent: unlockedParent };
+        expect(findLockedAncestor(node)).toBe(lockedParent);
+    });
+    it("returns null if no locked ancestor", () => {
+        const page = { id: "0", type: "PAGE" };
+        const unlockedParent = { id: "2", type: "FRAME", parent: page };
+        const node = { id: "3", type: "TEXT", parent: unlockedParent };
+        expect(findLockedAncestor(node)).toBeNull();
+    });
+    it("returns null for detached node with no locks", () => {
+        const node = { id: "1", type: "TEXT" };
+        expect(findLockedAncestor(node)).toBeNull();
+    });
+});
+
+describe("findInstanceAncestor", () => {
+    it("returns nearest INSTANCE ancestor (excluding self)", () => {
+        const instance = { id: "1", type: "INSTANCE" };
+        const frame = { id: "2", type: "FRAME", parent: instance };
+        const selfInstance = { id: "3", type: "INSTANCE", parent: frame };
+        expect(findInstanceAncestor(selfInstance)).toBe(instance);
+    });
+    it("returns null if no INSTANCE ancestor", () => {
+        const page = { id: "0", type: "PAGE" };
+        const frame = { id: "1", type: "FRAME", parent: page };
+        const node = { id: "2", type: "TEXT", parent: frame };
+        expect(findInstanceAncestor(node)).toBeNull();
+    });
+});
+
+describe("isAncestorOf", () => {
+    it("returns true if maybeAncestor is a direct parent", () => {
+        const parent = { id: "1", type: "FRAME" };
+        const node = { id: "2", type: "TEXT", parent };
+        expect(isAncestorOf(parent, node)).toBe(true);
+    });
+    it("returns true if maybeAncestor is a deep ancestor", () => {
+        const root = { id: "1", type: "FRAME" };
+        const parent = { id: "2", type: "FRAME", parent: root };
+        const node = { id: "3", type: "TEXT", parent };
+        expect(isAncestorOf(root, node)).toBe(true);
+    });
+    it("returns false for no-match", () => {
+        const root = { id: "1", type: "FRAME" };
+        const parent = { id: "2", type: "FRAME", parent: root };
+        const node = { id: "3", type: "TEXT", parent };
+        const unrelated = { id: "4", type: "FRAME" };
+        expect(isAncestorOf(unrelated, node)).toBe(false);
+    });
+    it("returns false for self", () => {
+        const node = { id: "1", type: "FRAME" };
+        expect(isAncestorOf(node, node)).toBe(false);
+    });
+    it("returns false if detached node", () => {
+        const root = { id: "1", type: "FRAME" };
+        const node = { id: "2", type: "TEXT" };
+        expect(isAncestorOf(root, node)).toBe(false);
     });
 });
