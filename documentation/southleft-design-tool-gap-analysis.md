@@ -18,6 +18,8 @@ Excluded from this document:
 
 The local project is stronger for safe, scoped live editing. Southleft is stronger for broad design-system workflows, design-to-code handoff, visual QA, library access, comments/version collaboration, image fills, and flexible automation.
 
+Each tool entry includes a compact representative success response showing the LLM-visible payload shape. Field names, nesting, and information categories are the important part; exact values and optional fields vary by Southleft version, mode, input options, compression, and error handling.
+
 The most valuable missing groups to consider are:
 
 | Priority | Group | Why it matters |
@@ -40,6 +42,30 @@ What it does:
 - Applies image data as an image fill to one or more Figma nodes.
 - Creates a Figma image from bytes, obtains its image hash, and sets the target node fills to an `IMAGE` paint.
 - Supports `scaleMode` such as `FILL`.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "imageHash": "b9f4c2...",
+  "updatedCount": 2,
+  "nodes": [
+    {
+      "id": "123:456",
+      "name": "Hero image placeholder",
+      "type": "RECTANGLE",
+      "fills": [
+        {
+          "type": "IMAGE",
+          "imageHash": "b9f4c2...",
+          "scaleMode": "FILL"
+        }
+      ]
+    }
+  ]
+}
+```
 
 Role in the design process:
 
@@ -65,6 +91,57 @@ What it does:
 - Includes technical design data such as layout, sizing, text behavior, constraints, bound variables, reactions, annotations, and a rendered visual reference.
 - Uses REST API data and can be paired with Desktop Bridge data where available.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "component": {
+    "id": "695:313",
+    "name": "Button / Primary",
+    "type": "COMPONENT",
+    "description": "Primary action button",
+    "componentPropertyDefinitions": {
+      "Label": { "type": "TEXT", "defaultValue": "Continue" },
+      "Icon": { "type": "BOOLEAN", "defaultValue": false }
+    },
+    "bounds": { "x": 120, "y": 80, "width": 144, "height": 44 },
+    "layout": {
+      "layoutMode": "HORIZONTAL",
+      "paddingLeft": 16,
+      "paddingRight": 16,
+      "itemSpacing": 8,
+      "primaryAxisSizingMode": "AUTO",
+      "counterAxisSizingMode": "FIXED"
+    },
+    "visual": {
+      "fills": [{ "type": "SOLID", "color": "#2563EB" }],
+      "cornerRadius": 8,
+      "effects": [{ "type": "DROP_SHADOW", "radius": 8 }]
+    },
+    "typography": {
+      "fontFamily": "Inter",
+      "fontSize": 14,
+      "fontWeight": 600,
+      "lineHeight": 20
+    },
+    "boundVariables": {
+      "fills.0.color": {
+        "id": "VariableID:1:10",
+        "name": "color/action/primary"
+      }
+    },
+    "annotations": [
+      { "labelMarkdown": "Use for one primary action per view." }
+    ]
+  },
+  "image": {
+    "url": "https://figma-alpha-api.s3.us-west-2.amazonaws.com/images/...",
+    "format": "png",
+    "scale": 2
+  }
+}
+```
+
 Role in the design process:
 
 - Supports design-to-code handoff.
@@ -83,6 +160,57 @@ What it does:
 - Returns deeper visual structure than REST depth-limited reads.
 - Resolves design token names, instance references, interactions, and annotations at nested levels.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "component": {
+    "id": "900:10",
+    "name": "Combobox",
+    "type": "COMPONENT_SET"
+  },
+  "tree": {
+    "id": "900:11",
+    "name": "State=Default",
+    "type": "COMPONENT",
+    "layout": { "layoutMode": "VERTICAL", "itemSpacing": 4 },
+    "visualSpec": { "fills": [{ "color": "#FFFFFF" }], "cornerRadius": 8 },
+    "children": [
+      {
+        "id": "900:12",
+        "name": "Input row",
+        "type": "FRAME",
+        "layout": { "layoutMode": "HORIZONTAL", "paddingLeft": 12 },
+        "boundTokens": {
+          "borderColor": "color/border/default",
+          "text": "typography/body-md"
+        },
+        "children": [
+          { "id": "900:13", "name": "Label", "type": "TEXT", "characters": "Choose option" }
+        ]
+      }
+    ]
+  },
+  "resolvedTokens": {
+    "color/border/default": "#D1D5DB",
+    "typography/body-md": {
+      "fontFamily": "Inter",
+      "fontSize": 14,
+      "lineHeight": 20
+    }
+  },
+  "instanceRefs": [
+    { "nodeId": "900:14", "componentKey": "a1b2...", "name": "Icon / Chevron Down" }
+  ],
+  "interactions": [
+    { "trigger": "ON_CLICK", "action": "OPEN_OVERLAY", "destinationId": "900:50" }
+  ],
+  "annotations": [
+    { "nodeId": "900:12", "labelMarkdown": "Keyboard opens menu with Enter." }
+  ]
+}
+```
+
 Role in the design process:
 
 - Useful for complex components such as tables, menus, date pickers, modals, filters, and compound forms.
@@ -99,6 +227,50 @@ What it does:
 
 - Analyzes a `COMPONENT_SET`.
 - Extracts variant axes, variant values, default states, CSS-like state mappings, cross-variant diffs, and component property definitions.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "componentSet": {
+    "id": "700:1",
+    "name": "Button",
+    "variantCount": 12
+  },
+  "variantAxes": {
+    "Size": ["Small", "Medium", "Large"],
+    "State": ["Default", "Hover", "Pressed", "Disabled"],
+    "Variant": ["Primary", "Secondary"]
+  },
+  "defaultVariant": {
+    "id": "700:2",
+    "name": "Size=Medium, State=Default, Variant=Primary"
+  },
+  "componentProperties": {
+    "Label": { "type": "TEXT", "defaultValue": "Button" },
+    "Show icon": { "type": "BOOLEAN", "defaultValue": false }
+  },
+  "stateMappings": {
+    "Hover": { "cssPseudoClass": ":hover", "variantId": "700:3" },
+    "Pressed": { "cssPseudoClass": ":active", "variantId": "700:4" },
+    "Disabled": { "ariaState": "disabled", "variantId": "700:5" }
+  },
+  "crossVariantDiffs": [
+    {
+      "from": "State=Default",
+      "to": "State=Hover",
+      "changes": [
+        { "property": "fills.0.color", "from": "#2563EB", "to": "#1D4ED8" }
+      ]
+    }
+  ],
+  "recommendedProps": [
+    { "name": "size", "values": ["sm", "md", "lg"] },
+    { "name": "variant", "values": ["primary", "secondary"] },
+    { "name": "disabled", "sourceAxis": "State=Disabled" }
+  ]
+}
+```
 
 Role in the design process:
 
@@ -117,6 +289,30 @@ What it does:
 - Generates structured component documentation from a Figma component.
 - Can include anatomy, variants, visual specs, typography, content guidance, annotations, accessibility notes, and implementation sections.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "componentName": "Button",
+  "markdown": "---\ntitle: Button\nlevel: atom\n---\n\n# Button\n\nUse Button for primary and secondary actions...\n",
+  "includedSections": [
+    "overview",
+    "statesAndVariants",
+    "visualSpecs",
+    "implementation",
+    "accessibility"
+  ],
+  "dataSourceSummary": {
+    "figmaEnriched": true,
+    "codeInfoProvided": true,
+    "variablesIncluded": true,
+    "stylesIncluded": true
+  },
+  "suggestedOutputPath": "docs/components/button.md",
+  "ai_instruction": "Save the markdown to the suggested path or ask the user where to place it."
+}
+```
+
 Role in the design process:
 
 - Helps create design-system documentation.
@@ -134,6 +330,38 @@ What it does:
 - Retrieves a single component's metadata or a reconstruction specification.
 - Can return component descriptions, properties, variants, annotations, and token-related metadata.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "format": "metadata",
+  "component": {
+    "id": "695:313",
+    "key": "6f2b9c...",
+    "name": "Card",
+    "type": "COMPONENT",
+    "description": "Content container"
+  },
+  "properties": {
+    "Variant": { "type": "VARIANT", "values": ["Default", "Elevated"] }
+  },
+  "variants": [
+    { "id": "695:314", "name": "Variant=Default" },
+    { "id": "695:315", "name": "Variant=Elevated" }
+  ],
+  "visualSpec": {
+    "fills": [{ "color": "#FFFFFF" }],
+    "cornerRadius": 12,
+    "layout": { "paddingTop": 24, "paddingLeft": 24 }
+  },
+  "tokenCoverage": {
+    "totalProperties": 9,
+    "boundProperties": 6,
+    "percentage": 67
+  }
+}
+```
+
 Role in the design process:
 
 - Supports component inventory, documentation, and reuse decisions.
@@ -150,6 +378,45 @@ What it does:
 - Retrieves additional component detail beyond a basic search result.
 - Typically used after discovering a component and before instantiating, documenting, or implementing it.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "component": {
+    "id": "810:22",
+    "key": "f83a...",
+    "name": "Input / Text Field",
+    "type": "COMPONENT_SET",
+    "description": "Single-line text input"
+  },
+  "source": {
+    "fileKey": "abc123",
+    "fileName": "Core Design System",
+    "pageName": "Components"
+  },
+  "propertyDefinitions": {
+    "State": { "type": "VARIANT", "values": ["Default", "Focus", "Error", "Disabled"] },
+    "Label": { "type": "BOOLEAN", "defaultValue": true }
+  },
+  "variants": [
+    {
+      "id": "810:23",
+      "name": "State=Default",
+      "key": "variantKey1",
+      "visualSpec": {
+        "borderColor": "#D1D5DB",
+        "height": 40,
+        "typography": { "fontSize": 14 }
+      }
+    }
+  ],
+  "documentation": {
+    "usage": "Use for short text entry.",
+    "accessibility": "Requires visible label or aria-label."
+  }
+}
+```
+
 Role in the design process:
 
 - Lets an agent move from broad search to precise component understanding.
@@ -165,6 +432,23 @@ What it does:
 
 - Retrieves a rendered image for a component.
 - Provides a visual reference independent of raw node JSON.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "nodeId": "695:313",
+  "name": "Button / Primary",
+  "format": "png",
+  "scale": 2,
+  "imageUrl": "https://figma-alpha-api.s3.us-west-2.amazonaws.com/images/...",
+  "expiresAt": "2026-07-09T12:00:00.000Z",
+  "dimensions": {
+    "width": 288,
+    "height": 88
+  }
+}
+```
 
 Role in the design process:
 
@@ -184,6 +468,71 @@ What it does:
 - Produces a combined design-system payload from a Figma file.
 - Can include variables/tokens, components, styles, visual specs, and summary metadata.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "fileName": "Core Design System",
+  "generatedAt": "2026-06-09T18:42:00.000Z",
+  "format": "full",
+  "tokens": {
+    "collections": [
+      {
+        "name": "Color",
+        "modes": [{ "name": "Light" }, { "name": "Dark" }],
+        "variables": [
+          {
+            "id": "VariableID:1:10",
+            "name": "action/primary",
+            "type": "COLOR",
+            "valuesByMode": {
+              "Light": "#2563EB",
+              "Dark": "#60A5FA"
+            }
+          }
+        ]
+      }
+    ],
+    "summary": { "totalCollections": 3, "totalVariables": 148 }
+  },
+  "components": {
+    "items": [
+      {
+        "name": "Button",
+        "type": "COMPONENT_SET",
+        "properties": {
+          "Variant": { "type": "VARIANT", "values": ["Primary", "Secondary"] }
+        },
+        "variants": [{ "id": "700:2", "name": "Variant=Primary" }],
+        "visualSpec": {
+          "fills": [{ "color": "#2563EB" }],
+          "cornerRadius": 8,
+          "layout": { "paddingLeft": 16, "paddingRight": 16 }
+        }
+      }
+    ],
+    "summary": { "totalComponents": 41, "totalComponentSets": 14 }
+  },
+  "styles": {
+    "items": [
+      {
+        "name": "Text/Body MD",
+        "styleType": "TEXT",
+        "resolvedValue": {
+          "fontFamily": "Inter",
+          "fontSize": 16,
+          "lineHeight": 24
+        }
+      }
+    ],
+    "summary": { "totalStyles": 28 }
+  },
+  "ai_instruction": "Use tokens first; use visualSpec only when no token binding is available.",
+  "errors": []
+}
+```
+
 Role in the design process:
 
 - Gives agents a compact design-system context before making implementation or design decisions.
@@ -201,6 +550,46 @@ What it does:
 - Returns a higher-level summary of a design system.
 - Focuses on inventory, counts, categories, or system-level organization rather than full raw details.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "fileName": "Core Design System",
+  "summary": {
+    "tokens": {
+      "collections": 3,
+      "variables": 148,
+      "modes": ["Light", "Dark", "High Contrast"]
+    },
+    "components": {
+      "componentSets": 14,
+      "components": 41,
+      "instances": 237,
+      "largestSets": [
+        { "name": "Button", "variantCount": 12 },
+        { "name": "Input", "variantCount": 10 }
+      ]
+    },
+    "styles": {
+      "paint": 16,
+      "text": 11,
+      "effect": 1,
+      "grid": 0
+    }
+  },
+  "coverage": {
+    "tokenBoundComponents": 34,
+    "componentsMissingDescriptions": 7,
+    "componentsMissingAnnotations": 19
+  },
+  "recommendations": [
+    "Add descriptions to 7 published components.",
+    "Audit Input variants for consistent error-state token bindings."
+  ]
+}
+```
+
 Role in the design process:
 
 - Helps designers and agents understand the shape of a file quickly.
@@ -211,7 +600,7 @@ Local project gap:
 
 - Local lacks a one-call summary view across components, styles, and variables.
 
-### `figma_get_design_system_kit` vs local reads
+### Southleft kit vs local reads
 
 The local project can produce much of the same raw data by combining:
 
@@ -234,6 +623,48 @@ What it does:
 - Supports formats such as DTCG JSON and CSS custom properties, with additional formatter support in the southleft codebase.
 - Can use local token configuration files when running in local mode.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "format": "dtcg",
+  "strategy": "merge",
+  "summary": {
+    "collections": 3,
+    "variables": 148,
+    "filesWritten": 4,
+    "filesUnchanged": 2
+  },
+  "files": [
+    {
+      "path": "tokens/color.light.json",
+      "changed": true,
+      "content": {
+        "color": {
+          "action": {
+            "primary": {
+              "$type": "color",
+              "$value": "#2563EB",
+              "$extensions": {
+                "figma-console-mcp": {
+                  "variableId": "VariableID:1:10",
+                  "collectionId": "VariableCollectionId:1:1",
+                  "lastSyncedAt": "2026-06-09T18:42:00.000Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "warnings": [
+    "Skipped cross-library alias VariableID:9:99; source library values were not available."
+  ]
+}
+```
+
 Role in the design process:
 
 - Moves design tokens from Figma into engineering artifacts.
@@ -250,6 +681,44 @@ What it does:
 
 - Reads token data from the codebase or inline payloads and pushes changes into Figma variables.
 - Computes diffs and can apply value updates through the bridge.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "strategy": "dry-run",
+  "format": "dtcg",
+  "diff": {
+    "toCreate": [
+      { "path": "color.action.tertiary", "type": "color", "value": "#7C3AED" }
+    ],
+    "toUpdate": [
+      {
+        "variableId": "VariableID:1:10",
+        "path": "color.action.primary",
+        "currentValue": "#2563EB",
+        "nextValue": "#1D4ED8",
+        "mode": "Light"
+      }
+    ],
+    "toDelete": [],
+    "conflicts": [
+      {
+        "variableId": "VariableID:1:20",
+        "path": "color.surface.default",
+        "figmaValue": "#FFFFFF",
+        "codeValue": "#FAFAFA",
+        "lastSyncedValue": "#F9FAFB"
+      }
+    ]
+  },
+  "applyResult": null,
+  "warnings": [
+    "toCreate apply is not wired; use figma_setup_design_tokens or figma_batch_create_variables."
+  ]
+}
+```
 
 Role in the design process:
 
@@ -271,6 +740,28 @@ What it does:
 
 - Creates a token system in Figma, usually including a collection, modes, and variables in one operation.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "message": "Created collection 'Brand Tokens' with 2 modes and 3 tokens (0 failed)",
+  "collectionId": "VariableCollectionId:1:1",
+  "collectionName": "Brand Tokens",
+  "modes": {
+    "Light": "1:0",
+    "Dark": "1:1"
+  },
+  "created": 3,
+  "failed": 0,
+  "results": [
+    { "success": true, "name": "color/background", "id": "VariableID:1:1" },
+    { "success": true, "name": "color/text", "id": "VariableID:1:2" },
+    { "success": true, "name": "spacing/page", "id": "VariableID:1:3" }
+  ]
+}
+```
+
 Role in the design process:
 
 - Accelerates initial design-system setup.
@@ -286,6 +777,35 @@ What it does:
 
 - Creates many Figma variables in a single operation.
 - Avoids repeated roundtrips for token creation.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "message": "Batch created 4 variables (1 failed)",
+  "collectionId": "VariableCollectionId:1:1",
+  "created": 4,
+  "failed": 1,
+  "results": [
+    {
+      "success": true,
+      "name": "color/action/primary",
+      "id": "VariableID:1:10",
+      "resolvedType": "COLOR",
+      "valuesByMode": {
+        "Light": "#2563EB",
+        "Dark": "#60A5FA"
+      }
+    },
+    {
+      "success": false,
+      "name": "color/action/primary",
+      "error": "Variable already exists in collection"
+    }
+  ]
+}
+```
 
 Role in the design process:
 
@@ -303,6 +823,35 @@ What it does:
 - Updates many variable values in a single operation.
 - Uses partial-success style response handling in southleft workflows.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "message": "Batch updated 3 variables (0 failed)",
+  "updated": 3,
+  "failed": 0,
+  "results": [
+    {
+      "success": true,
+      "variableId": "VariableID:1:10",
+      "name": "color/action/primary",
+      "modeId": "1:0",
+      "previousValue": "#2563EB",
+      "value": "#1D4ED8"
+    },
+    {
+      "success": true,
+      "variableId": "VariableID:1:11",
+      "name": "spacing/md",
+      "modeId": "1:0",
+      "previousValue": 16,
+      "value": 20
+    }
+  ]
+}
+```
+
 Role in the design process:
 
 - Supports bulk token changes such as brand refreshes, theme updates, or large naming/value migrations.
@@ -319,6 +868,50 @@ What it does:
 
 - Reads published component metadata from a Figma library file through the REST API.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "libraryFileKey": "lib123",
+  "libraryName": "Acme Design System",
+  "query": "Button",
+  "summary": {
+    "totalComponentSets": 2,
+    "totalStandaloneComponents": 1,
+    "returned": 3
+  },
+  "componentSets": [
+    {
+      "name": "Button",
+      "key": "componentSetKey123",
+      "nodeId": "700:1",
+      "description": "Actions and navigation triggers",
+      "variantCount": 12,
+      "variants": [
+        {
+          "name": "Variant=Primary, Size=Medium",
+          "key": "variantKey123",
+          "nodeId": "700:2"
+        }
+      ]
+    }
+  ],
+  "components": [
+    {
+      "name": "Icon Button",
+      "key": "componentKey456",
+      "nodeId": "701:1"
+    }
+  ],
+  "instantiationExamples": [
+    {
+      "tool": "figma_instantiate_component",
+      "componentKey": "variantKey123"
+    }
+  ]
+}
+```
+
 Role in the design process:
 
 - Lets agents discover reusable components from shared libraries.
@@ -333,6 +926,38 @@ Local project gap:
 What it does:
 
 - Retrieves a specific published library component by component key.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "key": "componentSetKey123",
+  "kind": "COMPONENT_SET",
+  "source": {
+    "fileKey": "lib123",
+    "nodeId": "700:1",
+    "name": "Button"
+  },
+  "componentPropertyDefinitions": {
+    "Size": { "type": "VARIANT", "variantOptions": ["Small", "Medium", "Large"] },
+    "Variant": { "type": "VARIANT", "variantOptions": ["Primary", "Secondary"] }
+  },
+  "variants": [
+    {
+      "name": "Size=Medium, Variant=Primary",
+      "nodeId": "700:2",
+      "publishedKey": "variantKey123",
+      "visualSpec": {
+        "fills": [{ "color": "#2563EB" }],
+        "cornerRadius": 8,
+        "padding": { "left": 16, "right": 16, "top": 10, "bottom": 10 },
+        "typography": { "fontSize": 14, "fontWeight": 600 }
+      }
+    }
+  ],
+  "compressed": false
+}
+```
 
 Role in the design process:
 
@@ -350,6 +975,36 @@ What it does:
 - Searches local or library components by query, category, or description.
 - Returns component keys and node IDs for later use.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "query": "Button",
+  "limit": 10,
+  "offset": 0,
+  "results": [
+    {
+      "name": "Button",
+      "source": "local",
+      "type": "COMPONENT_SET",
+      "nodeId": "700:1",
+      "key": "componentSetKey123",
+      "description": "Actions and navigation triggers",
+      "variants": [
+        { "name": "Primary / Medium", "nodeId": "700:2", "key": "variantKey123" }
+      ]
+    },
+    {
+      "name": "Button / Icon",
+      "source": "library",
+      "libraryName": "Acme Design System",
+      "nodeId": "701:1",
+      "key": "componentKey456"
+    }
+  ]
+}
+```
+
 Role in the design process:
 
 - Helps agents find the correct component before placing or documenting it.
@@ -365,6 +1020,46 @@ What it does:
 
 - Reads variables from a published library.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "libraries": [
+    {
+      "libraryName": "Acme Design System",
+      "collections": [
+        {
+          "name": "Color",
+          "key": "VariableCollectionKey:abc",
+          "variables": [
+            {
+              "key": "VariableKey:primary",
+              "name": "color/action/primary",
+              "resolvedType": "COLOR"
+            },
+            {
+              "key": "VariableKey:radius",
+              "name": "radius/md",
+              "resolvedType": "FLOAT"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "filters": {
+    "libraryName": "Acme",
+    "collectionName": "Color",
+    "resolvedType": "COLOR"
+  },
+  "summary": {
+    "libraries": 1,
+    "collections": 1,
+    "variables": 2
+  }
+}
+```
+
 Role in the design process:
 
 - Helps teams understand available shared tokens.
@@ -379,6 +1074,22 @@ Local project gap:
 What it does:
 
 - Imports a published library variable into the current file so it can be used locally.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "key": "VariableKey:primary",
+  "id": "VariableID:9:42",
+  "name": "color/action/primary",
+  "resolvedType": "COLOR",
+  "collectionName": "Color",
+  "libraryName": "Acme Design System",
+  "alreadyImported": false,
+  "usageHint": "Pass id to figma_set_fills, figma_set_strokes, or figma_update_variable."
+}
+```
 
 Role in the design process:
 
@@ -398,6 +1109,24 @@ What it does:
 - Captures a screenshot from the current Figma context.
 - Used as part of visual validation workflows.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "target": "viewport",
+  "format": "png",
+  "screenshot": {
+    "filename": "figma-screenshot-2026-06-09.png",
+    "mimeType": "image/png",
+    "width": 1440,
+    "height": 900,
+    "sizeBytes": 482193
+  },
+  "currentUrl": "https://www.figma.com/design/abc123/Core-Design-System",
+  "capturedAt": "2026-06-09T18:42:00.000Z"
+}
+```
+
 Role in the design process:
 
 - Lets an agent verify the actual visual result of edits.
@@ -414,6 +1143,28 @@ What it does:
 - Captures a node or page screenshot through plugin export.
 - Includes advice about format, scale, and targeting when captures are too large or broad.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "target": "node",
+  "nodeId": "695:313",
+  "nodeName": "Button / Primary",
+  "format": "png",
+  "scale": 2,
+  "image": {
+    "mimeType": "image/png",
+    "width": 288,
+    "height": 88,
+    "dataUrl": "data:image/png;base64,iVBORw0KGgo..."
+  },
+  "advice": [
+    "Use a lower scale if the response is too large.",
+    "Capture a node instead of the full page for visual parity checks."
+  ]
+}
+```
+
 Role in the design process:
 
 - Provides visual feedback after edits.
@@ -428,6 +1179,36 @@ Local project gap:
 What it does:
 
 - Returns the current Figma selection tracked by the bridge.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "currentPage": {
+    "id": "0:1",
+    "name": "Components"
+  },
+  "count": 2,
+  "selection": [
+    {
+      "id": "695:313",
+      "name": "Button / Primary",
+      "type": "COMPONENT",
+      "absoluteBoundingBox": {
+        "x": 120,
+        "y": 80,
+        "width": 144,
+        "height": 44
+      }
+    },
+    {
+      "id": "695:320",
+      "name": "Button / Secondary",
+      "type": "COMPONENT"
+    }
+  ]
+}
+```
 
 Role in the design process:
 
@@ -448,6 +1229,32 @@ What it does:
 
 - Lists Figma files currently connected through the southleft bridge.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "activeFileKey": "abc123",
+  "files": [
+    {
+      "fileKey": "abc123",
+      "fileName": "Core Design System",
+      "pageName": "Components",
+      "url": "https://www.figma.com/design/abc123/Core-Design-System",
+      "connectionId": "local-9223",
+      "isActive": true,
+      "connectedAt": "2026-06-09T18:30:00.000Z"
+    },
+    {
+      "fileKey": "def456",
+      "fileName": "Marketing Site",
+      "pageName": "Homepage",
+      "connectionId": "local-9224",
+      "isActive": false
+    }
+  ]
+}
+```
+
 Role in the design process:
 
 - Helps avoid editing or inspecting the wrong file when multiple Figma files are open.
@@ -466,6 +1273,43 @@ What it does:
 - Scans a design node tree for design quality issues.
 - Checks rules around layout, naming, accessibility-adjacent issues, visual consistency, and component structure.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "nodeId": "0:1",
+  "score": 82,
+  "summary": {
+    "checkedNodes": 214,
+    "findings": 9,
+    "critical": 1,
+    "major": 3,
+    "minor": 5
+  },
+  "findings": [
+    {
+      "ruleId": "contrast.text-aa",
+      "category": "accessibility",
+      "severity": "critical",
+      "wcag": "1.4.3",
+      "nodeId": "812:44",
+      "nodeName": "Helper text",
+      "message": "Text contrast is below WCAG AA.",
+      "details": { "contrastRatio": 3.2, "required": 4.5 },
+      "suggestion": "Use color/text/secondary or increase background contrast."
+    },
+    {
+      "ruleId": "layout.auto-layout-missing",
+      "category": "layout",
+      "severity": "minor",
+      "nodeId": "812:10",
+      "nodeName": "Card actions",
+      "message": "Sibling spacing appears manual instead of auto-layout."
+    }
+  ]
+}
+```
+
 Role in the design process:
 
 - Helps catch design debt before implementation.
@@ -482,6 +1326,49 @@ What it does:
 - Runs deeper accessibility-focused checks on components or component sets.
 - Looks at target sizes, color contrast patterns, state coverage, and related component accessibility concerns.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "component": {
+    "id": "700:1",
+    "name": "Button",
+    "type": "COMPONENT_SET"
+  },
+  "score": 88,
+  "checks": {
+    "contrast": {
+      "status": "pass",
+      "minimumRatio": 4.8
+    },
+    "targetSize": {
+      "status": "warn",
+      "minimumSize": { "width": 36, "height": 36 },
+      "recommended": { "width": 44, "height": 44 }
+    },
+    "stateCoverage": {
+      "status": "pass",
+      "statesFound": ["Default", "Hover", "Pressed", "Disabled", "Focus"]
+    },
+    "focusIndicator": {
+      "status": "fail",
+      "message": "No visible focus state variant detected."
+    }
+  },
+  "findings": [
+    {
+      "severity": "major",
+      "message": "Add a visible focus state with at least 3:1 contrast against adjacent colors.",
+      "nodeId": "700:9"
+    }
+  ],
+  "recommendations": [
+    "Add State=Focus variant.",
+    "Increase Small button height to 44px or document touch-target exception."
+  ]
+}
+```
+
 Role in the design process:
 
 - Helps designers verify accessible component behavior and visuals.
@@ -496,6 +1383,37 @@ Local project gap:
 What it does:
 
 - Scans code-side artifacts for accessibility issues.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "source": {
+    "filePath": "src/components/button.tsx",
+    "scanner": "axe-core"
+  },
+  "summary": {
+    "violations": 2,
+    "passes": 34,
+    "incomplete": 1,
+    "inapplicable": 67
+  },
+  "violations": [
+    {
+      "id": "button-name",
+      "impact": "critical",
+      "description": "Buttons must have discernible text.",
+      "nodes": [
+        {
+          "target": ["button.icon-only"],
+          "html": "<button class=\"icon-only\"><svg /></button>",
+          "failureSummary": "Element does not have inner text or aria-label."
+        }
+      ]
+    }
+  ]
+}
+```
 
 Role in the design process:
 
@@ -512,6 +1430,55 @@ What it does:
 
 - Compares Figma component specs against code-side data.
 - Produces discrepancy categories, parity score, and action items.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "summary": {
+    "parityScore": 84,
+    "totalDiscrepancies": 4,
+    "critical": 0,
+    "major": 2,
+    "minor": 2,
+    "info": 0
+  },
+  "discrepancies": [
+    {
+      "category": "visual",
+      "severity": "major",
+      "property": "borderRadius",
+      "designValue": 12,
+      "codeValue": 8,
+      "suggestion": "Update code radius to token radius/lg or change Figma to radius/md."
+    },
+    {
+      "category": "spacing",
+      "severity": "minor",
+      "property": "paddingLeft",
+      "designValue": 24,
+      "codeValue": 20
+    }
+  ],
+  "actionItems": [
+    {
+      "fixSide": "code",
+      "path": "src/components/card.tsx",
+      "instruction": "Use var(--radius-lg) for Card root border-radius."
+    }
+  ],
+  "designData": {
+    "nodeId": "695:313",
+    "fills": [{ "color": "#FFFFFF" }],
+    "spacing": { "paddingLeft": 24 },
+    "properties": {}
+  },
+  "codeData": {
+    "metadata": { "filePath": "src/components/card.tsx" }
+  },
+  "ai_instruction": "Lead with critical and major differences, then list exact fixes."
+}
+```
 
 Role in the design process:
 
@@ -530,6 +1497,42 @@ What it does:
 - Attempts to identify change/version context for a node.
 - Helps determine when or why a design element changed.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "node": {
+    "id": "695:313",
+    "name": "Button / Primary"
+  },
+  "property": "fills.0.color",
+  "currentValue": "#1D4ED8",
+  "introducedIn": {
+    "versionId": "1234567890",
+    "label": "Button color refresh",
+    "createdAt": "2026-05-22T16:00:00.000Z",
+    "user": {
+      "handle": "Maya",
+      "email": "maya@example.com"
+    }
+  },
+  "previousValue": "#2563EB",
+  "confidence": "high",
+  "timeline": [
+    {
+      "versionId": "1234567880",
+      "value": "#2563EB",
+      "createdAt": "2026-05-20T12:00:00.000Z"
+    },
+    {
+      "versionId": "1234567890",
+      "value": "#1D4ED8",
+      "createdAt": "2026-05-22T16:00:00.000Z"
+    }
+  ]
+}
+```
+
 Role in the design process:
 
 - Supports design review and regression investigation.
@@ -547,6 +1550,42 @@ What it does:
 
 - Fetches comments from a Figma file through the REST API.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "comments": [
+    {
+      "id": "1627922741",
+      "message": "Can we increase contrast on the helper text?",
+      "user": {
+        "handle": "Maya",
+        "img_url": "https://..."
+      },
+      "created_at": "2026-06-08T21:15:00.000Z",
+      "resolved_at": null,
+      "client_meta": {
+        "node_id": "812:44",
+        "node_offset": { "x": 12, "y": 8 }
+      },
+      "replies": [
+        {
+          "id": "1627922742",
+          "message": "Agree, marking this for token update.",
+          "user": { "handle": "Lee" }
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total": 24,
+    "active": 6,
+    "resolved": 18,
+    "returned": 1
+  }
+}
+```
+
 Role in the design process:
 
 - Brings design review context into the agent workflow.
@@ -562,6 +1601,25 @@ What it does:
 
 - Posts a comment to a Figma file.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "comment": {
+    "id": "1627923000",
+    "message": "Border radius in code uses 8px but Figma shows 12px.",
+    "created_at": "2026-06-09T18:42:00.000Z",
+    "user": {
+      "handle": "Figma Console MCP"
+    },
+    "client_meta": {
+      "node_id": "695:313",
+      "node_offset": { "x": 10, "y": 10 }
+    }
+  }
+}
+```
+
 Role in the design process:
 
 - Lets agents leave review notes, implementation questions, or change summaries directly in Figma.
@@ -575,6 +1633,15 @@ Local project gap:
 What it does:
 
 - Deletes a Figma comment.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "deleted_comment_id": "1627923000"
+}
+```
 
 Role in the design process:
 
@@ -594,6 +1661,34 @@ What it does:
 
 - Retrieves version history for a Figma file.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "versions": [
+    {
+      "id": "1234567890",
+      "label": "Button color refresh",
+      "description": "Updated primary and secondary button colors.",
+      "created_at": "2026-05-22T16:00:00.000Z",
+      "user": {
+        "handle": "Maya",
+        "email": "maya@example.com"
+      }
+    },
+    {
+      "id": "1234567800",
+      "label": "Pre-release audit",
+      "created_at": "2026-05-20T12:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "nextPage": "cursor-2"
+  }
+}
+```
+
 Role in the design process:
 
 - Provides historical context for design changes.
@@ -608,6 +1703,43 @@ Local project gap:
 What it does:
 
 - Retrieves file data at a specific version.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "versionId": "1234567890",
+  "name": "Core Design System",
+  "lastModified": "2026-05-22T16:00:00.000Z",
+  "document": {
+    "id": "0:0",
+    "name": "Document",
+    "type": "DOCUMENT",
+    "children": [
+      {
+        "id": "0:1",
+        "name": "Components",
+        "type": "CANVAS",
+        "children": [
+          {
+            "id": "700:1",
+            "name": "Button",
+            "type": "COMPONENT_SET"
+          }
+        ]
+      }
+    ]
+  },
+  "components": {
+    "componentSetKey123": {
+      "name": "Button",
+      "node_id": "700:1"
+    }
+  },
+  "styles": {}
+}
+```
 
 Role in the design process:
 
@@ -624,6 +1756,47 @@ What it does:
 
 - Computes differences between Figma file versions.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "fromVersion": {
+    "id": "1234567800",
+    "label": "Pre-release audit"
+  },
+  "toVersion": {
+    "id": "1234567890",
+    "label": "Button color refresh"
+  },
+  "summary": {
+    "pagesChanged": 1,
+    "nodesAdded": 2,
+    "nodesRemoved": 0,
+    "nodesChanged": 8,
+    "componentPropertyChanges": 1,
+    "tokenBindingChanges": 3
+  },
+  "changes": [
+    {
+      "type": "PROPERTY_CHANGE",
+      "nodeId": "700:2",
+      "nodeName": "Button / Primary",
+      "property": "fills.0.color",
+      "before": "#2563EB",
+      "after": "#1D4ED8"
+    },
+    {
+      "type": "COMPONENT_PROPERTY_CHANGE",
+      "nodeId": "700:1",
+      "property": "Show icon",
+      "before": false,
+      "after": true
+    }
+  ]
+}
+```
+
 Role in the design process:
 
 - Helps reviewers understand what changed between milestones.
@@ -639,6 +1812,36 @@ What it does:
 
 - Summarizes changes since a selected version.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "baseVersion": {
+    "id": "1234567800",
+    "label": "Pre-release audit"
+  },
+  "currentVersion": {
+    "id": "current",
+    "label": "Current file"
+  },
+  "summary": {
+    "nodesChanged": 12,
+    "componentsChanged": 3,
+    "stylesChanged": 1
+  },
+  "changes": [
+    {
+      "type": "STYLE_CHANGE",
+      "styleName": "Text/Body MD",
+      "property": "fontSize",
+      "before": 15,
+      "after": 16
+    }
+  ]
+}
+```
+
 Role in the design process:
 
 - Helps teams review recent design changes without manually scanning the file.
@@ -653,6 +1856,32 @@ What it does:
 
 - Returns design changes tracked by the southleft bridge and/or version tooling.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "since": "2026-06-09T18:00:00.000Z",
+  "summary": {
+    "changes": 5,
+    "propertyChanges": 3,
+    "nodeAdds": 1,
+    "nodeDeletes": 1
+  },
+  "changes": [
+    {
+      "timestamp": "2026-06-09T18:35:12.000Z",
+      "type": "PROPERTY_CHANGE",
+      "nodeId": "812:44",
+      "nodeName": "Helper text",
+      "property": "fills",
+      "oldValue": "#9CA3AF",
+      "newValue": "#6B7280"
+    }
+  ],
+  "source": "desktop-bridge"
+}
+```
+
 Role in the design process:
 
 - Helps agents notice recent edits and avoid stale assumptions.
@@ -666,6 +1895,31 @@ Local project gap:
 What it does:
 
 - Generates a changelog from Figma version/change data.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "fromVersion": "1234567800",
+  "toVersion": "current",
+  "markdown": "# Design Changelog\n\n## Components\n\n- Button: primary fill changed from #2563EB to #1D4ED8.\n- Input: added Focus state variant.\n\n## Tokens\n\n- color/action/primary updated in Light mode.\n",
+  "summary": {
+    "componentsChanged": 2,
+    "tokensChanged": 1,
+    "stylesChanged": 0,
+    "comments": 3
+  },
+  "changesByCategory": {
+    "components": [
+      { "name": "Button", "change": "Primary fill updated" }
+    ],
+    "tokens": [
+      { "name": "color/action/primary", "before": "#2563EB", "after": "#1D4ED8" }
+    ]
+  }
+}
+```
 
 Role in the design process:
 
@@ -685,6 +1939,51 @@ What it does:
 - Retrieves Figma file structure through the REST API.
 - Supports depth limits, specific node IDs, verbosity levels, and optional enrichment.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "name": "Core Design System",
+  "lastModified": "2026-06-09T18:00:00.000Z",
+  "version": "1234567890",
+  "document": {
+    "id": "0:0",
+    "name": "Document",
+    "type": "DOCUMENT",
+    "children": [
+      {
+        "id": "0:1",
+        "name": "Components",
+        "type": "CANVAS",
+        "children": [
+          {
+            "id": "700:1",
+            "name": "Button",
+            "type": "COMPONENT_SET",
+            "absoluteBoundingBox": { "x": 120, "y": 80, "width": 400, "height": 240 }
+          }
+        ]
+      }
+    ]
+  },
+  "components": {
+    "componentSetKey123": {
+      "name": "Button",
+      "node_id": "700:1",
+      "description": "Actions and navigation triggers"
+    }
+  },
+  "styles": {
+    "styleKey123": {
+      "name": "Text/Body MD",
+      "style_type": "TEXT"
+    }
+  },
+  "schemaVersion": 0
+}
+```
+
 Role in the design process:
 
 - Useful for broad file discovery without relying on a live plugin traversal.
@@ -699,6 +1998,39 @@ Local project gap:
 What it does:
 
 - Retrieves file data shaped for Figma plugin development or file-structure inspection.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "fileName": "Core Design System",
+  "pluginView": {
+    "pages": [
+      {
+        "id": "0:1",
+        "name": "Components",
+        "childCount": 42
+      }
+    ],
+    "nodes": [
+      {
+        "id": "700:1",
+        "name": "Button",
+        "type": "COMPONENT_SET",
+        "parentId": "0:1",
+        "children": ["700:2", "700:3"],
+        "pluginData": {},
+        "sharedPluginData": {}
+      }
+    ]
+  },
+  "apiHints": {
+    "nodeIdsUseColonFormat": true,
+    "depthLimited": true
+  }
+}
+```
 
 Role in the design process:
 
@@ -716,6 +2048,67 @@ What it does:
 - Retrieves Figma variables through REST and/or bridge fallback depending on mode.
 - Includes formatting and resolution helpers.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "collections": [
+    {
+      "id": "VariableCollectionId:1:1",
+      "name": "Color",
+      "modes": [
+        { "modeId": "1:0", "name": "Light" },
+        { "modeId": "1:1", "name": "Dark" }
+      ],
+      "variableIds": ["VariableID:1:10"]
+    }
+  ],
+  "variables": [
+    {
+      "id": "VariableID:1:10",
+      "name": "action/primary",
+      "resolvedType": "COLOR",
+      "collectionId": "VariableCollectionId:1:1",
+      "valuesByMode": {
+        "1:0": "#2563EB",
+        "1:1": "#60A5FA"
+      }
+    }
+  ],
+  "summary": {
+    "collections": 1,
+    "variables": 1
+  },
+  "exports": {
+    "css": ":root { --color-action-primary: #2563EB; }\n.dark { --color-action-primary: #60A5FA; }",
+    "tailwind": {
+      "theme": {
+        "extend": {
+          "colors": {
+            "action-primary": "#2563EB"
+          }
+        }
+      }
+    }
+  },
+  "usage": [
+    {
+      "variableId": "VariableID:1:10",
+      "consumers": [
+        { "nodeId": "700:2", "nodeName": "Button / Primary", "property": "fills.0.color" }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "from": "color/action/primary-hover",
+      "to": "color/action/primary"
+    }
+  ]
+}
+```
+
 Role in the design process:
 
 - Supports token inspection and design-system analysis.
@@ -729,6 +2122,50 @@ Local project gap:
 What it does:
 
 - Retrieves Figma styles through REST-backed tooling.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "fileKey": "abc123",
+  "styles": [
+    {
+      "key": "styleKey123",
+      "node_id": "S:1",
+      "name": "Text/Body MD",
+      "style_type": "TEXT",
+      "description": "Default body copy",
+      "resolvedValue": {
+        "fontFamily": "Inter",
+        "fontSize": 16,
+        "fontWeight": 400,
+        "lineHeight": 24,
+        "letterSpacing": 0
+      },
+      "usage": [
+        { "nodeId": "900:13", "nodeName": "Paragraph" }
+      ]
+    },
+    {
+      "key": "styleKey456",
+      "name": "Color/Primary",
+      "style_type": "FILL",
+      "resolvedValue": {
+        "fills": [{ "type": "SOLID", "color": "#2563EB" }]
+      }
+    }
+  ],
+  "summary": {
+    "paint": 1,
+    "text": 1,
+    "effect": 0,
+    "grid": 0
+  },
+  "exports": {
+    "css": "--color-primary: #2563EB;"
+  }
+}
+```
 
 Role in the design process:
 
@@ -747,6 +2184,33 @@ What it does:
 - Creates an instance from a component key and/or node ID.
 - Supports variants, overrides, position, and parent placement.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "instance": {
+    "id": "1200:44",
+    "name": "Button / Primary Instance",
+    "type": "INSTANCE",
+    "mainComponentId": "700:2",
+    "componentKey": "variantKey123",
+    "parentId": "0:1",
+    "position": { "x": 320, "y": 160 },
+    "size": { "width": 144, "height": 44 }
+  },
+  "appliedProperties": {
+    "Label": "Continue",
+    "Show icon": false
+  },
+  "variantSelection": {
+    "Variant": "Primary",
+    "Size": "Medium"
+  },
+  "warnings": []
+}
+```
+
 Role in the design process:
 
 - Encourages reuse of existing design-system components.
@@ -763,6 +2227,28 @@ What it does:
 - Creates a child node under a parent with a generic node type and properties.
 - Supports common primitives such as rectangles, ellipses, frames, text, lines, polygons, stars, and vectors.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "node": {
+    "id": "1200:45",
+    "name": "New card",
+    "type": "FRAME",
+    "parentId": "0:1",
+    "absoluteBoundingBox": {
+      "x": 240,
+      "y": 240,
+      "width": 320,
+      "height": 180
+    },
+    "fills": [{ "type": "SOLID", "color": "#FFFFFF" }],
+    "layoutMode": "VERTICAL"
+  }
+}
+```
+
 Role in the design process:
 
 - Provides a flexible creation helper for rapid layout construction.
@@ -777,6 +2263,31 @@ What it does:
 
 - Sets node fills using Figma paint arrays, including hex colors and variable-bound paint handling.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "nodeId": "1200:45",
+  "nodeName": "New card",
+  "fills": [
+    {
+      "type": "SOLID",
+      "color": "#FFFFFF",
+      "variableId": "VariableID:1:30",
+      "boundVariableName": "color/surface/default"
+    }
+  ],
+  "appliedBindings": [
+    {
+      "property": "fills.0.color",
+      "variableId": "VariableID:1:30"
+    }
+  ],
+  "warnings": []
+}
+```
+
 Role in the design process:
 
 - Supports multi-fill and token-bound paint workflows.
@@ -790,6 +2301,32 @@ Local project gap:
 What it does:
 
 - Sets stroke paint arrays and optional stroke weight.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "nodeId": "1200:45",
+  "nodeName": "New card",
+  "strokes": [
+    {
+      "type": "SOLID",
+      "color": "#E5E7EB",
+      "variableId": "VariableID:1:40",
+      "boundVariableName": "color/border/default"
+    }
+  ],
+  "strokeWeight": 1,
+  "appliedBindings": [
+    {
+      "property": "strokes.0.color",
+      "variableId": "VariableID:1:40"
+    }
+  ],
+  "warnings": []
+}
+```
 
 Role in the design process:
 
@@ -806,6 +2343,24 @@ What it does:
 - Sets text content and optionally applies font size/family/style.
 - Includes fallback behavior for common font-style naming issues.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "nodeId": "1300:12",
+  "nodeName": "Button label",
+  "characters": "Continue",
+  "fontFamily": "Inter",
+  "fontStyle": "Semi Bold",
+  "fontSize": 14,
+  "normalizedFontStyle": "Semi Bold",
+  "warnings": [
+    "Requested fontStyle 'SemiBold' normalized to 'Semi Bold'."
+  ]
+}
+```
+
 Role in the design process:
 
 - Supports quick content editing and typography adjustment.
@@ -819,6 +2374,23 @@ Local project gap:
 What it does:
 
 - Sets component instance properties.
+
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "nodeId": "1200:44",
+  "nodeName": "Button / Primary Instance",
+  "appliedProperties": {
+    "Label": "Continue",
+    "Show icon": true,
+    "Variant": "Primary"
+  },
+  "failedProperties": [],
+  "warnings": []
+}
+```
 
 Role in the design process:
 
@@ -837,6 +2409,25 @@ What it does:
 - Executes arbitrary JavaScript in Figma's plugin context with access to the Figma Plugin API.
 - Can read or mutate almost anything the Plugin API allows.
 
+Example response / LLM-visible data:
+
+```json
+{
+  "success": true,
+  "result": {
+    "createdNodeIds": ["1400:1", "1400:2"],
+    "updatedNodeIds": ["1200:45"],
+    "summary": "Created two frames and updated one fill."
+  },
+  "logs": [
+    { "level": "info", "message": "Created frame 1400:1" }
+  ],
+  "warnings": [
+    "Result shape is arbitrary because it is defined by the executed code."
+  ]
+}
+```
+
 Role in the design process:
 
 - Enables one-off automation that no explicit MCP tool supports yet.
@@ -851,6 +2442,7 @@ Safety note:
 
 - This is powerful but risky. It bypasses the local project's core safety model: scope locking, name verification, batch validation, and predictable tool schemas.
 - If the local project ever adds an escape hatch, it should probably be separate, clearly dangerous, optionally disabled by default, and constrained by the same editable scope.
+
 
 ## Recommended Additions For The Local Project
 
