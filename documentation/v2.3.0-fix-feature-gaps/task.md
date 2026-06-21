@@ -31,17 +31,17 @@
 - [ ] **Live Testing**: recorded in Phase 6 (URL **and** base64 fills render; an **oversized PNG/JPEG via `bytesBase64` is auto-resized** and renders with a warning; an oversized `url` image and oversized GIF hit the rejection).
 
 ## Phase 2: §2 `variable_delete` WS-link stall (P0)
-- [ ] **Plugin Update** (`figma_plugin/handlers/variableHandlers.ts`):
-  - [ ] Implement a time-budgeted yield in `findVariableConsumers` walk (`Date.now() - lastYield >= ~50ms`). Keep a node-count fallback.
-  - [ ] Refactor `deleteVariables` to scan pages concurrently using `Promise.all(figma.root.children.map(...))`.
-  - [ ] **Heartbeat *inside the walk* (not per page):** thread `commandId` from `params` into `findVariableConsumers`; on the same time-budget tick that yields, call `sendProgressUpdate(commandId, 'variable_delete', 'in_progress', …)`, **throttled to ~once/second**. Rationale: the first request timeout is 30 s (`figma-client.ts:317`) and only extends to 60 s after the first `progress_update`, so a large single-page doc would time out if the heartbeat waited for page completion.
-  - [ ] Do **not** gate the heartbeat on the `Promise.all` page loop completing (single-page docs emit only once, at the end — too late).
-- [ ] **Unit Testing**:
-  - [ ] Write a fake-timers test to ensure the walk yields correctly under the time budget.
-  - [ ] Verify `nodeConsumerMap` merges to the same result with concurrent promises as the prior sequential scan (fixture document).
-  - [ ] **Heartbeat fires from within the walk on a single-page fixture** that exceeds the time budget (proves it does not depend on page completion), carrying `params.commandId`; the ~1 s throttle prevents flooding on a fast scan.
-  - [ ] **Semantics regression:** the in-use rejection error and collection-mode intra-collection alias filtering (`variableHandlers.ts:559-570`) are unchanged after the concurrency refactor.
-- [ ] **Live Testing**: recorded in Phase 6 (large multi-page document delete stays connected with streaming progress).
+- [x] **Plugin Update** (`figma_plugin/handlers/variableHandlers.ts`):
+  - [x] Implement a time-budgeted yield in `findVariableConsumers` walk (`Date.now() - lastYield >= ~50ms`). Keep a node-count fallback.
+  - [x] Refactor `deleteVariables` to scan pages concurrently using `Promise.all(figma.root.children.map(...))`.
+  - [x] **Heartbeat *inside the walk* (not per page):** thread `commandId` from `params` into `findVariableConsumers`; on the same time-budget tick that yields, call `sendProgressUpdate(commandId, 'variable_delete', 'in_progress', …)`, **throttled to ~once/second**. Rationale: the first request timeout is 30 s (`figma-client.ts:317`) and only extends to 60 s after the first `progress_update`, so a large single-page doc would time out if the heartbeat waited for page completion.
+  - [x] Do **not** gate the heartbeat on the `Promise.all` page loop completing (single-page docs emit only once, at the end — too late).
+- [x] **Unit Testing**:
+  - [x] Write a fake-timers test to ensure the walk yields correctly under the time budget.
+  - [x] Verify `nodeConsumerMap` merges to the same result with concurrent promises as the prior sequential scan (fixture document).
+  - [x] **Heartbeat fires from within the walk on a single-page fixture** that exceeds the time budget (proves it does not depend on page completion), carrying `params.commandId`; the ~1 s throttle prevents flooding on a fast scan.
+  - [x] **Semantics regression:** the in-use rejection error and collection-mode intra-collection alias filtering (`variableHandlers.ts:559-570`) are unchanged after the concurrency refactor.
+- [x] **Live Testing**: recorded in Phase 6 (large multi-page document delete stays connected with streaming progress).
 
 ## Phase 3: §3 Variable `scopes` write support (P1)
 - [ ] **Schema Update** (`src/mcp_server/tools/variable.ts`):

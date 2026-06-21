@@ -3821,12 +3821,29 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     }
     return consumerMap;
   }
-  async function findVariableConsumers(rootNode, variableIds) {
+  async function findVariableConsumers(rootNode, variableIds, commandId, commandType = "variable_delete") {
     const consumerMap = /* @__PURE__ */ new Map();
     let walkCount = 0;
+    let lastYield = Date.now();
+    let lastHeartbeat = Date.now();
     async function walk(node) {
-      if (++walkCount % 500 === 0) {
+      walkCount++;
+      const now = Date.now();
+      if (now - lastYield >= 50 || walkCount % 500 === 0) {
         await new Promise((r) => setTimeout(r, 0));
+        lastYield = Date.now();
+        if (commandId && Date.now() - lastHeartbeat >= 1e3) {
+          await sendProgressUpdate(
+            commandId,
+            commandType,
+            "in_progress",
+            50,
+            1,
+            0,
+            `Scanning nodes for consumers (checked ${walkCount} so far)...`
+          );
+          lastHeartbeat = Date.now();
+        }
       }
       const boundVars = node.boundVariables;
       if (boundVars) {
@@ -4067,11 +4084,11 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             if (pageNode.type !== "PAGE") {
               throw new Error("pageId does not resolve to a PAGE");
             }
-            nodeConsumerMap = await findVariableConsumers(pageNode, idSet);
+            nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, "get_variables");
           } else {
             const pages = figma.root.children;
             for (const [index, page] of pages.entries()) {
-              const pageConsumers = await findVariableConsumers(page, idSet);
+              const pageConsumers = await findVariableConsumers(page, idSet, commandId, "get_variables");
               for (const [vid, entries] of pageConsumers) {
                 const existing = nodeConsumerMap.get(vid) || [];
                 nodeConsumerMap.set(vid, existing.concat(entries));
@@ -4138,7 +4155,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   }
   async function deleteVariables(params) {
     var _a;
-    const { variableIds, variableNames, collectionId, collectionName } = params || {};
+    const { variableIds, variableNames, collectionId, collectionName, commandId } = params || {};
     if (variableIds && collectionId) {
       throw new Error("Provide either variableIds or collectionId, not both");
     }
@@ -4189,12 +4206,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     const idSet = new Set(idsToCheck);
     const stylePromise = findStyleConsumers(idSet);
     const aliasPromise = findAliasConsumers(idSet);
-    const styleConsumerMap = await stylePromise;
-    const _aliasConsumerMap = await aliasPromise;
-    const _nodeMaps = [];
-    for (const page of figma.root.children) {
-      _nodeMaps.push(await findVariableConsumers(page, idSet));
-    }
+    const nodeMapsPromises = figma.root.children.map((page) => findVariableConsumers(page, idSet, commandId, "variable_delete"));
+    const [styleConsumerMap, _aliasConsumerMap, ..._nodeMaps] = await Promise.all([
+      stylePromise,
+      aliasPromise,
+      ...nodeMapsPromises
+    ]);
     const nodeConsumerMap = /* @__PURE__ */ new Map();
     for (const pageResults of _nodeMaps) {
       for (const [vid, entries] of pageResults) {
