@@ -87,6 +87,8 @@ bun test src/mcp_server/tests/<file>.test.ts   # one file
 
 Tests run against in-memory mocks; no Figma connection required. Please add or update tests for any tool change. See existing tests in `src/mcp_server/tests/` for the established patterns.
 
+Image test fixtures under `src/mcp_server/tests/fixtures/images/` are third-party Creative Commons / public-domain assets (not covered by this project's MIT license); see their [`CREDITS.md`](src/mcp_server/tests/fixtures/images/CREDITS.md) for per-file attribution and licensing.
+
 ---
 
 ## Code style and conventions

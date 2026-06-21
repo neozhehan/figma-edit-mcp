@@ -1658,13 +1658,104 @@
     return { childId: child.id, newParentId: parent.id, index: parent.children.indexOf(child) };
   }
 
+  // figma_plugin/utils/exportUtils.ts
+  function customBase64Encode(bytes) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let base64 = "";
+    const byteLength = bytes.byteLength;
+    const byteRemainder = byteLength % 3;
+    const mainLength = byteLength - byteRemainder;
+    let a, b, c, d;
+    let chunk;
+    for (let i = 0; i < mainLength; i = i + 3) {
+      chunk = bytes[i] << 16 | bytes[i + 1] << 8 | bytes[i + 2];
+      a = (chunk & 16515072) >> 18;
+      b = (chunk & 258048) >> 12;
+      c = (chunk & 4032) >> 6;
+      d = chunk & 63;
+      base64 += chars[a] + chars[b] + chars[c] + chars[d];
+    }
+    if (byteRemainder === 1) {
+      chunk = bytes[mainLength];
+      a = (chunk & 252) >> 2;
+      b = (chunk & 3) << 4;
+      base64 += chars[a] + chars[b] + "==";
+    } else if (byteRemainder === 2) {
+      chunk = bytes[mainLength] << 8 | bytes[mainLength + 1];
+      a = (chunk & 64512) >> 10;
+      b = (chunk & 1008) >> 4;
+      c = (chunk & 15) << 2;
+      base64 += chars[a] + chars[b] + chars[c] + "=";
+    }
+    return base64;
+  }
+  function base64ToBytes(b64) {
+    let base64 = b64.replace(/^data:.*?;base64,/, "");
+    while (base64.length % 4 !== 0) {
+      base64 += "=";
+    }
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
+      throw new Error("Invalid base64 string");
+    }
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const lookup = new Uint8Array(256);
+    for (let i = 0; i < chars.length; i++) {
+      lookup[chars.charCodeAt(i)] = i;
+    }
+    let bufferLength = base64.length * 0.75;
+    if (base64[base64.length - 1] === "=") bufferLength--;
+    if (base64[base64.length - 2] === "=") bufferLength--;
+    const bytes = new Uint8Array(bufferLength);
+    let p = 0;
+    for (let i = 0; i < base64.length; i += 4) {
+      const encoded1 = lookup[base64.charCodeAt(i)];
+      const encoded2 = lookup[base64.charCodeAt(i + 1)];
+      const encoded3 = lookup[base64.charCodeAt(i + 2)];
+      const encoded4 = lookup[base64.charCodeAt(i + 3)];
+      bytes[p++] = encoded1 << 2 | encoded2 >> 4;
+      if (base64[i + 2] !== "=") {
+        bytes[p++] = (encoded2 & 15) << 4 | encoded3 >> 2;
+        if (base64[i + 3] !== "=") {
+          bytes[p++] = (encoded3 & 3) << 6 | encoded4 & 63;
+        }
+      }
+    }
+    return bytes;
+  }
+  function bytesToUtf8(bytes) {
+    if (typeof TextDecoder !== "undefined") {
+      return new TextDecoder("utf-8").decode(bytes);
+    }
+    let out = "";
+    let i = 0;
+    const len = bytes.length;
+    while (i < len) {
+      const b1 = bytes[i++];
+      if (b1 < 128) {
+        out += String.fromCharCode(b1);
+      } else if (b1 >= 192 && b1 < 224) {
+        const b2 = bytes[i++];
+        out += String.fromCharCode((b1 & 31) << 6 | b2 & 63);
+      } else if (b1 >= 224 && b1 < 240) {
+        const b2 = bytes[i++];
+        const b3 = bytes[i++];
+        out += String.fromCharCode((b1 & 15) << 12 | (b2 & 63) << 6 | b3 & 63);
+      } else {
+        const b2 = bytes[i++];
+        const b3 = bytes[i++];
+        const b4 = bytes[i++];
+        let cp = (b1 & 7) << 18 | (b2 & 63) << 12 | (b3 & 63) << 6 | b4 & 63;
+        cp -= 65536;
+        out += String.fromCharCode(55296 + (cp >> 10), 56320 + (cp & 1023));
+      }
+    }
+    return out;
+  }
+
   // figma_plugin/handlers/stylingHandlers.ts
   async function setFillColor(params) {
     console.log("setFillColor", params);
-    const {
-      nodeId,
-      color: { r, g, b, a }
-    } = params || {};
+    const { nodeId, color, image } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
     }
@@ -1675,21 +1766,74 @@
     if (!("fills" in node)) {
       throw new Error(`Node does not support fills: ${nodeId}`);
     }
-    const rgbColor = {
-      r: parseFloat(r) || 0,
-      g: parseFloat(g) || 0,
-      b: parseFloat(b) || 0,
-      a: a !== void 0 ? parseFloat(a) : 1
-    };
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(rgbColor.r),
-        g: parseFloat(rgbColor.g),
-        b: parseFloat(rgbColor.b)
-      },
-      opacity: parseFloat(rgbColor.a)
-    };
+    if (color && image) {
+      throw new Error("node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.");
+    }
+    if (!color && !image) {
+      throw new Error("node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.");
+    }
+    let paintStyle;
+    if (color) {
+      const { r, g, b, a } = color;
+      const rgbColor = {
+        r: parseFloat(r) || 0,
+        g: parseFloat(g) || 0,
+        b: parseFloat(b) || 0,
+        a: a !== void 0 ? parseFloat(a) : 1
+      };
+      paintStyle = {
+        type: "SOLID",
+        color: {
+          r: parseFloat(rgbColor.r),
+          g: parseFloat(rgbColor.g),
+          b: parseFloat(rgbColor.b)
+        },
+        opacity: parseFloat(rgbColor.a)
+      };
+    } else {
+      const { url, bytesBase64, scaleMode, opacity } = image;
+      if (url && bytesBase64) {
+        throw new Error("node_set_fill: image requires exactly one of 'url' or 'bytesBase64'.");
+      }
+      if (!url && !bytesBase64) {
+        throw new Error("node_set_fill: image requires exactly one of 'url' or 'bytesBase64'.");
+      }
+      let figmaImage;
+      try {
+        if (url) {
+          try {
+            figmaImage = await figma.createImageAsync(url);
+          } catch (e) {
+            if (e.message && (e.message.includes("is too large") || e.message.includes("type is unsupported") || e.message.includes("is too small"))) {
+              throw e;
+            }
+            throw new Error(`node_set_fill: could not fetch image from URL '${url}' (network/CORS). createImageAsync needs a directly fetchable, public URL to a PNG/JPEG/GIF.`);
+          }
+        } else {
+          let bytes;
+          try {
+            bytes = base64ToBytes(bytesBase64);
+          } catch (e) {
+            throw new Error("node_set_fill: 'bytesBase64' is not valid base64. Provide base64-encoded raw PNG/JPEG/GIF bytes.");
+          }
+          figmaImage = figma.createImage(bytes);
+        }
+      } catch (e) {
+        let msg = e.message || String(e);
+        if (msg.startsWith("node_set_fill:")) {
+          throw e;
+        }
+        throw new Error(`node_set_fill: Figma rejected the image \u2014 '${msg}'. Images must be PNG/JPEG/GIF, \u22644096px per side. PNG/JPEG bytes are auto-resized; this typically means an oversized 'url' image, an oversized GIF, or an unsupported/too-small image \u2014 pre-resize or convert it.`);
+      }
+      paintStyle = {
+        type: "IMAGE",
+        imageHash: figmaImage.hash,
+        scaleMode: scaleMode || "FILL"
+      };
+      if (opacity !== void 0) {
+        paintStyle.opacity = opacity;
+      }
+    }
     console.log("paintStyle", paintStyle);
     node.fills = [paintStyle];
     return {
@@ -1952,67 +2096,6 @@
       // Return other properties? Maybe just name/id/mode is enough. 
       // Let's return what we have in the original implementation sort of.
     };
-  }
-
-  // figma_plugin/utils/exportUtils.ts
-  function customBase64Encode(bytes) {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let base64 = "";
-    const byteLength = bytes.byteLength;
-    const byteRemainder = byteLength % 3;
-    const mainLength = byteLength - byteRemainder;
-    let a, b, c, d;
-    let chunk;
-    for (let i = 0; i < mainLength; i = i + 3) {
-      chunk = bytes[i] << 16 | bytes[i + 1] << 8 | bytes[i + 2];
-      a = (chunk & 16515072) >> 18;
-      b = (chunk & 258048) >> 12;
-      c = (chunk & 4032) >> 6;
-      d = chunk & 63;
-      base64 += chars[a] + chars[b] + chars[c] + chars[d];
-    }
-    if (byteRemainder === 1) {
-      chunk = bytes[mainLength];
-      a = (chunk & 252) >> 2;
-      b = (chunk & 3) << 4;
-      base64 += chars[a] + chars[b] + "==";
-    } else if (byteRemainder === 2) {
-      chunk = bytes[mainLength] << 8 | bytes[mainLength + 1];
-      a = (chunk & 64512) >> 10;
-      b = (chunk & 1008) >> 4;
-      c = (chunk & 15) << 2;
-      base64 += chars[a] + chars[b] + chars[c] + "=";
-    }
-    return base64;
-  }
-  function bytesToUtf8(bytes) {
-    if (typeof TextDecoder !== "undefined") {
-      return new TextDecoder("utf-8").decode(bytes);
-    }
-    let out = "";
-    let i = 0;
-    const len = bytes.length;
-    while (i < len) {
-      const b1 = bytes[i++];
-      if (b1 < 128) {
-        out += String.fromCharCode(b1);
-      } else if (b1 >= 192 && b1 < 224) {
-        const b2 = bytes[i++];
-        out += String.fromCharCode((b1 & 31) << 6 | b2 & 63);
-      } else if (b1 >= 224 && b1 < 240) {
-        const b2 = bytes[i++];
-        const b3 = bytes[i++];
-        out += String.fromCharCode((b1 & 15) << 12 | (b2 & 63) << 6 | b3 & 63);
-      } else {
-        const b2 = bytes[i++];
-        const b3 = bytes[i++];
-        const b4 = bytes[i++];
-        let cp = (b1 & 7) << 18 | (b2 & 63) << 12 | (b3 & 63) << 6 | b4 & 63;
-        cp -= 65536;
-        out += String.fromCharCode(55296 + (cp >> 10), 56320 + (cp & 1023));
-      }
-    }
-    return out;
   }
 
   // figma_plugin/handlers/componentHandlers.ts

@@ -71,6 +71,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
+    "jimp": "^0.22.12",
     "uuid": "14.0.0",
     "ws": "8.20.0",
     "zod": "4.4.3"

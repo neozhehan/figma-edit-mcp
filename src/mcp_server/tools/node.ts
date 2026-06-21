@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
 import { toolResult } from "./_result.js";
+import { resizeIfOversized } from "../imageResize.js";
 
 // A node_info result entry. The entry shape is typed (so callers know each node
 // carries id/name/type and optional properties/children/path/descendantCount),
@@ -417,34 +418,84 @@ export function registerNodeTools(server: McpServer) {
         "node_set_fill",
         {
             title: "Set Fill Color",
-            description: "Set a node's fill to a literal RGBA color. Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token.",
+            description: "Set a node's fill to a literal RGBA color or an image. Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
                 nodeName: z.string().describe("Name of the node to modify"),
-                r: z.number().min(0).max(1).describe("Red component (0-1)"),
-                g: z.number().min(0).max(1).describe("Green component (0-1)"),
-                b: z.number().min(0).max(1).describe("Blue component (0-1)"),
+                r: z.number().min(0).max(1).optional().describe("Red component (0-1)"),
+                g: z.number().min(0).max(1).optional().describe("Green component (0-1)"),
+                b: z.number().min(0).max(1).optional().describe("Blue component (0-1)"),
                 a: z
                     .number()
                     .min(0)
                     .max(1)
                     .optional()
                     .describe("Alpha component (0-1)"),
+                image: z.object({
+                    url: z.string().url().optional().describe("HTTP(S) URL to a PNG/JPEG/GIF the plugin fetches via createImageAsync. Max 4096px per side and NOT resized — pre-resize larger images yourself, or use bytesBase64 (which is auto-resized)."),
+                    bytesBase64: z.string().optional().describe("Base64-encoded raw PNG/JPEG/GIF bytes. PNG/JPEG over 4096px per side are auto-downscaled server-side (aspect ratio preserved); GIF is not resized. Very large PNG/JPEG (over ~45 megapixels) exceed the server resize budget and are rejected — pre-resize those yourself. Heavier over the socket."),
+                    scaleMode: z.enum(["FILL","FIT","CROP","TILE"]).optional().describe("default FILL"),
+                    opacity: z.number().min(0).max(1).optional().describe("Alpha opacity component for the image (0-1)"),
+                }).optional().describe("Optional image payload. Must provide exactly one of solid color or image.")
+            }).superRefine((data, ctx) => {
+                const hasSolid = data.r !== undefined && data.g !== undefined && data.b !== undefined;
+                const hasPartialRGB = !hasSolid && (data.r !== undefined || data.g !== undefined || data.b !== undefined);
+                const hasImage = data.image !== undefined;
+                
+                if (hasSolid && hasImage) {
+                    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither." });
+                } else if (!hasSolid && !hasImage) {
+                    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither." });
+                } else if (hasPartialRGB) {
+                    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither." });
+                }
+                
+                if (hasImage && data.image) {
+                    const hasUrl = data.image.url !== undefined;
+                    const hasBytes = data.image.bytesBase64 !== undefined;
+                    if (hasUrl && hasBytes) {
+                        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "node_set_fill: image requires exactly one of 'url' or 'bytesBase64'." });
+                    } else if (!hasUrl && !hasBytes) {
+                        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "node_set_fill: image requires exactly one of 'url' or 'bytesBase64'." });
+                    }
+                }
             }),
             outputSchema: z.object({
                 name: z.string().describe("Name of the modified node"),
+                warnings: z.array(z.string()).optional().describe("Warnings from the operation (e.g., resizing)"),
             }),
             annotations: {
                 idempotentHint: true,
                 openWorldHint: true
             }
         },
-        async ({ nodeId, nodeName, r, g, b, a }: any) => {
-            const result = await sendCommandToFigma("node_set_fill", {
-                nodeId,
-                nodeName,
-                color: { r, g, b, a: a ?? 1 },
-            });
+        async ({ nodeId, nodeName, r, g, b, a, image }: any) => {
+            let processedImage = image;
+            let warning: string | undefined;
+
+            if (image && image.bytesBase64) {
+                const resizeResult = await resizeIfOversized(image.bytesBase64);
+                processedImage = {
+                    ...image,
+                    bytesBase64: resizeResult.base64
+                };
+                warning = resizeResult.warning;
+            }
+
+            const payload: any = { nodeId, nodeName };
+            if (image) {
+                payload.image = processedImage;
+            } else {
+                payload.color = { r, g, b, a: a ?? 1 };
+            }
+
+            const result = await sendCommandToFigma("node_set_fill", payload);
+            
+            if (warning) {
+                if (!result.warnings) result.warnings = [];
+                result.warnings.push(warning);
+            }
+            
             return toolResult(result);
         }
     );

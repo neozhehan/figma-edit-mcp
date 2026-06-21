@@ -216,6 +216,25 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             expect("node_select" in registered).toBe(false);
             expect("ids" in registered["view_navigate"].inputSchema.shape).toBe(true);
         });
+
+        it("node_set_fill requires solid color or image, not both, not neither, and partial RGB is rejected", () => {
+            const schema = (server as any)._registeredTools["node_set_fill"].inputSchema;
+            // Valid solid
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", r: 1, g: 0, b: 0 }).success).toBe(true);
+            // Valid image
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", image: { url: "http://example.com/img.png" } }).success).toBe(true);
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", image: { bytesBase64: "YWJj" } }).success).toBe(true);
+            // Invalid: both
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", r: 1, g: 0, b: 0, image: { url: "http://example.com/img.png" } }).success).toBe(false);
+            // Invalid: neither
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A" }).success).toBe(false);
+            // Invalid: partial RGB
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", r: 1, g: 0 }).success).toBe(false);
+            // Invalid: image with both url and bytesBase64
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", image: { url: "http://example.com/img.png", bytesBase64: "YWJj" } }).success).toBe(false);
+            // Invalid: image with neither url nor bytesBase64
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", image: { scaleMode: "FIT" } }).success).toBe(false);
+        });
     });
 
     describe("Tool routing & payload verification", () => {
