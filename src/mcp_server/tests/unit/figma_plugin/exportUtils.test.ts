@@ -21,6 +21,19 @@ describe("exportUtils", () => {
             expect(decoded).toEqual(new Uint8Array([72, 101, 108, 108, 111]));
         });
 
+        it("tolerates line-wrapped (RFC 2045 MIME) base64", () => {
+            // Encode 60 bytes, then wrap at 76 chars with CRLF like a MIME encoder.
+            const original = new Uint8Array(Array.from({ length: 60 }, (_, i) => (i * 7) % 256));
+            const wrapped = customBase64Encode(original).replace(/(.{4})/g, "$1\r\n");
+            const decoded = base64ToBytes(wrapped);
+            expect(decoded).toEqual(original);
+        });
+
+        it("tolerates surrounding/embedded whitespace and a data URI prefix together", () => {
+            const decoded = base64ToBytes("  data:image/png;base64,\nSGVs bG8=\n ");
+            expect(decoded).toEqual(new Uint8Array([72, 101, 108, 108, 111]));
+        });
+
         it("throws on invalid base64", () => {
             expect(() => base64ToBytes("not_base64_@!")).toThrow("Invalid base64 string");
         });

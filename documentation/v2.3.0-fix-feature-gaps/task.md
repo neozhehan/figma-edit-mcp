@@ -81,10 +81,10 @@
   - [x] Update `constraints.md` and SKILL guidance (variable scope creation requirement).
 
 ## Phase 6: Rollout
-- [ ] **Version Bump**:
-  - [ ] Update `package.json` version from `2.2.0` to `2.3.0`.
-- [ ] **CHANGELOG**:
-  - [ ] Add a `v2.3.0` entry to `CHANGELOG.md` covering §1–§4 (image fills + bytes auto-resize, `variable_delete` responsiveness, variable `scopes`, `style_manage` `blendMode` fix).
+- [x] **Version Bump**:
+  - [x] Update `package.json` version from `2.2.0` to `2.3.0`.
+- [x] **CHANGELOG**:
+  - [x] Add a `v2.3.0` entry to `CHANGELOG.md` covering §1–§4 (image fills + bytes auto-resize, `variable_delete` responsiveness, variable `scopes`, `style_manage` `blendMode` fix).
 - [x] **Build**:
   - [x] `npm install` (pulls in the new `jimp` dependency); rebuild the MCP server (`src/mcp_server` → `dist/`) and confirm `jimp` bundles/resolves under both Node and Bun.
   - [x] Rebuild the plugin (TS handlers → `figma_plugin/code.js`) and confirm the changed dispatch cases are present.
@@ -94,6 +94,6 @@
     - **`url` path:** the same files via their source URLs — small render; large of **any** format → rejection (url never resized).
     - **Error UX:** color+image together, image with neither/both source, bad URL, invalid base64.
   - [x] **§1 fixture-URL liveness** (network; under `test:live` / `scripts/live-verify.ts`, not the unit suite): each source URL in the §1 fixtures table returns HTTP 200 + expected content-type — guards against link rot.
-  - [ ] **§2** — delete a large collection on a document with a **single very large page** (the worst case for the 30 s first-timeout); confirm the link stays alive with streaming progress and no inactivity timeout. Repeat on a multi-page doc.
-  - [ ] **§3** — create a COLOR variable with `scopes:["ALL_FILLS"]`; confirm scopes in the Figma UI.
-  - [ ] **§4** — create an EFFECT style with a shadow that omits `blendMode`; confirm success. Smoke-test `node_set_effects` still applies a shadow (shared-helper regression).
+  - [x] **§2** — delete a large collection on a document with a **single very large page** (the worst case for the 30 s first-timeout); confirm the link stays alive with streaming progress and no inactivity timeout. Repeat on a multi-page doc.
+  - [x] **§3** — create a COLOR variable with `scopes:["ALL_FILLS"]`; confirm scopes in the Figma UI.
+  - [x] **§4** — create an EFFECT style with a shadow that omits `blendMode`; confirm success. Smoke-test `node_set_effects` still applies a shadow (shared-helper regression).

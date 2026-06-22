@@ -1690,7 +1690,7 @@
     return base64;
   }
   function base64ToBytes(b64) {
-    let base64 = b64.replace(/^data:.*?;base64,/, "");
+    let base64 = b64.replace(/\s/g, "").replace(/^data:.*?;base64,/, "");
     while (base64.length % 4 !== 0) {
       base64 += "=";
     }

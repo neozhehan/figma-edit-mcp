@@ -65,7 +65,13 @@ export function customBase64Encode(bytes: any) {
  * @returns {Uint8Array} Decoded bytes
  */
 export function base64ToBytes(b64: string): Uint8Array {
-    let base64 = b64.replace(/^data:.*?;base64,/, "");
+    // Remove all whitespace first, then strip an optional data: URI prefix.
+    // RFC 2045 MIME base64 legitimately wraps lines (CRLF every 76 chars) and
+    // some encoders emit it, so tolerate any embedded whitespace rather than
+    // rejecting it — otherwise wrapped input fails the strict charset check
+    // below. Whitespace-first also lets the anchored prefix strip survive any
+    // leading whitespace.
+    let base64 = b64.replace(/\s/g, "").replace(/^data:.*?;base64,/, "");
     // Add padding if missing
     while (base64.length % 4 !== 0) {
         base64 += "=";
