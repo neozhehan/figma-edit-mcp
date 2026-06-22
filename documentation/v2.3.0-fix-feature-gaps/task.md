@@ -72,13 +72,13 @@
 - [x] **Live Testing**: recorded in Phase 6 (create an EFFECT style with a shadow omitting `blendMode`; smoke-test `node_set_effects` still applies a shadow).
 
 ## Phase 5: Documentation & Tool Descriptions
-- [ ] **Inline Tool Descriptions**:
-  - [ ] **`node_set_fill` title/description** — currently "Set a node's fill to a literal RGBA color." (`node.ts:420`); reword to cover solid **and** image fills (keep the `node_apply_style`/`node_bind_variable` cross-references).
-  - [ ] Update `node.ts`, `variable.ts`, and `style.ts` field/tool descriptions with the new guidance (image sources + resize, `scopes`, effect `blendMode`).
-- [ ] **Documentation Markdown** (`skills/figma-edit/references/` and `documentation/`):
-  - [ ] Update `tool-selection.md` & `workflows.md` for image fills — both sources (`url` vs `bytesBase64`), when to use each, and caveats (both PNG/JPEG/GIF + ≤4096px; **`bytesBase64` PNG/JPEG auto-resized — prefer for large images**; `url`/GIF not resized; URL public/CORS/fetch; bytes payload weight).
-  - [ ] Update `error-playbook.md` with image errors: URL fetch/CORS failure, invalid base64, Figma image-rejection (too large/small/unsupported, ≤4096px — note PNG/JPEG bytes are pre-resized, so this is usually `url`/GIF/too-small); the **`image is too large to auto-resize server-side` (>~45MP PNG/JPEG)** error — server decode budget, pre-resize the source (see PRD §D6 Known limitation); plus type-incompatible scopes and blendMode fallback.
-  - [ ] Update `constraints.md` and SKILL guidance (variable scope creation requirement).
+- [x] **Inline Tool Descriptions**:
+  - [x] **`node_set_fill` title/description** — currently "Set a node's fill to a literal RGBA color." (`node.ts:420`); reword to cover solid **and** image fills (keep the `node_apply_style`/`node_bind_variable` cross-references).
+  - [x] Update `node.ts`, `variable.ts`, and `style.ts` field/tool descriptions with the new guidance (image sources + resize, `scopes`, effect `blendMode`).
+- [x] **Documentation Markdown** (`skills/figma-edit/references/` and `documentation/`):
+  - [x] Update `tool-selection.md` & `workflows.md` for image fills — both sources (`url` vs `bytesBase64`), when to use each, and caveats (both PNG/JPEG/GIF + ≤4096px; **`bytesBase64` PNG/JPEG auto-resized — prefer for large images**; `url`/GIF not resized; URL public/CORS/fetch; bytes payload weight).
+  - [x] Update `error-playbook.md` with image errors: URL fetch/CORS failure, invalid base64, Figma image-rejection (too large/small/unsupported, ≤4096px — note PNG/JPEG bytes are pre-resized, so this is usually `url`/GIF/too-small); the **`image is too large to auto-resize server-side` (>~45MP PNG/JPEG)** error — server decode budget, pre-resize the source (see PRD §D6 Known limitation); plus type-incompatible scopes and blendMode fallback.
+  - [x] Update `constraints.md` and SKILL guidance (variable scope creation requirement).
 
 ## Phase 6: Rollout
 - [ ] **Version Bump**:

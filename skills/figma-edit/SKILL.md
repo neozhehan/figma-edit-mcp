@@ -15,6 +15,7 @@ figma-edit-mcp lets an agent read and edit a live Figma document through a plugi
 
 1. **Discover before acting.** Every workflow that touches a node starts with a read (`page_info` → `node_info`). IDs and names the user gives you may be stale; verify them.
 2. **The plugin can refuse you.** Hard constraints (scope, name verification, per-item batch checks) are checked inside Figma and return structured error codes. You cannot bypass them — plan calls to comply up front.
+3. **Explicit variable scopes.** When creating a new variable, you **must** explicitly provide its `scopes`.
 
 ## References
 

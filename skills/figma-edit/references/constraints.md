@@ -55,6 +55,10 @@ Once execution begins:
 
 Figma URLs contain node IDs with dashes (`20485-41`); the plugin API expects colons (`20485:41`). The server converts dash-format IDs automatically before forwarding. Pass URL-format IDs through unchanged — do not pre-convert them.
 
+## 9. Variable Scopes
+
+When creating a new variable with `variable_manage` (`action: "CREATE_VARIABLE"`), you **must always set `scopes` explicitly**. The `scopes` parameter controls where the variable can be applied (e.g., `["ALL_FILLS", "STROKE_COLOR"]`). Omit `scopes` when updating an existing variable to leave its current scopes unchanged.
+
 ---
 
 ## When a constraint forbids the request

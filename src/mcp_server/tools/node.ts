@@ -417,7 +417,7 @@ export function registerNodeTools(server: McpServer) {
     server.registerTool(
         "node_set_fill",
         {
-            title: "Set Fill Color",
+            title: "Set Fill",
             description: "Set a node's fill to a literal RGBA color or an image. Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
