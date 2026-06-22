@@ -4387,7 +4387,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         };
       }
       case "CREATE_VARIABLE": {
-        const { collectionId, name, type, value } = params;
+        const { collectionId, name, type, value, scopes } = params;
         if (!collectionId || !name || !type) throw new Error("Missing required parameters for variable creation");
         let resolvedType;
         if (type === "FLOAT") resolvedType = "FLOAT";
@@ -4400,24 +4400,29 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           throw new Error(`Collection not found: ${collectionId}`);
         }
         const variable = figma.variables.createVariable(name, collection, resolvedType);
-        if (value !== void 0) {
-          const collection2 = await figma.variables.getVariableCollectionByIdAsync(collectionId);
-          const defaultModeId = collection2.defaultModeId;
-          let parsedValue = value;
-          if (resolvedType === "COLOR" && typeof value === "object") {
-            parsedValue = {
-              r: value.r || 0,
-              g: value.g || 0,
-              b: value.b || 0
-            };
-            parsedValue = {
-              r: value.r || 0,
-              g: value.g || 0,
-              b: value.b || 0,
-              a: value.a !== void 0 ? value.a : 1
-            };
+        try {
+          if (scopes !== void 0) {
+            variable.scopes = scopes;
           }
-          variable.setValueForMode(defaultModeId, parsedValue);
+          if (value !== void 0) {
+            const defaultModeId = collection.defaultModeId;
+            let parsedValue = value;
+            if (resolvedType === "COLOR" && typeof value === "object") {
+              parsedValue = {
+                r: value.r || 0,
+                g: value.g || 0,
+                b: value.b || 0,
+                a: value.a !== void 0 ? value.a : 1
+              };
+            }
+            variable.setValueForMode(defaultModeId, parsedValue);
+          }
+        } catch (e) {
+          try {
+            variable.remove();
+          } catch (e2) {
+          }
+          throw e;
         }
         return {
           id: variable.id,
@@ -4427,7 +4432,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         };
       }
       case "UPDATE_VARIABLE": {
-        const { variableId, name, value, modeId, description, currentVariableName } = params;
+        const { variableId, name, value, modeId, description, currentVariableName, scopes } = params;
         if (!variableId) throw new Error("Missing variableId for update");
         const variable = await figma.variables.getVariableByIdAsync(variableId);
         if (!variable) throw new Error(`Variable ${variableId} not found`);
@@ -4442,6 +4447,9 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         if (description !== void 0) {
           variable.description = description;
+        }
+        if (scopes !== void 0) {
+          variable.scopes = scopes;
         }
         if (value !== void 0) {
           if (!modeId) throw new Error("Missing modeId for setting variable value");

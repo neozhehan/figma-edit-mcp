@@ -44,16 +44,16 @@
 - [x] **Live Testing**: recorded in Phase 6 (large multi-page document delete stays connected with streaming progress).
 
 ## Phase 3: §3 Variable `scopes` write support (P1)
-- [ ] **Schema Update** (`src/mcp_server/tools/variable.ts`):
-  - [ ] Declare a literal `const VARIABLE_SCOPES = [...23 values...] as const` (the `@figma/plugin-typings` `VariableScope` is a **type, not a runtime value** — it can't be spread into `z.enum`), then add `scopes: z.array(z.enum(VARIABLE_SCOPES)).optional()` to `variable_manage`. Optionally `satisfies readonly VariableScope[]` to stay in sync with the typings.
-  - [ ] Add description reminding to "ALWAYS set explicitly on create; omit on update to leave unchanged".
-- [ ] **Plugin Update** (`figma_plugin/handlers/variableHandlers.ts`):
-  - [ ] Update `handleVariableRequest` (`CREATE_VARIABLE` branch) to set `variable.scopes = scopes;` if provided.
-  - [ ] Update `handleVariableRequest` (`UPDATE_VARIABLE` branch) to conditionally update `scopes`.
-- [ ] **Unit Testing**:
-  - [ ] Update tool schema tests (e.g., `strictInput.test.ts`, `v2Tools.test.ts`) for the new `scopes` parameter; **invalid enum value rejected** by Zod.
-  - [ ] Extend `annotationsAndVariables.test.ts`: `CREATE_VARIABLE` with `scopes` sets them; without `scopes` leaves Figma's default; `UPDATE_VARIABLE` with `scopes` updates them; **`UPDATE_VARIABLE` without `scopes` leaves existing scopes untouched** (no clobber).
-- [ ] **Live Testing**: recorded in Phase 6 (create a COLOR variable with `scopes:["ALL_FILLS"]`, confirm in the Figma UI).
+- [x] **Schema Update** (`src/mcp_server/tools/variable.ts`):
+  - [x] Declare a literal `const VARIABLE_SCOPES = [...23 values...] as const` (the `@figma/plugin-typings` `VariableScope` is a **type, not a runtime value** — it can't be spread into `z.enum`), then add `scopes: z.array(z.enum(VARIABLE_SCOPES)).optional()` to `variable_manage`. Optionally `satisfies readonly VariableScope[]` to stay in sync with the typings.
+  - [x] Add description reminding to "ALWAYS set explicitly on create; omit on update to leave unchanged".
+- [x] **Plugin Update** (`figma_plugin/handlers/variableHandlers.ts`):
+  - [x] Update `handleVariableRequest` (`CREATE_VARIABLE` branch) to set `variable.scopes = scopes;` if provided.
+  - [x] Update `handleVariableRequest` (`UPDATE_VARIABLE` branch) to conditionally update `scopes`.
+- [x] **Unit Testing**:
+  - [x] Update tool schema tests (e.g., `strictInput.test.ts`, `v2Tools.test.ts`) for the new `scopes` parameter; **invalid enum value rejected** by Zod.
+  - [x] Extend `annotationsAndVariables.test.ts`: `CREATE_VARIABLE` with `scopes` sets them; without `scopes` leaves Figma's default; `UPDATE_VARIABLE` with `scopes` updates them; **`UPDATE_VARIABLE` without `scopes` leaves existing scopes untouched** (no clobber); **`CREATE_VARIABLE` rolls back (removes) the freshly-created variable if scope/value assignment throws** (no orphaned variable).
+- [x] **Live Testing**: recorded in Phase 6 (create a COLOR variable with `scopes:["ALL_FILLS"]`, confirm in the Figma UI).
 
 ## Phase 4: §4 `style_manage` effect `blendMode` mismatch (P1)
 - [ ] **Refactoring** (`figma_plugin/handlers/stylingHandlers.ts`):

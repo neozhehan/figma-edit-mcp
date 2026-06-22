@@ -235,6 +235,16 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             // Invalid: image with neither url nor bytesBase64
             expect(schema.safeParse({ nodeId: "1", nodeName: "A", image: { scaleMode: "FIT" } }).success).toBe(false);
         });
+
+        it("variable_manage accepts valid scopes and rejects an invalid enum value", () => {
+            const schema = (server as any)._registeredTools["variable_manage"].inputSchema;
+            // valid scopes accepted
+            expect(schema.safeParse({ action: "CREATE_VARIABLE", scopes: ["ALL_FILLS", "STROKE_COLOR"] }).success).toBe(true);
+            // scopes is optional (omitted is fine)
+            expect(schema.safeParse({ action: "CREATE_VARIABLE" }).success).toBe(true);
+            // an invalid enum value is rejected by Zod
+            expect(schema.safeParse({ action: "CREATE_VARIABLE", scopes: ["NOT_A_REAL_SCOPE"] }).success).toBe(false);
+        });
     });
 
     describe("Tool routing & payload verification", () => {

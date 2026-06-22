@@ -271,3 +271,99 @@ describe("setBoundVariable Handler (node_bind_variable MCP shape)", () => {
         expect(err.message).not.toContain("undefined");
     });
 });
+
+describe("handleVariableRequest Handler (CREATE_VARIABLE / UPDATE_VARIABLE scopes)", () => {
+    let mockCollection: any;
+    let mockVariable: any;
+    let handleVariableRequest: any;
+
+    beforeEach(async () => {
+        mockCollection = {
+            id: "col-1",
+            name: "My Collection",
+            defaultModeId: "mode-1",
+            modes: [{ modeId: "mode-1", name: "Mode 1" }],
+        };
+        mockVariable = {
+            id: "v-1",
+            name: "My Variable",
+            key: "key-1",
+            resolvedType: "FLOAT",
+            variableCollectionId: "col-1",
+            scopes: ["ALL_SCOPES"],
+            setValueForMode: mock(() => {}),
+        };
+        (globalThis as any).figma = {
+            variables: {
+                getVariableCollectionByIdAsync: mock(async () => mockCollection),
+                getVariableByIdAsync: mock(async () => mockVariable),
+                createVariable: mock(() => mockVariable),
+            }
+        };
+        const module = await import("../../../../../figma_plugin/handlers/variableHandlers.js");
+        handleVariableRequest = module.handleVariableRequest;
+    });
+
+    it("CREATE_VARIABLE sets scopes when provided", async () => {
+        await handleVariableRequest({
+            action: "CREATE_VARIABLE",
+            collectionId: "col-1",
+            name: "Var1",
+            type: "FLOAT",
+            scopes: ["TEXT_CONTENT", "CORNER_RADIUS"]
+        });
+        expect(mockVariable.scopes).toEqual(["TEXT_CONTENT", "CORNER_RADIUS"]);
+    });
+
+    it("CREATE_VARIABLE without scopes leaves Figma's default", async () => {
+        await handleVariableRequest({
+            action: "CREATE_VARIABLE",
+            collectionId: "col-1",
+            name: "Var2",
+            type: "FLOAT",
+        });
+        // createVariable mock returned mockVariable which has ["ALL_SCOPES"]
+        expect(mockVariable.scopes).toEqual(["ALL_SCOPES"]);
+    });
+
+    it("UPDATE_VARIABLE updates scopes when provided", async () => {
+        await handleVariableRequest({
+            action: "UPDATE_VARIABLE",
+            variableId: "v-1",
+            scopes: ["WIDTH_HEIGHT"]
+        });
+        expect(mockVariable.scopes).toEqual(["WIDTH_HEIGHT"]);
+    });
+
+    it("UPDATE_VARIABLE without scopes leaves existing scopes untouched", async () => {
+        await handleVariableRequest({
+            action: "UPDATE_VARIABLE",
+            variableId: "v-1",
+            name: "Renamed"
+        });
+        expect(mockVariable.scopes).toEqual(["ALL_SCOPES"]); // Remains unchanged
+    });
+
+    it("CREATE_VARIABLE rolls back the freshly-created variable when scope assignment throws", async () => {
+        // A type-incompatible scope makes Figma's scopes setter throw AFTER createVariable;
+        // the handler must remove the orphaned variable and rethrow (no leak).
+        const removeSpy = mock(() => {});
+        const throwingVar: any = {
+            id: "v-bad", name: "Bad", key: "k-bad", resolvedType: "FLOAT",
+            set scopes(_v: any) { throw new Error("in set_scopes: Invalid scope for this variable type"); },
+            setValueForMode: mock(() => {}),
+            remove: removeSpy,
+        };
+        (globalThis as any).figma.variables.createVariable = mock(() => throwingVar);
+
+        await expect(handleVariableRequest({
+            action: "CREATE_VARIABLE",
+            collectionId: "col-1",
+            name: "Bad",
+            type: "FLOAT",
+            scopes: ["ALL_FILLS"],
+        })).rejects.toThrow(/Invalid scope/);
+
+        expect(removeSpy).toHaveBeenCalled();
+    });
+});
