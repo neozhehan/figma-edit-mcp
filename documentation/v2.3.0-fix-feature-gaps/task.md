@@ -56,20 +56,20 @@
 - [x] **Live Testing**: recorded in Phase 6 (create a COLOR variable with `scopes:["ALL_FILLS"]`, confirm in the Figma UI).
 
 ## Phase 4: §4 `style_manage` effect `blendMode` mismatch (P1)
-- [ ] **Refactoring** (`figma_plugin/handlers/stylingHandlers.ts`):
-  - [ ] Extract `normalizeEffects(effects)` from the existing `setEffects` function.
-  - [ ] Refactor `setEffects` to use this new helper.
-- [ ] **Plugin Update** (`figma_plugin/handlers/styleHandlers.ts`):
-  - [ ] Import and apply `normalizeEffects(effects)` in the `createStyle` `EFFECT` branch prior to assigning `s.effects`.
-  - [ ] Confirm the freshly-created-style rollback (`styleHandlers.ts:128-134`) still fires if Figma throws on a genuinely malformed effect.
-- [ ] **Schema Update** (`src/mcp_server/tools/style.ts`):
-  - [ ] Add `blendMode` to the `effects` object schema and update its description.
-- [ ] **Unit Testing**:
-  - [ ] Update tool schema tests to verify `blendMode` is documented and accepted in `style_manage`.
-  - [ ] Add unit test for `normalizeEffects` shared helper.
-  - [ ] `style_manage` EFFECT omitting `blendMode` succeeds and the stored effect has `blendMode:"NORMAL"`; an **explicit `blendMode` is preserved**.
-  - [ ] Verify `node_set_effects` parity (no behavioural change after extracting the shared helper).
-- [ ] **Live Testing**: recorded in Phase 6 (create an EFFECT style with a shadow omitting `blendMode`; smoke-test `node_set_effects` still applies a shadow).
+- [x] **Refactoring** (`figma_plugin/handlers/stylingHandlers.ts`):
+  - [x] Extract `normalizeEffects(effects)` from the existing `setEffects` function.
+  - [x] Refactor `setEffects` to use this new helper.
+- [x] **Plugin Update** (`figma_plugin/handlers/styleHandlers.ts`):
+  - [x] Import and apply `normalizeEffects(effects)` in the `createStyle` `EFFECT` branch prior to assigning `s.effects`.
+  - [x] Confirm the freshly-created-style rollback (`styleHandlers.ts:128-134`) still fires if Figma throws on a genuinely malformed effect.
+- [x] **Schema Update** (`src/mcp_server/tools/style.ts`):
+  - [x] Add `blendMode` to the `effects` object schema and update its description.
+- [x] **Unit Testing**:
+  - [x] Update tool schema tests to verify `blendMode` is documented and accepted in `style_manage`.
+  - [x] Add unit test for `normalizeEffects` shared helper.
+  - [x] `style_manage` EFFECT omitting `blendMode` succeeds and the stored effect has `blendMode:"NORMAL"`; an **explicit `blendMode` is preserved**.
+  - [x] Verify `node_set_effects` parity (no behavioural change after extracting the shared helper).
+- [x] **Live Testing**: recorded in Phase 6 (create an EFFECT style with a shadow omitting `blendMode`; smoke-test `node_set_effects` still applies a shadow).
 
 ## Phase 5: Documentation & Tool Descriptions
 - [ ] **Inline Tool Descriptions**:

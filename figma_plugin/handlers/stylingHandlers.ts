@@ -279,6 +279,42 @@ export async function setCornerRadius(params: any) {
  * @param {Array} params.effects - Array of effect objects
  * @returns {Promise<Object>} Result with node info and applied effects
  */
+export function normalizeEffects(effects: any[]): any[] {
+    return effects.map((effect: any) => {
+        if (!effect.type) {
+            throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
+        }
+
+        // Defaults for required fields if missing, to prevent crashes
+        const baseEffect: any = {
+            type: effect.type,
+            visible: effect.visible !== undefined ? effect.visible : true,
+        };
+
+        if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+            const shadow: any = Object.assign({}, baseEffect, {
+                color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
+                offset: effect.offset || { x: 0, y: 4 },
+                radius: effect.radius !== undefined ? effect.radius : 4,
+                spread: effect.spread !== undefined ? effect.spread : 0,
+                blendMode: effect.blendMode || "NORMAL",
+            });
+            // showShadowBehindNode is a DROP_SHADOW-only property; Figma's runtime
+            // rejects it on INNER_SHADOW ("Unrecognized key(s) ... 'showShadowBehindNode'").
+            if (effect.type === "DROP_SHADOW") {
+                shadow.showShadowBehindNode = effect.showShadowBehindNode !== undefined ? effect.showShadowBehindNode : false;
+            }
+            return shadow;
+        } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+            return Object.assign({}, baseEffect, {
+                radius: effect.radius !== undefined ? effect.radius : 4,
+            });
+        }
+
+        return effect; // Pass through if it matches schema perfectly or is unknown type
+    });
+}
+
 export async function setEffects(params: any) {
     const { nodeId, effects } = params || {};
 
@@ -300,34 +336,8 @@ export async function setEffects(params: any) {
     }
 
     // Validate and process effects (basic validation)
-    const processedEffects = effects.map((effect: any) => {
-        if (!effect.type) {
-            throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
-        }
+    const processedEffects = normalizeEffects(effects);
 
-        // Defaults for required fields if missing, to prevent crashes
-        const baseEffect: any = {
-            type: effect.type,
-            visible: effect.visible !== undefined ? effect.visible : true,
-        };
-
-        if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
-            return Object.assign({}, baseEffect, {
-                color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
-                offset: effect.offset || { x: 0, y: 4 },
-                radius: effect.radius !== undefined ? effect.radius : 4,
-                spread: effect.spread !== undefined ? effect.spread : 0,
-                blendMode: effect.blendMode || "NORMAL",
-                showShadowBehindNode: effect.showShadowBehindNode !== undefined ? effect.showShadowBehindNode : false,
-            });
-        } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
-            return Object.assign({}, baseEffect, {
-                radius: effect.radius !== undefined ? effect.radius : 4,
-            });
-        }
-
-        return effect; // Pass through if it matches schema perfectly or is unknown type
-    });
 
     node.effects = processedEffects;
 

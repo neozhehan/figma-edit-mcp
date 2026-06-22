@@ -1,3 +1,5 @@
+import { normalizeEffects } from "./stylingHandlers";
+
 export async function createStyle(params: any) {
     const { type, name, description, properties, styleId, bindVariables } = params;
 
@@ -75,7 +77,7 @@ export async function createStyle(params: any) {
                 }
                 case 'EFFECT': {
                     const s = style as EffectStyle;
-                    if (properties.effects) s.effects = properties.effects;
+                    if (properties.effects) s.effects = normalizeEffects(properties.effects);
                     break;
                 }
                 case 'GRID': {

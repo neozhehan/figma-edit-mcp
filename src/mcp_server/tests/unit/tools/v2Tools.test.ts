@@ -345,6 +345,11 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             const grad = schema.safeParse({ type: "PAINT", name: "G", properties: { paints: [{ type: "GRADIENT_LINEAR", gradientStops: [{ position: 0 }] }] } });
             expect(grad.success).toBe(true);
             expect(grad.data.properties.paints[0].gradientStops).toEqual([{ position: 0 }]);
+
+            // Verify blendMode is accepted in effects
+            const effectRes = schema.safeParse({ type: "EFFECT", name: "E", properties: { effects: [{ type: "DROP_SHADOW", blendMode: "MULTIPLY" }] } });
+            expect(effectRes.success).toBe(true);
+            expect(effectRes.data.properties.effects[0].blendMode).toBe("MULTIPLY");
         });
 
         it("R3.8 polish: node_info outputSchema accepts real result shapes (typed, not over-strict)", () => {

@@ -1940,6 +1940,35 @@
       bottomLeftRadius: "bottomLeftRadius" in node ? node.bottomLeftRadius : void 0
     };
   }
+  function normalizeEffects(effects) {
+    return effects.map((effect) => {
+      if (!effect.type) {
+        throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
+      }
+      const baseEffect = {
+        type: effect.type,
+        visible: effect.visible !== void 0 ? effect.visible : true
+      };
+      if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+        const shadow = Object.assign({}, baseEffect, {
+          color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
+          offset: effect.offset || { x: 0, y: 4 },
+          radius: effect.radius !== void 0 ? effect.radius : 4,
+          spread: effect.spread !== void 0 ? effect.spread : 0,
+          blendMode: effect.blendMode || "NORMAL"
+        });
+        if (effect.type === "DROP_SHADOW") {
+          shadow.showShadowBehindNode = effect.showShadowBehindNode !== void 0 ? effect.showShadowBehindNode : false;
+        }
+        return shadow;
+      } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+        return Object.assign({}, baseEffect, {
+          radius: effect.radius !== void 0 ? effect.radius : 4
+        });
+      }
+      return effect;
+    });
+  }
   async function setEffects(params) {
     const { nodeId, effects } = params || {};
     if (!nodeId) {
@@ -1955,30 +1984,7 @@
     if (!("effects" in node)) {
       throw new Error(`Node does not support effects: ${nodeId}`);
     }
-    const processedEffects = effects.map((effect) => {
-      if (!effect.type) {
-        throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
-      }
-      const baseEffect = {
-        type: effect.type,
-        visible: effect.visible !== void 0 ? effect.visible : true
-      };
-      if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
-        return Object.assign({}, baseEffect, {
-          color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
-          offset: effect.offset || { x: 0, y: 4 },
-          radius: effect.radius !== void 0 ? effect.radius : 4,
-          spread: effect.spread !== void 0 ? effect.spread : 0,
-          blendMode: effect.blendMode || "NORMAL",
-          showShadowBehindNode: effect.showShadowBehindNode !== void 0 ? effect.showShadowBehindNode : false
-        });
-      } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
-        return Object.assign({}, baseEffect, {
-          radius: effect.radius !== void 0 ? effect.radius : 4
-        });
-      }
-      return effect;
-    });
+    const processedEffects = normalizeEffects(effects);
     node.effects = processedEffects;
     return {
       id: node.id,
@@ -4542,7 +4548,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           }
           case "EFFECT": {
             const s = style;
-            if (properties.effects) s.effects = properties.effects;
+            if (properties.effects) s.effects = normalizeEffects(properties.effects);
             break;
           }
           case "GRID": {
