@@ -48,6 +48,16 @@ When you only need to know *whether* something is bound, request the raw ID fiel
 | Move and/or size a node | `node_transform` ({x?, y?, width?, height?}) | — |
 | Create any basic shape | `create_shape` ({type, …}) | — |
 
+## Image Fills (`node_set_fill`)
+
+When applying an image fill, you must choose between two delivery methods:
+
+1. **`bytesBase64`** (Raw bytes) — **Preferred for large images**. The server automatically downscales oversized PNG/JPEG images (keeping the aspect ratio) to fit within Figma's 4096px limit before sending them to the plugin. Use this when the image is large, local, or requires guaranteed delivery. Note that very large images (>~45 megapixels) will exceed the server's decode budget and throw an error; pre-resize these yourself. Heavy payload over the socket. GIF is never resized.
+2. **`url`** (Figma fetch) — **Preferred for small, public images**. The Figma client fetches the URL directly. This is lightweight over the socket but has strict caveats:
+   - The URL must be public and allow CORS.
+   - Images are **not auto-resized** by the server. If the image exceeds 4096px on any side, Figma will reject it (`Image is too large`).
+   - Use `bytesBase64` instead if you cannot guarantee the remote size or CORS headers.
+
 ## Batch vs single-item
 
 Use a **batch** tool (`text_set_content`, `node_delete`, `annotation_set`, `instance_set_overrides`) when:

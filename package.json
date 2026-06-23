@@ -1,6 +1,6 @@
 {
   "name": "figma-edit-mcp",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "mcpName": "io.github.neozhehan/figma-edit-mcp",
   "description": "Read, create, and modify Figma designs programmatically via MCP, empowering AI to execute Figma changes safer, cleaner, and faster.",
   "keywords": [
@@ -71,6 +71,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
+    "jimp": "^0.22.12",
     "uuid": "14.0.0",
     "ws": "8.20.0",
     "zod": "4.4.3"

@@ -60,6 +60,59 @@ export function customBase64Encode(bytes: any) {
 }
 
 /**
+ * Decode base64 to Uint8Array (Figma sandbox lacks atob)
+ * @param {string} b64 - Base64 string, optionally with data: URI prefix
+ * @returns {Uint8Array} Decoded bytes
+ */
+export function base64ToBytes(b64: string): Uint8Array {
+    // Remove all whitespace first, then strip an optional data: URI prefix.
+    // RFC 2045 MIME base64 legitimately wraps lines (CRLF every 76 chars) and
+    // some encoders emit it, so tolerate any embedded whitespace rather than
+    // rejecting it — otherwise wrapped input fails the strict charset check
+    // below. Whitespace-first also lets the anchored prefix strip survive any
+    // leading whitespace.
+    let base64 = b64.replace(/\s/g, "").replace(/^data:.*?;base64,/, "");
+    // Add padding if missing
+    while (base64.length % 4 !== 0) {
+        base64 += "=";
+    }
+    
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
+        throw new Error("Invalid base64 string");
+    }
+
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const lookup = new Uint8Array(256);
+    for (let i = 0; i < chars.length; i++) {
+        lookup[chars.charCodeAt(i)] = i;
+    }
+
+    let bufferLength = base64.length * 0.75;
+    if (base64[base64.length - 1] === "=") bufferLength--;
+    if (base64[base64.length - 2] === "=") bufferLength--;
+
+    const bytes = new Uint8Array(bufferLength);
+    let p = 0;
+    
+    for (let i = 0; i < base64.length; i += 4) {
+        const encoded1 = lookup[base64.charCodeAt(i)];
+        const encoded2 = lookup[base64.charCodeAt(i + 1)];
+        const encoded3 = lookup[base64.charCodeAt(i + 2)];
+        const encoded4 = lookup[base64.charCodeAt(i + 3)];
+
+        bytes[p++] = (encoded1 << 2) | (encoded2 >> 4);
+        if (base64[i + 2] !== "=") {
+            bytes[p++] = ((encoded2 & 15) << 4) | (encoded3 >> 2);
+            if (base64[i + 3] !== "=") {
+                bytes[p++] = ((encoded3 & 3) << 6) | (encoded4 & 63);
+            }
+        }
+    }
+
+    return bytes;
+}
+
+/**
  * Decode UTF-8 bytes (e.g. an SVG export) to a string. Uses the native
  * TextDecoder when the runtime provides it, with a manual fallback for the
  * Figma sandbox (which historically lacks several web APIs — see the manual

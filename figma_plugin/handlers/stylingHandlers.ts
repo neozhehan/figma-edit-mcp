@@ -2,6 +2,7 @@
  * Styling handlers for Figma plugin
  * Handles fill, stroke, and corner radius operations
  */
+import { base64ToBytes } from "../utils/exportUtils";
 
 /**
  * Sets the fill color of a node
@@ -12,10 +13,7 @@
  */
 export async function setFillColor(params: any) {
     console.log("setFillColor", params);
-    const {
-        nodeId,
-        color: { r, g, b, a },
-    } = params || {};
+    const { nodeId, color, image } = params || {};
 
     if (!nodeId) {
         throw new Error("Missing nodeId parameter");
@@ -30,24 +28,81 @@ export async function setFillColor(params: any) {
         throw new Error(`Node does not support fills: ${nodeId}`);
     }
 
-    // Create RGBA color
-    const rgbColor: any = {
-        r: parseFloat(r) || 0,
-        g: parseFloat(g) || 0,
-        b: parseFloat(b) || 0,
-        a: a !== undefined ? parseFloat(a) : 1,
-    };
+    if (color && image) {
+        throw new Error("node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.");
+    }
+    if (!color && !image) {
+        throw new Error("node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.");
+    }
 
-    // Set fill
-    const paintStyle: any = {
-        type: "SOLID",
-        color: {
-            r: parseFloat(rgbColor.r),
-            g: parseFloat(rgbColor.g),
-            b: parseFloat(rgbColor.b),
-        },
-        opacity: parseFloat(rgbColor.a),
-    };
+    let paintStyle: any;
+
+    if (color) {
+        const { r, g, b, a } = color;
+        // Create RGBA color
+        const rgbColor: any = {
+            r: parseFloat(r) || 0,
+            g: parseFloat(g) || 0,
+            b: parseFloat(b) || 0,
+            a: a !== undefined ? parseFloat(a) : 1,
+        };
+
+        // Set fill
+        paintStyle = {
+            type: "SOLID",
+            color: {
+                r: parseFloat(rgbColor.r),
+                g: parseFloat(rgbColor.g),
+                b: parseFloat(rgbColor.b),
+            },
+            opacity: parseFloat(rgbColor.a),
+        };
+    } else {
+        const { url, bytesBase64, scaleMode, opacity } = image;
+        if (url && bytesBase64) {
+            throw new Error("node_set_fill: image requires exactly one of 'url' or 'bytesBase64'.");
+        }
+        if (!url && !bytesBase64) {
+            throw new Error("node_set_fill: image requires exactly one of 'url' or 'bytesBase64'.");
+        }
+
+        let figmaImage;
+        try {
+            if (url) {
+                try {
+                    figmaImage = await figma.createImageAsync(url);
+                } catch (e: any) {
+                    if (e.message && (e.message.includes("is too large") || e.message.includes("type is unsupported") || e.message.includes("is too small"))) {
+                        throw e;
+                    }
+                    throw new Error(`node_set_fill: could not fetch image from URL '${url}' (network/CORS). createImageAsync needs a directly fetchable, public URL to a PNG/JPEG/GIF.`);
+                }
+            } else {
+                let bytes;
+                try {
+                    bytes = base64ToBytes(bytesBase64);
+                } catch (e) {
+                    throw new Error("node_set_fill: 'bytesBase64' is not valid base64. Provide base64-encoded raw PNG/JPEG/GIF bytes.");
+                }
+                figmaImage = figma.createImage(bytes);
+            }
+        } catch (e: any) {
+            let msg = e.message || String(e);
+            if (msg.startsWith("node_set_fill:")) {
+                throw e;
+            }
+            throw new Error(`node_set_fill: Figma rejected the image — '${msg}'. Images must be PNG/JPEG/GIF, ≤4096px per side. PNG/JPEG bytes are auto-resized; this typically means an oversized 'url' image, an oversized GIF, or an unsupported/too-small image — pre-resize or convert it.`);
+        }
+
+        paintStyle = {
+            type: "IMAGE",
+            imageHash: figmaImage.hash,
+            scaleMode: scaleMode || "FILL",
+        };
+        if (opacity !== undefined) {
+            paintStyle.opacity = opacity;
+        }
+    }
 
     console.log("paintStyle", paintStyle);
 
@@ -224,6 +279,42 @@ export async function setCornerRadius(params: any) {
  * @param {Array} params.effects - Array of effect objects
  * @returns {Promise<Object>} Result with node info and applied effects
  */
+export function normalizeEffects(effects: any[]): any[] {
+    return effects.map((effect: any) => {
+        if (!effect.type) {
+            throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
+        }
+
+        // Defaults for required fields if missing, to prevent crashes
+        const baseEffect: any = {
+            type: effect.type,
+            visible: effect.visible !== undefined ? effect.visible : true,
+        };
+
+        if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+            const shadow: any = Object.assign({}, baseEffect, {
+                color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
+                offset: effect.offset || { x: 0, y: 4 },
+                radius: effect.radius !== undefined ? effect.radius : 4,
+                spread: effect.spread !== undefined ? effect.spread : 0,
+                blendMode: effect.blendMode || "NORMAL",
+            });
+            // showShadowBehindNode is a DROP_SHADOW-only property; Figma's runtime
+            // rejects it on INNER_SHADOW ("Unrecognized key(s) ... 'showShadowBehindNode'").
+            if (effect.type === "DROP_SHADOW") {
+                shadow.showShadowBehindNode = effect.showShadowBehindNode !== undefined ? effect.showShadowBehindNode : false;
+            }
+            return shadow;
+        } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+            return Object.assign({}, baseEffect, {
+                radius: effect.radius !== undefined ? effect.radius : 4,
+            });
+        }
+
+        return effect; // Pass through if it matches schema perfectly or is unknown type
+    });
+}
+
 export async function setEffects(params: any) {
     const { nodeId, effects } = params || {};
 
@@ -245,34 +336,8 @@ export async function setEffects(params: any) {
     }
 
     // Validate and process effects (basic validation)
-    const processedEffects = effects.map((effect: any) => {
-        if (!effect.type) {
-            throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
-        }
+    const processedEffects = normalizeEffects(effects);
 
-        // Defaults for required fields if missing, to prevent crashes
-        const baseEffect: any = {
-            type: effect.type,
-            visible: effect.visible !== undefined ? effect.visible : true,
-        };
-
-        if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
-            return Object.assign({}, baseEffect, {
-                color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
-                offset: effect.offset || { x: 0, y: 4 },
-                radius: effect.radius !== undefined ? effect.radius : 4,
-                spread: effect.spread !== undefined ? effect.spread : 0,
-                blendMode: effect.blendMode || "NORMAL",
-                showShadowBehindNode: effect.showShadowBehindNode !== undefined ? effect.showShadowBehindNode : false,
-            });
-        } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
-            return Object.assign({}, baseEffect, {
-                radius: effect.radius !== undefined ? effect.radius : 4,
-            });
-        }
-
-        return effect; // Pass through if it matches schema perfectly or is unknown type
-    });
 
     node.effects = processedEffects;
 

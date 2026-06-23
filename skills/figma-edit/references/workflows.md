@@ -63,6 +63,15 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
                   x, y, width, height })
 ```
 
+### Apply an image fill
+
+```
+1. (For large local images) resize manually if >45MP to avoid decode budget errors.
+2. node_info({ nodeIds: [nodeId], maxDepth: 0 })         → confirm node name
+3. node_set_fill({ nodeId, nodeName: <verbatim name>,
+                   image: { bytesBase64: <base64 string> } })
+```
+
 ### Modify a node by URL the user pasted
 
 ```

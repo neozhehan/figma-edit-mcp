@@ -42,6 +42,10 @@ mock.module("../../../figma-client.js", () => ({
     resetChannel: mock(() => { }),
 }));
 
+mock.module("../../../imageResize.js", () => ({
+    resizeIfOversized: mock(async (b64: string) => ({ base64: b64 }))
+}));
+
 const { registerAllTools } = await import("../../../tools/index.js");
 const { sendCommandToFigma } = await import("../../../figma-client.js");
 
@@ -89,6 +93,7 @@ function dummyFor(schema: any): any {
 
 type Contract = {
     reads: string[];                       // top-level payload keys the consumer needs
+    readsOneOf?: string[][];               // list of mutually exclusive keys, at least one must be present
     item?: { key: string; reads: string[] }; // for array-wrapped payloads
     skip?: string;                          // known-failing (cite the PRD section)
 };
@@ -113,7 +118,7 @@ const CONTRACTS: Record<string, Contract> = {
     node_flatten: { reads: ["nodeId"] },                               // flattenNode
     node_insert_child: { reads: ["parentId", "childId"] },             // insertChild
     node_set_auto_layout: { reads: ["nodeId"] },                       // setAutoLayout
-    node_set_fill: { reads: ["nodeId", "color"] },                     // setFillColor (transform builds color)
+    node_set_fill: { reads: ["nodeId"], readsOneOf: [["color", "image"]] },                     // setFillColor (transform builds color or forwards image)
     node_set_stroke: { reads: ["nodeId", "color"] },                   // setStroke (transform builds color)
     node_set_corner_radius: { reads: ["nodeId", "radius"] },           // setCornerRadius
     node_set_effects: { reads: ["nodeId", "effects"] },                // setEffects
@@ -194,6 +199,12 @@ describe("Contract seam: tool payload carries every key its consumer reads", () 
             const payload = await capturePayload(name);
             for (const key of contract.reads) {
                 expect(payload).toHaveProperty(key);
+            }
+            if (contract.readsOneOf) {
+                for (const options of contract.readsOneOf) {
+                    const hasOne = options.some(k => k in payload);
+                    expect(hasOne).toBe(true);
+                }
             }
             if (contract.item) {
                 const arr = payload[contract.item.key];

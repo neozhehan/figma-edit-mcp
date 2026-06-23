@@ -63,6 +63,17 @@ Every structured error you may receive, what it means, and the correct recovery.
 | `pageId does not resolve to a PAGE` | The supplied `pageId` resolves to a node that is not a `PAGE`. | Pass the ID of an actual page (from `page_info`), not a frame/layer. |
 | `Exactly one of pageId or nodeId is required` | `annotation_list` was called with neither or both of `pageId` / `nodeId`. | Pass exactly one — a `pageId` to scan a whole page, or a `nodeId` to scan a node and its subtree. |
 
+## Image & Styling errors
+
+| Message | Meaning | Recovery |
+|---|---|---|
+| `node_set_fill: could not fetch image from URL '<url>' (network/CORS)` | The URL provided for an image fill could not be fetched by the Figma client (usually due to CORS restrictions, a 404, or the host blocking the request). | Use `bytesBase64` instead, or host the image on a CORS-friendly server (e.g. GitHub raw, imgur). |
+| `node_set_fill: 'bytesBase64' is not valid base64` | The `bytesBase64` payload is not a valid base64-encoded string. | Fix your base64 encoding. Do not include data URI headers (e.g. `data:image/png;base64,`). |
+| `node_set_fill: Figma rejected the image — '…is too large / is too small / type is unsupported'` | Figma's internal validation rejected the image (the quoted text is Figma's own message). | For `url` or GIF bytes, you must ensure the image is ≤4096px per side. For oversized PNG/JPEG bytes, the server auto-resizes them, so you shouldn't see "too large" unless it's a GIF or URL. "too small" or unsupported type means you need a different image. |
+| `node_set_fill: image is too large to auto-resize server-side` | A PNG/JPEG provided via `bytesBase64` was extremely large (>~45 megapixels) and exceeded the server's decode budget, so it could not be auto-resized to fit Figma's limits. | You must pre-resize the source image yourself before sending it over MCP. |
+| `Invalid option: expected one of "ALL_SCOPES"\|…` (invalid scope name), or a Figma rejection when assigning a scope incompatible with the variable's type | A `variable_manage` `scopes` entry isn't a valid `VariableScope` (rejected by input validation before reaching Figma), or Figma considers it incompatible with the variable's type (e.g. `ALL_FILLS` on a `FLOAT`). | Use only valid `VariableScope` values, and only ones compatible with the type (e.g. `*_FILL`/`*_COLOR`/`STROKE_COLOR` for COLOR; `WIDTH_HEIGHT`/`GAP`/`CORNER_RADIUS`/`*_FLOAT` for FLOAT). |
+| (Silent Fallback) Effect `blendMode` omission | Not an error, but note: if you omit `blendMode` when creating or setting an effect (like a drop shadow), it defaults to `"NORMAL"`. | Provide an explicit `blendMode` (e.g. `"MULTIPLY"`) if you need it. |
+
 ## Connection errors
 
 | Code | Meaning | Recovery |

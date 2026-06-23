@@ -565,6 +565,45 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
             ).rejects.toThrow("boom");
             expect(mockTextStyle.remove).not.toHaveBeenCalled();
         });
+
+        it("EFFECT: omitting blendMode succeeds and the stored effect has blendMode:'NORMAL'", async () => {
+            const mockEffectStyle = {
+                id: "style-eff-1", type: "EFFECT", name: "",
+                effects: [],
+                remove: mock(() => {}),
+            };
+            (globalThis as any).figma.createEffectStyle = mock(() => mockEffectStyle);
+
+            const res = await createStyle({
+                type: "EFFECT",
+                name: "Shadow",
+                properties: {
+                    effects: [{ type: "DROP_SHADOW" }]
+                }
+            });
+
+            expect(mockEffectStyle.effects[0].blendMode).toBe("NORMAL");
+            expect(res.id).toBe("style-eff-1");
+        });
+
+        it("EFFECT: an explicit blendMode is preserved", async () => {
+            const mockEffectStyle = {
+                id: "style-eff-2", type: "EFFECT", name: "",
+                effects: [],
+                remove: mock(() => {}),
+            };
+            (globalThis as any).figma.createEffectStyle = mock(() => mockEffectStyle);
+
+            const res = await createStyle({
+                type: "EFFECT",
+                name: "Shadow",
+                properties: {
+                    effects: [{ type: "DROP_SHADOW", blendMode: "MULTIPLY" }]
+                }
+            });
+
+            expect(mockEffectStyle.effects[0].blendMode).toBe("MULTIPLY");
+        });
     });
 
     // --- viewNavigate ---

@@ -2,6 +2,17 @@
 
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
+## [2.3.0]
+This release closes key feature gaps and edge cases reported after the v2.0.0 rewrite, improving image handling, variable lifecycle management, and style edge cases.
+
+### Added
+- **Image Fill Support (`node_set_fill`)**: Added support for setting node fills to images. Images can be provided via a public `url` (fetched directly by the Figma client) or as raw `bytesBase64`. The server automatically downscales oversized PNG/JPEG images sent via `bytesBase64` to fit within Figma's 4096px limit, making it the preferred method for large local images.
+- **Variable Scopes Support (`variable_manage`)**: The `CREATE_VARIABLE` and `UPDATE_VARIABLE` actions now support setting the `scopes` array (e.g. `["ALL_FILLS", "STROKE_COLOR"]`). Creating a variable requires scopes to be explicitly provided; updating a variable without `scopes` leaves the existing scopes unchanged.
+
+### Changed
+- **`variable_delete` Concurrency**: Deleting large variable collections is now significantly faster. The document-wide consumer verification scan runs concurrently across pages. The connection heartbeat is now emitted dynamically *during* the scan (throttled to ~1s) instead of per-page, ensuring single large pages do not trigger the 30s inactivity timeout.
+- **`style_manage` Blend Mode**: Effect styles (like `DROP_SHADOW`) now correctly normalize `blendMode`. Omitting it defaults to `"NORMAL"`, matching Figma's expectations, while explicitly providing a `blendMode` (e.g., `"MULTIPLY"`) is correctly preserved.
+
 ## [2.2.0]
 This is a major safety and stability release focused on preventing silent failures, enforcing Figma's strict structural constraints, and closing contract seams between the MCP SDK and the Figma plugin.
 

@@ -216,6 +216,35 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             expect("node_select" in registered).toBe(false);
             expect("ids" in registered["view_navigate"].inputSchema.shape).toBe(true);
         });
+
+        it("node_set_fill requires solid color or image, not both, not neither, and partial RGB is rejected", () => {
+            const schema = (server as any)._registeredTools["node_set_fill"].inputSchema;
+            // Valid solid
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", r: 1, g: 0, b: 0 }).success).toBe(true);
+            // Valid image
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", image: { url: "http://example.com/img.png" } }).success).toBe(true);
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", image: { bytesBase64: "YWJj" } }).success).toBe(true);
+            // Invalid: both
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", r: 1, g: 0, b: 0, image: { url: "http://example.com/img.png" } }).success).toBe(false);
+            // Invalid: neither
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A" }).success).toBe(false);
+            // Invalid: partial RGB
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", r: 1, g: 0 }).success).toBe(false);
+            // Invalid: image with both url and bytesBase64
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", image: { url: "http://example.com/img.png", bytesBase64: "YWJj" } }).success).toBe(false);
+            // Invalid: image with neither url nor bytesBase64
+            expect(schema.safeParse({ nodeId: "1", nodeName: "A", image: { scaleMode: "FIT" } }).success).toBe(false);
+        });
+
+        it("variable_manage accepts valid scopes and rejects an invalid enum value", () => {
+            const schema = (server as any)._registeredTools["variable_manage"].inputSchema;
+            // valid scopes accepted
+            expect(schema.safeParse({ action: "CREATE_VARIABLE", scopes: ["ALL_FILLS", "STROKE_COLOR"] }).success).toBe(true);
+            // scopes is optional (omitted is fine)
+            expect(schema.safeParse({ action: "CREATE_VARIABLE" }).success).toBe(true);
+            // an invalid enum value is rejected by Zod
+            expect(schema.safeParse({ action: "CREATE_VARIABLE", scopes: ["NOT_A_REAL_SCOPE"] }).success).toBe(false);
+        });
     });
 
     describe("Tool routing & payload verification", () => {
@@ -316,6 +345,11 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             const grad = schema.safeParse({ type: "PAINT", name: "G", properties: { paints: [{ type: "GRADIENT_LINEAR", gradientStops: [{ position: 0 }] }] } });
             expect(grad.success).toBe(true);
             expect(grad.data.properties.paints[0].gradientStops).toEqual([{ position: 0 }]);
+
+            // Verify blendMode is accepted in effects
+            const effectRes = schema.safeParse({ type: "EFFECT", name: "E", properties: { effects: [{ type: "DROP_SHADOW", blendMode: "MULTIPLY" }] } });
+            expect(effectRes.success).toBe(true);
+            expect(effectRes.data.properties.effects[0].blendMode).toBe("MULTIPLY");
         });
 
         it("R3.8 polish: node_info outputSchema accepts real result shapes (typed, not over-strict)", () => {

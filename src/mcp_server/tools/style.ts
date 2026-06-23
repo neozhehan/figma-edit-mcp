@@ -47,8 +47,11 @@ const styleProperties = z.object({
     paints: z.array(paint).optional()
         .describe("PAINT: array of paints (SOLID typed; GRADIENT_*/IMAGE pass through)"),
     effects: z.array(
-        z.object({ type: z.string().describe("DROP_SHADOW|INNER_SHADOW|LAYER_BLUR|BACKGROUND_BLUR") }).catchall(z.any())
-    ).optional().describe("EFFECT: array of Figma Effect objects, e.g. {type:'DROP_SHADOW', color, offset:{x,y}, radius, spread?, visible?}"),
+        z.object({ 
+            type: z.string().describe("DROP_SHADOW|INNER_SHADOW|LAYER_BLUR|BACKGROUND_BLUR"),
+            blendMode: z.string().optional().describe("Blend mode for shadow effects, e.g. 'NORMAL', 'MULTIPLY'")
+        }).catchall(z.any())
+    ).optional().describe("EFFECT: array of Figma Effect objects, e.g. {type:'DROP_SHADOW', color, offset:{x,y}, radius, spread?, visible?, blendMode?}"),
     layoutGrids: z.array(
         z.object({ pattern: z.enum(["GRID", "ROWS", "COLUMNS"]).describe("Grid pattern") }).catchall(z.any())
     ).optional().describe("GRID: array of Figma LayoutGrid objects, e.g. {pattern:'GRID', sectionSize, visible?} or {pattern:'COLUMNS', count, gutterSize, alignment, …}"),

@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "mcp__FigmaEdit__node_set_effects"
     ]
   }
 }

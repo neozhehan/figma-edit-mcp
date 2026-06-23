@@ -1658,13 +1658,104 @@
     return { childId: child.id, newParentId: parent.id, index: parent.children.indexOf(child) };
   }
 
+  // figma_plugin/utils/exportUtils.ts
+  function customBase64Encode(bytes) {
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let base64 = "";
+    const byteLength = bytes.byteLength;
+    const byteRemainder = byteLength % 3;
+    const mainLength = byteLength - byteRemainder;
+    let a, b, c, d;
+    let chunk;
+    for (let i = 0; i < mainLength; i = i + 3) {
+      chunk = bytes[i] << 16 | bytes[i + 1] << 8 | bytes[i + 2];
+      a = (chunk & 16515072) >> 18;
+      b = (chunk & 258048) >> 12;
+      c = (chunk & 4032) >> 6;
+      d = chunk & 63;
+      base64 += chars[a] + chars[b] + chars[c] + chars[d];
+    }
+    if (byteRemainder === 1) {
+      chunk = bytes[mainLength];
+      a = (chunk & 252) >> 2;
+      b = (chunk & 3) << 4;
+      base64 += chars[a] + chars[b] + "==";
+    } else if (byteRemainder === 2) {
+      chunk = bytes[mainLength] << 8 | bytes[mainLength + 1];
+      a = (chunk & 64512) >> 10;
+      b = (chunk & 1008) >> 4;
+      c = (chunk & 15) << 2;
+      base64 += chars[a] + chars[b] + chars[c] + "=";
+    }
+    return base64;
+  }
+  function base64ToBytes(b64) {
+    let base64 = b64.replace(/\s/g, "").replace(/^data:.*?;base64,/, "");
+    while (base64.length % 4 !== 0) {
+      base64 += "=";
+    }
+    if (!/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
+      throw new Error("Invalid base64 string");
+    }
+    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const lookup = new Uint8Array(256);
+    for (let i = 0; i < chars.length; i++) {
+      lookup[chars.charCodeAt(i)] = i;
+    }
+    let bufferLength = base64.length * 0.75;
+    if (base64[base64.length - 1] === "=") bufferLength--;
+    if (base64[base64.length - 2] === "=") bufferLength--;
+    const bytes = new Uint8Array(bufferLength);
+    let p = 0;
+    for (let i = 0; i < base64.length; i += 4) {
+      const encoded1 = lookup[base64.charCodeAt(i)];
+      const encoded2 = lookup[base64.charCodeAt(i + 1)];
+      const encoded3 = lookup[base64.charCodeAt(i + 2)];
+      const encoded4 = lookup[base64.charCodeAt(i + 3)];
+      bytes[p++] = encoded1 << 2 | encoded2 >> 4;
+      if (base64[i + 2] !== "=") {
+        bytes[p++] = (encoded2 & 15) << 4 | encoded3 >> 2;
+        if (base64[i + 3] !== "=") {
+          bytes[p++] = (encoded3 & 3) << 6 | encoded4 & 63;
+        }
+      }
+    }
+    return bytes;
+  }
+  function bytesToUtf8(bytes) {
+    if (typeof TextDecoder !== "undefined") {
+      return new TextDecoder("utf-8").decode(bytes);
+    }
+    let out = "";
+    let i = 0;
+    const len = bytes.length;
+    while (i < len) {
+      const b1 = bytes[i++];
+      if (b1 < 128) {
+        out += String.fromCharCode(b1);
+      } else if (b1 >= 192 && b1 < 224) {
+        const b2 = bytes[i++];
+        out += String.fromCharCode((b1 & 31) << 6 | b2 & 63);
+      } else if (b1 >= 224 && b1 < 240) {
+        const b2 = bytes[i++];
+        const b3 = bytes[i++];
+        out += String.fromCharCode((b1 & 15) << 12 | (b2 & 63) << 6 | b3 & 63);
+      } else {
+        const b2 = bytes[i++];
+        const b3 = bytes[i++];
+        const b4 = bytes[i++];
+        let cp = (b1 & 7) << 18 | (b2 & 63) << 12 | (b3 & 63) << 6 | b4 & 63;
+        cp -= 65536;
+        out += String.fromCharCode(55296 + (cp >> 10), 56320 + (cp & 1023));
+      }
+    }
+    return out;
+  }
+
   // figma_plugin/handlers/stylingHandlers.ts
   async function setFillColor(params) {
     console.log("setFillColor", params);
-    const {
-      nodeId,
-      color: { r, g, b, a }
-    } = params || {};
+    const { nodeId, color, image } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
     }
@@ -1675,21 +1766,74 @@
     if (!("fills" in node)) {
       throw new Error(`Node does not support fills: ${nodeId}`);
     }
-    const rgbColor = {
-      r: parseFloat(r) || 0,
-      g: parseFloat(g) || 0,
-      b: parseFloat(b) || 0,
-      a: a !== void 0 ? parseFloat(a) : 1
-    };
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(rgbColor.r),
-        g: parseFloat(rgbColor.g),
-        b: parseFloat(rgbColor.b)
-      },
-      opacity: parseFloat(rgbColor.a)
-    };
+    if (color && image) {
+      throw new Error("node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.");
+    }
+    if (!color && !image) {
+      throw new Error("node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.");
+    }
+    let paintStyle;
+    if (color) {
+      const { r, g, b, a } = color;
+      const rgbColor = {
+        r: parseFloat(r) || 0,
+        g: parseFloat(g) || 0,
+        b: parseFloat(b) || 0,
+        a: a !== void 0 ? parseFloat(a) : 1
+      };
+      paintStyle = {
+        type: "SOLID",
+        color: {
+          r: parseFloat(rgbColor.r),
+          g: parseFloat(rgbColor.g),
+          b: parseFloat(rgbColor.b)
+        },
+        opacity: parseFloat(rgbColor.a)
+      };
+    } else {
+      const { url, bytesBase64, scaleMode, opacity } = image;
+      if (url && bytesBase64) {
+        throw new Error("node_set_fill: image requires exactly one of 'url' or 'bytesBase64'.");
+      }
+      if (!url && !bytesBase64) {
+        throw new Error("node_set_fill: image requires exactly one of 'url' or 'bytesBase64'.");
+      }
+      let figmaImage;
+      try {
+        if (url) {
+          try {
+            figmaImage = await figma.createImageAsync(url);
+          } catch (e) {
+            if (e.message && (e.message.includes("is too large") || e.message.includes("type is unsupported") || e.message.includes("is too small"))) {
+              throw e;
+            }
+            throw new Error(`node_set_fill: could not fetch image from URL '${url}' (network/CORS). createImageAsync needs a directly fetchable, public URL to a PNG/JPEG/GIF.`);
+          }
+        } else {
+          let bytes;
+          try {
+            bytes = base64ToBytes(bytesBase64);
+          } catch (e) {
+            throw new Error("node_set_fill: 'bytesBase64' is not valid base64. Provide base64-encoded raw PNG/JPEG/GIF bytes.");
+          }
+          figmaImage = figma.createImage(bytes);
+        }
+      } catch (e) {
+        let msg = e.message || String(e);
+        if (msg.startsWith("node_set_fill:")) {
+          throw e;
+        }
+        throw new Error(`node_set_fill: Figma rejected the image \u2014 '${msg}'. Images must be PNG/JPEG/GIF, \u22644096px per side. PNG/JPEG bytes are auto-resized; this typically means an oversized 'url' image, an oversized GIF, or an unsupported/too-small image \u2014 pre-resize or convert it.`);
+      }
+      paintStyle = {
+        type: "IMAGE",
+        imageHash: figmaImage.hash,
+        scaleMode: scaleMode || "FILL"
+      };
+      if (opacity !== void 0) {
+        paintStyle.opacity = opacity;
+      }
+    }
     console.log("paintStyle", paintStyle);
     node.fills = [paintStyle];
     return {
@@ -1796,6 +1940,35 @@
       bottomLeftRadius: "bottomLeftRadius" in node ? node.bottomLeftRadius : void 0
     };
   }
+  function normalizeEffects(effects) {
+    return effects.map((effect) => {
+      if (!effect.type) {
+        throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
+      }
+      const baseEffect = {
+        type: effect.type,
+        visible: effect.visible !== void 0 ? effect.visible : true
+      };
+      if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
+        const shadow = Object.assign({}, baseEffect, {
+          color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
+          offset: effect.offset || { x: 0, y: 4 },
+          radius: effect.radius !== void 0 ? effect.radius : 4,
+          spread: effect.spread !== void 0 ? effect.spread : 0,
+          blendMode: effect.blendMode || "NORMAL"
+        });
+        if (effect.type === "DROP_SHADOW") {
+          shadow.showShadowBehindNode = effect.showShadowBehindNode !== void 0 ? effect.showShadowBehindNode : false;
+        }
+        return shadow;
+      } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
+        return Object.assign({}, baseEffect, {
+          radius: effect.radius !== void 0 ? effect.radius : 4
+        });
+      }
+      return effect;
+    });
+  }
   async function setEffects(params) {
     const { nodeId, effects } = params || {};
     if (!nodeId) {
@@ -1811,30 +1984,7 @@
     if (!("effects" in node)) {
       throw new Error(`Node does not support effects: ${nodeId}`);
     }
-    const processedEffects = effects.map((effect) => {
-      if (!effect.type) {
-        throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
-      }
-      const baseEffect = {
-        type: effect.type,
-        visible: effect.visible !== void 0 ? effect.visible : true
-      };
-      if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
-        return Object.assign({}, baseEffect, {
-          color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
-          offset: effect.offset || { x: 0, y: 4 },
-          radius: effect.radius !== void 0 ? effect.radius : 4,
-          spread: effect.spread !== void 0 ? effect.spread : 0,
-          blendMode: effect.blendMode || "NORMAL",
-          showShadowBehindNode: effect.showShadowBehindNode !== void 0 ? effect.showShadowBehindNode : false
-        });
-      } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
-        return Object.assign({}, baseEffect, {
-          radius: effect.radius !== void 0 ? effect.radius : 4
-        });
-      }
-      return effect;
-    });
+    const processedEffects = normalizeEffects(effects);
     node.effects = processedEffects;
     return {
       id: node.id,
@@ -1952,67 +2102,6 @@
       // Return other properties? Maybe just name/id/mode is enough. 
       // Let's return what we have in the original implementation sort of.
     };
-  }
-
-  // figma_plugin/utils/exportUtils.ts
-  function customBase64Encode(bytes) {
-    const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let base64 = "";
-    const byteLength = bytes.byteLength;
-    const byteRemainder = byteLength % 3;
-    const mainLength = byteLength - byteRemainder;
-    let a, b, c, d;
-    let chunk;
-    for (let i = 0; i < mainLength; i = i + 3) {
-      chunk = bytes[i] << 16 | bytes[i + 1] << 8 | bytes[i + 2];
-      a = (chunk & 16515072) >> 18;
-      b = (chunk & 258048) >> 12;
-      c = (chunk & 4032) >> 6;
-      d = chunk & 63;
-      base64 += chars[a] + chars[b] + chars[c] + chars[d];
-    }
-    if (byteRemainder === 1) {
-      chunk = bytes[mainLength];
-      a = (chunk & 252) >> 2;
-      b = (chunk & 3) << 4;
-      base64 += chars[a] + chars[b] + "==";
-    } else if (byteRemainder === 2) {
-      chunk = bytes[mainLength] << 8 | bytes[mainLength + 1];
-      a = (chunk & 64512) >> 10;
-      b = (chunk & 1008) >> 4;
-      c = (chunk & 15) << 2;
-      base64 += chars[a] + chars[b] + chars[c] + "=";
-    }
-    return base64;
-  }
-  function bytesToUtf8(bytes) {
-    if (typeof TextDecoder !== "undefined") {
-      return new TextDecoder("utf-8").decode(bytes);
-    }
-    let out = "";
-    let i = 0;
-    const len = bytes.length;
-    while (i < len) {
-      const b1 = bytes[i++];
-      if (b1 < 128) {
-        out += String.fromCharCode(b1);
-      } else if (b1 >= 192 && b1 < 224) {
-        const b2 = bytes[i++];
-        out += String.fromCharCode((b1 & 31) << 6 | b2 & 63);
-      } else if (b1 >= 224 && b1 < 240) {
-        const b2 = bytes[i++];
-        const b3 = bytes[i++];
-        out += String.fromCharCode((b1 & 15) << 12 | (b2 & 63) << 6 | b3 & 63);
-      } else {
-        const b2 = bytes[i++];
-        const b3 = bytes[i++];
-        const b4 = bytes[i++];
-        let cp = (b1 & 7) << 18 | (b2 & 63) << 12 | (b3 & 63) << 6 | b4 & 63;
-        cp -= 65536;
-        out += String.fromCharCode(55296 + (cp >> 10), 56320 + (cp & 1023));
-      }
-    }
-    return out;
   }
 
   // figma_plugin/handlers/componentHandlers.ts
@@ -3738,12 +3827,29 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     }
     return consumerMap;
   }
-  async function findVariableConsumers(rootNode, variableIds) {
+  async function findVariableConsumers(rootNode, variableIds, commandId, commandType = "variable_delete") {
     const consumerMap = /* @__PURE__ */ new Map();
     let walkCount = 0;
+    let lastYield = Date.now();
+    let lastHeartbeat = Date.now();
     async function walk(node) {
-      if (++walkCount % 500 === 0) {
+      walkCount++;
+      const now = Date.now();
+      if (now - lastYield >= 50 || walkCount % 500 === 0) {
         await new Promise((r) => setTimeout(r, 0));
+        lastYield = Date.now();
+        if (commandId && Date.now() - lastHeartbeat >= 1e3) {
+          await sendProgressUpdate(
+            commandId,
+            commandType,
+            "in_progress",
+            50,
+            1,
+            0,
+            `Scanning nodes for consumers (checked ${walkCount} so far)...`
+          );
+          lastHeartbeat = Date.now();
+        }
       }
       const boundVars = node.boundVariables;
       if (boundVars) {
@@ -3984,11 +4090,11 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             if (pageNode.type !== "PAGE") {
               throw new Error("pageId does not resolve to a PAGE");
             }
-            nodeConsumerMap = await findVariableConsumers(pageNode, idSet);
+            nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, "get_variables");
           } else {
             const pages = figma.root.children;
             for (const [index, page] of pages.entries()) {
-              const pageConsumers = await findVariableConsumers(page, idSet);
+              const pageConsumers = await findVariableConsumers(page, idSet, commandId, "get_variables");
               for (const [vid, entries] of pageConsumers) {
                 const existing = nodeConsumerMap.get(vid) || [];
                 nodeConsumerMap.set(vid, existing.concat(entries));
@@ -4055,7 +4161,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   }
   async function deleteVariables(params) {
     var _a;
-    const { variableIds, variableNames, collectionId, collectionName } = params || {};
+    const { variableIds, variableNames, collectionId, collectionName, commandId } = params || {};
     if (variableIds && collectionId) {
       throw new Error("Provide either variableIds or collectionId, not both");
     }
@@ -4106,12 +4212,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     const idSet = new Set(idsToCheck);
     const stylePromise = findStyleConsumers(idSet);
     const aliasPromise = findAliasConsumers(idSet);
-    const styleConsumerMap = await stylePromise;
-    const _aliasConsumerMap = await aliasPromise;
-    const _nodeMaps = [];
-    for (const page of figma.root.children) {
-      _nodeMaps.push(await findVariableConsumers(page, idSet));
-    }
+    const nodeMapsPromises = figma.root.children.map((page) => findVariableConsumers(page, idSet, commandId, "variable_delete"));
+    const [styleConsumerMap, _aliasConsumerMap, ..._nodeMaps] = await Promise.all([
+      stylePromise,
+      aliasPromise,
+      ...nodeMapsPromises
+    ]);
     const nodeConsumerMap = /* @__PURE__ */ new Map();
     for (const pageResults of _nodeMaps) {
       for (const [vid, entries] of pageResults) {
@@ -4287,7 +4393,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         };
       }
       case "CREATE_VARIABLE": {
-        const { collectionId, name, type, value } = params;
+        const { collectionId, name, type, value, scopes } = params;
         if (!collectionId || !name || !type) throw new Error("Missing required parameters for variable creation");
         let resolvedType;
         if (type === "FLOAT") resolvedType = "FLOAT";
@@ -4300,24 +4406,29 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           throw new Error(`Collection not found: ${collectionId}`);
         }
         const variable = figma.variables.createVariable(name, collection, resolvedType);
-        if (value !== void 0) {
-          const collection2 = await figma.variables.getVariableCollectionByIdAsync(collectionId);
-          const defaultModeId = collection2.defaultModeId;
-          let parsedValue = value;
-          if (resolvedType === "COLOR" && typeof value === "object") {
-            parsedValue = {
-              r: value.r || 0,
-              g: value.g || 0,
-              b: value.b || 0
-            };
-            parsedValue = {
-              r: value.r || 0,
-              g: value.g || 0,
-              b: value.b || 0,
-              a: value.a !== void 0 ? value.a : 1
-            };
+        try {
+          if (scopes !== void 0) {
+            variable.scopes = scopes;
           }
-          variable.setValueForMode(defaultModeId, parsedValue);
+          if (value !== void 0) {
+            const defaultModeId = collection.defaultModeId;
+            let parsedValue = value;
+            if (resolvedType === "COLOR" && typeof value === "object") {
+              parsedValue = {
+                r: value.r || 0,
+                g: value.g || 0,
+                b: value.b || 0,
+                a: value.a !== void 0 ? value.a : 1
+              };
+            }
+            variable.setValueForMode(defaultModeId, parsedValue);
+          }
+        } catch (e) {
+          try {
+            variable.remove();
+          } catch (e2) {
+          }
+          throw e;
         }
         return {
           id: variable.id,
@@ -4327,7 +4438,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         };
       }
       case "UPDATE_VARIABLE": {
-        const { variableId, name, value, modeId, description, currentVariableName } = params;
+        const { variableId, name, value, modeId, description, currentVariableName, scopes } = params;
         if (!variableId) throw new Error("Missing variableId for update");
         const variable = await figma.variables.getVariableByIdAsync(variableId);
         if (!variable) throw new Error(`Variable ${variableId} not found`);
@@ -4342,6 +4453,9 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }
         if (description !== void 0) {
           variable.description = description;
+        }
+        if (scopes !== void 0) {
+          variable.scopes = scopes;
         }
         if (value !== void 0) {
           if (!modeId) throw new Error("Missing modeId for setting variable value");
@@ -4434,7 +4548,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           }
           case "EFFECT": {
             const s = style;
-            if (properties.effects) s.effects = properties.effects;
+            if (properties.effects) s.effects = normalizeEffects(properties.effects);
             break;
           }
           case "GRID": {

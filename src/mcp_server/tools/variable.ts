@@ -1,7 +1,33 @@
+/// <reference types="@figma/plugin-typings" />
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
 import { toolResult } from "./_result.js";
+
+const VARIABLE_SCOPES = [
+    'ALL_SCOPES',
+    'TEXT_CONTENT',
+    'CORNER_RADIUS',
+    'WIDTH_HEIGHT',
+    'GAP',
+    'ALL_FILLS',
+    'FRAME_FILL',
+    'SHAPE_FILL',
+    'TEXT_FILL',
+    'STROKE_COLOR',
+    'STROKE_FLOAT',
+    'EFFECT_FLOAT',
+    'EFFECT_COLOR',
+    'OPACITY',
+    'FONT_FAMILY',
+    'FONT_STYLE',
+    'FONT_WEIGHT',
+    'FONT_SIZE',
+    'LINE_HEIGHT',
+    'LETTER_SPACING',
+    'PARAGRAPH_SPACING',
+    'PARAGRAPH_INDENT'
+] as const satisfies readonly VariableScope[];
 
 export function registerVariableTools(server: McpServer) {
     // 1. List Variables Tool
@@ -91,6 +117,10 @@ export function registerVariableTools(server: McpServer) {
                     .optional()
                     .describe("Current name of the variable to verify against (for UPDATE_VARIABLE)"),
                 modeId: z.string().optional().describe("Mode ID (for UPDATE_VARIABLE value setting)"),
+                scopes: z
+                    .array(z.enum(VARIABLE_SCOPES))
+                    .optional()
+                    .describe("Variable scopes. ALWAYS set explicitly on create; omit on update to leave unchanged."),
             }),
             outputSchema: z.object({
                 id: z.string().optional().describe("ID of the collection or variable"),

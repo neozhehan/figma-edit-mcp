@@ -11,6 +11,30 @@ async function main() {
     // Wait a little for connection to open
     await setTimeout(1000);
     
+    // Verify §1 fixture URLs liveness
+    console.log("\n--- Step 0: §1 fixture-URL liveness ---");
+    const urlsToTest = [
+        "https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png",
+        "https://upload.wikimedia.org/wikipedia/commons/b/b6/Felis_catus-cat_on_snow.jpg",
+        "https://upload.wikimedia.org/wikipedia/commons/d/d3/Newtons_cradle_animation_book_2.gif",
+        "https://upload.wikimedia.org/wikipedia/commons/2/2c/Rotating_earth_%28large%29.gif",
+        "https://upload.wikimedia.org/wikipedia/commons/8/81/R1_Canberra_light_rail_diagram.png",
+        "https://upload.wikimedia.org/wikipedia/commons/f/ff/Pizigani_1367_Chart_10MB.jpg",
+        "https://upload.wikimedia.org/wikipedia/commons/b/b6/UCB_Miscellaneous_Symbols_and_Pictographs_wide.gif",
+        "https://upload.wikimedia.org/wikipedia/commons/7/70/Zellamsee.gif"
+    ];
+    for (const url of urlsToTest) {
+        console.log(`Checking ${url.substring(url.lastIndexOf('/') + 1)}...`);
+        const res = await fetch(url, { 
+            method: "HEAD",
+            headers: { "User-Agent": "Figma-MCP-Verify/1.0" }
+        });
+        if (!res.ok && res.status !== 429) {
+            throw new Error(`URL failed: ${url} returned ${res.status}`);
+        }
+        console.log(`  ✅ HTTP 200, Content-Type: ${res.headers.get("content-type")}`);
+    }
+
     try {
         // 1. Join channel
         console.log(`\n--- Step 1: Joining channel '${channel}' ---`);

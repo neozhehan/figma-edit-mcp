@@ -108,7 +108,9 @@ export async function findAliasConsumers(variableIds: Set<string>): Promise<Map<
  */
 async function findVariableConsumers(
     rootNode: BaseNode,
-    variableIds: Set<string>
+    variableIds: Set<string>,
+    commandId?: string,
+    commandType: string = 'variable_delete'
 ): Promise<Map<string, Array<{
     nodeId: string;
     nodeName: string;
@@ -120,10 +122,28 @@ async function findVariableConsumers(
     }>>();
     
     let walkCount = 0;
+    let lastYield = Date.now();
+    let lastHeartbeat = Date.now();
 
     async function walk(node: BaseNode) {
-        if (++walkCount % 500 === 0) {
+        walkCount++;
+        const now = Date.now();
+        if (now - lastYield >= 50 || walkCount % 500 === 0) {
             await new Promise(r => setTimeout(r, 0));
+            lastYield = Date.now();
+            
+            if (commandId && (Date.now() - lastHeartbeat >= 1000)) {
+                await sendProgressUpdate(
+                    commandId,
+                    commandType,
+                    'in_progress',
+                    50,
+                    1,
+                    0,
+                    `Scanning nodes for consumers (checked ${walkCount} so far)...`
+                );
+                lastHeartbeat = Date.now();
+            }
         }
         const boundVars = (node as any).boundVariables;
         if (boundVars) {
@@ -391,12 +411,12 @@ export async function getVariables(params: any) {
                     if (pageNode.type !== 'PAGE') {
                         throw new Error("pageId does not resolve to a PAGE");
                     }
-                    nodeConsumerMap = await findVariableConsumers(pageNode, idSet);
+                    nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, 'get_variables');
                 } else {
                     // includeConsumers === 'document'
                     const pages = figma.root.children;
                     for (const [index, page] of pages.entries()) {
-                        const pageConsumers = await findVariableConsumers(page, idSet);
+                        const pageConsumers = await findVariableConsumers(page, idSet, commandId, 'get_variables');
                         for (const [vid, entries] of pageConsumers) {
                             const existing = nodeConsumerMap.get(vid) || [];
                             nodeConsumerMap.set(vid, existing.concat(entries));
@@ -471,7 +491,7 @@ export async function getVariables(params: any) {
 
 
 export async function deleteVariables(params: any) {
-    const { variableIds, variableNames, collectionId, collectionName } = params || {};
+    const { variableIds, variableNames, collectionId, collectionName, commandId } = params || {};
 
     // Mutual exclusivity check
     if (variableIds && collectionId) {
@@ -540,13 +560,13 @@ export async function deleteVariables(params: any) {
     // Concurrent scanning
     const stylePromise = findStyleConsumers(idSet);
     const aliasPromise = findAliasConsumers(idSet);
-    const styleConsumerMap = await stylePromise;
-    const _aliasConsumerMap = await aliasPromise;
+    const nodeMapsPromises = figma.root.children.map(page => findVariableConsumers(page, idSet, commandId, 'variable_delete'));
     
-    const _nodeMaps: any[] = [];
-    for (const page of figma.root.children) {
-        _nodeMaps.push(await findVariableConsumers(page, idSet));
-    }
+    const [styleConsumerMap, _aliasConsumerMap, ..._nodeMaps] = await Promise.all([
+        stylePromise,
+        aliasPromise,
+        ...nodeMapsPromises
+    ]);
 
     const nodeConsumerMap = new Map<string, any[]>();
     for (const pageResults of _nodeMaps) {
@@ -876,7 +896,7 @@ export async function handleVariableRequest(params: any) {
         }
 
         case 'CREATE_VARIABLE': {
-            const { collectionId, name, type, value } = params;
+            const { collectionId, name, type, value, scopes } = params;
             if (!collectionId || !name || !type) throw new Error("Missing required parameters for variable creation");
 
             // Resolve resolvedType string to VariableResolvedType
@@ -898,32 +918,35 @@ export async function handleVariableRequest(params: any) {
             // @ts-ignore
             const variable = figma.variables.createVariable(name, collection, resolvedType);
 
-            // Set initial value if provided (for default mode)
-            if (value !== undefined) {
-                const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
-                // @ts-ignore
-                const defaultModeId = collection.defaultModeId;
-
-                // Value parsing for color
-                let parsedValue = value;
-                if (resolvedType === 'COLOR' && typeof value === 'object') {
-                    // Expect {r, g, b, a} 0-1
-                    parsedValue = {
-                        r: value.r || 0,
-                        g: value.g || 0,
-                        b: value.b || 0,
-                    };
-                    // Alpha is invalid for setValueForMode? documentation says RGBA or RGB
-                    // Actually setValueForMode takes R, G, B, A in 0-1 range. But verify API.
-                    parsedValue = {
-                        r: value.r || 0,
-                        g: value.g || 0,
-                        b: value.b || 0,
-                        a: value.a !== undefined ? value.a : 1
-                    };
+            // Apply scopes/value as a unit; roll back the freshly-created variable if any
+            // post-creation step throws (e.g. a type-incompatible scope) so a partial
+            // failure never leaks an orphaned variable into the collection.
+            try {
+                if (scopes !== undefined) {
+                    variable.scopes = scopes;
                 }
 
-                variable.setValueForMode(defaultModeId, parsedValue);
+                // Set initial value if provided (for default mode)
+                if (value !== undefined) {
+                    // @ts-ignore
+                    const defaultModeId = collection.defaultModeId;
+
+                    // Value parsing for color (setValueForMode takes r,g,b,a in 0-1)
+                    let parsedValue = value;
+                    if (resolvedType === 'COLOR' && typeof value === 'object') {
+                        parsedValue = {
+                            r: value.r || 0,
+                            g: value.g || 0,
+                            b: value.b || 0,
+                            a: value.a !== undefined ? value.a : 1
+                        };
+                    }
+
+                    variable.setValueForMode(defaultModeId, parsedValue);
+                }
+            } catch (e) {
+                try { variable.remove(); } catch { /* best-effort rollback */ }
+                throw e;
             }
 
             return {
@@ -935,7 +958,7 @@ export async function handleVariableRequest(params: any) {
         }
 
         case 'UPDATE_VARIABLE': {
-            const { variableId, name, value, modeId, description, currentVariableName } = params;
+            const { variableId, name, value, modeId, description, currentVariableName, scopes } = params;
             if (!variableId) throw new Error("Missing variableId for update");
 
             const variable = await figma.variables.getVariableByIdAsync(variableId);
@@ -955,6 +978,10 @@ export async function handleVariableRequest(params: any) {
 
             if (description !== undefined) {
                 variable.description = description;
+            }
+
+            if (scopes !== undefined) {
+                variable.scopes = scopes;
             }
 
             if (value !== undefined) {
