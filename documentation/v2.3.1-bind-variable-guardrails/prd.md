@@ -170,16 +170,19 @@ bindVariables: z
 **Current behavior.**
 - The generic branch calls `node.setBoundVariable(field, variable)` with no precheck (`variableHandlers.ts:834-836`); any failure is wrapped as `Failed to set bound variable for ${field}: …` (`variableHandlers.ts:838-839`) — Figma's opaque message, no remediation.
 
-**v2.3.1 change (D4).** Before the generic `setBoundVariable`, precheck auto-layout-only fields:
+**v2.3.1 change (D4).** Before the generic `setBoundVariable`, precheck auto-layout-only fields. `AUTOLAYOUT_FIELDS` is a **module-scope** constant (allocated once, not per bound field). The error **splits by case** so the LLM gets the *correct* next step (review F-A): a node with no `layoutMode` property can never have auto-layout, whereas a frame just needs it turned on — telling a rectangle to "set auto-layout" is a dead end.
 ```ts
-const AUTOLAYOUT_FIELDS = new Set([
+const AUTOLAYOUT_FIELDS = new Set([   // module scope
   "paddingLeft","paddingRight","paddingTop","paddingBottom","itemSpacing","counterAxisSpacing",
 ]);
-if (AUTOLAYOUT_FIELDS.has(field) &&
-    (!("layoutMode" in node) || (node as any).layoutMode === "NONE")) {
-  throw new Error(
-    `node_bind_variable: cannot bind '${field}' on '${node.name}' — it is not an auto-layout frame. ` +
-    `Set auto-layout (node_set_auto_layout with layoutMode HORIZONTAL or VERTICAL) first, then bind.`);
+// …inside the generic branch, before setBoundVariable:
+if (AUTOLAYOUT_FIELDS.has(field)) {
+  if (!("layoutMode" in node)) {                 // category error — not fixable here
+    throw new Error(`node_bind_variable: cannot bind '${field}' on '${node.name}' — '${field}' is an auto-layout property that only exists on auto-layout frames, and a ${node.type} cannot have auto-layout. Bind '${field}' on an auto-layout frame instead.`);
+  }
+  if ((node as any).layoutMode === "NONE") {      // auto-layout off — fixable
+    throw new Error(`node_bind_variable: cannot bind '${field}' on '${node.name}' — auto-layout is off (layoutMode is NONE). Turn it on first with node_set_auto_layout (layoutMode HORIZONTAL or VERTICAL), then bind '${field}'.`);
+  }
 }
 ```
 
@@ -188,7 +191,7 @@ if (AUTOLAYOUT_FIELDS.has(field) &&
 - Leaves all non-padding scalar binds to Figma's own validation (a deliberately narrow precheck — only the highest-frequency, most-confusing case).
 - **Not expanded (peer review, Finding 3).** A proposed extension — also precheck binding `itemSpacing` under `primaryAxisAlignItems === "SPACE_BETWEEN"`, and `counterAxisSpacing` under `layoutWrap === "NO_WRAP"` — was **live-tested on channel `xg0d` and rejected**: both binds **succeed and persist** (verified via `boundVariables`). Figma accepts the bind at the property level regardless of those layout states, so adding guards would falsely reject valid operations.
 
-**Tests.** Unit (extend `annotationsAndVariables.test.ts`): binding `paddingLeft` on a frame with `layoutMode: "HORIZONTAL"` succeeds (mock); binding `paddingLeft` on a frame with `layoutMode: "NONE"` throws the actionable error **before** `setBoundVariable` is called (assert the spy is not invoked); a non-padding scalar bind is unaffected.
+**Tests.** Unit (extend `annotationsAndVariables.test.ts`): binding `paddingLeft` on a frame with `layoutMode: "HORIZONTAL"` succeeds (mock); `layoutMode: "NONE"` throws the **case-1** (auto-layout off) message and a node with **no `layoutMode`** property throws the **case-2** (node type can't have auto-layout) message — both **before** `setBoundVariable` (assert the spy is not invoked); a non-padding scalar bind is unaffected. Guard-error assertions use exact-match (`toBe`), so a wrapper regression would fail the test (consistent with §1's F2 fix).
 
 ---
 
@@ -223,7 +226,7 @@ if (AUTOLAYOUT_FIELDS.has(field) &&
 
 Update the single source of operational guidance (MCP resources + the `figma-edit` skill + in-repo `skills/figma-edit/references/`):
 
-- **`error-playbook.md`** — recovery entries for: bind on a non-solid fill (§1: set a solid fill first or unbind), bind a non-color variable to fills (§1: use a COLOR variable), bind on a mixed/unsupported node (§1), unknown bind field (§2: use the exact Figma field name), padding/spacing bind on a non-auto-layout node (§3: set `layoutMode` first), and **clear-fill on a node with no `fills` property (§4)**.
+- **`error-playbook.md`** — recovery entries for: bind on a non-solid fill (§1: set a solid fill first or unbind), bind a non-color variable to fills (§1: use a COLOR variable), bind on a mixed/unsupported node (§1), unknown bind field (§2: use the exact Figma field name), padding/spacing bind on a node where auto-layout is off (§3 case-1: turn auto-layout on first) vs. on a node type that can't have auto-layout (§3 case-2: bind on an auto-layout frame instead), and **clear-fill on a node with no `fills` property (§4)**.
 - **`workflows.md` / `tool-selection.md`** — document the **ordering** for tokenised components: set auto-layout → bind padding/spacing; set a solid fill → bind the colour token. Note that binding a colour token to an **empty** fill auto-creates a bound solid paint, and that **`node_set_fill {clear:true}` removes a fill** (and is the way to reach that empty-fill state). `tool-selection.md`'s "Image Fills (`node_set_fill`)" / ad-hoc-color rows should name the third mode (clear).
 - **`node_bind_variable` tool description** (`node.ts`) — name the valid bind fields and the ordering rules inline.
 - **`node_set_fill` tool description** (`node.ts`) — state the three modes (solid color, image, or `clear`); then **run `bun run gen:manifest`** so `manifest.json` reflects the new description.

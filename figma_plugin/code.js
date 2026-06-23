@@ -4311,6 +4311,14 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     if (e.name) return e.name;
     return "unknown error (no message)";
   }
+  var AUTOLAYOUT_FIELDS = /* @__PURE__ */ new Set([
+    "paddingLeft",
+    "paddingRight",
+    "paddingTop",
+    "paddingBottom",
+    "itemSpacing",
+    "counterAxisSpacing"
+  ]);
   async function setBoundVariable(params) {
     var _a;
     const { nodeId, bindVariables, explicitVariableModes } = params || {};
@@ -4391,6 +4399,18 @@ Processing annotation ${i + 1}/${annotations.length}:`,
               }
             }
             continue;
+          }
+          if (AUTOLAYOUT_FIELDS.has(field)) {
+            if (!("layoutMode" in node)) {
+              throw new Error(
+                `node_bind_variable: cannot bind '${field}' on '${node.name}' \u2014 '${field}' is an auto-layout property that only exists on auto-layout frames, and a ${node.type} cannot have auto-layout. Bind '${field}' on an auto-layout frame instead.`
+              );
+            }
+            if (node.layoutMode === "NONE") {
+              throw new Error(
+                `node_bind_variable: cannot bind '${field}' on '${node.name}' \u2014 auto-layout is off (layoutMode is NONE). Turn it on first with node_set_auto_layout (layoutMode HORIZONTAL or VERTICAL), then bind '${field}'.`
+              );
+            }
           }
           node.setBoundVariable(field, variable);
           results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);

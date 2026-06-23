@@ -758,6 +758,13 @@ function describeError(e: any): string {
     return 'unknown error (no message)';
 }
 
+// Fields that only exist on auto-layout frames. Bound via the generic
+// setBoundVariable path, but only valid when the node has auto-layout on, so the
+// §3 precheck gates them. Module-scope (allocated once, not per bound field).
+const AUTOLAYOUT_FIELDS = new Set([
+    "paddingLeft", "paddingRight", "paddingTop", "paddingBottom", "itemSpacing", "counterAxisSpacing",
+]);
+
 export async function setBoundVariable(params: any) {
     // Schema contract (src/mcp_server/tools/node.ts): bindVariables is a map of
     // property → variableId|null, and explicitVariableModes is a map of
@@ -869,7 +876,23 @@ export async function setBoundVariable(params: any) {
                     continue;
                 }
 
-                // Standard properties
+                // Standard properties — §3 precheck. Padding/spacing only bind on
+                // auto-layout frames; give the LLM the correct next step per case:
+                // a non-frame node can never have auto-layout, whereas a frame just
+                // needs it turned on.
+                if (AUTOLAYOUT_FIELDS.has(field)) {
+                    if (!("layoutMode" in node)) {
+                        throw new Error(
+                            `node_bind_variable: cannot bind '${field}' on '${node.name}' — '${field}' is an auto-layout property that only exists on auto-layout frames, and a ${node.type} cannot have auto-layout. Bind '${field}' on an auto-layout frame instead.`
+                        );
+                    }
+                    if ((node as any).layoutMode === "NONE") {
+                        throw new Error(
+                            `node_bind_variable: cannot bind '${field}' on '${node.name}' — auto-layout is off (layoutMode is NONE). Turn it on first with node_set_auto_layout (layoutMode HORIZONTAL or VERTICAL), then bind '${field}'.`
+                        );
+                    }
+                }
+
                 // @ts-ignore
                 node.setBoundVariable(field, variable);
                 results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);

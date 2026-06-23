@@ -53,12 +53,15 @@
 - [x] **Live Test (Manual → Phase 8):** bind a COLOR var to a node with no fill (bound solid paint appears); to an image-filled node (type-mismatch/non-solid error, fill untouched); a non-COLOR var to fills (non-color error).
 
 ## Phase 4: §3 Auto-layout Precheck for Padding/Spacing (P1) — `figma_plugin/handlers/variableHandlers.ts` (generic branch)
-- [ ] Define `AUTOLAYOUT_FIELDS` Set (`paddingLeft`, `paddingRight`, `paddingTop`, `paddingBottom`, `itemSpacing`, `counterAxisSpacing`).
-- [ ] Before the generic `node.setBoundVariable(field, variable)`, throw the PRD §3 actionable error if the field ∈ `AUTOLAYOUT_FIELDS` and the node has no `layoutMode` or `layoutMode === "NONE"` (D4).
-- [ ] **Do NOT** add prechecks for `primaryAxisAlignItems === "SPACE_BETWEEN"` (itemSpacing) or `layoutWrap === "NO_WRAP"` (counterAxisSpacing): these were **live-tested on `xg0d` and accept the bind** — guarding them would falsely reject valid operations (Finding 3, rejected). Keep the precheck narrow.
-- [ ] **Do not auto-fix** by enabling auto-layout — detect and surface only (D4).
-- [ ] **Unit Test** (extend `annotationsAndVariables.test.ts`): `paddingLeft` on a `layoutMode: "HORIZONTAL"` frame succeeds (mock); on a `layoutMode: "NONE"` frame throws the actionable error **before** `setBoundVariable` is called (assert the spy is not invoked); a non-padding scalar bind is unaffected.
-- [ ] **Live Test (Manual → Phase 8):** bind `paddingLeft` on a plain frame → error; then set auto-layout and bind again → success.
+
+> [!NOTE]
+> **Post-implementation hardening (adversarial review + live test on `bco6`).** F-A: the single "set auto-layout first" message gave a dead-end instruction for nodes that can't have auto-layout (a RECTANGLE/TEXT can't); split into two cases — auto-layout off (fixable: turn it on) vs. node type with no `layoutMode` (bind on an auto-layout frame instead) — so the LLM always gets the correct next step (see PRD §3, revised). F-B: hoisted `AUTOLAYOUT_FIELDS` to module scope (was re-allocated per bound field). F-C: added a unit test for the no-`layoutMode` (case-2) branch. F-D: §3 guard tests now use exact-match (`toBe`) like §1's F2 fix. The deliberately-narrow scope (Finding 3) was **re-validated live**: `itemSpacing` under `SPACE_BETWEEN` and `counterAxisSpacing` under `NO_WRAP` both bind and persist.
+- [x] Define `AUTOLAYOUT_FIELDS` Set (`paddingLeft`, `paddingRight`, `paddingTop`, `paddingBottom`, `itemSpacing`, `counterAxisSpacing`).
+- [x] Before the generic `node.setBoundVariable(field, variable)`, throw the PRD §3 actionable error if the field ∈ `AUTOLAYOUT_FIELDS` and the node has no `layoutMode` or `layoutMode === "NONE"` (D4).
+- [x] **Do NOT** add prechecks for `primaryAxisAlignItems === "SPACE_BETWEEN"` (itemSpacing) or `layoutWrap === "NO_WRAP"` (counterAxisSpacing): these were **live-tested on `xg0d` and accept the bind** — guarding them would falsely reject valid operations (Finding 3, rejected). Keep the precheck narrow.
+- [x] **Do not auto-fix** by enabling auto-layout — detect and surface only (D4).
+- [x] **Unit Test** (extend `annotationsAndVariables.test.ts`): `paddingLeft` on a `layoutMode: "HORIZONTAL"` frame succeeds (mock); on a `layoutMode: "NONE"` frame throws the actionable error **before** `setBoundVariable` is called (assert the spy is not invoked); a non-padding scalar bind is unaffected.
+- [x] **Live Test (Manual → Phase 8):** bind `paddingLeft` on a plain frame → error; then set auto-layout and bind again → success.
 
 ## Phase 5: §4 `node_set_fill` Clear-Fill (new capability, P2) — `src/mcp_server/tools/node.ts` (schema) + `figma_plugin/handlers/stylingHandlers.ts` (plugin)
 

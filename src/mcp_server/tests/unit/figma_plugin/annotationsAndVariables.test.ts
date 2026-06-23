@@ -372,6 +372,41 @@ describe("setBoundVariable Handler (node_bind_variable MCP shape)", () => {
         expect(mockNode.fills[0].boundVariables.color).toBeUndefined();
     });
 
+    it("throws the case-1 error (auto-layout OFF) when binding padding to a frame with layoutMode NONE", async () => {
+        mockNode.layoutMode = "NONE";
+        const msg = await caughtMessage(() =>
+            setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { paddingLeft: "v-color" } })
+        );
+        // Exact match — fixable case directs the LLM to turn auto-layout on.
+        expect(msg).toBe("node_bind_variable: cannot bind 'paddingLeft' on 'Rect' — auto-layout is off (layoutMode is NONE). Turn it on first with node_set_auto_layout (layoutMode HORIZONTAL or VERTICAL), then bind 'paddingLeft'.");
+        expect(mockNode.setBoundVariable).not.toHaveBeenCalled();
+    });
+
+    it("throws the case-2 error (node type can't have auto-layout) when the node has no layoutMode property", async () => {
+        // beforeEach builds a RECTANGLE with no layoutMode — the `!('layoutMode' in node)` branch.
+        expect("layoutMode" in mockNode).toBe(false);
+        const msg = await caughtMessage(() =>
+            setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { paddingLeft: "v-color" } })
+        );
+        // Exact match — category error tells the LLM to use an auto-layout frame, NOT to set auto-layout here.
+        expect(msg).toBe("node_bind_variable: cannot bind 'paddingLeft' on 'Rect' — 'paddingLeft' is an auto-layout property that only exists on auto-layout frames, and a RECTANGLE cannot have auto-layout. Bind 'paddingLeft' on an auto-layout frame instead.");
+        expect(mockNode.setBoundVariable).not.toHaveBeenCalled();
+    });
+
+    it("succeeds when binding padding to an autolayout frame", async () => {
+        mockNode.layoutMode = "HORIZONTAL";
+        const result: any = await setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { paddingLeft: "v-color" } });
+        expect(result.success).toBe(true);
+        expect(mockNode.setBoundVariable).toHaveBeenCalledWith("paddingLeft", { id: "v-color", name: "Brand/Primary", resolvedType: "COLOR" });
+    });
+
+    it("does not precheck non-padding scalar fields", async () => {
+        mockNode.layoutMode = "NONE";
+        const result: any = await setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { cornerRadius: "v-color" } });
+        expect(result.success).toBe(true);
+        expect(mockNode.setBoundVariable).toHaveBeenCalledWith("cornerRadius", { id: "v-color", name: "Brand/Primary", resolvedType: "COLOR" });
+    });
+
     it("surfaces an actionable detail when the underlying bind throws a message-less error (never the literal 'undefined')", async () => {
         // Figma can throw error-like objects whose `.message` is undefined; the
         // handler must not print "undefined" — it should fall back to name/etc.
