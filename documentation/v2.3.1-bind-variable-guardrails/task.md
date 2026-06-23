@@ -3,7 +3,7 @@
 > [!NOTE]
 > **Conventions for this list.**
 > - **Error messages must match the exact strings specified in the PRD** (§1 / §2 / §3); do not paraphrase.
-> - **Manual live tests require the Phase 6 build** (rebuilt plugin + `dist/`). They are listed under their feature for traceability but are *executed in Phase 7*, after the build.
+> - **Manual live tests require the Phase 7 build** (rebuilt plugin + `dist/`). They are listed under their feature for traceability but are *executed in Phase 8*, after the build.
 > - Spec source of truth: [`prd.md`](./prd.md). Each task cites the PRD decision it implements.
 
 ## Phase 1: Setup and Versioning
@@ -24,30 +24,33 @@
   - [x] Lexical near-misses get hints: `fill→fills`, `fontsize→fontSize`; unknown-but-unguessable keys get **no** "Did you mean".
   - [x] Wire JSON schema publishes the allowlist (`propertyNames.enum` contains valid fields, excludes typos).
   - [x] Empty / omitted `bindVariables` still valid (modes-only path).
-- [x] **Live Test (Manual → Phase 7):** `{padding: id}` → schema rejection with hint; `{strokeTopWeight: id}` → accepted. *(Executed early on channel `7geb`: reject hints for `padding`/`fill`/`fontsize`, accept path for the regression fields, and an end-to-end `fills`+`topLeftRadius` bind — all verified.)*
+- [x] **Live Test (Manual → Phase 8):** `{padding: id}` → schema rejection with hint; `{strokeTopWeight: id}` → accepted. *(Executed early on channel `7geb`: reject hints for `padding`/`fill`/`fontsize`, accept path for the regression fields, and an end-to-end `fills`+`topLeftRadius` bind — all verified.)*
 
 ## Phase 3: §1 Paint-bind Path Guards & Silent-Success Fix (P0) — `figma_plugin/handlers/variableHandlers.ts` (`fills`/`strokes` branch)
-- [ ] **Remove the silent-success no-op:** delete the existing `else { results.push("No SOLID paints found …") }` branch (`variableHandlers.ts:828-831`); it must be fully replaced by the handling below so the function **never returns `success: true` for a true no-op**.
-- [ ] Add up-front guards, evaluated **in this order, before** the `JSON.parse(JSON.stringify(node[field]))` clone:
-  - [ ] **Unsupported node:** if `!(field in node)` → throw the PRD "no '${field}' property" error (Finding 1).
-  - [ ] **Mixed paint:** if `node[field] === figma.mixed` → throw the PRD "is mixed" error (Finding 1).
-  - [ ] **Non-color variable:** if `variable && variable.resolvedType !== 'COLOR'` → throw the PRD non-color error. This guard covers the **whole** branch (existing paints *and* the empty/auto-create path), not just auto-create (Finding 4).
-- [ ] No-SOLID-paint handling:
-  - [ ] **Empty paint array** + binding (non-null variable): auto-create one SOLID paint **with placeholder color `{r:0,g:0,b:0}`** (overridden by the bound variable) via `setBoundVariableForPaint`, assign it, and report success "(created solid paint)" (D2).
-  - [ ] **Non-empty but no SOLID paint** + binding: **throw** the PRD non-solid error; do **not** clobber the existing image/gradient fill (D2).
-  - [ ] **Unbind** (`variableId === null`) with no solid paint: push a clear "nothing to unbind in `${field}`" note (not an error) (D2).
-- [ ] **Multiple SOLID paints (Finding 5):** leave the existing loop that binds **all** SOLID paints; add a code comment stating this is intentional (single-fill is the common case) so it reads as a decision, not an accident.
-- [ ] **Do not alter** the existing per-field `try/catch` or the verification/scope guards (PRD §1 Notes).
-- [ ] **Unit Test** (extend `tests/unit/figma_plugin/annotationsAndVariables.test.ts`):
-  - [ ] **Regression:** node with **one SOLID** paint still binds.
-  - [ ] **Empty** `fills` → auto-creates a bound SOLID paint.
-  - [ ] **Non-empty non-SOLID** `fills` → throws **and** leaves `fills` unmutated.
-  - [ ] Unsupported node (e.g. GROUP) and `figma.mixed` fill each throw their guard error **before** any paint mutation (Finding 1).
-  - [ ] FLOAT/STRING variable bound to `fills` throws the non-color error (Finding 4).
-  - [ ] Node with **two** SOLID paints binds the token to **both** (Finding 5).
-  - [ ] Unbind on a no-solid node returns the non-error "nothing to unbind" message.
-  - [ ] Assert the result is **never** `success` for a true no-op.
-- [ ] **Live Test (Manual → Phase 7):** bind a COLOR var to a node with no fill (bound solid paint appears); to an image-filled node (type-mismatch/non-solid error, fill untouched); a non-COLOR var to fills (non-color error).
+
+> [!NOTE]
+> **Post-implementation hardening (adversarial review + live test on `n2k2`).** F1: the per-field `catch` was double-wrapping the §1 guard throws (`Failed to set bound variable for fills: node_bind_variable: …`) — confirmed live; fixed by passing `node_bind_variable:`-prefixed errors through verbatim and wrapping only opaque errors (see PRD §1 Notes, revised). F2: the guard tests used substring `.rejects.toThrow()` and couldn't detect the wrap — switched to exact-message (`toBe`) assertions. F4: added a unit test for the unbind-with-solid path (`setBoundVariableForPaint(paint,'color',null)`), which was live-verified but previously unit-untested. F5: trailing whitespace removed. F3 became §4 (Phase 5).
+- [x] **Remove the silent-success no-op:** delete the existing `else { results.push("No SOLID paints found …") }` branch (`variableHandlers.ts:828-831`); it must be fully replaced by the handling below so the function **never returns `success: true` for a true no-op**.
+- [x] Add up-front guards, evaluated **in this order, before** the `JSON.parse(JSON.stringify(node[field]))` clone:
+  - [x] **Unsupported node:** if `!(field in node)` → throw the PRD "no '${field}' property" error (Finding 1).
+  - [x] **Mixed paint:** if `node[field] === figma.mixed` → throw the PRD "is mixed" error (Finding 1).
+  - [x] **Non-color variable:** if `variable && variable.resolvedType !== 'COLOR'` → throw the PRD non-color error. This guard covers the **whole** branch (existing paints *and* the empty/auto-create path), not just auto-create (Finding 4).
+- [x] No-SOLID-paint handling:
+  - [x] **Empty paint array** + binding (non-null variable): auto-create one SOLID paint **with placeholder color `{r:0,g:0,b:0}`** (overridden by the bound variable) via `setBoundVariableForPaint`, assign it, and report success "(created solid paint)" (D2).
+  - [x] **Non-empty but no SOLID paint** + binding: **throw** the PRD non-solid error; do **not** clobber the existing image/gradient fill (D2).
+  - [x] **Unbind** (`variableId === null`) with no solid paint: push a clear "nothing to unbind in `${field}`" note (not an error) (D2).
+- [x] **Multiple SOLID paints (Finding 5):** leave the existing loop that binds **all** SOLID paints; add a code comment stating this is intentional (single-fill is the common case) so it reads as a decision, not an accident.
+- [x] Keep the verification/scope guards untouched. **(Revised, F1):** the per-field `catch` now passes `node_bind_variable:`-prefixed guard errors through verbatim (wrapping only opaque errors) so the exact PRD strings surface (PRD §1 Notes, revised).
+- [x] **Unit Test** (extend `tests/unit/figma_plugin/annotationsAndVariables.test.ts`):
+  - [x] **Regression:** node with **one SOLID** paint still binds.
+  - [x] **Empty** `fills` → auto-creates a bound SOLID paint.
+  - [x] **Non-empty non-SOLID** `fills` → throws **and** leaves `fills` unmutated.
+  - [x] Unsupported node (e.g. GROUP) and `figma.mixed` fill each throw their guard error **before** any paint mutation (Finding 1).
+  - [x] FLOAT/STRING variable bound to `fills` throws the non-color error (Finding 4).
+  - [x] Node with **two** SOLID paints binds the token to **both** (Finding 5).
+  - [x] Unbind on a no-solid node returns the non-error "nothing to unbind" message.
+  - [x] Assert the result is **never** `success` for a true no-op.
+- [x] **Live Test (Manual → Phase 8):** bind a COLOR var to a node with no fill (bound solid paint appears); to an image-filled node (type-mismatch/non-solid error, fill untouched); a non-COLOR var to fills (non-color error).
 
 ## Phase 4: §3 Auto-layout Precheck for Padding/Spacing (P1) — `figma_plugin/handlers/variableHandlers.ts` (generic branch)
 - [ ] Define `AUTOLAYOUT_FIELDS` Set (`paddingLeft`, `paddingRight`, `paddingTop`, `paddingBottom`, `itemSpacing`, `counterAxisSpacing`).
@@ -55,17 +58,36 @@
 - [ ] **Do NOT** add prechecks for `primaryAxisAlignItems === "SPACE_BETWEEN"` (itemSpacing) or `layoutWrap === "NO_WRAP"` (counterAxisSpacing): these were **live-tested on `xg0d` and accept the bind** — guarding them would falsely reject valid operations (Finding 3, rejected). Keep the precheck narrow.
 - [ ] **Do not auto-fix** by enabling auto-layout — detect and surface only (D4).
 - [ ] **Unit Test** (extend `annotationsAndVariables.test.ts`): `paddingLeft` on a `layoutMode: "HORIZONTAL"` frame succeeds (mock); on a `layoutMode: "NONE"` frame throws the actionable error **before** `setBoundVariable` is called (assert the spy is not invoked); a non-padding scalar bind is unaffected.
-- [ ] **Live Test (Manual → Phase 7):** bind `paddingLeft` on a plain frame → error; then set auto-layout and bind again → success.
+- [ ] **Live Test (Manual → Phase 8):** bind `paddingLeft` on a plain frame → error; then set auto-layout and bind again → success.
 
-## Phase 5: Documentation Updates
-- [ ] **Update** `skills/figma-edit/references/error-playbook.md` with recovery entries for: non-solid fill bind (§1), non-color variable to fills (§1), mixed/unsupported node (§1), unknown bind field (§2), and padding/spacing bind on a non-auto-layout node (§3).
-- [ ] **Update** `skills/figma-edit/references/workflows.md` and/or `tool-selection.md` with the ordering rules (set auto-layout → bind padding/spacing; set solid fill → bind colour; binding a colour token to an empty fill auto-creates a bound solid paint).
-- [ ] **Update** `CHANGELOG.md` with a `v2.3.1` entry summarizing §1–§3 (silent-success + fill-branch guards, typings-derived bind-field allowlist, auto-layout precheck).
+## Phase 5: §4 `node_set_fill` Clear-Fill (new capability, P2) — `src/mcp_server/tools/node.ts` (schema) + `figma_plugin/handlers/stylingHandlers.ts` (plugin)
 
-## Phase 6: Build
-- [ ] **Build:** Rebuild `figma_plugin` (handlers TS → `code.js`); confirm the `node_bind_variable` dispatch reflects §1/§3.
-- [ ] **Build:** Run `bun run build:all` (regenerates `BINDABLE_FIELDS`, builds `dist/`); confirm `check:generated` passes (generated allowlist in sync with the typings) and the §2 `partialRecord`/`z.enum` schema resolves under **both Node and Bun**.
+> [!NOTE]
+> Surfaced by the §1 adversarial review (F3): no MCP path produces an empty-`fills` node, so §1's empty-fill auto-create branch isn't reachable end-to-end. D5 adds a `clear` mode to `node_set_fill` to close that loop. Scope is **fills only**; stroke-clearing is a deliberate non-goal here.
+
+- [ ] **Schema (`node.ts`):** add `clear: z.boolean().optional()` to `node_set_fill`; extend the `.superRefine` so **exactly one of {solid color (r,g,b[,a]), image, `clear:true`}** is provided. Replace the existing "either a solid color or an image, not both/neither" messages with the PRD §4 string: `node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.` (D5).
+- [ ] **Plugin (`stylingHandlers.ts`):** when `clear` is set, assign `node.fills = []` (instead of `[paintStyle]`). **Guard first:** if `!('fills' in node)` → throw the PRD §4 guard error `node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to clear.` (D5).
+- [ ] **Keep it narrow (D5):** do **not** add stroke-clearing, and do **not** add a `figma.mixed` guard (mixed fills are unambiguously clearable — assigning `[]` is well-defined).
+- [ ] Update the `node_set_fill` tool **description** inline to state the three modes (solid color, image, or `clear`), then run **`bun run gen:manifest`** so `manifest.json` reflects it.
+- [ ] **Unit Test** (`tests/unit/tools/node_set_fill.test.ts`):
+  - [ ] `{clear:true}` passes; `{clear:true, r,g,b}` rejected (mutually exclusive); `{}` (none of the three) still rejected.
+  - [ ] **Regression:** existing solid `{r,g,b}` and `{image:{…}}` inputs still pass.
+- [ ] **Unit Test** (plugin, `tests/unit/figma_plugin/setFillColor.test.ts`):
+  - [ ] `{clear:true}` sets `node.fills = []`.
+  - [ ] a node without a `fills` property throws the PRD §4 guard error **before** any mutation.
+- [ ] **Live Test (Manual → Phase 8):** `node_set_fill {clear:true}` on a shape → `fills` becomes `[]` (verify via `node_info`); then `node_bind_variable {fills: <colorVar>}` on it → auto-creates a bound solid paint (closes the §1 loop end-to-end); `clear:true` on a node type without `fills` (e.g. GROUP) → the guard error.
+
+## Phase 6: Documentation Updates
+- [ ] **Update** `skills/figma-edit/references/error-playbook.md` with recovery entries for: non-solid fill bind (§1), non-color variable to fills (§1), mixed/unsupported node (§1), unknown bind field (§2), padding/spacing bind on a non-auto-layout node (§3), and **clear-fill on a node with no `fills` property (§4)**.
+- [ ] **Update** `skills/figma-edit/references/workflows.md` and/or `tool-selection.md` with the ordering rules (set auto-layout → bind padding/spacing; set solid fill → bind colour; binding a colour token to an empty fill auto-creates a bound solid paint) **and the `node_set_fill {clear:true}` mode** (how to remove a fill / reach the empty-fill state). Update `tool-selection.md`'s "Image Fills (`node_set_fill`)" / ad-hoc-color rows to name the third mode (clear).
+- [ ] **Update** the `node_set_fill` entry in `README.md`'s tool table — currently "Set a node's fill to a literal RGBA color" (stale since v2.3.0 added image) → "Set a node's fill to a color or image, or clear it" (§4).
+- [ ] **Update** `CHANGELOG.md` with a `v2.3.1` entry summarizing §1–§4 (silent-success + fill-branch guards, typings-derived bind-field allowlist, auto-layout precheck, `node_set_fill` clear mode).
+- [ ] **Note:** the MCP guide resources (`figma-edit://guide/*`) are served from `skills/figma-edit/references/*.md` (see `src/mcp_server/resources.ts`), so updating those files updates the resources too — no separate edit needed.
+
+## Phase 7: Build
+- [ ] **Build:** Rebuild `figma_plugin` (handlers TS → `code.js`); confirm the `node_bind_variable` dispatch reflects §1/§3 **and the `node_set_fill` dispatch reflects §4** (`clear` → `fills = []`).
+- [ ] **Build:** Run `bun run build:all` (regenerates `BINDABLE_FIELDS`, builds `dist/`); confirm `check:generated` passes (generated allowlist in sync with the typings) and the §2 `partialRecord`/`z.enum` + §4 `clear` schemas resolve under **both Node and Bun**. Run `bun run gen:manifest` and confirm `manifest.json` reflects the updated `node_set_fill` description.
 - [ ] **Verify (Automated):** Run the full unit test suite and ensure all tests pass.
 
-## Phase 7: Live Verification (post-build)
-- [ ] Execute the **Live Test (Manual)** items from Phases 2, 3, and 4 against an editable Figma channel (e.g. `xg0d`), on an editable page. Clean up any test nodes/variables created during verification.
+## Phase 8: Live Verification (post-build)
+- [ ] Execute the **Live Test (Manual)** items from Phases 2, 3, 4, and 5 against an editable Figma channel (e.g. `xg0d`), on an editable page. Clean up any test nodes/variables created during verification.

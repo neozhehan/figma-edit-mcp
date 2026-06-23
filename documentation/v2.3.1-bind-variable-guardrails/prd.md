@@ -13,12 +13,12 @@ Each issue below was verified against the current tree; see **§Provenance** for
 ## Release identity
 
 > [!IMPORTANT]
-> **This is v2.3.1.** v2.3.0 (`documentation/v2.3.0-fix-feature-gaps/`) is the prior release; `package.json` currently reads `"version": "2.3.0"` (verified) — bump it to `2.3.1` as part of this release. This is a **patch**: it adds guardrails and fixes a silent-failure bug on one existing tool; no new tools, no new capabilities.
+> **This is v2.3.1.** v2.3.0 (`documentation/v2.3.0-fix-feature-gaps/`) is the prior release; `package.json` currently reads `"version": "2.3.0"` (verified) — bump it to `2.3.1` as part of this release. This is a **patch**: it adds guardrails and fixes a silent-failure bug on `node_bind_variable` (§1–§3), plus **one small capability addition — a `clear` mode for `node_set_fill` (§4)** — surfaced by the §1 adversarial review (F3: an agent had no way to empty a node's fill, leaving §1's empty-fill auto-create path unreachable end-to-end). No new tools.
 
 ## API Change Notice (informational)
 
 > [!NOTE]
-> v2.3.1 tightens the input contract of `node_bind_variable` (§2: open key map → validated key allowlist) and changes its **failure behaviour** (§1: silent success → either a real bind or an honest error; §3: opaque throw → actionable error). **No sign-off required** — the project has zero end-users and backwards compatibility is explicitly not a constraint (project memory). All changes turn silent/opaque failures into either success or a recoverable error; none remove a working path.
+> v2.3.1 tightens the input contract of `node_bind_variable` (§2: open key map → validated key allowlist) and changes its **failure behaviour** (§1: silent success → either a real bind or an honest error; §3: opaque throw → actionable error). It also **adds** a `clear` mode to `node_set_fill` (§4) — a purely additive option (exactly-one-of becomes three modes instead of two); existing solid/image calls are unchanged. **No sign-off required** — the project has zero end-users and backwards compatibility is explicitly not a constraint (project memory). All changes turn silent/opaque failures into either success or a recoverable error, or are additive; none remove a working path.
 
 ---
 
@@ -52,7 +52,10 @@ Each issue below was verified against the current tree; see **§Provenance** for
 > **D4 — Auto-layout precheck (§3) — DECIDED.** In the plugin handler, before the generic `node.setBoundVariable(field, variable)`, detect auto-layout-only fields (`paddingLeft/Right/Top/Bottom`, `itemSpacing`, `counterAxisSpacing`) on a node whose `layoutMode` is absent or `"NONE"`, and **throw a clear, recoverable error** instructing the agent to set auto-layout first. **Do not auto-fix** by switching the frame to auto-layout — the layout mode and axis are semantic choices the caller did not make; detect and surface, never paper over (same advisory philosophy as v2.3.0 D4/D5). The precheck stays **narrow**: a peer-proposed extension to two more layout states was live-tested and **rejected** (see §Peer review, Finding 3).
 
 > [!NOTE]
-> **All decisions recorded and confirmed.** D2 auto-creates for the empty-fill case, throws for the non-empty-non-solid case, and adds the peer-review fill-branch guards (non-color variable, mixed/unsupported node, multi-solid intent); D3 closes the bind-field key set by **generating it from the Figma typings** (codegen + a `check:generated` CI drift guard, replacing the originally-planned `satisfies` pin) and a `partialRecord`/`enum` schema; D4 prechecks auto-layout and is deliberately *not* expanded (the extra states accept the bind, confirmed live). No open questions remain.
+> **D5 — `node_set_fill` clear-fill (§4) — DECIDED.** Add a `clear: true` mode to `node_set_fill` so an agent can remove a node's fill (`fills = []`). The input contract becomes **exactly one of {solid color, image, `clear:true`}**. The plugin guards `!('fills' in node)` and throws an actionable error (mirroring §1); a `figma.mixed` fill is clearable as-is (no mixed guard). This is **driven by §1/F3**: without a clear path, no MCP call can produce the empty-`fills` state that §1's auto-create branch targets, so the "bind a colour token to an empty fill → one bound solid paint" loop was not agent-reachable. Scope is **fills only**; symmetric stroke-clearing on `node_set_stroke` is a noted follow-up, **out of scope** for v2.3.1. *(Rejected alternative: a separate `node_clear_fill` tool — keeps "set a node's fill to X" one mental model, mirroring how v2.3.0 D2 folded image fills into the same tool.)*
+
+> [!NOTE]
+> **All decisions recorded and confirmed.** D2 auto-creates for the empty-fill case, throws for the non-empty-non-solid case, and adds the peer-review fill-branch guards (non-color variable, mixed/unsupported node, multi-solid intent); D3 closes the bind-field key set by **generating it from the Figma typings** (codegen + a `check:generated` CI drift guard, replacing the originally-planned `satisfies` pin) and a `partialRecord`/`enum` schema; D4 prechecks auto-layout and is deliberately *not* expanded (the extra states accept the bind, confirmed live); **D5 adds a `clear` mode to `node_set_fill`** so an agent can remove a fill and reach §1's empty-fill auto-create path. No open questions remain.
 
 ---
 
@@ -63,8 +66,9 @@ Each issue below was verified against the current tree; see **§Provenance** for
 | §1 | Silent `success` on fill/stroke bind with no SOLID paint, + fill-branch guards | **P0** | `figma_plugin/handlers/variableHandlers.ts` |
 | §2 | `bindVariables` key allowlist, typings-derived | **P1** | `src/mcp_server/tools/node.ts` |
 | §3 | Auto-layout precheck for padding/spacing binds (opaque-throw repair) | **P1** | `figma_plugin/handlers/variableHandlers.ts` |
+| §4 | `node_set_fill` `clear` mode (remove a fill; enables §1 end-to-end) | **P2** | `src/mcp_server/tools/node.ts` + `figma_plugin/handlers/stylingHandlers.ts` |
 
-All three also require doc updates (see **§Documentation impact**).
+All four also require doc updates (see **§Documentation impact**).
 
 ---
 
@@ -108,7 +112,7 @@ All three also require doc updates (see **§Documentation impact**).
 > `node_bind_variable: cannot bind a non-color variable ('${variable.name}', ${variable.resolvedType}) to ${field}; ${field} requires a COLOR variable.`  *(type mismatch — Finding 4)*
 
 **Notes.**
-- Keep the existing per-field try/catch and the verification/scope guards untouched.
+- Keep the existing per-field try/catch and the verification/scope guards in place. **Revised in implementation (adversarial review F1):** the catch must **not** re-wrap the §1 guard errors — those throws already carry the exact, actionable `node_bind_variable:` string, and wrapping them in `Failed to set bound variable for ${field}: …` both breaks the exact-string requirement and double-prefixes (the very opacity §3 removes). The catch now passes any error whose message starts with `node_bind_variable:` through verbatim, and wraps only opaque (e.g. raw Figma) errors. The scope/verification guards are otherwise untouched.
 - The `node.setBoundVariable` generic path (scalars) is unaffected — it already throws on failure rather than no-op'ing.
 
 **Tests.** Unit (extend `tests/unit/figma_plugin/annotationsAndVariables.test.ts`): binding a color var to a node with **one SOLID** paint still binds (regression); **empty** `fills` auto-creates a bound SOLID paint; **non-empty non-SOLID** `fills` **throws** and does not mutate `fills`; unbind on a node with no solid paint returns a non-error "nothing to unbind" message; the result is **never** `success` for a true no-op; a node lacking the property (e.g. GROUP) and a `figma.mixed` fill each throw their guard error **before** any paint mutation (Finding 1); a FLOAT/STRING variable bound to `fills` throws the non-color error (Finding 4); a node with **two** SOLID paints binds the token to **both** (Finding 5, documents intent).
@@ -188,23 +192,52 @@ if (AUTOLAYOUT_FIELDS.has(field) &&
 
 ---
 
+## §4. `node_set_fill` — clear a fill (new capability) (P2)
+
+**The gap.** `node_set_fill` mandates **exactly one of {solid color, image}**, so there is no way to *remove* a node's fill (set `fills = []`). An agent literally cannot clear a fill. Surfaced by the §1 adversarial review (**F3**): the empty-`fills` auto-create branch (D2) is **not agent-reachable end-to-end**, because no MCP path produces an empty-`fills` node — `node_set_fill` always writes a single paint, and `create_shape`/`create_frame` either write the supplied `fillColor` or leave Figma's native default (a non-empty fill).
+
+**Current behavior.**
+- Schema `.superRefine` requires exactly one of {solid `(r,g,b[,a])`, `image`}; "neither" is rejected (`src/mcp_server/tools/node.ts:472-487`).
+- Plugin `setFillColor` always assigns `node.fills = [paintStyle]` (`figma_plugin/handlers/stylingHandlers.ts:109`); nothing assigns `[]`.
+
+**v2.3.1 change (D5).** Add a `clear: true` (boolean) mode. The input contract becomes **exactly one of {solid color, image, `clear:true`}**:
+- Extend the `.superRefine` mutual-exclusion from two modes to three: `clear:true` is rejected if combined with `r/g/b/a` or `image`; "none of the three" stays rejected.
+- The plugin sets `node.fills = []` when `clear` is set.
+- **Guard (mirrors §1):** if the node has no `fills` property (`!('fills' in node)`) → throw the guard error below. A `figma.mixed` fill **is** clearable (assigning `[]` is unambiguous) — no mixed guard here.
+- This makes §1's empty-fill loop reachable: `node_set_fill {clear:true}` → `node_bind_variable {fills: <colorVar>}` auto-creates one bound solid paint.
+
+**Error strings.**
+> *(schema validation — replaces the existing "either a solid color or an image, not both/neither" message)* `node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.`
+>
+> *(plugin guard)* `node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to clear.`
+
+**Notes.**
+- Scope is **fills only** (the request). Symmetric stroke-clearing on `node_set_stroke` is a natural follow-up but is **out of scope** for v2.3.1.
+- Same permission profile as the existing `node_set_fill` (node-perm · scope · name · locked) — no new constraint class.
+
+**Tests.** Unit (`tests/unit/tools/node_set_fill.test.ts`): `{clear:true}` passes; `{clear:true, r,g,b}` rejected; `{}` (none) still rejected; existing solid and image inputs still pass. Plugin unit (`tests/unit/figma_plugin/setFillColor.test.ts`): `{clear:true}` sets `fills=[]`; a node without a `fills` property throws the guard error before mutating. Live: clear a shape's fill (`fills` → `[]`), then bind a COLOR var (auto-creates a bound solid — closes §1's loop); clear on a node type without `fills` (e.g. GROUP) → the guard error.
+
+---
+
 ## §Documentation impact
 
 Update the single source of operational guidance (MCP resources + the `figma-edit` skill + in-repo `skills/figma-edit/references/`):
 
-- **`error-playbook.md`** — recovery entries for: bind on a non-solid fill (§1: set a solid fill first or unbind), bind a non-color variable to fills (§1: use a COLOR variable), bind on a mixed/unsupported node (§1), unknown bind field (§2: use the exact Figma field name), and padding/spacing bind on a non-auto-layout node (§3: set `layoutMode` first).
-- **`workflows.md` / `tool-selection.md`** — document the **ordering** for tokenised components: set auto-layout → bind padding/spacing; set a solid fill → bind the colour token. Note that binding a colour token to an **empty** fill auto-creates a bound solid paint.
+- **`error-playbook.md`** — recovery entries for: bind on a non-solid fill (§1: set a solid fill first or unbind), bind a non-color variable to fills (§1: use a COLOR variable), bind on a mixed/unsupported node (§1), unknown bind field (§2: use the exact Figma field name), padding/spacing bind on a non-auto-layout node (§3: set `layoutMode` first), and **clear-fill on a node with no `fills` property (§4)**.
+- **`workflows.md` / `tool-selection.md`** — document the **ordering** for tokenised components: set auto-layout → bind padding/spacing; set a solid fill → bind the colour token. Note that binding a colour token to an **empty** fill auto-creates a bound solid paint, and that **`node_set_fill {clear:true}` removes a fill** (and is the way to reach that empty-fill state). `tool-selection.md`'s "Image Fills (`node_set_fill`)" / ad-hoc-color rows should name the third mode (clear).
 - **`node_bind_variable` tool description** (`node.ts`) — name the valid bind fields and the ordering rules inline.
+- **`node_set_fill` tool description** (`node.ts`) — state the three modes (solid color, image, or `clear`); then **run `bun run gen:manifest`** so `manifest.json` reflects the new description.
+- **`README.md`** — the tool table currently lists `node_set_fill` as "Set a node's fill to a literal RGBA color" (already stale since v2.3.0 added image fills); update to "Set a node's fill to a color or image, or clear it."
 
 ---
 
 ## §Testing & rollout
 
-- **Build:** `figma_plugin` bundles to `code.js` (handlers are TS → bundled); rebuild and confirm the `node_bind_variable` dispatch reflects §1/§3. MCP server (`src/mcp_server`) rebuilds `dist/` via `bun run build:all` (regenerates `BINDABLE_FIELDS` first); confirm `check:generated` passes (allowlist in sync with the typings) and the §2 `partialRecord`/`z.enum` schema resolves under both Node and Bun.
-- **Unit tests:** extend `tests/unit/figma_plugin/annotationsAndVariables.test.ts` (§1, §3) and the tool-schema suite under `tests/unit/tools/` (§2). All convert a previously silent/opaque path into an asserted success-or-error.
-- **Manual verification (live Figma, channel like `xg0d`):** on an editable page — (§1) bind a COLOR var to a node with no fill (confirm a bound solid paint appears), to an image-filled node (confirm the structured error, fill untouched), and a non-COLOR var to fills (confirm the type-mismatch error); (§2) attempt `{padding: id}` and confirm schema rejection with hint, and `{strokeTopWeight: id}` succeeds; (§3) bind `paddingLeft` on a plain frame (confirm the "set auto-layout first" error), then set auto-layout and confirm the bind succeeds.
+- **Build:** `figma_plugin` bundles to `code.js` (handlers are TS → bundled); rebuild and confirm the `node_bind_variable` dispatch reflects §1/§3 **and the `node_set_fill` dispatch reflects §4** (`clear` → `fills = []`). MCP server (`src/mcp_server`) rebuilds `dist/` via `bun run build:all` (regenerates `BINDABLE_FIELDS` first); confirm `check:generated` passes (allowlist in sync with the typings) and the §2 `partialRecord`/`z.enum` + §4 `clear` schemas resolve under both Node and Bun.
+- **Unit tests:** extend `tests/unit/figma_plugin/annotationsAndVariables.test.ts` (§1, §3), `tests/unit/figma_plugin/setFillColor.test.ts` (§4 plugin), the tool-schema suite under `tests/unit/tools/` (§2), and `tests/unit/tools/node_set_fill.test.ts` (§4 schema). All convert a previously silent/opaque path into an asserted success-or-error, or assert the new `clear` contract.
+- **Manual verification (live Figma, channel like `xg0d`):** on an editable page — (§1) bind a COLOR var to a node with no fill (confirm a bound solid paint appears), to an image-filled node (confirm the structured error, fill untouched), and a non-COLOR var to fills (confirm the type-mismatch error); (§2) attempt `{padding: id}` and confirm schema rejection with hint, and `{strokeTopWeight: id}` succeeds; (§3) bind `paddingLeft` on a plain frame (confirm the "set auto-layout first" error), then set auto-layout and confirm the bind succeeds; (§4) `node_set_fill {clear:true}` on a shape (confirm `fills` → `[]`), then bind a COLOR var (confirm the auto-created bound solid — the §1 loop end-to-end), and `clear:true` on a node with no `fills` (confirm the guard error).
 - **Version:** bump `package.json` `2.3.0 → 2.3.1` (D1).
-- **CHANGELOG:** add a `v2.3.1` entry to `CHANGELOG.md` covering §1–§3 (silent-success + fill-branch guards, typings-derived bind-field allowlist, auto-layout precheck).
+- **CHANGELOG:** add a `v2.3.1` entry to `CHANGELOG.md` covering §1–§4 (silent-success + fill-branch guards, typings-derived bind-field allowlist, auto-layout precheck, and the `node_set_fill` clear mode).
 
 ---
 

@@ -811,9 +811,42 @@ export async function setBoundVariable(params: any) {
 
                 // Special handling for fills and strokes (paints)
                 if (field === 'fills' || field === 'strokes') {
+                    // Up-front guards
+                    if (!(field in node)) {
+                        throw new Error(`node_bind_variable: '${node.name}' (type ${node.type}) has no '${field}' property to bind.`);
+                    }
                     // @ts-ignore
-                    const paints = JSON.parse(JSON.stringify(node[field]));
+                    if (node[field] === figma.mixed) {
+                        throw new Error(`node_bind_variable: '${field}' on '${node.name}' is mixed (multiple values); bind on a node with a single ${field} value.`);
+                    }
+                    if (variable && variable.resolvedType !== 'COLOR') {
+                        throw new Error(`node_bind_variable: cannot bind a non-color variable ('${variable.name}', ${variable.resolvedType}) to ${field}; ${field} requires a COLOR variable.`);
+                    }
+
+                    // @ts-ignore
+                    const rawPaints = node[field];
+
+                    if (rawPaints.length === 0) {
+                        if (variable) {
+                            // Empty paint array + binding: auto-create one SOLID paint
+                            const bound = figma.variables.setBoundVariableForPaint(
+                                { type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", variable
+                            );
+                            // @ts-ignore
+                            node[field] = [bound];
+                            results.push(`Bound ${field} to variable ${variable.name} (created solid paint)`);
+                        } else {
+                            results.push(`nothing to unbind in ${field}`);
+                        }
+                        continue;
+                    }
+
+                    // Non-empty array: clone and find SOLID paints
+                    const paints = JSON.parse(JSON.stringify(rawPaints));
                     let modified = false;
+
+                    // Single-fill is the common case, but if there are multiple SOLID paints,
+                    // we intentionally bind the token to all of them (Finding 5).
                     for (let i = 0; i < paints.length; i++) {
                         if (paints[i].type === 'SOLID') {
                             paints[i] = figma.variables.setBoundVariableForPaint(paints[i], 'color', variable);
@@ -826,7 +859,12 @@ export async function setBoundVariable(params: any) {
                         node[field] = paints;
                         results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
                     } else {
-                        results.push(`No SOLID paints found in ${field} to bind variable`);
+                        if (variable) {
+                            // Non-empty but no SOLID paint + binding
+                            throw new Error(`node_bind_variable: '${node.name}' has a non-solid ${field} (image/gradient) and no SOLID paint to bind a color token to. Set a solid fill first, or unbind the existing paint.`);
+                        } else {
+                            results.push(`nothing to unbind in ${field}`);
+                        }
                     }
                     continue;
                 }
@@ -836,6 +874,10 @@ export async function setBoundVariable(params: any) {
                 node.setBoundVariable(field, variable);
                 results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
             } catch (e: any) {
+                // Pass already-structured guard errors (§1) through verbatim so the
+                // agent gets the exact, actionable PRD string; only wrap opaque
+                // (e.g. raw Figma) errors. Keeps the safety net without double-prefixing.
+                if (e?.message?.startsWith("node_bind_variable:")) throw e;
                 throw new Error(`Failed to set bound variable for ${field}: ${describeError(e)}`);
             }
         }

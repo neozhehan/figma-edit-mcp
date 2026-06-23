@@ -4312,6 +4312,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     return "unknown error (no message)";
   }
   async function setBoundVariable(params) {
+    var _a;
     const { nodeId, bindVariables, explicitVariableModes } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
@@ -4347,7 +4348,31 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             if (!variable) throw new Error(`Variable ${variableId} not found`);
           }
           if (field === "fills" || field === "strokes") {
-            const paints = JSON.parse(JSON.stringify(node[field]));
+            if (!(field in node)) {
+              throw new Error(`node_bind_variable: '${node.name}' (type ${node.type}) has no '${field}' property to bind.`);
+            }
+            if (node[field] === figma.mixed) {
+              throw new Error(`node_bind_variable: '${field}' on '${node.name}' is mixed (multiple values); bind on a node with a single ${field} value.`);
+            }
+            if (variable && variable.resolvedType !== "COLOR") {
+              throw new Error(`node_bind_variable: cannot bind a non-color variable ('${variable.name}', ${variable.resolvedType}) to ${field}; ${field} requires a COLOR variable.`);
+            }
+            const rawPaints = node[field];
+            if (rawPaints.length === 0) {
+              if (variable) {
+                const bound = figma.variables.setBoundVariableForPaint(
+                  { type: "SOLID", color: { r: 0, g: 0, b: 0 } },
+                  "color",
+                  variable
+                );
+                node[field] = [bound];
+                results.push(`Bound ${field} to variable ${variable.name} (created solid paint)`);
+              } else {
+                results.push(`nothing to unbind in ${field}`);
+              }
+              continue;
+            }
+            const paints = JSON.parse(JSON.stringify(rawPaints));
             let modified = false;
             for (let i = 0; i < paints.length; i++) {
               if (paints[i].type === "SOLID") {
@@ -4359,13 +4384,18 @@ Processing annotation ${i + 1}/${annotations.length}:`,
               node[field] = paints;
               results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
             } else {
-              results.push(`No SOLID paints found in ${field} to bind variable`);
+              if (variable) {
+                throw new Error(`node_bind_variable: '${node.name}' has a non-solid ${field} (image/gradient) and no SOLID paint to bind a color token to. Set a solid fill first, or unbind the existing paint.`);
+              } else {
+                results.push(`nothing to unbind in ${field}`);
+              }
             }
             continue;
           }
           node.setBoundVariable(field, variable);
           results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
         } catch (e) {
+          if ((_a = e == null ? void 0 : e.message) == null ? void 0 : _a.startsWith("node_bind_variable:")) throw e;
           throw new Error(`Failed to set bound variable for ${field}: ${describeError(e)}`);
         }
       }
