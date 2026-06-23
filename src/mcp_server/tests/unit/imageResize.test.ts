@@ -4,37 +4,40 @@ import jpeg from "jpeg-js";
 import { resizeIfOversized } from "../../imageResize.js";
 
 describe("resizeIfOversized", () => {
+    // Use a small (≤2MP) but >4096px-on-one-side image: exercises the exact
+    // longest-side downscale logic without a 20MP jimp encode that times out on
+    // CI (the resize math is dimension-agnostic).
     it("downscales oversized PNGs preserving aspect ratio", async () => {
-        const image = new jimp(4096, 5000, 0xFFFFFFFF);
+        const image = new jimp(400, 5000, 0xFFFFFFFF);
         const buffer = await image.getBufferAsync(jimp.MIME_PNG);
         const b64 = buffer.toString('base64');
-        
+
         const result = await resizeIfOversized(b64);
-        
-        expect(result.warning).toContain("image resized 4096×5000 → 3355×4096");
-        
+
+        expect(result.warning).toContain("image resized 400×5000 → 328×4096");
+
         const decoded = Buffer.from(result.base64, 'base64');
         const resizedImage = await jimp.read(decoded);
-        
-        expect(resizedImage.getWidth()).toBe(3355);
+
+        expect(resizedImage.getWidth()).toBe(328);
         expect(resizedImage.getHeight()).toBe(4096);
         expect(resizedImage.getMIME()).toBe(jimp.MIME_PNG);
     });
 
     it("downscales oversized JPEGs preserving aspect ratio and source format", async () => {
-        const image = new jimp(5000, 4000, 0xFFFFFFFF);
+        const image = new jimp(5000, 400, 0xFFFFFFFF);
         const buffer = await image.getBufferAsync(jimp.MIME_JPEG);
         const b64 = buffer.toString('base64');
 
         const result = await resizeIfOversized(b64);
 
-        expect(result.warning).toContain("image resized 5000×4000 → 4096×3277");
+        expect(result.warning).toContain("image resized 5000×400 → 4096×328");
 
         const decoded = Buffer.from(result.base64, 'base64');
         const resizedImage = await jimp.read(decoded);
 
         expect(resizedImage.getWidth()).toBe(4096);
-        expect(resizedImage.getHeight()).toBe(3277);
+        expect(resizedImage.getHeight()).toBe(328);
         // Source format preserved (JPEG stays JPEG, not transcoded to PNG)
         expect(resizedImage.getMIME()).toBe(jimp.MIME_JPEG);
     });
