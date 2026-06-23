@@ -3,6 +3,33 @@ import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
 import { toolResult } from "./_result.js";
 import { resizeIfOversized } from "../imageResize.js";
+// Allowlist of bindable fields, generated from @figma/plugin-typings
+// (VariableBindableNodeField ∪ VariableBindableTextField + fills/strokes) by
+// scripts/gen-node-fields.ts. Regenerated on every build:all and CI-checked for
+// drift (check:generated), so it can never fall out of sync with the typings —
+// adding or removing a field there flows through automatically.
+import { BINDABLE_FIELDS } from "./bindableFields.generated.js";
+
+// Conceptual aliases agents reach for that aren't lexically close to the real
+// field (so the case-insensitive fallback below wouldn't find them). Lexical
+// near-misses — "fill"→"fills", or case slips like "fontsize"→"fontSize" — are
+// caught by the fallback, not listed here.
+const BIND_FIELD_ALIASES: Record<string, string> = {
+    padding: "paddingLeft",
+    gap: "itemSpacing",
+    cornerRadius: "topLeftRadius",
+    borderRadius: "topLeftRadius",
+    radius: "topLeftRadius",
+    spacing: "itemSpacing",
+    fill: "fills",
+    stroke: "strokes",
+};
+// Best-effort "did you mean" for an unknown bind field: a known alias, else the
+// nearest field by case-insensitive exact match, else "" (no hint).
+function suggestBindField(k: string): string {
+    if (BIND_FIELD_ALIASES[k]) return BIND_FIELD_ALIASES[k];
+    return BINDABLE_FIELDS.find((f) => f.toLowerCase() === k.toLowerCase()) ?? "";
+}
 
 // A node_info result entry. The entry shape is typed (so callers know each node
 // carries id/name/type and optional properties/children/path/descendantCount),
@@ -669,14 +696,29 @@ export function registerNodeTools(server: McpServer) {
         "node_bind_variable",
         {
             title: "Bind Variable",
-            description: "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node_set_*` when the value should track a design token.",
+            description: "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node_set_*` when the value should track a design token. Ordering rules: set auto-layout before binding padding/spacing; set a solid fill before binding a colour token.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to bind variables to"),
                 nodeName: z.string().describe("Name of the node to verify against"),
                 bindVariables: z
-                    .record(z.string().nullable())
+                    // Restrict keys to the typings-derived allowlist (z.enum), so the valid
+                    // set is published in the wire JSON schema as propertyNames.enum — not just
+                    // enforced at runtime. partialRecord keeps every key optional (a plain
+                    // enum-keyed z.record would require all of them in Zod v4).
+                    .partialRecord(z.enum(BINDABLE_FIELDS), z.string().nullable(), {
+                        // An unknown key fails enum validation as an opaque `invalid_key`;
+                        // rewrite only that into the actionable "Unknown bind field" error with a
+                        // "did you mean" hint. Value-type errors keep their default message.
+                        error: (iss) => {
+                            if ((iss as { code?: string }).code !== "invalid_key") return undefined;
+                            const k = String((iss as { input?: unknown }).input ?? "");
+                            const suggestion = suggestBindField(k);
+                            const hint = suggestion ? ` (Did you mean '${suggestion}'?)` : "";
+                            return `Unknown bind field '${k}'. Valid fields are the Figma bindable node/text fields plus fills/strokes (e.g. paddingLeft, itemSpacing, topLeftRadius, fontSize, strokeTopWeight).${hint}`;
+                        },
+                    })
                     .optional()
-                    .describe("Map of property names to variable IDs (to bind) or null (to unbind). E.g., { 'fills': 'VariableID:1:2' }"),
+                    .describe(`Map of property names to variable IDs (to bind) or null (to unbind). Valid fields: ${BINDABLE_FIELDS.join(", ")}. E.g., { 'fills': 'VariableID:1:2' }`),
                 explicitVariableModes: z
                     .record(z.string())
                     .optional()

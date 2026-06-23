@@ -40,13 +40,19 @@ Each issue below was verified against the current tree; see **§Provenance** for
 > Unbind (`variableId: null`) on a node with no solid paint is a no-op by definition and returns a clear "nothing to unbind" message (not an error). *(Rejected alternative: pure "make it loud" — throw in all no-op cases. Auto-create for the empty case removes a guaranteed round-trip with no semantic risk.)*
 
 > [!NOTE]
-> **D3 — Bind-field allowlist (§2) — DECIDED.** Replace the open `z.record(z.string().nullable())` for `bindVariables` with a key allowlist enforced via `.superRefine`, rejecting unknown keys at the protocol boundary with a "did you mean" hint. **Derive the allowlist from the Figma typings, not a hand-curated list.** Adversarial review showed the original hand list was missing **nine** valid fields (`strokeTopWeight`/`strokeRightWeight`/`strokeBottomWeight`/`strokeLeftWeight`, `gridRowGap`, `gridColumnGap`, `fontFamily`, `fontStyle`, `fontWeight`) — a too-aggressive allowlist would **falsely reject valid binds**, which is *worse* than the typo problem it solves (Figma already rejects typos, just opaquely). Build `BINDABLE_FIELDS` from the `VariableBindableNodeField | VariableBindableTextField` union (`@figma/plugin-typings`) plus the paint pseudo-fields `fills`/`strokes`, **pinned with a `satisfies` check** so a typings bump that adds/removes a field is a compile error, not silent drift. This catches the **pure-typo** class only; "valid field, wrong node type" remains state-dependent and is handled per §3 / by Figma.
+> **D3 — Bind-field allowlist (§2) — DECIDED (revised in implementation; see "Implementation outcome" below).** Replace the open `z.record(z.string().nullable())` for `bindVariables` with a key allowlist, rejecting unknown keys at the protocol boundary with a "did you mean" hint. **Derive the allowlist from the Figma typings, not a hand-curated list.** Adversarial review showed the original hand list was missing **nine** valid fields (`strokeTopWeight`/`strokeRightWeight`/`strokeBottomWeight`/`strokeLeftWeight`, `gridRowGap`, `gridColumnGap`, `fontFamily`, `fontStyle`, `fontWeight`) — a too-aggressive allowlist would **falsely reject valid binds**, which is *worse* than the typo problem it solves (Figma already rejects typos, just opaquely). The allowlist is `BINDABLE_FIELDS` = the `VariableBindableNodeField | VariableBindableTextField` union (`@figma/plugin-typings`) plus the paint pseudo-fields `fills`/`strokes`. This catches the **pure-typo** class only; "valid field, wrong node type" remains state-dependent and is handled per §3 / by Figma.
+>
+> **Implementation outcome (revised D3).** The originally-specified mechanism — `.superRefine` over a hand-written `BINDABLE_FIELDS`, type-pinned with `satisfies … (VariableBindableNodeField | VariableBindableTextField | …)[]` — was replaced during implementation+review for two concrete reasons, then verified:
+> - `@figma/plugin-typings` exports those types as **ambient globals** (the `.d.ts` is a global script; the package entry only `declare global`s), so `import type { VariableBindableNodeField } from "@figma/plugin-typings"` does **not** resolve (`TS2305`) — the `satisfies` clause would reference unresolved types.
+> - The project **never runs `tsc`** (build = `tsup`/esbuild, tests = `bun`, CI = neither), so a `satisfies` pin is **never evaluated** — the "compile error on drift" guarantee would be vacuous. (A `satisfies` is also one-directional: it catches removals, not the realistic case of an *added* field.)
+>
+> Shipped instead: **`BINDABLE_FIELDS` is generated from the typings** by `scripts/gen-node-fields.ts` (the repo's existing typings-codegen, which already emits `nodeFields.generated.ts`) into `src/mcp_server/tools/bindableFields.generated.ts`; the schema is **`z.partialRecord(z.enum(BINDABLE_FIELDS), z.string().nullable(), { error })`** (so the allowlist is also published in the wire JSON schema as `propertyNames.enum`, not merely enforced at runtime); and drift is caught by a **`check:generated` CI step** (regenerate + `git diff --exit-code`) that fails when the committed file falls out of sync with the typings — replacing the non-functional `satisfies` pin with an actually-enforced guard.
 
 > [!NOTE]
 > **D4 — Auto-layout precheck (§3) — DECIDED.** In the plugin handler, before the generic `node.setBoundVariable(field, variable)`, detect auto-layout-only fields (`paddingLeft/Right/Top/Bottom`, `itemSpacing`, `counterAxisSpacing`) on a node whose `layoutMode` is absent or `"NONE"`, and **throw a clear, recoverable error** instructing the agent to set auto-layout first. **Do not auto-fix** by switching the frame to auto-layout — the layout mode and axis are semantic choices the caller did not make; detect and surface, never paper over (same advisory philosophy as v2.3.0 D4/D5). The precheck stays **narrow**: a peer-proposed extension to two more layout states was live-tested and **rejected** (see §Peer review, Finding 3).
 
 > [!NOTE]
-> **All decisions recorded and confirmed.** D2 auto-creates for the empty-fill case, throws for the non-empty-non-solid case, and adds the peer-review fill-branch guards (non-color variable, mixed/unsupported node, multi-solid intent); D3 closes the bind-field key set by deriving it from the Figma typings with a `satisfies` pin; D4 prechecks auto-layout and is deliberately *not* expanded (the extra states accept the bind, confirmed live). No open questions remain.
+> **All decisions recorded and confirmed.** D2 auto-creates for the empty-fill case, throws for the non-empty-non-solid case, and adds the peer-review fill-branch guards (non-color variable, mixed/unsupported node, multi-solid intent); D3 closes the bind-field key set by **generating it from the Figma typings** (codegen + a `check:generated` CI drift guard, replacing the originally-planned `satisfies` pin) and a `partialRecord`/`enum` schema; D4 prechecks auto-layout and is deliberately *not* expanded (the extra states accept the bind, confirmed live). No open questions remain.
 
 ---
 
@@ -117,43 +123,39 @@ All three also require doc updates (see **§Documentation impact**).
 - Schema: `bindVariables: z.record(z.string().nullable()).optional()` — open key set (`src/mcp_server/tools/node.ts:676-679`).
 - The MCP server forwards `params` untransformed to the plugin (`node.ts:695-697`); the plugin dispatches unknown fields straight to `node.setBoundVariable(field, …)` (`variableHandlers.ts:834-836`).
 
-**v2.3.1 change (D3).** Constrain `bindVariables` keys to an allowlist **derived from the Figma typings** via `.superRefine` (records can't close keys directly). Build the set from the `VariableBindableNodeField | VariableBindableTextField` union plus the paint pseudo-fields, pinned with `satisfies` so it can't drift:
+**v2.3.1 change (D3, as implemented).** Constrain `bindVariables` keys to an allowlist **generated from the Figma typings** (not hand-curated, not a `satisfies` pin — see D3 "Implementation outcome"). `scripts/gen-node-fields.ts` reads `VariableBindableNodeField | VariableBindableTextField` from `@figma/plugin-typings` via the TS compiler API and emits `src/mcp_server/tools/bindableFields.generated.ts`:
 ```ts
-// Mirrors @figma/plugin-typings: VariableBindableNodeField ∪ VariableBindableTextField,
-// plus the paint pseudo-fields handled by the fills/strokes branch.
-const BINDABLE_FIELDS = [
-  // paint pseudo-fields (handled by the fills/strokes branch, not setBoundVariable)
-  "fills", "strokes",
-  // VariableBindableNodeField
-  "height", "width", "characters", "itemSpacing", "paddingLeft", "paddingRight",
-  "paddingTop", "paddingBottom", "visible", "topLeftRadius", "topRightRadius",
-  "bottomLeftRadius", "bottomRightRadius", "minWidth", "maxWidth", "minHeight",
-  "maxHeight", "counterAxisSpacing", "strokeWeight", "strokeTopWeight",
-  "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight", "opacity",
-  "gridRowGap", "gridColumnGap",
-  // VariableBindableTextField
-  "fontFamily", "fontSize", "fontStyle", "fontWeight", "letterSpacing",
-  "lineHeight", "paragraphSpacing", "paragraphIndent",
-] as const;
-// type-pin so a typings bump can't silently drop a field:
-//   const _pin = BINDABLE_FIELDS satisfies
-//     readonly (VariableBindableNodeField | VariableBindableTextField | "fills" | "strokes")[];
-// .superRefine over bindVariables keys → ctx.addIssue for any key ∉ BINDABLE_FIELDS,
-// with a hint for the common typos (padding→paddingLeft…, gap→itemSpacing, cornerRadius→topLeftRadius…).
+// AUTO-GENERATED by scripts/gen-node-fields.ts from @figma/plugin-typings.
+// fills/strokes + VariableBindableNodeField ∪ VariableBindableTextField (36 fields).
+export const BINDABLE_FIELDS = ["fills", "strokes", "height", "width", /* … */ "paragraphIndent"] as const;
 ```
+The schema uses `partialRecord` + `z.enum` (so the key set is also published in the wire JSON schema as `propertyNames.enum`), with a record-level `error` that rewrites the opaque `invalid_key` into the §2 error string + hint:
+```ts
+bindVariables: z
+  .partialRecord(z.enum(BINDABLE_FIELDS), z.string().nullable(), {
+    // only invalid_key is rewritten; value-type errors keep their default message
+    error: (iss) => iss.code !== "invalid_key" ? undefined
+      : `Unknown bind field '${iss.input}'. … (e.g. paddingLeft, …, strokeTopWeight).${hint(iss.input)}`,
+  })
+  .optional()
+  .describe(`Map of property names to variable IDs … Valid fields: ${BINDABLE_FIELDS.join(", ")}. …`);
+// hint(): alias map (padding→paddingLeft, gap→itemSpacing, cornerRadius→topLeftRadius, fill→fills, …)
+// then a case-insensitive nearest-field fallback (fontsize→fontSize); else no hint.
+```
+> Why `partialRecord` not `z.record(z.enum(…))`: in Zod v4 an enum-keyed `z.record` requires **all** enum members as keys; `partialRecord` keeps every key optional (the actual contract).
 
 > [!WARNING]
-> The original hand-curated list (peer review, Finding 2) silently omitted **nine** valid fields — the four per-side stroke weights, `gridRowGap`/`gridColumnGap`, and `fontFamily`/`fontStyle`/`fontWeight` — which would have **falsely rejected valid binds**. Deriving from the typings with the `satisfies` pin is the fix, not cosmetic.
+> The original hand-curated list (peer review, Finding 2) silently omitted **nine** valid fields — the four per-side stroke weights, `gridRowGap`/`gridColumnGap`, and `fontFamily`/`fontStyle`/`fontWeight` — which would have **falsely rejected valid binds**. Generating from the typings (with the `check:generated` drift guard) is the fix, not cosmetic.
 
 **Error string (schema validation).**
 > `Unknown bind field '${k}'. Valid fields are the Figma bindable node/text fields plus fills/strokes (e.g. paddingLeft, itemSpacing, topLeftRadius, fontSize, strokeTopWeight). (Did you mean '${suggestion}'?)`
 
 **Notes.**
 - Catches the **typo** class only; a valid field on the wrong node type (`paddingLeft` on a RECTANGLE) is state-dependent — handled by §3 for padding, or left to Figma for the rest.
-- Consistent with `withStrictInputSchemas` (`tools/index.ts:30-46`), which already rejects unknown top-level keys; this extends the same honesty to the `bindVariables` map values.
-- Maintenance coupling (D3): `BINDABLE_FIELDS` is type-pinned to `VariableBindableNodeField | VariableBindableTextField`, so a typings update that adds/removes a field surfaces as a **compile error** rather than drifting silently.
+- Consistent with `withStrictInputSchemas` (`tools/index.ts:30-46`), which already rejects unknown top-level keys; this extends the same honesty to the `bindVariables` map keys — and, via the published `propertyNames.enum`, advertises the valid set in the wire schema rather than only at call time.
+- Maintenance coupling (D3): `BINDABLE_FIELDS` is **generated** from `VariableBindableNodeField | VariableBindableTextField`, and the `check:generated` CI step (regenerate + `git diff --exit-code`) fails when a typings add/remove isn't regenerated-and-committed — so it can't drift silently (and, unlike a `satisfies` pin, this is actually enforced, since the repo runs no `tsc`).
 
-**Tests.** Unit (`tests/unit/tools/` — alongside `v2Tools.test.ts` / `contractSeam.test.ts`): a valid map (`{paddingLeft: id}`) passes; `{padding: id}` rejected with the hint; `{gap: id}` rejected; `fills`/`strokes` still accepted; `strokeTopWeight` and `fontFamily` accepted (regression against the original incomplete list, Finding 2); an empty/omitted `bindVariables` still valid (modes-only path).
+**Tests.** Unit (`tests/unit/tools/node_bind_variable.test.ts`): a valid map (`{paddingLeft: id}`) passes; `{padding: id}`/`{gap: id}` rejected with the hint (issue `code: "invalid_key"`); `fills`/`strokes` accepted; `strokeTopWeight` and `fontFamily` accepted (regression against the original incomplete list, Finding 2); lexical near-misses (`fill→fills`, `fontsize→fontSize`) get hints while unguessable keys get none; the wire JSON schema publishes the allowlist as `propertyNames.enum`; an empty/omitted `bindVariables` still valid (modes-only path).
 
 ---
 
@@ -198,7 +200,7 @@ Update the single source of operational guidance (MCP resources + the `figma-edi
 
 ## §Testing & rollout
 
-- **Build:** `figma_plugin` bundles to `code.js` (handlers are TS → bundled); rebuild and confirm the `node_bind_variable` dispatch reflects §1/§3. MCP server (`src/mcp_server`) rebuilds `dist/`; confirm the §2 `superRefine` + `satisfies` pin compile and resolve under both Node and Bun.
+- **Build:** `figma_plugin` bundles to `code.js` (handlers are TS → bundled); rebuild and confirm the `node_bind_variable` dispatch reflects §1/§3. MCP server (`src/mcp_server`) rebuilds `dist/` via `bun run build:all` (regenerates `BINDABLE_FIELDS` first); confirm `check:generated` passes (allowlist in sync with the typings) and the §2 `partialRecord`/`z.enum` schema resolves under both Node and Bun.
 - **Unit tests:** extend `tests/unit/figma_plugin/annotationsAndVariables.test.ts` (§1, §3) and the tool-schema suite under `tests/unit/tools/` (§2). All convert a previously silent/opaque path into an asserted success-or-error.
 - **Manual verification (live Figma, channel like `xg0d`):** on an editable page — (§1) bind a COLOR var to a node with no fill (confirm a bound solid paint appears), to an image-filled node (confirm the structured error, fill untouched), and a non-COLOR var to fills (confirm the type-mismatch error); (§2) attempt `{padding: id}` and confirm schema rejection with hint, and `{strokeTopWeight: id}` succeeds; (§3) bind `paddingLeft` on a plain frame (confirm the "set auto-layout first" error), then set auto-layout and confirm the bind succeeds.
 - **Version:** bump `package.json` `2.3.0 → 2.3.1` (D1).
@@ -213,7 +215,7 @@ This spec was stress-tested against an adversarial peer review (`critique.md`). 
 | # | Claim | Verdict | Disposition |
 | :- | :- | :- | :- |
 | 1 | `JSON.parse(JSON.stringify(node[field]))` breaks on `figma.mixed` / nodes without the property | **Valid** — severity overstated (caught by the existing try/catch, so an *opaque error*, not a crash) | Folded into §1/D2 as up-front guards |
-| 2 | Allowlist omits `strokeTopWeight`/`strokeRightWeight`/`strokeBottomWeight`/`strokeLeftWeight` | **Valid — and understated:** verification against the typings found **nine** missing (also `gridRowGap`/`gridColumnGap`/`fontFamily`/`fontStyle`/`fontWeight`) | §2/D3 changed to **derive from typings** + `satisfies` pin |
+| 2 | Allowlist omits `strokeTopWeight`/`strokeRightWeight`/`strokeBottomWeight`/`strokeLeftWeight` | **Valid — and understated:** verification against the typings found **nine** missing (also `gridRowGap`/`gridColumnGap`/`fontFamily`/`fontStyle`/`fontWeight`) | §2/D3 changed to **generate the list from the typings** (codegen + `check:generated` drift guard; the originally-planned `satisfies` pin was dropped — it doesn't resolve against the ambient-global typings and the repo runs no `tsc`) |
 | 3 | Binding `itemSpacing` under `SPACE_BETWEEN` and `counterAxisSpacing` under `NO_WRAP` throw | **False** — live-tested on `xg0d`: both **succeed and persist** in `boundVariables` | **Rejected;** §3/D4 left narrow |
 | 4 | Non-COLOR variable bound to fills throws | **Valid but mis-scoped** — applies to the whole fills/strokes branch, not just auto-create | Folded into §1/D2 as a `resolvedType === 'COLOR'` guard on the whole branch |
 | 5 | Token binds to all SOLID paints when several exist | **Valid (minor)** — pre-existing, intentional | Documented in §1/D2; behaviour unchanged |

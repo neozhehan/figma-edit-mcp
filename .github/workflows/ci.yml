@@ -30,6 +30,9 @@ jobs:
       - name: Verify plugin bundle is committed up to date
         run: bun run check:plugin
 
+      - name: Verify generated files are committed up to date
+        run: bun run check:generated
+
       - name: Pack
         run: npm pack
 

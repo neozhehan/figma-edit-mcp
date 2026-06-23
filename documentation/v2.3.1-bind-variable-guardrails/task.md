@@ -7,18 +7,24 @@
 > - Spec source of truth: [`prd.md`](./prd.md). Each task cites the PRD decision it implements.
 
 ## Phase 1: Setup and Versioning
-- [ ] Bump version in `package.json` from `2.3.0` to `2.3.1` (D1).
+- [x] Bump version in `package.json` from `2.3.0` to `2.3.1` (D1).
 
 ## Phase 2: §2 `bindVariables` Key Allowlist (P1) — `src/mcp_server/tools/node.ts`
-- [ ] Define `BINDABLE_FIELDS as const` = `fills` + `strokes` + **every** member of `VariableBindableNodeField` and `VariableBindableTextField` (full list enumerated in PRD §2 — includes the four per-side stroke weights, `gridRowGap`/`gridColumnGap`, and `fontFamily`/`fontStyle`/`fontWeight`).
-- [ ] Add the `satisfies readonly (VariableBindableNodeField | VariableBindableTextField | "fills" | "strokes")[]` type-pin so a `@figma/plugin-typings` change surfaces as a **compile error**, not silent drift (D3).
-- [ ] Replace the open `bindVariables: z.record(z.string().nullable())` with the same `z.record` plus a `.superRefine` that rejects any key ∉ `BINDABLE_FIELDS`, emitting the PRD §2 error string with a "did you mean" hint (`padding→paddingLeft`, `gap→itemSpacing`, `cornerRadius→topLeftRadius`).
-- [ ] Update the `node_bind_variable` tool **description** inline to name the valid bind fields and the ordering rules (auto-layout before padding/spacing; solid fill before colour bind).
-- [ ] **Unit Test** (`tests/unit/tools/`, alongside `v2Tools.test.ts` / `contractSeam.test.ts`):
-  - [ ] `{paddingLeft: id}` passes; `{padding: id}` and `{gap: id}` are rejected **with the hint**.
-  - [ ] `fills`/`strokes` accepted; **`strokeTopWeight` and `fontFamily` accepted** (regression guarding against the original incomplete hand list — Finding 2).
-  - [ ] Empty / omitted `bindVariables` still valid (modes-only path).
-- [ ] **Live Test (Manual → Phase 7):** `{padding: id}` → schema rejection with hint; `{strokeTopWeight: id}` → accepted.
+
+> [!NOTE]
+> **Implementation note (supersedes the original D3 plan; see PRD §2/D3).** The original plan (hand-curated `BINDABLE_FIELDS` + a `satisfies` type-pin + a `.superRefine`) was replaced during implementation+review by a stronger approach, because (a) `@figma/plugin-typings` exports those types as **ambient globals**, so the planned `import type { … }` doesn't resolve and the `satisfies` pin references unresolved types; and (b) the project **never runs `tsc`** (build = tsup/esbuild, tests = bun, CI = neither), so a `satisfies` pin is never evaluated. Shipped instead: the list is **generated from the typings** by `scripts/gen-node-fields.ts`, the schema uses **`partialRecord` + `z.enum`** (so the allowlist is also published in the wire JSON schema, not just enforced at runtime), and drift is caught by a **`check:generated` CI step**, not by `satisfies`.
+
+- [x] Generate `BINDABLE_FIELDS` (= `fills` + `strokes` + **every** member of `VariableBindableNodeField` and `VariableBindableTextField` — incl. the four per-side stroke weights, `gridRowGap`/`gridColumnGap`, `fontFamily`/`fontStyle`/`fontWeight`) from `@figma/plugin-typings` via `scripts/gen-node-fields.ts` → `src/mcp_server/tools/bindableFields.generated.ts`. Replaces the hand-curated list (Finding 2).
+- [x] Drift protection without `tsc`: add a **`check:generated`** script (`scripts/check-generated.ts`) — regenerate + `git diff --exit-code` the generated outputs — wired into CI, so a typings bump that adds/removes a field **fails CI** instead of silently drifting (replaces the planned `satisfies` pin, D3).
+- [x] Replace the open `bindVariables: z.record(z.string().nullable())` with **`z.partialRecord(z.enum(BINDABLE_FIELDS), z.string().nullable(), { error })`** (`partialRecord` keeps keys optional; a plain enum-keyed `z.record` would require all keys in Zod v4). The record-level `error` rewrites the opaque `invalid_key` into the PRD §2 error string with a "did you mean" hint via `suggestBindField` (`padding→paddingLeft`, `gap→itemSpacing`, `cornerRadius→topLeftRadius`, plus lexical near-misses like `fill→fills` and case slips like `fontsize→fontSize`). The enum surfaces the valid set in the published JSON schema (`propertyNames.enum`).
+- [x] Update the `node_bind_variable` tool **description** inline to name the valid bind fields (enumerated from `BINDABLE_FIELDS`) and the ordering rules (auto-layout before padding/spacing; solid fill before colour bind).
+- [x] **Unit Test** (`tests/unit/tools/node_bind_variable.test.ts`):
+  - [x] `{paddingLeft: id}` passes; `{padding: id}` and `{gap: id}` rejected **with the hint** (issue `code: "invalid_key"`).
+  - [x] `fills`/`strokes` accepted; **`strokeTopWeight` and `fontFamily` accepted** (regression guarding against the original incomplete hand list — Finding 2).
+  - [x] Lexical near-misses get hints: `fill→fills`, `fontsize→fontSize`; unknown-but-unguessable keys get **no** "Did you mean".
+  - [x] Wire JSON schema publishes the allowlist (`propertyNames.enum` contains valid fields, excludes typos).
+  - [x] Empty / omitted `bindVariables` still valid (modes-only path).
+- [x] **Live Test (Manual → Phase 7):** `{padding: id}` → schema rejection with hint; `{strokeTopWeight: id}` → accepted. *(Executed early on channel `7geb`: reject hints for `padding`/`fill`/`fontsize`, accept path for the regression fields, and an end-to-end `fills`+`topLeftRadius` bind — all verified.)*
 
 ## Phase 3: §1 Paint-bind Path Guards & Silent-Success Fix (P0) — `figma_plugin/handlers/variableHandlers.ts` (`fills`/`strokes` branch)
 - [ ] **Remove the silent-success no-op:** delete the existing `else { results.push("No SOLID paints found …") }` branch (`variableHandlers.ts:828-831`); it must be fully replaced by the handling below so the function **never returns `success: true` for a true no-op**.
@@ -58,7 +64,7 @@
 
 ## Phase 6: Build
 - [ ] **Build:** Rebuild `figma_plugin` (handlers TS → `code.js`); confirm the `node_bind_variable` dispatch reflects §1/§3.
-- [ ] **Build:** Rebuild `src/mcp_server` → `dist/`; confirm the §2 `.superRefine` **and the `satisfies` type-pin compile** (typings in sync) and resolve under **both Node and Bun**.
+- [ ] **Build:** Run `bun run build:all` (regenerates `BINDABLE_FIELDS`, builds `dist/`); confirm `check:generated` passes (generated allowlist in sync with the typings) and the §2 `partialRecord`/`z.enum` schema resolves under **both Node and Bun**.
 - [ ] **Verify (Automated):** Run the full unit test suite and ensure all tests pass.
 
 ## Phase 7: Live Verification (post-build)
