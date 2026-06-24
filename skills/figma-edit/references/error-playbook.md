@@ -63,6 +63,20 @@ Every structured error you may receive, what it means, and the correct recovery.
 | `pageId does not resolve to a PAGE` | The supplied `pageId` resolves to a node that is not a `PAGE`. | Pass the ID of an actual page (from `page_info`), not a frame/layer. |
 | `Exactly one of pageId or nodeId is required` | `annotation_list` was called with neither or both of `pageId` / `nodeId`. | Pass exactly one — a `pageId` to scan a whole page, or a `nodeId` to scan a node and its subtree. |
 
+## Variable Binding & Auto-layout Guardrails
+
+| Message | Meaning | Recovery |
+|---|---|---|
+| `Unknown bind field '<field>'. Valid fields are the Figma bindable node/text fields plus fills/strokes (e.g. paddingLeft, itemSpacing, topLeftRadius, fontSize, strokeTopWeight). (Did you mean '<suggestion>'?)` | **Schema-validation error** (MCP `-32602`, raised before the call reaches Figma): a `bindVariables` key isn't in the generated allowlist — usually a typo or wrong casing. | Use the exact camelCase Figma field name (`paddingLeft`, `itemSpacing`, `topLeftRadius`, `fontSize`, `strokeTopWeight`, `fills`, `strokes`, …); take the `Did you mean` suggestion when one is offered. |
+| `node_bind_variable: '<name>' (type <type>) has no '<field>' property to bind.` | The node type does not natively support the field you are trying to bind (e.g., a `GROUP` does not have `fills`). | Target a node that supports the property, such as a `RECTANGLE` or `FRAME`. |
+| `node_bind_variable: '<field>' on '<name>' is mixed...` | The node has multiple different values for this field (e.g. mixed corner radii), preventing safe binding. | Unify the values to a single value first before attempting to bind. |
+| `node_bind_variable: cannot bind a non-color variable...` | You attempted to bind a `FLOAT`, `STRING`, or `BOOLEAN` variable to a color-only property like `fills` or `strokes`. | Supply the ID of a `COLOR` variable instead. |
+| `node_bind_variable: '<name>' has a non-solid <field> (image/gradient)...` | You attempted to bind a color token to a node that only has non-solid (image/gradient/video) fills/strokes, with no solid paint available to bind. | Clear the fills first via `node_set_fill {clear:true}` (which allows the bind to auto-create a solid paint), or manually apply a solid color before binding. |
+| `node_bind_variable: cannot bind '<field>' on '<name>' — auto-layout is off...` | You attempted to bind a layout property (e.g. `paddingLeft`) on a node that supports auto-layout, but it is currently turned off (`layoutMode` is `NONE`). | Turn on auto-layout first using `node_set_auto_layout`, then re-apply the bind. |
+| `node_bind_variable: cannot bind '<field>' on '<name>' — '<field>' is an auto-layout property...` | You attempted to bind a layout property on a node type that fundamentally does not support auto-layout (e.g., a `RECTANGLE` or `TEXT`). | Apply the binding to an auto-layout `FRAME` instead. |
+| `node_set_fill: '<name>' (type <type>) has no 'fills' property to clear.` | You attempted to use `clear: true` on a node type that does not support fills (like a `GROUP`). | Target a node that supports fills. |
+| `node_set_fill: '<name>' (type <type>) has no 'fills' property to set a fill on.` | You attempted to set a solid color or image on a node type that does not support fills (like a `GROUP`). | Target a node that supports fills (e.g. a `RECTANGLE`, `FRAME`, or `TEXT`). |
+
 ## Image & Styling errors
 
 | Message | Meaning | Recovery |

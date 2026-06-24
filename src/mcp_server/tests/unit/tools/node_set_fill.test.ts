@@ -67,3 +67,46 @@ describe("node_set_fill routing", () => {
         }
     });
 });
+
+describe("node_set_fill schema validation", () => {
+    let schema: any;
+    beforeEach(async () => {
+        const server = new McpServer({ name: "test", version: "1" });
+        const { registerAllTools } = await import("../../../tools/index.js");
+        registerAllTools(server);
+        schema = server._registeredTools["node_set_fill"].inputSchema;
+    });
+
+    it("passes with clear:true", () => {
+        const result = schema.safeParse({ nodeId: "1:2", nodeName: "Rect", clear: true });
+        expect(result.success).toBe(true);
+    });
+
+    it("rejects when clear:true is combined with solid color (mutually exclusive)", () => {
+        const result = schema.safeParse({ nodeId: "1:2", nodeName: "Rect", clear: true, r: 1, g: 1, b: 1 });
+        expect(result.success).toBe(false);
+        expect(result.error.issues[0].message).toContain("provide exactly one of");
+    });
+
+    it("rejects when clear:true is combined with an image (mutually exclusive)", () => {
+        const result = schema.safeParse({ nodeId: "1:2", nodeName: "Rect", clear: true, image: { url: "http://example.com/img.png" } });
+        expect(result.success).toBe(false);
+        expect(result.error.issues[0].message).toContain("provide exactly one of");
+    });
+
+    it("rejects when none of solid color, image, or clear are provided", () => {
+        const result = schema.safeParse({ nodeId: "1:2", nodeName: "Rect" });
+        expect(result.success).toBe(false);
+        expect(result.error.issues[0].message).toContain("provide exactly one of");
+    });
+
+    it("regression: passes with solid color", () => {
+        const result = schema.safeParse({ nodeId: "1:2", nodeName: "Rect", r: 1, g: 0, b: 0 });
+        expect(result.success).toBe(true);
+    });
+
+    it("regression: passes with image", () => {
+        const result = schema.safeParse({ nodeId: "1:2", nodeName: "Rect", image: { url: "http://example.com/img.png" } });
+        expect(result.success).toBe(true);
+    });
+});

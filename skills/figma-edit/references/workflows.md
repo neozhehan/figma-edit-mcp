@@ -63,14 +63,27 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
                   x, y, width, height })
 ```
 
-### Apply an image fill
+### Apply an image or clear a fill
 
 ```
 1. (For large local images) resize manually if >45MP to avoid decode budget errors.
 2. node_info({ nodeIds: [nodeId], maxDepth: 0 })         → confirm node name
 3. node_set_fill({ nodeId, nodeName: <verbatim name>,
-                   image: { bytesBase64: <base64 string> } })
+                   image: { bytesBase64: <base64 string> } })  → to apply image
+   OR node_set_fill({ nodeId, nodeName, clear: true })         → to remove fills
 ```
+
+### Variable Binding & Property Ordering
+
+When applying variables, certain properties require the node to be in a specific state first:
+
+1. **Auto-layout properties** (`paddingLeft`, `itemSpacing`, etc.):
+   - **Prerequisite:** The node must have auto-layout enabled.
+   - **Action:** If the node is a standard `FRAME`, use `node_set_auto_layout` first (e.g., `layoutMode: "HORIZONTAL"`), then call `node_bind_variable`.
+2. **Color properties** (`fills`, `strokes`):
+   - **Prerequisite:** To bind a color token to a fill, the node must either have **zero** fills, or one/multiple **solid** fills. You cannot bind a token to an image or gradient fill directly.
+   - **Action:** If the node has an image fill, clear it first using `node_set_fill {clear:true}`. Once empty, binding a color variable will auto-create a bound solid paint.
+   - **Action:** Alternatively, set a solid color first using `node_set_fill {r,g,b}` and then bind the variable.
 
 ### Modify a node by URL the user pasted
 

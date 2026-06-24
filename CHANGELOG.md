@@ -2,6 +2,17 @@
 
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
+## [2.3.1]
+This release hardens variable binding and node filling operations, enforcing tighter safety constraints and closing edge cases around auto-layout and unbind behaviors.
+
+### Added
+- **`node_set_fill` Clear Mode**: The `node_set_fill` tool now accepts `clear: true` to completely remove fills from a node, allowing an empty-fill state required for binding color variables to nodes that previously had image or gradient fills.
+
+### Changed
+- **`node_bind_variable` Allowlist**: The bindable-field allowlist is now generated directly from `@figma/plugin-typings` (`VariableBindableNodeField` ∪ `VariableBindableTextField`, plus the `fills`/`strokes` paint pseudo-fields), replacing a hardcoded partial list that was missing nine valid fields. Unknown fields are rejected at the schema boundary with a "did you mean" hint, and the valid set is published in the tool's JSON schema (`propertyNames.enum`).
+- **Auto-layout Prechecks**: `node_bind_variable` now detects and explicitly rejects attempts to bind padding or spacing properties on nodes where auto-layout is disabled or unsupported, returning actionable recovery instructions.
+- **Strict Fill/Stroke Binding**: `node_bind_variable` now guards against binding color tokens to non-solid paints (images/gradients) or mixed properties. It strictly requires either zero fills (auto-creating a solid paint) or one/multiple solid fills, removing the previous silent-success no-op behavior.
+
 ## [2.3.0]
 This release closes key feature gaps and edge cases reported after the v2.0.0 rewrite, improving image handling, variable lifecycle management, and style edge cases.
 

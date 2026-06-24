@@ -1,4 +1,4 @@
-# Safety Manual — `figma-edit-mcp` (v2.2.0)
+# Safety Manual — `figma-edit-mcp` (v2.3.1)
 
 > **What this is.** A *safety manual* for the project: it states the **safety guarantees** the system makes, the **assumptions** under which those guarantees hold, the **residual risks** it does not cover, and the **controls** (cross-cutting invariants + a per-tool gate matrix) that implement them. The framing is borrowed — informally — from functional-safety *safety manuals* (IEC 61508 / ISO 26262), whose job is to state a component's guarantees **and the conditions of safe use**. It is adapted to an MCP server and is **not** a certification artifact.
 >
@@ -6,12 +6,12 @@
 >
 > **Audience.** Contributors changing the enforcement code; host / integrator authors wiring the plugin into an agent; and auditors or agents reasoning about which edits are possible.
 >
-> **Applies to: v2.2.0** (the Safety & Validation release). It describes the enforcement state **as of that release** — the v2.1.0 scope-lock / name-verification / batch-atomicity model plus the v2.2.0 structural-integrity guards (§1–§16) and the three-axis permission model (§14). `§N` references point into [prd.md](./prd.md) for the rationale behind each control.
+> **Applies to: v2.3.1** (the Bind-Variable Guardrails release). It describes the enforcement state **as of that release** — the v2.1.0 scope-lock / name-verification / batch-atomicity model plus the structural-integrity guards (§1–§16) and the three-axis permission model (§14). Bare `§N` references point into the [v2.2.0 PRD](documentation/completed/v2.2.0-safety-enhancement/prd.md), where those structural guards were specified; sections tagged `v2.3.0 §N` / `v2.3.1 §N` point into their own release PRDs.
 >
 > **Ground truth.** The enforcement lives in three places, in this order of authority:
-> 1. The plugin dispatcher [`figma_plugin/src/main.ts`](../../figma_plugin/src/main.ts) — the per-command gate stack; the only layer an agent cannot bypass.
-> 2. The handlers under [`figma_plugin/handlers/`](../../figma_plugin/handlers/) — type/range/structural checks performed during execution.
-> 3. The MCP input schemas under [`src/mcp_server/tools/`](../../src/mcp_server/tools/) — Zod shape/enum/range validation, before the WebSocket round-trip.
+> 1. The plugin dispatcher [`figma_plugin/src/main.ts`](figma_plugin/src/main.ts) — the per-command gate stack; the only layer an agent cannot bypass.
+> 2. The handlers under [`figma_plugin/handlers/`](figma_plugin/handlers/) — type/range/structural checks performed during execution.
+> 3. The MCP input schemas under [`src/mcp_server/tools/`](src/mcp_server/tools/) — Zod shape/enum/range validation, before the WebSocket round-trip.
 >
 > If this document and the code disagree, **the code is correct and this document is stale** — fix the doc.
 
@@ -155,7 +155,7 @@ Gate order in the dispatcher (most-specific error wins): **permission → scope 
 | `node_set_auto_layout` | node-perm · scope · name · locked · enum checks · **FILL needs auto-layout parent (§8)** · **NONE-frame silent-drop rejected (§8)** · BASELINE horizontal-only · counterAxisSpacing WRAP-only |
 | `node_rename` | node-perm · scope · name · locked |
 | `node_transform` | node-perm · scope · name · locked · **layout-controlled x/y hard-reject (§9)** · **resize-resets-sizing warning (§9)** |
-| `node_bind_variable` | node-perm · scope · name · locked · SOLID-only paint bind (gated by node-perm, **not** var-perm) |
+| `node_bind_variable` | node-perm · scope · name · locked · **unsupported node / mixed paint guard (v2.3.1 §1)** · **auto-layout precheck (v2.3.1 §3)** · SOLID-only paint bind (**type-mismatch guard**, gated by node-perm not var-perm) |
 | `node_apply_style` | node-perm · scope · name · locked (gated by node-perm, **not** style-perm) |
 | `node_clone` | node-perm · scope(source) · name · locked(source) |
 | `node_flatten` | node-perm · scope · name · locked · **scope-root (§1)** |
@@ -220,17 +220,18 @@ Gate order in the dispatcher (most-specific error wins): **permission → scope 
 These run in the MCP server before the plugin and reject malformed input early (not a control — see A1/AS6). Notable ones:
 
 - **Color channels** `r,g,b,a` constrained `0–1` on `create_shape`/`create_frame`/`create_text` and `style_manage` paints (`min(0).max(1)`). (Plugin-side, `create_frame`/`create_text` also normalize alpha so a missing `a` never yields `NaN` opacity — §12.)
+- **Mutual Exclusivity:** `node_set_fill` requires exactly one of a solid color (`r,g,b`), an image payload (`url` or `bytesBase64`) (v2.3.0 §1), or `clear:true` (v2.3.1 §4); `variable_delete` ids-xor-collection; `create_connection` connector-vs-connections.
 - **Enums** for layout (`layoutMode`, `primaryAxisAlignItems`, `counterAxisAlignItems`, `layoutSizingHorizontal/Vertical`), `textCase`, `textDecoration`, shape `type`, paint `type`, grid `pattern`.
+- **Bindable Fields Allowlist:** `node_bind_variable` constrains `bindVariables` keys to a strict typings-derived allowlist `BINDABLE_FIELDS` instead of an open record (v2.3.1 §2).
 - **Shape params:** `pointCount ≥ 3`, `innerRadius`/`arcData.innerRadius` `0–1`, `strokeWeight` positive.
 - **`lineHeight`:** both `style_manage` and `text_set_style` accept the `{unit:"AUTO"}` union (§15).
 - **Name fields:** `nodeName`/`parentNodeName` on every write; `variableNames`/`collectionName` on `variable_delete` (§6B); `nodeName` on `reaction_update` (§6A).
-- **Mutual exclusivity:** `variable_delete` ids-xor-collection; `create_connection` connector-vs-connections-vs-check-default.
 
 ---
 
 ## Part D — Structured error codes (reference)
 
-The plugin returns these from [`main.ts` `ERRORS`](../../figma_plugin/src/main.ts#L44) and inline throws. Full recovery guidance lives in [`skills/figma-edit/references/error-playbook.md`](../../skills/figma-edit/references/error-playbook.md).
+The plugin returns these from [`main.ts` `ERRORS`](figma_plugin/src/main.ts#L45) and inline throws. Full recovery guidance lives in [`skills/figma-edit/references/error-playbook.md`](skills/figma-edit/references/error-playbook.md).
 
 | Code / message | Meaning |
 |---|---|
@@ -245,12 +246,13 @@ The plugin returns these from [`main.ts` `ERRORS`](../../figma_plugin/src/main.t
 | `"… is the current Editable Scope root …"` (§1) | Destructive/replacing op on the scope anchor. |
 | `"… cannot be inserted into itself …"` / cyclic (§3) | Self- or cyclic reparent. |
 | `"Sizing 'FILL' requires … Auto-Layout parent"` (§8); index-bounds (§13); duplicate-variant (§11); auto-layout child transform (§9) | The remaining structured `"Operation Denied: …"` strings. |
+| Actionable Prechecks | `node_bind_variable` blocks missing auto-layout (v2.3.1 §3) and non-solid paint binds (v2.3.1 §1). |
 | `MISSING_*` / type errors | Parameter/shape/type violations from the dispatcher and handlers. |
 
 ---
 
 ## Maintenance
 
-- This file is the **canonical safety manual** for v2.2.0, an aggregated view regenerated from the dispatcher + handlers + schemas. When a tool's gate stack changes, update both the code and this matrix (or delete the row if the tool is removed). When a guarantee, assumption, or residual risk changes, update the G/AS/R lists too — they are the contract.
-- **Publication:** ships with the v2.2.0 release as `SAFETY.md` (this `*.DRAFT.md` copy lives in the release-planning folder while the work is in flight). On merge, rename to `SAFETY.md` and place it at the repo root or in `skills/figma-edit/references/` beside [`constraints.md`](../../skills/figma-edit/references/constraints.md) (agent-facing) as the **contributor/integrator-facing** companion. If the project ever accepts external vulnerability reports, add a *separate* thin `SECURITY.md` for disclosure — it is a different document from this one.
-- Cross-references: holistic agent guidance → `constraints.md`; per-error recovery → `error-playbook.md`; the v2.2.0 change rationale → [`prd.md`](./prd.md); review provenance → [`figma-documentation-check.md`](./figma-documentation-check.md) and [`critique.md`](./critique.md).
+- This file is the **canonical safety manual** for v2.3.1, an aggregated view regenerated from the dispatcher + handlers + schemas. When a tool's gate stack changes, update both the code and this matrix (or delete the row if the tool is removed). When a guarantee, assumption, or residual risk changes, update the G/AS/R lists too — they are the contract.
+- **Publication:** published at the **repo root** as `SAFETY.md` — the **contributor / integrator / auditor-facing** companion to the agent-facing guides in [`skills/figma-edit/references/`](skills/figma-edit/references/) (`constraints.md` et al.) and to [`DESIGN_PHILOSOPHY.md`](DESIGN_PHILOSOPHY.md). The **end-user-facing** safety value proposition lives in [`README.md`](README.md#safer-than-figma-itself), which links here for the full contract. If the project ever accepts external vulnerability reports, add a *separate* thin `SECURITY.md` for disclosure — it is a different document from this one.
+- Cross-references: holistic agent guidance → `constraints.md`; per-error recovery → `error-playbook.md`; the v2.3.1 change rationale → [`prd.md`](documentation/v2.3.1-bind-variable-guardrails/prd.md); review provenance → [`figma-documentation-check.md`](documentation/completed/v2.2.0-safety-enhancement/figma-documentation-check.md) and [`critique.md`](documentation/v2.3.1-bind-variable-guardrails/critique.md).

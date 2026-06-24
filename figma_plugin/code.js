@@ -1755,7 +1755,7 @@
   // figma_plugin/handlers/stylingHandlers.ts
   async function setFillColor(params) {
     console.log("setFillColor", params);
-    const { nodeId, color, image } = params || {};
+    const { nodeId, color, image, clear } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
     }
@@ -1763,14 +1763,25 @@
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
+    if (clear) {
+      if (!("fills" in node)) {
+        throw new Error(`node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to clear.`);
+      }
+      node.fills = [];
+      return {
+        id: node.id,
+        name: node.name,
+        fills: []
+      };
+    }
     if (!("fills" in node)) {
-      throw new Error(`Node does not support fills: ${nodeId}`);
+      throw new Error(`node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to set a fill on.`);
     }
     if (color && image) {
-      throw new Error("node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.");
+      throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.");
     }
     if (!color && !image) {
-      throw new Error("node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.");
+      throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.");
     }
     let paintStyle;
     if (color) {
@@ -4311,7 +4322,16 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     if (e.name) return e.name;
     return "unknown error (no message)";
   }
+  var AUTOLAYOUT_FIELDS = /* @__PURE__ */ new Set([
+    "paddingLeft",
+    "paddingRight",
+    "paddingTop",
+    "paddingBottom",
+    "itemSpacing",
+    "counterAxisSpacing"
+  ]);
   async function setBoundVariable(params) {
+    var _a;
     const { nodeId, bindVariables, explicitVariableModes } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
@@ -4347,7 +4367,31 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             if (!variable) throw new Error(`Variable ${variableId} not found`);
           }
           if (field === "fills" || field === "strokes") {
-            const paints = JSON.parse(JSON.stringify(node[field]));
+            if (!(field in node)) {
+              throw new Error(`node_bind_variable: '${node.name}' (type ${node.type}) has no '${field}' property to bind.`);
+            }
+            if (node[field] === figma.mixed) {
+              throw new Error(`node_bind_variable: '${field}' on '${node.name}' is mixed (multiple values); bind on a node with a single ${field} value.`);
+            }
+            if (variable && variable.resolvedType !== "COLOR") {
+              throw new Error(`node_bind_variable: cannot bind a non-color variable ('${variable.name}', ${variable.resolvedType}) to ${field}; ${field} requires a COLOR variable.`);
+            }
+            const rawPaints = node[field];
+            if (rawPaints.length === 0) {
+              if (variable) {
+                const bound = figma.variables.setBoundVariableForPaint(
+                  { type: "SOLID", color: { r: 0, g: 0, b: 0 } },
+                  "color",
+                  variable
+                );
+                node[field] = [bound];
+                results.push(`Bound ${field} to variable ${variable.name} (created solid paint)`);
+              } else {
+                results.push(`nothing to unbind in ${field}`);
+              }
+              continue;
+            }
+            const paints = JSON.parse(JSON.stringify(rawPaints));
             let modified = false;
             for (let i = 0; i < paints.length; i++) {
               if (paints[i].type === "SOLID") {
@@ -4359,13 +4403,30 @@ Processing annotation ${i + 1}/${annotations.length}:`,
               node[field] = paints;
               results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
             } else {
-              results.push(`No SOLID paints found in ${field} to bind variable`);
+              if (variable) {
+                throw new Error(`node_bind_variable: '${node.name}' has a non-solid ${field} (image/gradient) and no SOLID paint to bind a color token to. Set a solid fill first, or unbind the existing paint.`);
+              } else {
+                results.push(`nothing to unbind in ${field}`);
+              }
             }
             continue;
+          }
+          if (AUTOLAYOUT_FIELDS.has(field)) {
+            if (!("layoutMode" in node)) {
+              throw new Error(
+                `node_bind_variable: cannot bind '${field}' on '${node.name}' \u2014 '${field}' is an auto-layout property that only exists on auto-layout frames, and a ${node.type} cannot have auto-layout. Bind '${field}' on an auto-layout frame instead.`
+              );
+            }
+            if (node.layoutMode === "NONE") {
+              throw new Error(
+                `node_bind_variable: cannot bind '${field}' on '${node.name}' \u2014 auto-layout is off (layoutMode is NONE). Turn it on first with node_set_auto_layout (layoutMode HORIZONTAL or VERTICAL), then bind '${field}'.`
+              );
+            }
           }
           node.setBoundVariable(field, variable);
           results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
         } catch (e) {
+          if ((_a = e == null ? void 0 : e.message) == null ? void 0 : _a.startsWith("node_bind_variable:")) throw e;
           throw new Error(`Failed to set bound variable for ${field}: ${describeError(e)}`);
         }
       }

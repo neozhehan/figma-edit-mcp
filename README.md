@@ -21,6 +21,24 @@ This plugin allows you as a Designer to focus purely on creative decision-making
 - ✨ **Cleaner:** Programmatic, thorough operations mean no node is ever skipped or forgotten during large updates, ensuring that the design file is always consistent.
 - ⚡ **Faster:** Executing batch operations (like bulk text replacement or instance override propagation) via AI reduces hours of tedious manual design work down to seconds.
 
+## Safer than Figma Itself
+
+Every other way to give an AI write access to your Figma file trusts the AI to behave. **This one doesn't** — and that's the whole point.
+
+An AI agent is one hallucination away from deleting the wrong layer, overwriting a shared component, or quietly mangling a design-system token — and you may not notice until the damage is downstream. Figma Edit MCP treats the agent as **untrusted with respect to edit safety**, and puts a gate it *cannot bypass* in front of every write. The agent never decides what's safe; the plugin does, and it refuses anything outside the lines — with a structured error, not a guess.
+
+**What the agent physically cannot do to your file:**
+- 🎯 **Wander off** — it only writes inside the region *you* point it at; no scope, no edits.
+- 👻 **Edit a hallucinated layer** — every write must name the exact node it's touching; a stale or invented ID is refused, never guessed.
+- 💥 **Half-finish a bulk edit** — a batch with one bad target changes *nothing*; all-or-nothing, never a partial mess.
+- 🔒 **Touch what you protected** — locked layers, shared-library assets, and the insides of component instances are off-limits.
+- 🧨 **Saw off the branch it sits on** — it can't delete or replace the anchor of your editing session.
+- 🌍 **Reach for global tokens uninvited** — editing your variables or styles takes a separate, explicit opt-in, off by default.
+
+And it's **honest about its limits**: it guarantees *where*, *which node*, and *what kind* of edit happens — not whether a valid, in-bounds edit was the one you actually meant. You stay in charge of intent; it removes the accidents.
+
+📖 **The full contract** — every guarantee, the conditions it holds under, and exactly how each is enforced — lives in **[SAFETY.md](SAFETY.md)**. *(Your agent loads the same rules at runtime via the `figma-edit` skill or `figma-edit://guide/*`.)*
+
 ## Supported AI Integrations
 - Cursor
 - GitHub Copilot (VS Code)
@@ -188,7 +206,7 @@ Tools are grouped into a two-level, underscore-separated namespace (`group_actio
 | `node_flatten` | Flatten a node and its children into a single vector |
 | `node_insert_child` | Reparent a node under a new parent at an optional index |
 | `node_set_auto_layout` | Configure a frame's auto-layout (mode, padding, spacing, alignment, sizing) |
-| `node_set_fill` | Set a node's fill to a literal RGBA color |
+| `node_set_fill` | Set a node's fill to a color or image, or clear it |
 | `node_set_stroke` | Set stroke color and weight (uniform or per-side) |
 | `node_set_corner_radius` | Set corner radius (uniform or per-corner) |
 | `node_set_effects` | Set the effect array (shadows, blurs) |
@@ -278,12 +296,6 @@ Built-in prompts guide complex multi-step design tasks:
 |---|---|
 | `reaction_to_connector_strategy` | Convert prototype reaction flows into visual FigJam connector lines |
 | `swap_overrides_instances` | Transfer component instance overrides from a source to multiple targets |
-
----
-
-## Hallucination Safeguards
-
-The plugin enforces hard constraints (scope locking, name verification, batch validation) that AI agents cannot bypass. The full rules and structured error codes are loaded on demand by your agent — via the `figma-edit` skill or the MCP resources under `figma-edit://guide/*` (`constraints`, `error-playbook`, `workflows`, `tool-selection`).
 
 ---
 

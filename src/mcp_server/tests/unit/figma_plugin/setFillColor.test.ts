@@ -2,6 +2,17 @@ import { describe, it, expect, beforeEach, mock } from "bun:test";
 import { setFillColor } from "../../../../../figma_plugin/handlers/stylingHandlers.js";
 import { base64ToBytes } from "../../../../../figma_plugin/utils/exportUtils.js";
 
+// Capture the thrown message so guard assertions are exact (a substring match
+// would pass even if the message were wrapped/changed).
+async function caughtMessage(fn: () => Promise<unknown>): Promise<string> {
+    try {
+        await fn();
+    } catch (e: any) {
+        return e?.message ?? String(e);
+    }
+    throw new Error("expected the call to throw, but it resolved");
+}
+
 describe("setFillColor", () => {
     let mockNode: any;
 
@@ -82,12 +93,28 @@ describe("setFillColor", () => {
         })).rejects.toThrow(/could not fetch image from URL 'http:\/\/example.com\/img.png' \(network\/CORS\)/);
     });
 
-    it("unsupported node (!('fills' in node)) still throws", async () => {
-        const mockNoFillsNode = { id: "node-2", name: "No Fills" };
+    it("unsupported node (!('fills' in node)) throws the node_set_fill guard error", async () => {
+        const mockNoFillsNode = { id: "node-2", name: "No Fills", type: "GROUP" };
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockNoFillsNode);
-        await expect(setFillColor({
-            nodeId: "node-2",
-            color: { r: 1, g: 1, b: 1 }
-        })).rejects.toThrow("Node does not support fills: node-2");
+        const msg = await caughtMessage(() => setFillColor({ nodeId: "node-2", color: { r: 1, g: 1, b: 1 } }));
+        // Consistent shape with the clear-path guard (G-C).
+        expect(msg).toBe("node_set_fill: 'No Fills' (type GROUP) has no 'fills' property to set a fill on.");
+    });
+
+    it("clear payload sets node.fills to an empty array", async () => {
+        mockNode.fills = [{ type: "SOLID" }];
+        const result = await setFillColor({
+            nodeId: "node-1",
+            clear: true
+        });
+        expect(result.fills.length).toBe(0);
+        expect(mockNode.fills.length).toBe(0);
+    });
+
+    it("clear payload on unsupported node throws PRD guard error before mutation", async () => {
+        const mockNoFillsNode = { id: "node-2", name: "No Fills", type: "GROUP" };
+        (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockNoFillsNode);
+        const msg = await caughtMessage(() => setFillColor({ nodeId: "node-2", clear: true }));
+        expect(msg).toBe("node_set_fill: 'No Fills' (type GROUP) has no 'fills' property to clear.");
     });
 });

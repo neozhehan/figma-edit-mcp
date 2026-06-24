@@ -145,16 +145,30 @@ describe("setBoundVariable Handler (node_bind_variable MCP shape)", () => {
             setExplicitVariableModeForCollection: mock(async () => { }),
         };
         (globalThis as any).figma = {
+            mixed: Symbol("figma.mixed"),
             getNodeByIdAsync: mock(async (id: string) => (id === "rect-1" ? mockNode : null)),
             variables: {
                 getVariableByIdAsync: mock(async (id: string) =>
-                    id === "v-color" ? { id: "v-color", name: "Brand/Primary" } : null),
+                    id === "v-color" ? { id: "v-color", name: "Brand/Primary", resolvedType: "COLOR" } : null),
                 getVariableCollectionByIdAsync: mock(async (id: string) =>
                     id === "col-1" ? { id: "col-1", name: "Theme" } : null),
                 setBoundVariableForPaint,
             },
         };
     });
+
+    // Capture the thrown message so we can assert the EXACT string. A plain
+    // `.rejects.toThrow(substring)` passes even if the §1 guard message were
+    // double-wrapped with a "Failed to set bound variable for…" prefix — this
+    // helper makes that wrapping a test failure (F1/F2 regression guard).
+    async function caughtMessage(fn: () => Promise<unknown>): Promise<string> {
+        try {
+            await fn();
+        } catch (e: any) {
+            return e?.message ?? String(e);
+        }
+        throw new Error("expected the call to throw, but it resolved");
+    }
 
     it("binds a COLOR variable to fills via the bindVariables map (the real MCP shape)", async () => {
         const result: any = await setBoundVariable({
@@ -243,14 +257,154 @@ describe("setBoundVariable Handler (node_bind_variable MCP shape)", () => {
         ).rejects.toThrow("Variable ghost not found");
     });
 
-    it("reports when fills has no SOLID paint to bind", async () => {
+    it("throws when fills has no SOLID paint to bind, leaving fills unmutated", async () => {
         mockNode.fills = [{ type: "GRADIENT_LINEAR" }];
+        const msg = await caughtMessage(() =>
+            setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { fills: "v-color" } })
+        );
+        // Exact match — the guard string must surface verbatim, NOT wrapped in
+        // "Failed to set bound variable for fills: …" (F1).
+        expect(msg).toBe("node_bind_variable: 'Rect' has a non-solid fills (image/gradient) and no SOLID paint to bind a color token to. Set a solid fill first, or unbind the existing paint.");
+        // Ensure fills wasn't mutated
+        expect(mockNode.fills).toEqual([{ type: "GRADIENT_LINEAR" }]);
+    });
+
+    it("auto-creates a SOLID paint when fills is empty and binding a COLOR variable", async () => {
+        mockNode.fills = [];
         const result: any = await setBoundVariable({
             nodeId: "rect-1",
             nodeName: "Rect",
             bindVariables: { fills: "v-color" },
         });
-        expect(result.message).toContain("No SOLID paints found in fills");
+        expect(result.success).toBe(true);
+        expect(result.message).toContain("Bound fills to variable Brand/Primary (created solid paint)");
+        expect(setBoundVariableForPaint).toHaveBeenCalledTimes(1);
+        expect(setBoundVariableForPaint.mock.calls[0][0]).toEqual({ type: "SOLID", color: { r: 0, g: 0, b: 0 } });
+        // The newly created paint is assigned to fills
+        expect(mockNode.fills[0].boundVariables.color).toEqual({ id: "v-color" });
+    });
+
+    it("throws when node lacks the field (e.g. GROUP) before attempting clone", async () => {
+        const groupNode = {
+            id: "group-1", name: "Group", type: "GROUP",
+            setBoundVariable: mock(() => { }),
+            setExplicitVariableModeForCollection: mock(async () => { }),
+        };
+        (globalThis as any).figma.getNodeByIdAsync = mock(async (id: string) => (id === "group-1" ? groupNode : mockNode));
+        const msg = await caughtMessage(() =>
+            setBoundVariable({ nodeId: "group-1", nodeName: "Group", bindVariables: { fills: "v-color" } })
+        );
+        expect(msg).toBe("node_bind_variable: 'Group' (type GROUP) has no 'fills' property to bind.");
+    });
+
+    it("throws when field is figma.mixed before attempting clone", async () => {
+        mockNode.fills = (globalThis as any).figma.mixed;
+        const msg = await caughtMessage(() =>
+            setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { fills: "v-color" } })
+        );
+        expect(msg).toBe("node_bind_variable: 'fills' on 'Rect' is mixed (multiple values); bind on a node with a single fills value.");
+    });
+
+    it("throws when variable is not COLOR type before any paint mutation", async () => {
+        (globalThis as any).figma.variables.getVariableByIdAsync = mock(async (id: string) =>
+            id === "v-float" ? { id: "v-float", name: "Padding", resolvedType: "FLOAT" } : null
+        );
+        const msg = await caughtMessage(() =>
+            setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { fills: "v-float" } })
+        );
+        expect(msg).toBe("node_bind_variable: cannot bind a non-color variable ('Padding', FLOAT) to fills; fills requires a COLOR variable.");
+        expect(setBoundVariableForPaint).not.toHaveBeenCalled();
+    });
+
+    it("binds to ALL SOLID paints if multiple exist (Finding 5)", async () => {
+        mockNode.fills = [
+            { type: "SOLID", color: { r: 1, g: 1, b: 1 } },
+            { type: "GRADIENT_LINEAR" },
+            { type: "SOLID", color: { r: 0, g: 0, b: 0 } },
+        ];
+        const result: any = await setBoundVariable({
+            nodeId: "rect-1",
+            nodeName: "Rect",
+            bindVariables: { fills: "v-color" },
+        });
+        expect(result.success).toBe(true);
+        expect(setBoundVariableForPaint).toHaveBeenCalledTimes(2);
+        // Both solids should be bound
+        expect(mockNode.fills[0].boundVariables.color).toEqual({ id: "v-color" });
+        expect(mockNode.fills[2].boundVariables.color).toEqual({ id: "v-color" });
+        // The gradient should be left alone
+        expect(mockNode.fills[1].type).toEqual("GRADIENT_LINEAR");
+        expect(mockNode.fills[1].boundVariables).toBeUndefined();
+    });
+
+    it("returns 'nothing to unbind' when unbinding on an empty or non-solid fills", async () => {
+        mockNode.fills = [];
+        const result: any = await setBoundVariable({
+            nodeId: "rect-1",
+            nodeName: "Rect",
+            bindVariables: { fills: null },
+        });
+        expect(result.success).toBe(true);
+        expect(result.message).toContain("nothing to unbind in fills");
+
+        mockNode.fills = [{ type: "GRADIENT_LINEAR" }];
+        const result2: any = await setBoundVariable({
+            nodeId: "rect-1",
+            nodeName: "Rect",
+            bindVariables: { fills: null },
+        });
+        expect(result2.success).toBe(true);
+        expect(result2.message).toContain("nothing to unbind in fills");
+    });
+
+    it("unbinds a bound SOLID paint via the modified loop (variableId null, F4)", async () => {
+        mockNode.fills = [{ type: "SOLID", color: { r: 1, g: 1, b: 1 }, boundVariables: { color: { id: "v-color" } } }];
+        const result: any = await setBoundVariable({
+            nodeId: "rect-1",
+            nodeName: "Rect",
+            bindVariables: { fills: null },
+        });
+        expect(result.success).toBe(true);
+        expect(result.message).toContain("Unbound variable from fills");
+        // setBoundVariableForPaint is invoked with a null variable to clear the binding
+        expect(setBoundVariableForPaint).toHaveBeenCalledTimes(1);
+        expect(setBoundVariableForPaint.mock.calls[0][2]).toBeNull();
+        expect(mockNode.fills[0].boundVariables.color).toBeUndefined();
+    });
+
+    it("throws the case-1 error (auto-layout OFF) when binding padding to a frame with layoutMode NONE", async () => {
+        mockNode.layoutMode = "NONE";
+        const msg = await caughtMessage(() =>
+            setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { paddingLeft: "v-color" } })
+        );
+        // Exact match — fixable case directs the LLM to turn auto-layout on.
+        expect(msg).toBe("node_bind_variable: cannot bind 'paddingLeft' on 'Rect' — auto-layout is off (layoutMode is NONE). Turn it on first with node_set_auto_layout (layoutMode HORIZONTAL or VERTICAL), then bind 'paddingLeft'.");
+        expect(mockNode.setBoundVariable).not.toHaveBeenCalled();
+    });
+
+    it("throws the case-2 error (node type can't have auto-layout) when the node has no layoutMode property", async () => {
+        // beforeEach builds a RECTANGLE with no layoutMode — the `!('layoutMode' in node)` branch.
+        expect("layoutMode" in mockNode).toBe(false);
+        const msg = await caughtMessage(() =>
+            setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { paddingLeft: "v-color" } })
+        );
+        // Exact match — category error tells the LLM to use an auto-layout frame, NOT to set auto-layout here.
+        expect(msg).toBe("node_bind_variable: cannot bind 'paddingLeft' on 'Rect' — 'paddingLeft' is an auto-layout property that only exists on auto-layout frames, and a RECTANGLE cannot have auto-layout. Bind 'paddingLeft' on an auto-layout frame instead.");
+        expect(mockNode.setBoundVariable).not.toHaveBeenCalled();
+    });
+
+    it("succeeds when binding padding to an autolayout frame", async () => {
+        mockNode.layoutMode = "HORIZONTAL";
+        const result: any = await setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { paddingLeft: "v-color" } });
+        expect(result.success).toBe(true);
+        expect(mockNode.setBoundVariable).toHaveBeenCalledWith("paddingLeft", { id: "v-color", name: "Brand/Primary", resolvedType: "COLOR" });
+    });
+
+    it("does not precheck non-padding scalar fields", async () => {
+        mockNode.layoutMode = "NONE";
+        const result: any = await setBoundVariable({ nodeId: "rect-1", nodeName: "Rect", bindVariables: { cornerRadius: "v-color" } });
+        expect(result.success).toBe(true);
+        expect(mockNode.setBoundVariable).toHaveBeenCalledWith("cornerRadius", { id: "v-color", name: "Brand/Primary", resolvedType: "COLOR" });
     });
 
     it("surfaces an actionable detail when the underlying bind throws a message-less error (never the literal 'undefined')", async () => {
