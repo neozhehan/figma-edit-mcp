@@ -84,16 +84,16 @@
 - [x] **Live Test (Manual → Phase 8):** `node_set_fill {clear:true}` on a shape → `fills` becomes `[]` (verify via `node_info`); then `node_bind_variable {fills: <colorVar>}` on it → auto-creates a bound solid paint (closes the §1 loop end-to-end); `clear:true` on a node type without `fills` (e.g. GROUP) → the guard error.
 
 ## Phase 6: Documentation Updates
-- [ ] **Update** `skills/figma-edit/references/error-playbook.md` with recovery entries for: non-solid fill bind (§1), non-color variable to fills (§1), mixed/unsupported node (§1), unknown bind field (§2), padding/spacing bind on a non-auto-layout node (§3), and **clear-fill on a node with no `fills` property (§4)**.
-- [ ] **Update** `skills/figma-edit/references/workflows.md` and/or `tool-selection.md` with the ordering rules (set auto-layout → bind padding/spacing; set solid fill → bind colour; binding a colour token to an empty fill auto-creates a bound solid paint) **and the `node_set_fill {clear:true}` mode** (how to remove a fill / reach the empty-fill state). Update `tool-selection.md`'s "Image Fills (`node_set_fill`)" / ad-hoc-color rows to name the third mode (clear).
-- [ ] **Update** the `node_set_fill` entry in `README.md`'s tool table — currently "Set a node's fill to a literal RGBA color" (stale since v2.3.0 added image) → "Set a node's fill to a color or image, or clear it" (§4).
-- [ ] **Update** `CHANGELOG.md` with a `v2.3.1` entry summarizing §1–§4 (silent-success + fill-branch guards, typings-derived bind-field allowlist, auto-layout precheck, `node_set_fill` clear mode).
-- [ ] **Note:** the MCP guide resources (`figma-edit://guide/*`) are served from `skills/figma-edit/references/*.md` (see `src/mcp_server/resources.ts`), so updating those files updates the resources too — no separate edit needed.
+- [x] **Update** `skills/figma-edit/references/error-playbook.md` with recovery entries for: non-solid fill bind (§1), non-color variable to fills (§1), mixed/unsupported node (§1), unknown bind field (§2), padding/spacing bind on a non-auto-layout node (§3), and **clear-fill on a node with no `fills` property (§4)**.
+- [x] **Update** `skills/figma-edit/references/workflows.md` and/or `tool-selection.md` with the ordering rules (set auto-layout → bind padding/spacing; set solid fill → bind colour; binding a colour token to an empty fill auto-creates a bound solid paint) **and the `node_set_fill {clear:true}` mode** (how to remove a fill / reach the empty-fill state). Update `tool-selection.md`'s "Image Fills (`node_set_fill`)" / ad-hoc-color rows to name the third mode (clear).
+- [x] **Update** the `node_set_fill` entry in `README.md`'s tool table — currently "Set a node's fill to a literal RGBA color" (stale since v2.3.0 added image) → "Set a node's fill to a color or image, or clear it" (§4).
+- [x] **Update** `CHANGELOG.md` with a `v2.3.1` entry summarizing §1–§4 (silent-success + fill-branch guards, typings-derived bind-field allowlist, auto-layout precheck, `node_set_fill` clear mode).
+- [x] **Note:** the MCP guide resources (`figma-edit://guide/*`) are served from `skills/figma-edit/references/*.md` (see `src/mcp_server/resources.ts`), so updating those files updates the resources too — no separate edit needed.
 
 ## Phase 7: Build
-- [ ] **Build:** Rebuild `figma_plugin` (handlers TS → `code.js`); confirm the `node_bind_variable` dispatch reflects §1/§3 **and the `node_set_fill` dispatch reflects §4** (`clear` → `fills = []`).
-- [ ] **Build:** Run `bun run build:all` (regenerates `BINDABLE_FIELDS`, builds `dist/`); confirm `check:generated` passes (generated allowlist in sync with the typings) and the §2 `partialRecord`/`z.enum` + §4 `clear` schemas resolve under **both Node and Bun**. Run `bun run gen:manifest` and confirm `manifest.json` reflects the updated `node_set_fill` description.
-- [ ] **Verify (Automated):** Run the full unit test suite and ensure all tests pass.
+- [x] **Build:** Rebuild `figma_plugin` (handlers TS → `code.js`); confirm the `node_bind_variable` dispatch reflects §1/§3 **and the `node_set_fill` dispatch reflects §4** (`clear` → `fills = []`).
+- [x] **Build:** Run `bun run build:all` (regenerates `BINDABLE_FIELDS`, builds `dist/`); confirm `check:generated` passes (generated allowlist in sync with the typings) and the §2 `partialRecord`/`z.enum` + §4 `clear` schemas resolve under **both Node and Bun**. Run `bun run gen:manifest` and confirm `manifest.json` reflects the updated `node_set_fill` description.
+- [x] **Verify (Automated):** Run the full unit test suite and ensure all tests pass.
 
 ## Phase 8: Live Verification (post-build)
-- [ ] Execute the **Live Test (Manual)** items from Phases 2, 3, 4, and 5 against an editable Figma channel (e.g. `xg0d`), on an editable page. Clean up any test nodes/variables created during verification.
+- [x] Execute the **Live Test (Manual)** items from Phases 2, 3, 4, and 5 against an editable Figma channel (e.g. `xg0d`), on an editable page. Clean up any test nodes/variables created during verification.
