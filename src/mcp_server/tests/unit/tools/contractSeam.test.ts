@@ -118,7 +118,7 @@ const CONTRACTS: Record<string, Contract> = {
     node_flatten: { reads: ["nodeId"] },                               // flattenNode
     node_insert_child: { reads: ["parentId", "childId"] },             // insertChild
     node_set_auto_layout: { reads: ["nodeId"] },                       // setAutoLayout
-    node_set_fill: { reads: ["nodeId"], readsOneOf: [["color", "image"]] },                     // setFillColor (transform builds color or forwards image)
+    node_set_fill: { reads: ["nodeId"], readsOneOf: [["color", "image", "clear"]] },                     // setFillColor (transform builds color or forwards image)
     node_set_stroke: { reads: ["nodeId", "color"] },                   // setStroke (transform builds color)
     node_set_corner_radius: { reads: ["nodeId", "radius"] },           // setCornerRadius
     node_set_effects: { reads: ["nodeId", "effects"] },                // setEffects

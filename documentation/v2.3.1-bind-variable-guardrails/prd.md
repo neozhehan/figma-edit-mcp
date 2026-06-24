@@ -217,6 +217,7 @@ if (AUTOLAYOUT_FIELDS.has(field)) {
 **Notes.**
 - Scope is **fills only** (the request). Symmetric stroke-clearing on `node_set_stroke` is a natural follow-up but is **out of scope** for v2.3.1.
 - Same permission profile as the existing `node_set_fill` (node-perm · scope · name · locked) — no new constraint class.
+- **Message consistency (review G-C):** the pre-existing solid/image "no fills" error was the terse `Node does not support fills: ${nodeId}`; it is aligned to the clear guard's shape — `node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to set a fill on.` — so both fill paths surface the same node-name/type-bearing message.
 
 **Tests.** Unit (`tests/unit/tools/node_set_fill.test.ts`): `{clear:true}` passes; `{clear:true, r,g,b}` rejected; `{}` (none) still rejected; existing solid and image inputs still pass. Plugin unit (`tests/unit/figma_plugin/setFillColor.test.ts`): `{clear:true}` sets `fills=[]`; a node without a `fills` property throws the guard error before mutating. Live: clear a shape's fill (`fills` → `[]`), then bind a COLOR var (auto-creates a bound solid — closes §1's loop); clear on a node type without `fills` (e.g. GROUP) → the guard error.
 

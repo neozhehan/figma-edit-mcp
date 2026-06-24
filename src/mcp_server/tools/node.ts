@@ -445,7 +445,7 @@ export function registerNodeTools(server: McpServer) {
         "node_set_fill",
         {
             title: "Set Fill",
-            description: "Set a node's fill to a literal RGBA color or an image. Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token.",
+            description: "Set a node's fill to a literal RGBA color, an image, or clear it. Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
                 nodeName: z.string().describe("Name of the node to modify"),
@@ -463,18 +463,18 @@ export function registerNodeTools(server: McpServer) {
                     bytesBase64: z.string().optional().describe("Base64-encoded raw PNG/JPEG/GIF bytes. PNG/JPEG over 4096px per side are auto-downscaled server-side (aspect ratio preserved); GIF is not resized. Very large PNG/JPEG (over ~45 megapixels) exceed the server resize budget and are rejected — pre-resize those yourself. Heavier over the socket."),
                     scaleMode: z.enum(["FILL","FIT","CROP","TILE"]).optional().describe("default FILL"),
                     opacity: z.number().min(0).max(1).optional().describe("Alpha opacity component for the image (0-1)"),
-                }).optional().describe("Optional image payload. Must provide exactly one of solid color or image.")
+                }).optional().describe("Optional image payload. Must provide exactly one of solid color or image."),
+                clear: z.boolean().optional().describe("Set to true to clear all fills. Must provide exactly one of solid color, image, or clear:true.")
             }).superRefine((data, ctx) => {
                 const hasSolid = data.r !== undefined && data.g !== undefined && data.b !== undefined;
                 const hasPartialRGB = !hasSolid && (data.r !== undefined || data.g !== undefined || data.b !== undefined);
                 const hasImage = data.image !== undefined;
+                const hasClear = data.clear === true;
                 
-                if (hasSolid && hasImage) {
-                    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither." });
-                } else if (!hasSolid && !hasImage) {
-                    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither." });
-                } else if (hasPartialRGB) {
-                    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither." });
+                const numModes = (hasSolid ? 1 : 0) + (hasImage ? 1 : 0) + (hasClear ? 1 : 0);
+                
+                if (numModes !== 1 || hasPartialRGB) {
+                    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true." });
                 }
                 
                 if (hasImage && data.image) {
@@ -496,7 +496,7 @@ export function registerNodeTools(server: McpServer) {
                 openWorldHint: true
             }
         },
-        async ({ nodeId, nodeName, r, g, b, a, image }: any) => {
+        async ({ nodeId, nodeName, r, g, b, a, image, clear }: any) => {
             let processedImage = image;
             let warning: string | undefined;
 
@@ -510,7 +510,9 @@ export function registerNodeTools(server: McpServer) {
             }
 
             const payload: any = { nodeId, nodeName };
-            if (image) {
+            if (clear) {
+                payload.clear = true;
+            } else if (image) {
                 payload.image = processedImage;
             } else {
                 payload.color = { r, g, b, a: a ?? 1 };

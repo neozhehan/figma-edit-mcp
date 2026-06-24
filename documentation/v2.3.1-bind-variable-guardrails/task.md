@@ -68,17 +68,20 @@
 > [!NOTE]
 > Surfaced by the §1 adversarial review (F3): no MCP path produces an empty-`fills` node, so §1's empty-fill auto-create branch isn't reachable end-to-end. D5 adds a `clear` mode to `node_set_fill` to close that loop. Scope is **fills only**; stroke-clearing is a deliberate non-goal here.
 
-- [ ] **Schema (`node.ts`):** add `clear: z.boolean().optional()` to `node_set_fill`; extend the `.superRefine` so **exactly one of {solid color (r,g,b[,a]), image, `clear:true`}** is provided. Replace the existing "either a solid color or an image, not both/neither" messages with the PRD §4 string: `node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.` (D5).
-- [ ] **Plugin (`stylingHandlers.ts`):** when `clear` is set, assign `node.fills = []` (instead of `[paintStyle]`). **Guard first:** if `!('fills' in node)` → throw the PRD §4 guard error `node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to clear.` (D5).
-- [ ] **Keep it narrow (D5):** do **not** add stroke-clearing, and do **not** add a `figma.mixed` guard (mixed fills are unambiguously clearable — assigning `[]` is well-defined).
-- [ ] Update the `node_set_fill` tool **description** inline to state the three modes (solid color, image, or `clear`), then run **`bun run gen:manifest`** so `manifest.json` reflects it.
-- [ ] **Unit Test** (`tests/unit/tools/node_set_fill.test.ts`):
-  - [ ] `{clear:true}` passes; `{clear:true, r,g,b}` rejected (mutually exclusive); `{}` (none of the three) still rejected.
-  - [ ] **Regression:** existing solid `{r,g,b}` and `{image:{…}}` inputs still pass.
-- [ ] **Unit Test** (plugin, `tests/unit/figma_plugin/setFillColor.test.ts`):
-  - [ ] `{clear:true}` sets `node.fills = []`.
-  - [ ] a node without a `fills` property throws the PRD §4 guard error **before** any mutation.
-- [ ] **Live Test (Manual → Phase 8):** `node_set_fill {clear:true}` on a shape → `fills` becomes `[]` (verify via `node_info`); then `node_bind_variable {fills: <colorVar>}` on it → auto-creates a bound solid paint (closes the §1 loop end-to-end); `clear:true` on a node type without `fills` (e.g. GROUP) → the guard error.
+> [!NOTE]
+> **Post-implementation hardening (adversarial review + live test on `dadz`).** The headline §4→§1 loop was verified live (clear → `fills:[]` → bind COLOR → auto-created bound solid). G-A: added a unit test for the `clear`+`image` rejection pair (only `clear`+solid was covered). G-B: the plugin guard tests now use exact-match (`caughtMessage` helper) instead of substring. G-C: the **non-clear** "no fills" error was the terse pre-§4 `Node does not support fills: ${nodeId}`; aligned it to the same friendly shape as the clear guard (`node_set_fill: '${name}' (type ${type}) has no 'fills' property to set a fill on.`) so both fill paths read consistently for an LLM.
+
+- [x] **Schema (`node.ts`):** add `clear: z.boolean().optional()` to `node_set_fill`; extend the `.superRefine` so **exactly one of {solid color (r,g,b[,a]), image, `clear:true`}** is provided. Replace the existing "either a solid color or an image, not both/neither" messages with the PRD §4 string: `node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.` (D5).
+- [x] **Plugin (`stylingHandlers.ts`):** when `clear` is set, assign `node.fills = []` (instead of `[paintStyle]`). **Guard first:** if `!('fills' in node)` → throw the PRD §4 guard error `node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to clear.` (D5).
+- [x] **Keep it narrow (D5):** do **not** add stroke-clearing, and do **not** add a `figma.mixed` guard (mixed fills are unambiguously clearable — assigning `[]` is well-defined).
+- [x] Update the `node_set_fill` tool **description** inline to state the three modes (solid color, image, or `clear`), then run **`bun run gen:manifest`** so `manifest.json` reflects it.
+- [x] **Unit Test** (`tests/unit/tools/node_set_fill.test.ts`):
+  - [x] `{clear:true}` passes; `{clear:true, r,g,b}` rejected (mutually exclusive); `{}` (none of the three) still rejected.
+  - [x] **Regression:** existing solid `{r,g,b}` and `{image:{…}}` inputs still pass.
+- [x] **Unit Test** (plugin, `tests/unit/figma_plugin/setFillColor.test.ts`):
+  - [x] `{clear:true}` sets `node.fills = []`.
+  - [x] a node without a `fills` property throws the PRD §4 guard error **before** any mutation.
+- [x] **Live Test (Manual → Phase 8):** `node_set_fill {clear:true}` on a shape → `fills` becomes `[]` (verify via `node_info`); then `node_bind_variable {fills: <colorVar>}` on it → auto-creates a bound solid paint (closes the §1 loop end-to-end); `clear:true` on a node type without `fills` (e.g. GROUP) → the guard error.
 
 ## Phase 6: Documentation Updates
 - [ ] **Update** `skills/figma-edit/references/error-playbook.md` with recovery entries for: non-solid fill bind (§1), non-color variable to fills (§1), mixed/unsupported node (§1), unknown bind field (§2), padding/spacing bind on a non-auto-layout node (§3), and **clear-fill on a node with no `fills` property (§4)**.

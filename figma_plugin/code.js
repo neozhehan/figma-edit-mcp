@@ -1755,7 +1755,7 @@
   // figma_plugin/handlers/stylingHandlers.ts
   async function setFillColor(params) {
     console.log("setFillColor", params);
-    const { nodeId, color, image } = params || {};
+    const { nodeId, color, image, clear } = params || {};
     if (!nodeId) {
       throw new Error("Missing nodeId parameter");
     }
@@ -1763,14 +1763,25 @@
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
+    if (clear) {
+      if (!("fills" in node)) {
+        throw new Error(`node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to clear.`);
+      }
+      node.fills = [];
+      return {
+        id: node.id,
+        name: node.name,
+        fills: []
+      };
+    }
     if (!("fills" in node)) {
-      throw new Error(`Node does not support fills: ${nodeId}`);
+      throw new Error(`node_set_fill: '${node.name}' (type ${node.type}) has no 'fills' property to set a fill on.`);
     }
     if (color && image) {
-      throw new Error("node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.");
+      throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.");
     }
     if (!color && !image) {
-      throw new Error("node_set_fill: provide either a solid color (r,g,b[,a]) or an image, not both/neither.");
+      throw new Error("node_set_fill: provide exactly one of: a solid color (r,g,b[,a]), an image, or clear:true.");
     }
     let paintStyle;
     if (color) {

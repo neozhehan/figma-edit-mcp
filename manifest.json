@@ -61,7 +61,7 @@
     },
     {
       "name": "node_info",
-      "description": "Read one or more nodes — recursive subtree traversal with `fields` selection, `filter`, and `maxDepth`. Returns only requested fields (incl. resolved `boundVariables`/`explicitVariableModes`). The workhorse read; start here before any write."
+      "description": "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. The workhorse read; start here before any write."
     },
     {
       "name": "node_transform",
@@ -97,7 +97,7 @@
     },
     {
       "name": "node_insert_child",
-      "description": "Reparent a node under a new parent at an optional `index`."
+      "description": "Reparent a node under a new parent at an optional `index`. Valid range is 0 to parent's child count. Omit `index` to append."
     },
     {
       "name": "node_set_auto_layout",
@@ -105,7 +105,7 @@
     },
     {
       "name": "node_set_fill",
-      "description": "Set a node's fill to a literal RGBA color. Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token."
+      "description": "Set a node's fill to a literal RGBA color, an image, or clear it. Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token."
     },
     {
       "name": "node_set_stroke",
@@ -121,11 +121,11 @@
     },
     {
       "name": "node_apply_style",
-      "description": "Link a node to a shared library style (paint/text/effect/grid) by `styleId`. Use the raw `node.set_*` setters for ad-hoc values not backed by a style."
+      "description": "Link a node to a shared library style (paint/text/effect/grid) by `styleId`. Use the raw `node_set_*` setters for ad-hoc values not backed by a style."
     },
     {
       "name": "node_bind_variable",
-      "description": "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node.set_*` when the value should track a design token."
+      "description": "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node_set_*` when the value should track a design token. Ordering rules: set auto-layout before binding padding/spacing; set a solid fill before binding a colour token."
     },
     {
       "name": "node_export_visual",
@@ -221,7 +221,7 @@
     },
     {
       "name": "annotation_list",
-      "description": "Read the native annotations on a node (and subtree); optionally include the file's annotation categories."
+      "description": "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. Optionally include the file's annotation categories."
     },
     {
       "name": "annotation_set",
