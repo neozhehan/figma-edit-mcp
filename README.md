@@ -21,7 +21,7 @@ This plugin allows you as a Designer to focus purely on creative decision-making
 - ✨ **Cleaner:** Programmatic, thorough operations mean no node is ever skipped or forgotten during large updates, ensuring that the design file is always consistent.
 - ⚡ **Faster:** Executing batch operations (like bulk text replacement or instance override propagation) via AI reduces hours of tedious manual design work down to seconds.
 
-[Read more about our design philosophy here.](DESIGN_PHILOSOPHY.md)
+[Read the design philosophy behind these goals →](DESIGN_PHILOSOPHY.md)
 
 ## Safer than Figma Itself
 
