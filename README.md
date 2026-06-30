@@ -2,7 +2,8 @@
 
 [![npm version](https://img.shields.io/npm/v/figma-edit-mcp.svg)](https://www.npmjs.com/package/figma-edit-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/figma-edit-mcp.svg)](https://www.npmjs.com/package/figma-edit-mcp)
-[![CI](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml)  
+[![CI](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml)
+[![Featured by IDEO](https://img.shields.io/badge/Featured%20by-IDEO-000000)](https://edges.ideo.com/emerging-wave-sessions/figma-edit-mcp)  
 
 [![figma-edit-mcp MCP server](https://glama.ai/mcp/servers/neozhehan/figma-edit-mcp/badges/card.svg)](https://glama.ai/mcp/servers/neozhehan/figma-edit-mcp)
 
@@ -12,9 +13,9 @@ This plugin empowers your AI assistant to become a Figma assistant, executing de
 
 This plugin allows you as a Designer to focus purely on creative decision-making, leaving the error-prone & repetitive manual changes to the automated systems.
 
-📖 **Documentation:** [neozhehan.github.io/figma-edit-mcp](https://neozhehan.github.io/figma-edit-mcp/)
-
 🏆 **Featured by IDEO:** [Letting AI edit live Figma files without trusting it to behave](https://edges.ideo.com/emerging-wave-sessions/figma-edit-mcp)
+
+📖 **Documentation:** [neozhehan.github.io/figma-edit-mcp](https://neozhehan.github.io/figma-edit-mcp/)
 
 ## Core Goals & Philosophy
 - 🛡️ **Safer:** The plugin performs programmatic checks and protections that exceed those in the Figma Desktop app. For example, it prevents the deletion of variables that are still in use, avoiding dangling references. By enforcing these strict validations before an action is taken, the plugin protects designs from both human error and AI hallucinations.
