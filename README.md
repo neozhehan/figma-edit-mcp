@@ -16,12 +16,12 @@ This plugin allows you as a Designer to focus purely on creative decision-making
 
 🏆 **Featured by IDEO:** [Letting AI edit live Figma files without trusting it to behave](https://edges.ideo.com/emerging-wave-sessions/figma-edit-mcp)
 
-[Read more about our design philosophy here.](DESIGN_PHILOSOPHY.md)  
-
-## Core Principles
+## Core Philosophy & Goals
 - 🛡️ **Safer:** The plugin performs programmatic checks and protections that exceed those in the Figma Desktop app. For example, it prevents the deletion of variables that are still in use, avoiding dangling references. By enforcing these strict validations before an action is taken, the plugin protects designs from both human error and AI hallucinations.
 - ✨ **Cleaner:** Programmatic, thorough operations mean no node is ever skipped or forgotten during large updates, ensuring that the design file is always consistent.
 - ⚡ **Faster:** Executing batch operations (like bulk text replacement or instance override propagation) via AI reduces hours of tedious manual design work down to seconds.
+
+[Read more about our design philosophy here.](DESIGN_PHILOSOPHY.md)
 
 ## Safer than Figma Itself
 
