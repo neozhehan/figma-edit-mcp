@@ -14,6 +14,8 @@ This plugin allows you as a Designer to focus purely on creative decision-making
 
 📖 **Documentation:** [neozhehan.github.io/figma-edit-mcp](https://neozhehan.github.io/figma-edit-mcp/)
 
+🏆 **Featured by IDEO:** [Letting AI edit live Figma files without trusting it to behave](https://edges.ideo.com/emerging-wave-sessions/figma-edit-mcp)
+
 [Read more about our design philosophy here.](DESIGN_PHILOSOPHY.md)  
 
 ## Core Principles
