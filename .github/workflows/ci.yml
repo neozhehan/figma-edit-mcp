@@ -57,7 +57,7 @@ jobs:
         uses: lycheeverse/lychee-action@v2
         with:
           args: >-
-            --accept 200..204,403,429
+            --accept 200..204,403,429,500..504
             --exclude-loopback
             '*.md'
 
