@@ -122,41 +122,41 @@ describe("Creation tools reject bad parents (missing + unresolved; never current
     });
 
     it("create_shape: missing parentId", async () => {
-        expect(createShape({ type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10 })).rejects.toThrow("Missing parentId parameter");
+        expect(createShape({ type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10 })).rejects.toThrow("missing parentId parameter");
     });
     it("create_shape: unresolved parentId", async () => {
-        expect(createShape({ type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10, parentId: "ghost" })).rejects.toThrow("Parent node not found");
+        expect(createShape({ type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10, parentId: "ghost" })).rejects.toThrow("parent node not found");
     });
 
     it("create_frame: missing parentId", async () => {
-        expect(createFrame({ x: 0, y: 0, width: 10, height: 10 })).rejects.toThrow("Missing parentId parameter");
+        expect(createFrame({ x: 0, y: 0, width: 10, height: 10 })).rejects.toThrow("missing parentId parameter");
     });
     it("create_frame: unresolved parentId", async () => {
-        expect(createFrame({ x: 0, y: 0, width: 10, height: 10, parentId: "ghost" })).rejects.toThrow("Parent node not found");
+        expect(createFrame({ x: 0, y: 0, width: 10, height: 10, parentId: "ghost" })).rejects.toThrow("parent node not found");
     });
 
     it("create_text: missing parentId", async () => {
-        expect(createText({ x: 0, y: 0, text: "hi" })).rejects.toThrow("Missing parentId parameter");
+        expect(createText({ x: 0, y: 0, text: "hi" })).rejects.toThrow("missing parentId parameter");
     });
     it("create_text: unresolved parentId", async () => {
-        expect(createText({ x: 0, y: 0, text: "hi", parentId: "ghost" })).rejects.toThrow("Parent node not found");
+        expect(createText({ x: 0, y: 0, text: "hi", parentId: "ghost" })).rejects.toThrow("parent node not found");
     });
 
     it("create_svg: missing parentId", async () => {
-        expect(createNodeFromSvg({ svg: "<svg/>" })).rejects.toThrow("Missing parentId parameter");
+        expect(createNodeFromSvg({ svg: "<svg/>" })).rejects.toThrow("missing parentId parameter");
     });
     it("create_svg: unresolved parentId", async () => {
-        expect(createNodeFromSvg({ svg: "<svg/>", parentId: "ghost" })).rejects.toThrow("Parent node not found");
+        expect(createNodeFromSvg({ svg: "<svg/>", parentId: "ghost" })).rejects.toThrow("parent node not found");
     });
 
     it("create_instance: missing parentId", async () => {
         const comp: any = { id: "comp1", type: "COMPONENT", createInstance: () => ({ id: "i1" }) };
         (globalThis as any).figma.getNodeByIdAsync = async (id: string) => (id === "comp1" ? comp : null);
-        expect(createComponentInstance({ componentId: "comp1", x: 0, y: 0 })).rejects.toThrow("Missing parentId parameter");
+        expect(createComponentInstance({ componentId: "comp1", x: 0, y: 0 })).rejects.toThrow("missing parentId parameter");
     });
     it("create_instance: unresolved parentId", async () => {
         const comp: any = { id: "comp1", type: "COMPONENT", createInstance: () => ({ id: "i1" }) };
         (globalThis as any).figma.getNodeByIdAsync = async (id: string) => (id === "comp1" ? comp : null);
-        expect(createComponentInstance({ componentId: "comp1", x: 0, y: 0, parentId: "ghost" })).rejects.toThrow("Parent node not found");
+        expect(createComponentInstance({ componentId: "comp1", x: 0, y: 0, parentId: "ghost" })).rejects.toThrow("parent node not found");
     });
 });

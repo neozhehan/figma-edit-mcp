@@ -162,41 +162,41 @@
 - [ ] During Phase 8 (after the Phase 7 build), verify in Figma: bad second component, duplicate variant values, locked parent, non-appendable parent, and parent-cycle input all reject with no partial rename; happy path creates the expected variant set with correct variant names, set properties, and placement.
 
 ## Phase 3: P1 Creation Handlers and Clone Cleanup - No Orphans
-- [ ] Add a handler-level `resolveAppendableParent(parentId, command)` helper that checks missing `parentId`, nonexistent parent, and non-appendable parent before construction.
-- [ ] Keep dispatcher-level permission, scope, locked, and instance checks separate from the handler-level helper.
-- [ ] Update `createFrame` to resolve the parent before `figma.createFrame`, then create, configure, and append.
-- [ ] Update `createText` to resolve the parent before `figma.createText`, then create, configure, and append.
-- [ ] Update `createNodeFromSvg` to validate `svg`, resolve the parent, then call `figma.createNodeFromSvg`, configure, and append.
-- [ ] Update `createComponentInstance` to require/resolve parent before component lookup/import and before `component.createInstance`.
-- [ ] Remove the generic `Error creating component instance:` catch-all wrapper.
-- [ ] Add the targeted `importComponentByKeyAsync` wrapper specified in OQ3/W1, including key, raw error, and recovery guidance.
-- [ ] Reject `COMPONENT_SET` ids in `create_instance` with the PRD default-variant pointer error.
-- [ ] Align missing-parameter, not-found, and wrong-type local component errors to the `create_instance:` prefix family.
-- [ ] Do not wrap `createInstance`, configuration, or append failures beyond cleanup.
-- [ ] In `createFrame`, `createText`, `createNodeFromSvg`, and `createComponentInstance`, wrap all post-construction configuration and append operations in `try/catch`; on failure, remove the newly-created object when it has not already been removed, then rethrow.
-- [ ] Keep `createShape` parent-first and add regression coverage so it stays parent-first.
-- [ ] Update `cloneNode` so post-clone positioning and reparenting run inside `try/catch`; remove the clone on failure and rethrow.
-- [ ] Remove the unreachable `cloneNode` post-clone position branch and align dead late error strings with dispatcher validation.
+- [x] Add a handler-level `resolveAppendableParent(parentId, command)` helper that checks missing `parentId`, nonexistent parent, and non-appendable parent before construction.
+- [x] Keep dispatcher-level permission, scope, locked, and instance checks separate from the handler-level helper.
+- [x] Update `createFrame` to resolve the parent before `figma.createFrame`, then create, configure, and append.
+- [x] Update `createText` to resolve the parent before `figma.createText`, then create, configure, and append.
+- [x] Update `createNodeFromSvg` to validate `svg`, resolve the parent, then call `figma.createNodeFromSvg`, configure, and append.
+- [x] Update `createComponentInstance` to require/resolve parent before component lookup/import and before `component.createInstance`.
+- [x] Remove the generic `Error creating component instance:` catch-all wrapper.
+- [x] Add the targeted `importComponentByKeyAsync` wrapper specified in OQ3/W1, including key, raw error, and recovery guidance.
+- [x] Reject `COMPONENT_SET` ids in `create_instance` with the PRD default-variant pointer error.
+- [x] Align missing-parameter, not-found, and wrong-type local component errors to the `create_instance:` prefix family.
+- [x] Do not wrap `createInstance`, configuration, or append failures beyond cleanup.
+- [x] In `createFrame`, `createText`, `createNodeFromSvg`, and `createComponentInstance`, wrap all post-construction configuration and append operations in `try/catch`; on failure, remove the newly-created object when it has not already been removed, then rethrow.
+- [x] Keep `createShape` parent-first and add regression coverage so it stays parent-first.
+- [x] Update `cloneNode` so post-clone positioning and reparenting run inside `try/catch`; remove the clone on failure and rethrow.
+- [x] Remove the unreachable `cloneNode` post-clone position branch and align dead late error strings with dispatcher validation.
 
 ### Phase 3 Unit Tests
 
 > Write the missing/nonexistent/non-appendable parent cases as **direct handler-call tests** (import the handler and invoke it, matching the existing suite's pattern): through the dispatcher these already fail earlier as `PARENT_OUTSIDE_SCOPE`, so the handler's `parent node not found` branch is unreachable end-to-end. Do not write dispatcher-level tests expecting the `${command}: parent node not found` message.
 
-- [ ] Missing `parentId` for `create_frame`, `create_text`, `create_svg`, and `create_instance` throws before the corresponding create method is called.
-- [ ] Nonexistent parent for `create_frame`, `create_text`, `create_svg`, and `create_instance` throws before the corresponding create method is called.
-- [ ] Non-appendable parent for `create_frame`, `create_text`, `create_svg`, and `create_instance` throws before the corresponding create method is called.
-- [ ] Valid parent still creates and appends each node or instance.
-- [ ] SVG invalid or missing `svg` errors before parent lookup.
-- [ ] SVG valid `svg` with bad parent errors before `figma.createNodeFromSvg`.
-- [ ] Simulated non-swallowed post-construction configuration error removes the newly-created frame.
-- [ ] Simulated non-swallowed post-construction configuration error removes the newly-created text node.
-- [ ] Simulated post-construction configuration or append error removes the newly-created SVG node.
-- [ ] Simulated post-construction configuration or append error removes the newly-created component instance.
-- [ ] Simulated post-clone positioning or reparent failure removes the clone.
-- [ ] `create_shape` still validates parent before `figma.createRectangle`, `figma.createEllipse`, `figma.createPolygon`, or `figma.createStar`.
-- [ ] `create_instance` with a `COMPONENT_SET` id rejects before any `createInstance` call and names the set default variant as the retry target.
-- [ ] Simulated `importComponentByKeyAsync` failure surfaces the targeted W1 `create_instance:` error.
-- [ ] No handler-authored `create_instance` error carries the removed `Error creating component instance:` prefix.
+- [x] Missing `parentId` for `create_frame`, `create_text`, `create_svg`, and `create_instance` throws before the corresponding create method is called.
+- [x] Nonexistent parent for `create_frame`, `create_text`, `create_svg`, and `create_instance` throws before the corresponding create method is called.
+- [x] Non-appendable parent for `create_frame`, `create_text`, `create_svg`, and `create_instance` throws before the corresponding create method is called.
+- [x] Valid parent still creates and appends each node or instance.
+- [x] SVG invalid or missing `svg` errors before parent lookup.
+- [x] SVG valid `svg` with bad parent errors before `figma.createNodeFromSvg`.
+- [x] Simulated non-swallowed post-construction configuration error removes the newly-created frame.
+- [x] Simulated non-swallowed post-construction configuration error removes the newly-created text node.
+- [x] Simulated post-construction configuration or append error removes the newly-created SVG node.
+- [x] Simulated post-construction configuration or append error removes the newly-created component instance.
+- [x] Simulated post-clone positioning or reparent failure removes the clone.
+- [x] `create_shape` still validates parent before `figma.createRectangle`, `figma.createEllipse`, `figma.createPolygon`, or `figma.createStar`.
+- [x] `create_instance` with a `COMPONENT_SET` id rejects before any `createInstance` call and names the set default variant as the retry target.
+- [x] Simulated `importComponentByKeyAsync` failure surfaces the targeted W1 `create_instance:` error.
+- [x] No handler-authored `create_instance` error carries the removed `Error creating component instance:` prefix.
 
 ### Phase 3 Live Figma Verification Item
 - [ ] During Phase 8 (after the Phase 7 build), verify in Figma: bad and non-appendable parents for `create_text`, `create_frame`, `create_svg`, and `create_instance` leave no orphan nodes; happy paths for text, frame, SVG, local component instances, and remote component instances still work. If practical, drive a raw socket malformed-configuration case and confirm cleanup; otherwise record reliance on the unit cleanup tests as allowed by the PRD.

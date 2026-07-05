@@ -1,36 +1,34 @@
-export async function createNodeFromSvg(params: any) {
-    const { parentId, svg, name, x = 0, y = 0 } = params;
+import { resolveAppendableParent } from './nodeCreators.js';
 
-    if (!params.svg) {
+export async function createNodeFromSvg(params: any) {
+    const { parentId, svg, name, x = 0, y = 0 } = params || {};
+
+    if (!svg) {
         throw new Error("Missing required parameter: svg string.");
     }
 
-    const node = figma.createNodeFromSvg(params.svg);
+    const parentNode = await resolveAppendableParent(parentId, "create_svg");
 
-    if (name) {
-        node.name = name;
+    const node = figma.createNodeFromSvg(svg);
+    try {
+        if (name) {
+            node.name = name;
+        }
+
+        parentNode.appendChild(node);
+
+        node.x = x;
+        node.y = y;
+
+        return {
+            id: node.id,
+            name: node.name,
+            type: node.type
+        };
+    } catch (error) {
+        if (node && typeof node.remove === "function" && (node as any).removed !== true) {
+            node.remove();
+        }
+        throw error;
     }
-
-    if (!parentId) {
-        throw new Error("Missing parentId parameter");
-    }
-
-    const parent = await figma.getNodeByIdAsync(parentId);
-    if (!parent) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parent)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-    }
-    // @ts-ignore
-    parent.appendChild(node);
-
-    node.x = x;
-    node.y = y;
-
-    return {
-        id: node.id,
-        name: node.name,
-        type: node.type
-    };
 }

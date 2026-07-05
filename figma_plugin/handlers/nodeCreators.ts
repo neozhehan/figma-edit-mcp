@@ -5,6 +5,16 @@
 
 import { setCharacters } from '../utils/textUtils.js';
 
+export async function resolveAppendableParent(parentId: string, command: string): Promise<any> {
+    if (!parentId) throw new Error(`${command}: missing parentId parameter.`);
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) throw new Error(`${command}: parent node not found with ID: ${parentId}.`);
+    if (!("appendChild" in parent)) {
+        throw new Error(`${command}: parent '${parent.name}' (type ${parent.type}) cannot contain children.`);
+    }
+    return parent;
+}
+
 /**
  * Creates a new shape node (rectangle, ellipse, polygon, or star)
  * @param {Object} params - Parameters object
@@ -55,17 +65,7 @@ export async function createShape(params: any) {
         throw new Error(`innerRadius is only supported for shape type STAR, got ${type}`);
     }
 
-    if (!parentId) {
-        throw new Error("Missing parentId parameter");
-    }
-    // @ts-ignore
-    const parent = await figma.getNodeByIdAsync(parentId);
-    if (!parent) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parent)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-    }
+    const parent = await resolveAppendableParent(parentId, "create_shape");
 
     let node: RectangleNode | EllipseNode | PolygonNode | StarNode;
 
@@ -108,62 +108,69 @@ export async function createShape(params: any) {
             throw new Error(`Unsupported shape type: ${type}`);
     }
 
-    node.x = x;
-    node.y = y;
-    node.resize(width, height);
-    if (name) {
-        node.name = name;
-    } else {
-        node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
-    }
-
-    if (fillColor) {
-        node.fills = [{
-            type: 'SOLID',
-            color: {
-                r: parseFloat(fillColor.r) || 0,
-                g: parseFloat(fillColor.g) || 0,
-                b: parseFloat(fillColor.b) || 0,
-            },
-            opacity: typeof fillColor.a === 'number' ? fillColor.a : 1
-        }];
-    }
-
-    if (strokeColor) {
-        node.strokes = [{
-            type: 'SOLID',
-            color: {
-                r: parseFloat(strokeColor.r) || 0,
-                g: parseFloat(strokeColor.g) || 0,
-                b: parseFloat(strokeColor.b) || 0,
-            },
-            opacity: typeof strokeColor.a === 'number' ? strokeColor.a : 1
-        }];
-    }
-
-    // @ts-ignore
-    parent.appendChild(node);
-
-    // Handle absolute positioning if requested and parent is auto-layout
-    if (useAbsolutePosition && parentId) {
-        // @ts-ignore
-        if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
-            node.layoutPositioning = "ABSOLUTE";
-            node.x = x;
-            node.y = y;
+    try {
+        node.x = x;
+        node.y = y;
+        node.resize(width, height);
+        if (name) {
+            node.name = name;
+        } else {
+            node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
         }
-    }
 
-    return {
-        id: node.id,
-        name: node.name,
-        type: node.type,
-        x: node.x,
-        y: node.y,
-        width: node.width,
-        height: node.height,
-        parentId: node.parent ? node.parent.id : undefined
-    };
+        if (fillColor) {
+            node.fills = [{
+                type: 'SOLID',
+                color: {
+                    r: parseFloat(fillColor.r) || 0,
+                    g: parseFloat(fillColor.g) || 0,
+                    b: parseFloat(fillColor.b) || 0,
+                },
+                opacity: typeof fillColor.a === 'number' ? fillColor.a : 1
+            }];
+        }
+
+        if (strokeColor) {
+            node.strokes = [{
+                type: 'SOLID',
+                color: {
+                    r: parseFloat(strokeColor.r) || 0,
+                    g: parseFloat(strokeColor.g) || 0,
+                    b: parseFloat(strokeColor.b) || 0,
+                },
+                opacity: typeof strokeColor.a === 'number' ? strokeColor.a : 1
+            }];
+        }
+
+        // @ts-ignore
+        parent.appendChild(node);
+
+        // Handle absolute positioning if requested and parent is auto-layout
+        if (useAbsolutePosition && parentId) {
+            // @ts-ignore
+            if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
+                node.layoutPositioning = "ABSOLUTE";
+                node.x = x;
+                node.y = y;
+            }
+        }
+
+        return {
+            id: node.id,
+            name: node.name,
+            type: node.type,
+            x: node.x,
+            y: node.y,
+            width: node.width,
+            height: node.height,
+            parentId: node.parent ? node.parent.id : undefined
+        };
+    } catch (error) {
+        if (node && typeof node.remove === "function" && (node as any).removed !== true) {
+            node.remove();
+        }
+        throw error;
+    }
 }
 
 /**
@@ -206,95 +213,94 @@ export async function createFrame(params: any) {
         itemSpacing = 0,
     } = params || {};
 
+    const parentNode = await resolveAppendableParent(parentId, "create_frame");
+
     const frame = figma.createFrame();
-    frame.x = x;
-    frame.y = y;
-    frame.resize(width, height);
-    frame.name = name;
+    try {
+        frame.x = x;
+        frame.y = y;
+        frame.resize(width, height);
+        frame.name = name;
 
-    // Set layout mode if provided
-    if (layoutMode !== "NONE") {
-        frame.layoutMode = layoutMode;
-        frame.layoutWrap = layoutWrap;
+        // Set layout mode if provided
+        if (layoutMode !== "NONE") {
+            frame.layoutMode = layoutMode;
+            frame.layoutWrap = layoutWrap;
 
-        // Set padding values only when layoutMode is not NONE
-        frame.paddingTop = paddingTop;
-        frame.paddingRight = paddingRight;
-        frame.paddingBottom = paddingBottom;
-        frame.paddingLeft = paddingLeft;
+            // Set padding values only when layoutMode is not NONE
+            frame.paddingTop = paddingTop;
+            frame.paddingRight = paddingRight;
+            frame.paddingBottom = paddingBottom;
+            frame.paddingLeft = paddingLeft;
 
-        // Set axis alignment only when layoutMode is not NONE
-        frame.primaryAxisAlignItems = primaryAxisAlignItems;
-        frame.counterAxisAlignItems = counterAxisAlignItems;
+            // Set axis alignment only when layoutMode is not NONE
+            frame.primaryAxisAlignItems = primaryAxisAlignItems;
+            frame.counterAxisAlignItems = counterAxisAlignItems;
 
-        // Set layout sizing only when layoutMode is not NONE
-        frame.layoutSizingHorizontal = layoutSizingHorizontal;
-        frame.layoutSizingVertical = layoutSizingVertical;
+            // Set layout sizing only when layoutMode is not NONE
+            frame.layoutSizingHorizontal = layoutSizingHorizontal;
+            frame.layoutSizingVertical = layoutSizingVertical;
 
-        // Set item spacing only when layoutMode is not NONE
-        frame.itemSpacing = itemSpacing;
-    }
+            // Set item spacing only when layoutMode is not NONE
+            frame.itemSpacing = itemSpacing;
+        }
 
-    // Set fill color if provided
-    if (fillColor) {
-        const paintStyle: any = {
-            type: "SOLID",
-            color: {
-                r: parseFloat(fillColor.r) || 0,
-                g: parseFloat(fillColor.g) || 0,
-                b: parseFloat(fillColor.b) || 0,
-            },
-            opacity: typeof fillColor.a === 'number' ? fillColor.a : 1,
+        // Set fill color if provided
+        if (fillColor) {
+            const paintStyle: any = {
+                type: "SOLID",
+                color: {
+                    r: parseFloat(fillColor.r) || 0,
+                    g: parseFloat(fillColor.g) || 0,
+                    b: parseFloat(fillColor.b) || 0,
+                },
+                opacity: typeof fillColor.a === 'number' ? fillColor.a : 1,
+            };
+            frame.fills = [paintStyle];
+        }
+
+        // Set stroke color and weight if provided
+        if (strokeColor) {
+            const strokeStyle: any = {
+                type: "SOLID",
+                color: {
+                    r: parseFloat(strokeColor.r) || 0,
+                    g: parseFloat(strokeColor.g) || 0,
+                    b: parseFloat(strokeColor.b) || 0,
+                },
+                opacity: typeof strokeColor.a === 'number' ? strokeColor.a : 1,
+            };
+            frame.strokes = [strokeStyle];
+        }
+
+        // Set stroke weight if provided
+        if (strokeWeight !== undefined) {
+            frame.strokeWeight = strokeWeight;
+        }
+
+        // @ts-ignore
+        parentNode.appendChild(frame);
+
+        return {
+            id: frame.id,
+            name: frame.name,
+            x: frame.x,
+            y: frame.y,
+            width: frame.width,
+            height: frame.height,
+            fills: frame.fills,
+            strokes: frame.strokes,
+            strokeWeight: frame.strokeWeight,
+            layoutMode: frame.layoutMode,
+            layoutWrap: frame.layoutWrap,
+            parentId: frame.parent ? frame.parent.id : undefined,
         };
-        frame.fills = [paintStyle];
+    } catch (error) {
+        if (frame && typeof frame.remove === "function" && (frame as any).removed !== true) {
+            frame.remove();
+        }
+        throw error;
     }
-
-    // Set stroke color and weight if provided
-    if (strokeColor) {
-        const strokeStyle: any = {
-            type: "SOLID",
-            color: {
-                r: parseFloat(strokeColor.r) || 0,
-                g: parseFloat(strokeColor.g) || 0,
-                b: parseFloat(strokeColor.b) || 0,
-            },
-            opacity: typeof strokeColor.a === 'number' ? strokeColor.a : 1,
-        };
-        frame.strokes = [strokeStyle];
-    }
-
-    // Set stroke weight if provided
-    if (strokeWeight !== undefined) {
-        frame.strokeWeight = strokeWeight;
-    }
-
-    if (!parentId) {
-        throw new Error("Missing parentId parameter");
-    }
-    const parentNode = await figma.getNodeByIdAsync(parentId);
-    if (!parentNode) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parentNode)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-    }
-    // @ts-ignore
-    parentNode.appendChild(frame);
-
-    return {
-        id: frame.id,
-        name: frame.name,
-        x: frame.x,
-        y: frame.y,
-        width: frame.width,
-        height: frame.height,
-        fills: frame.fills,
-        strokes: frame.strokes,
-        strokeWeight: frame.strokeWeight,
-        layoutMode: frame.layoutMode,
-        layoutWrap: frame.layoutWrap,
-        parentId: frame.parent ? frame.parent.id : undefined,
-    };
 }
 
 /**
@@ -352,65 +358,64 @@ export async function createText(params: any) {
         parentId,
     } = params || {};
 
+    const parentNode = await resolveAppendableParent(parentId, "create_text");
+
     const textNode = figma.createText();
-    textNode.x = x;
-    textNode.y = y;
-    textNode.name = name || text;
     try {
-        await figma.loadFontAsync({
-            family: "Inter",
-            style: getFontStyle(fontWeight),
-        });
-        textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
-        textNode.fontSize = parseInt(fontSize);
-    } catch (error: any) {
-        console.error("Error setting font size", error);
-    }
-    // setCharacters is async (loads fonts + writes characters); must be awaited
-    // or the node has no text when we read/return it (characters:"", width:0).
-    // @ts-ignore
-    await setCharacters(textNode, text);
+        textNode.x = x;
+        textNode.y = y;
+        textNode.name = name || text;
+        try {
+            await figma.loadFontAsync({
+                family: "Inter",
+                style: getFontStyle(fontWeight),
+            });
+            textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
+            textNode.fontSize = parseInt(fontSize);
+        } catch (error: any) {
+            console.error("Error setting font size", error);
+        }
+        // setCharacters is async (loads fonts + writes characters); must be awaited
+        // or the node has no text when we read/return it (characters:"", width:0).
+        // @ts-ignore
+        await setCharacters(textNode, text);
 
-    // Set text color
-    const paintStyle: any = {
-        type: "SOLID",
-        color: {
-            r: parseFloat(fontColor.r) || 0,
-            g: parseFloat(fontColor.g) || 0,
-            b: parseFloat(fontColor.b) || 0,
-        },
-        opacity: typeof fontColor.a === 'number' ? fontColor.a : 1,
-    };
-    textNode.fills = [paintStyle];
+        // Set text color
+        const paintStyle: any = {
+            type: "SOLID",
+            color: {
+                r: parseFloat(fontColor.r) || 0,
+                g: parseFloat(fontColor.g) || 0,
+                b: parseFloat(fontColor.b) || 0,
+            },
+            opacity: typeof fontColor.a === 'number' ? fontColor.a : 1,
+        };
+        textNode.fills = [paintStyle];
 
-    if (!parentId) {
-        throw new Error("Missing parentId parameter");
-    }
-    const parentNode = await figma.getNodeByIdAsync(parentId);
-    if (!parentNode) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parentNode)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-    }
-    // @ts-ignore
-    parentNode.appendChild(textNode);
+        // @ts-ignore
+        parentNode.appendChild(textNode);
 
-    return {
-        id: textNode.id,
-        name: textNode.name,
-        x: textNode.x,
-        y: textNode.y,
-        width: textNode.width,
-        height: textNode.height,
-        characters: textNode.characters,
-        fontSize: textNode.fontSize,
-        fontWeight: fontWeight,
-        fontColor: fontColor,
-        fontName: textNode.fontName,
-        fills: textNode.fills,
-        parentId: textNode.parent ? textNode.parent.id : undefined,
-    };
+        return {
+            id: textNode.id,
+            name: textNode.name,
+            x: textNode.x,
+            y: textNode.y,
+            width: textNode.width,
+            height: textNode.height,
+            characters: textNode.characters,
+            fontSize: textNode.fontSize,
+            fontWeight: fontWeight,
+            fontColor: fontColor,
+            fontName: textNode.fontName,
+            fills: textNode.fills,
+            parentId: textNode.parent ? textNode.parent.id : undefined,
+        };
+    } catch (error) {
+        if (textNode && typeof textNode.remove === "function" && (textNode as any).removed !== true) {
+            textNode.remove();
+        }
+        throw error;
+    }
 }
 
 /**
@@ -437,28 +442,32 @@ export async function cloneNode(params: any) {
     // @ts-ignore
     const clone = node.clone();
 
-    // If x and y are provided, move the clone to that position
-    if (x !== undefined && y !== undefined) {
-        if (!("x" in clone) || !("y" in clone)) {
-            throw new Error(`Cloned node does not support position: ${nodeId}`);
+    try {
+        // If x and y are provided, move the clone to that position
+        if (x !== undefined && y !== undefined) {
+            clone.x = x;
+            clone.y = y;
         }
-        clone.x = x;
-        clone.y = y;
-    }
 
-    // Add the clone to the same parent as the original node
-    if (node.parent) {
-        node.parent.appendChild(clone);
-    } else {
-        throw new Error(`node_clone: '${node.name}' has no parent and cannot be cloned.`);
-    }
+        // Add the clone to the same parent as the original node
+        if (node.parent) {
+            node.parent.appendChild(clone);
+        } else {
+            throw new Error(`node_clone: '${node.name}' has no parent and cannot be cloned.`);
+        }
 
-    return {
-        id: clone.id,
-        name: clone.name,
-        x: "x" in clone ? clone.x : undefined,
-        y: "y" in clone ? clone.y : undefined,
-        width: "width" in clone ? clone.width : undefined,
-        height: "height" in clone ? clone.height : undefined,
-    };
+        return {
+            id: clone.id,
+            name: clone.name,
+            x: "x" in clone ? clone.x : undefined,
+            y: "y" in clone ? clone.y : undefined,
+            width: "width" in clone ? clone.width : undefined,
+            height: "height" in clone ? clone.height : undefined,
+        };
+    } catch (error) {
+        if (clone && typeof clone.remove === "function" && (clone as any).removed !== true) {
+            clone.remove();
+        }
+        throw error;
+    }
 }

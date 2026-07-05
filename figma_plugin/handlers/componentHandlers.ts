@@ -157,6 +157,7 @@ export async function getComponents(params: any) {
 
 import { getContainingPageNode, isAncestorOf, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
 import { ERRORS, formatScopeError } from '../utils/errors.js';
+import { resolveAppendableParent } from './nodeCreators.js';
 
 function getContainingPageId(node: BaseNode): string {
     return getContainingPageNode(node)?.id ?? 'unknown';
@@ -238,41 +239,39 @@ async function validateComponentPropertyValue(
 export async function createComponentInstance(params: any) {
     const { componentId, x = 0, y = 0, parentId, componentKey } = params || {};
 
+    const parentNode = await resolveAppendableParent(parentId, "create_instance");
+
     if (!componentId && !componentKey) {
-        throw new Error("Missing componentId or componentKey parameter");
+        throw new Error("create_instance: missing componentId or componentKey parameter.");
     }
 
-    try {
-        let component;
-        
-        if (componentId) {
-            const node = await figma.getNodeByIdAsync(componentId);
-            if (!node) {
-                throw new Error(`Component node not found with ID: ${componentId}`);
-            }
-            if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
-                throw new Error(`Node ${componentId} is not a COMPONENT (got ${node.type})`);
-            }
-            component = node as ComponentNode;
-        } else {
-            // Remote/library component: import by key
+    let component: ComponentNode;
+    if (componentId) {
+        const node = await figma.getNodeByIdAsync(componentId);
+        if (!node) {
+            throw new Error(`create_instance: component node not found with ID: ${componentId}.`);
+        }
+        if (node.type === "COMPONENT_SET") {
+            const defaultVariant = (node as any).defaultVariant;
+            throw new Error(`create_instance: '${node.name}' is a COMPONENT_SET; pass one of its variant COMPONENTs — e.g. its default variant '${defaultVariant.name}' (${defaultVariant.id}).`);
+        }
+        if (node.type !== "COMPONENT") {
+            throw new Error(`create_instance: '${node.name}' (${componentId}) is not a COMPONENT (got ${node.type}).`);
+        }
+        component = node as ComponentNode;
+    } else {
+        try {
             component = await figma.importComponentByKeyAsync(componentKey);
+        } catch (error: any) {
+            const raw = error?.message || String(error);
+            throw new Error(`create_instance: failed to import remote component with key '${componentKey}': ${raw}. Verify the key (component_list), confirm the source library is enabled for this file; a component-set key needs a variant's key.`);
         }
+    }
 
-        const instance = component.createInstance();
-
-        if (!parentId) {
-            throw new Error("Missing parentId parameter");
-        }
-        const parent = await figma.getNodeByIdAsync(parentId);
-        if (!parent) {
-            throw new Error(`Parent node not found with ID: ${parentId}`);
-        }
-        if (!("appendChild" in parent)) {
-            throw new Error(`Parent node does not support children: ${parentId}`);
-        }
+    const instance = component.createInstance();
+    try {
         // @ts-ignore
-        parent.appendChild(instance);
+        parentNode.appendChild(instance);
 
         instance.x = x;
         instance.y = y;
@@ -287,8 +286,11 @@ export async function createComponentInstance(params: any) {
             // @ts-ignore
             componentId: instance.componentId,
         };
-    } catch (error: any) {
-        throw new Error(`Error creating component instance: ${error?.message || String(error)}`);
+    } catch (error) {
+        if (instance && typeof instance.remove === "function" && (instance as any).removed !== true) {
+            instance.remove();
+        }
+        throw error;
     }
 }
 
@@ -677,9 +679,16 @@ export async function createComponent(params: any) {
         throw new Error(`Target node must be a FRAME, got ${node.type}`);
     }
 
-    try {
-        const component = figma.createComponent(); // This creates a new empty component
+    const parentNode = node.parent;
+    if (!parentNode) {
+        throw new Error("create_component: parent node not found.");
+    }
+    if (!("appendChild" in parentNode)) {
+        throw new Error(`create_component: parent '${parentNode.name}' (type ${parentNode.type}) cannot contain children.`);
+    }
 
+    const component = figma.createComponent(); // This creates a new empty component
+    try {
         // Copy basic properties
         component.name = node.name;
         // Resize first
@@ -688,12 +697,10 @@ export async function createComponent(params: any) {
         // Position and Hierarchy
         // We need to keep the component in the same hierarchy
         // Insert component into parent at the index of the node
-        if (node.parent) {
-            const index = node.parent.children.indexOf(node);
-            node.parent.insertChild(index, component);
-            component.x = node.x;
-            component.y = node.y;
-        }
+        const index = parentNode.children.indexOf(node);
+        parentNode.insertChild(index, component);
+        component.x = node.x;
+        component.y = node.y;
 
         // Styles and properties
         component.fills = node.fills;
@@ -750,7 +757,10 @@ export async function createComponent(params: any) {
             type: "COMPONENT"
         };
     } catch (error: any) {
-        throw new Error(`Error creating component: ${error.message}`);
+        if (component && typeof component.remove === "function" && (component as any).removed !== true) {
+            component.remove();
+        }
+        throw error;
     }
 }
 
