@@ -202,20 +202,17 @@
 - [ ] During Phase 8 (after the Phase 7 build), verify in Figma: bad and non-appendable parents for `create_text`, `create_frame`, `create_svg`, and `create_instance` leave no orphan nodes; happy paths for text, frame, SVG, local component instances, and remote component instances still work. If practical, drive a raw socket malformed-configuration case and confirm cleanup; otherwise record reliance on the unit cleanup tests as allowed by the PRD.
 
 ## Phase 4: P0 `channel_join` Output-Schema Conformance
-
-> Independent of Phases 1-3 and currently blocks all MCP-path usage for page/read-only sessions — it may be implemented **first** to unblock MCP-side testing during development.
-
-- [ ] Inspect `src/mcp_server/tools/channel.ts` and the `_result.ts` convention for output schemas allowing extra result keys.
-- [ ] Fix `channel_join` so successful connect payloads validate, either by making the output schema loose/passthrough or by declaring the full payload shape including `pageCount`, `pages`, and `node`.
-- [ ] Audit other registered tool output schemas against representative handler return shapes for the same strict-schema drift class.
-- [ ] Enforce the `_result.ts` extra-keys convention repo-wide where tool results can include document-dependent fields.
-- [ ] Extend the contract-seam test coverage so representative `structuredContent` from every registered tool validates against its declared output schema.
+- [x] Inspect `src/mcp_server/tools/channel.ts` and the `_result.ts` convention for output schemas allowing extra result keys.
+- [x] Fix `channel_join` so successful connect payloads validate, either by making the output schema loose/passthrough or by declaring the full payload shape including `pageCount`, `pages`, and `node`.
+- [x] Audit other registered tool output schemas against representative handler return shapes for the same strict-schema drift class.
+- [x] Enforce the `_result.ts` extra-keys convention repo-wide where tool results can include document-dependent fields.
+- [x] Extend the contract-seam test coverage so representative `structuredContent` from every registered tool validates against its declared output schema.
 
 ### Phase 4 Unit Tests
-- [ ] `channel_join` page-mode result containing `pageCount` and `pages` passes output-schema validation.
-- [ ] `channel_join` node-mode result containing `node` passes output-schema validation.
-- [ ] `channel_join` read-only connect payload passes output-schema validation.
-- [ ] Contract-seam sweep validates each registered tool's representative result against its declared output schema.
+- [x] `channel_join` page-mode result containing `pageCount` and `pages` passes output-schema validation.
+- [x] `channel_join` node-mode result containing `node` passes output-schema validation.
+- [x] `channel_join` read-only connect payload passes output-schema validation.
+- [x] Contract-seam sweep validates each registered tool's representative result against its declared output schema.
 
 ### Phase 4 Live Figma Verification Item
 - [ ] During Phase 8 (after the Phase 7 build), verify `channel_join` succeeds through the MCP tool for page-scoped, node-scoped, and read-only sessions, and that the client receives the structured connect payload.

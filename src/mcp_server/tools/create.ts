@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 
 export function registerCreateTools(server: McpServer) {
     // 1. Create Shape Tool
@@ -40,7 +40,7 @@ export function registerCreateTools(server: McpServer) {
                 pointCount: z.number().min(3).optional().describe("Number of sides (polygon) or points (star), ≥3. Required for POLYGON and STAR."),
                 innerRadius: z.number().min(0).max(1).optional().describe("0.0–1.0, star sharpness (default: 1.0). STAR only."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the created shape"),
                 name: z.string().describe("Name of the created shape"),
             }),
@@ -93,7 +93,7 @@ export function registerCreateTools(server: McpServer) {
                 layoutSizingVertical: z.enum(["FIXED", "HUG", "FILL"]).optional().describe("Vertical sizing mode for auto-layout frame"),
                 itemSpacing: z.number().optional().describe("Distance between children in auto-layout frame. Note: This value will be ignored if primaryAxisAlignItems is set to SPACE_BETWEEN."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the created frame"),
                 name: z.string().describe("Name of the created frame"),
             }),
@@ -133,7 +133,7 @@ export function registerCreateTools(server: McpServer) {
                 parentId: z.string().describe("Parent node ID to append the text to"),
                 parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the created text node"),
                 name: z.string().describe("Name of the created text node"),
             }),
@@ -167,7 +167,7 @@ export function registerCreateTools(server: McpServer) {
                 x: z.number().optional().describe("X position"),
                 y: z.number().optional().describe("Y position"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the created node"),
                 name: z.string().describe("Name of the created node"),
             }),
@@ -191,7 +191,7 @@ export function registerCreateTools(server: McpServer) {
                 nodeId: z.string().describe("The ID of the frame to convert to a component"),
                 nodeName: z.string().describe("Name of the node to verify against"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component"),
                 name: z.string().describe("Name of the created component"),
             }),
@@ -219,7 +219,7 @@ export function registerCreateTools(server: McpServer) {
                 parentId: z.string().describe("Parent node ID to append the instance to"),
                 parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component instance"),
                 name: z.string().describe("Name of the component instance"),
             }),
@@ -250,7 +250,7 @@ export function registerCreateTools(server: McpServer) {
                 parentId: z.string().optional().describe("Parent frame to place the set in"),
                 parentNodeName: z.string().optional().describe("Name of parent node (required if parentId provided, for verification)"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component set"),
                 name: z.string().describe("Name of the component set"),
                 type: z.string().optional().describe("Node type (COMPONENT_SET)"),
@@ -292,7 +292,7 @@ export function registerCreateTools(server: McpServer) {
                     .optional()
                     .describe("Optional: Array of node connections to create"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether the connection command succeeded"),
                 message: z.string().optional().describe("Status message"),
                 defaultConnectorId: z.string().optional().describe("The ID of the default connector style"),

@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 
 export function registerAnnotationTools(server: McpServer) {
     // 1. List Annotations Tool
@@ -15,7 +15,7 @@ export function registerAnnotationTools(server: McpServer) {
                 nodeId: z.string().optional().describe("The node ID to get annotations from. Exactly one of pageId or nodeId is required."),
                 includeCategories: z.boolean().optional().describe("If true, retrieves the list of global annotation categories in the file"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 annotations: z.array(z.any()).optional().describe("List of annotations"),
                 categories: z.array(z.any()).optional().describe("List of global annotation categories"),
             }),
@@ -50,7 +50,7 @@ export function registerAnnotationTools(server: McpServer) {
                     )
                     .describe("Array of annotations to set"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether annotations were set successfully"),
                 results: z.any().optional().describe("Detailed execution results"),
             }),

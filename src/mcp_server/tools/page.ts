@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 
 export function registerPageTools(server: McpServer) {
     server.registerTool(
@@ -15,7 +15,7 @@ export function registerPageTools(server: McpServer) {
                     .optional()
                     .describe("Array of page IDs to inspect"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 documentId: z.string().describe("ID of the Figma document"),
                 documentName: z.string().describe("Name of the Figma document"),
                 pageCount: z.number().describe("Total page count"),

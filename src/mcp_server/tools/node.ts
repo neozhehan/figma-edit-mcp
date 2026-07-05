@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 import { resizeIfOversized } from "../imageResize.js";
 // Allowlist of bindable fields, generated from @figma/plugin-typings
 // (VariableBindableNodeField ∪ VariableBindableTextField + fills/strokes) by
@@ -80,7 +80,7 @@ export function registerNodeTools(server: McpServer) {
                     .optional()
                     .describe("Concurrency limit for parallel subtree walk (default: 4)"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 nodes: z.array(nodeInfoEntry).describe("Node entries (id/name/type + optional properties/children/path/descendantCount)"),
                 missingNodeIds: z.array(z.string()).optional().describe("Requested IDs that weren't found"),
             }),
@@ -115,7 +115,7 @@ export function registerNodeTools(server: McpServer) {
                 width: z.number().positive().optional().describe("New width"),
                 height: z.number().positive().optional().describe("New height"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().optional().describe("ID of the transformed node"),
                 name: z.string().optional().describe("Name of the transformed node"),
                 x: z.number().optional().describe("Resulting X position"),
@@ -145,7 +145,7 @@ export function registerNodeTools(server: McpServer) {
                 nodeName: z.string().describe("Name of the node to modify"),
                 name: z.string().describe("New name for the node"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 name: z.string().describe("The new name of the node"),
                 oldName: z.string().describe("The old name of the node"),
             }),
@@ -176,7 +176,7 @@ export function registerNodeTools(server: McpServer) {
                     )
                     .describe("Array of nodes to delete"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().describe("Whether the operation succeeded"),
                 deletedCount: z.number().optional().describe("Number of deleted nodes"),
                 results: z.array(z.any()).optional().describe("Detailed deletion results"),
@@ -205,7 +205,7 @@ export function registerNodeTools(server: McpServer) {
                 x: z.number().optional().describe("New X position for the clone"),
                 y: z.number().optional().describe("New Y position for the clone"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the new cloned node"),
                 name: z.string().describe("Name of the cloned node"),
             }),
@@ -228,7 +228,7 @@ export function registerNodeTools(server: McpServer) {
             inputSchema: z.object({
                 ids: z.array(z.string()).describe("Array of page or node IDs to navigate to"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 pageId: z.string().optional().describe("The ID of the target page transitioned to"),
                 pageName: z.string().optional().describe("The name of the target page transitioned to"),
                 success: z.boolean().optional().describe("Whether navigation was successful"),
@@ -267,7 +267,7 @@ export function registerNodeTools(server: McpServer) {
                     .describe("Array of nodes to group"),
                 name: z.string().optional().describe("Name for the new group"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the new group node"),
                 name: z.string().describe("Name of the new group node"),
                 childCount: z.number().describe("Number of children in the group"),
@@ -292,7 +292,7 @@ export function registerNodeTools(server: McpServer) {
                 nodeId: z.string().describe("The ID of the group to ungroup"),
                 nodeName: z.string().describe("Name of the group to verify against"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 parentId: z.string().nullable().describe("ID of the parent node (null if the group had no parent)"),
                 ungroupedChildren: z.array(z.object({
                     id: z.string().describe("Child node ID"),
@@ -320,7 +320,7 @@ export function registerNodeTools(server: McpServer) {
                 nodeId: z.string().describe("The ID of the node to flatten"),
                 nodeName: z.string().describe("Name of the node to verify against"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the flattened node"),
                 name: z.string().describe("Name of the flattened node"),
                 type: z.string().describe("Type of the flattened node (usually VECTOR)"),
@@ -352,7 +352,7 @@ export function registerNodeTools(server: McpServer) {
                     .optional()
                     .describe("Position in parent's children array (default: append). The output index reports the actual resolved position (same-parent reorder shifts indices)."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 childId: z.string().describe("ID of the reparented child node"),
                 newParentId: z.string().describe("ID of the new parent node"),
                 index: z.number().describe("Index at which the child was inserted"),
@@ -426,7 +426,7 @@ export function registerNodeTools(server: McpServer) {
                         "Distance between wrapped rows/columns. Only works when layoutWrap is set to WRAP."
                     ),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 name: z.string().describe("Name of the modified frame"),
             }),
             annotations: {
@@ -487,7 +487,7 @@ export function registerNodeTools(server: McpServer) {
                     }
                 }
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 name: z.string().describe("Name of the modified node"),
                 warnings: z.array(z.string()).optional().describe("Warnings from the operation (e.g., resizing)"),
             }),
@@ -553,7 +553,7 @@ export function registerNodeTools(server: McpServer) {
                 strokeLeftWeight: z.number().min(0).optional().describe("Left side stroke weight"),
                 strokeRightWeight: z.number().min(0).optional().describe("Right side stroke weight"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 name: z.string().describe("Name of the modified node"),
             }),
             annotations: {
@@ -594,7 +594,7 @@ export function registerNodeTools(server: McpServer) {
                         "Optional array of 4 booleans to specify which corners to round [topLeft, topRight, bottomRight, bottomLeft]"
                     ),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 name: z.string().describe("Name of the modified node"),
             }),
             annotations: {
@@ -650,7 +650,7 @@ export function registerNodeTools(server: McpServer) {
                     )
                     .describe("Array of effect objects"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 name: z.string().optional().describe("Name of the modified node"),
             }),
             annotations: {
@@ -678,7 +678,7 @@ export function registerNodeTools(server: McpServer) {
                     .enum(["TEXT", "FILL", "STROKE", "EFFECT", "GRID"])
                     .describe("Type of style to apply (target property)"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().describe("Whether the style was applied successfully"),
                 name: z.string().optional().describe("Name of the modified node"),
             }),
@@ -726,7 +726,7 @@ export function registerNodeTools(server: McpServer) {
                     .optional()
                     .describe("Map of variable collection IDs to mode IDs. E.g., { 'VariableCollectionID:1:2': 'ModeID:1:3' }"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether the variables were bound successfully"),
                 name: z.string().optional().describe("Name of the modified node"),
                 message: z.string().optional().describe("Status message"),
@@ -761,7 +761,7 @@ export function registerNodeTools(server: McpServer) {
                     .default(1)
                     .describe("Export scale, between 0.1 and 4.0 (e.g. 1, 2, 0.5)"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 nodeId: z.string().optional().describe("ID of the exported node"),
                 format: z.string().optional().describe("Image format"),
                 scale: z.number().optional().describe("Export scale used"),

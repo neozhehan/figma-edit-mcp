@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 
 export function registerComponentTools(server: McpServer) {
     // 1. List Components Tool
@@ -25,7 +25,7 @@ export function registerComponentTools(server: McpServer) {
                     .optional()
                     .describe("The ID of the page to query when scope is 'page'"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 count: z.number().describe("Total count of components"),
                 components: z.array(z.any()).describe("List of component objects"),
             }),
@@ -65,7 +65,7 @@ export function registerComponentTools(server: McpServer) {
                     .optional()
                     .describe("Array of preferred values for INSTANCE_SWAP properties during ADD or EDIT."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().optional().describe("ID of the component/component set"),
                 name: z.string().optional().describe("Name of the component/component set"),
                 action: z.string().optional().describe("The action that was performed (ADD/EDIT)"),
@@ -97,7 +97,7 @@ export function registerComponentTools(server: McpServer) {
                 nodeName: z.string().describe("Name of the node for verification"),
                 propertyName: z.string().describe("The human-readable name of the property to delete"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().optional().describe("ID of the component/component set"),
                 name: z.string().optional().describe("Name of the component/component set"),
                 propertyName: z.string().optional().describe("The deleted property name"),
