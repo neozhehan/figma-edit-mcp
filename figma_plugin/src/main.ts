@@ -179,7 +179,12 @@ async function validateParentWrite(params: any, options: { checkLocked?: boolean
     const parent = await figma.getNodeByIdAsync(params?.parentId);
     if (parent) {
         if (options.checkLocked) assertNotLocked(parent);
-        if (options.instanceCheckVerb) assertNotInstanceInterior(parent, options.instanceCheckVerb);
+        if (options.instanceCheckVerb) {
+            if (parent.type === "INSTANCE") {
+                throw new Error(`Operation Denied: Node '${parent.name}' is a component instance and cannot be ${options.instanceCheckVerb} directly. Edit the main component, or use instance overrides.`);
+            }
+            assertNotInstanceInterior(parent, options.instanceCheckVerb);
+        }
     }
 }
 
@@ -189,6 +194,60 @@ async function verifyParentName(parentId: any, expectedParentName: any) {
     if (!node) return false;
 
     return node.name === expectedParentName;
+}
+
+// Helper: Clone node validation
+async function validateCloneWrite(params: any) {
+    if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
+    if (!params || !params.nodeId) throw new Error("Missing nodeId parameter");
+
+    const source = await figma.getNodeByIdAsync(params.nodeId);
+    if (!source) {
+        throw new Error(`Node not found with ID: ${params.nodeId}`);
+    }
+
+    // Check source scope
+    if (!(await checkScopeAccess(source.id))) {
+        throw new Error(formatScopeError(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE));
+    }
+    // Verify source name matches expected name
+    if (!(await verifyNodeName(source.id, params.nodeName))) {
+        throw new Error(ERRORS.NAME_MISMATCH);
+    }
+
+    // Reject locked source nodes and locked ancestors
+    assertNotLocked(source);
+
+    // Reject source nodes inside component-instance interiors
+    const sourceInstanceAncestor = findInstanceAncestor(source);
+    if (sourceInstanceAncestor) {
+        throw new Error(`Operation Denied: Cannot clone '${source.name}' because it is inside a component instance.`);
+    }
+
+    // Require source.parent
+    const parent = source.parent;
+    if (!parent) {
+        throw new Error(`node_clone: '${source.name}' has no parent and cannot be cloned.`);
+    }
+
+    // Require an appendable destination parent
+    if (!("appendChild" in parent)) {
+        throw new Error(`node_clone: parent '${parent.name}' (type ${parent.type}) cannot accept cloned children.`);
+    }
+
+    // Reject destination parents outside the current scope, including the scope-root clone case
+    if (!(await checkScopeAccess(parent.id))) {
+        throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
+    }
+
+    // Reject locked destination parents and locked ancestors
+    assertNotLocked(parent);
+
+    // Reject destination parents that are an INSTANCE node or inside an instance interior
+    if (parent.type === "INSTANCE") {
+        throw new Error(`Operation Denied: Node '${parent.name}' is a component instance and cannot be appended to directly. Edit the main component, or use instance overrides.`);
+    }
+    assertNotInstanceInterior(parent, "appended to");
 }
 
 // Helper: Extract a human-readable detail from a thrown value. Figma can throw
@@ -401,9 +460,7 @@ async function handleCommand(command: any, params: any) {
             await validateSingleNodeWrite(params, { checkLocked: true });
             return await transformNode(params);
         case "node_clone":
-            if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE));
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            await validateCloneWrite(params);
             return await cloneNode(params);
 
         case "create_shape":
@@ -734,16 +791,11 @@ async function handleCommand(command: any, params: any) {
             return await createComponentSet(params);
 
         case "create_svg":
-            if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-            // For creation, we check parent Scope
-            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
             return await createNodeFromSvg(params);
 
         case "node_set_effects":
-            if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            await validateSingleNodeWrite(params, { checkLocked: true });
             return await setEffects(params);
 
         default:

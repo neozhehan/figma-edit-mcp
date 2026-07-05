@@ -450,7 +450,7 @@ export async function cloneNode(params: any) {
     if (node.parent) {
         node.parent.appendChild(clone);
     } else {
-        throw new Error(`Cloned node ${nodeId} has no parent and cannot be cloned`);
+        throw new Error(`node_clone: '${node.name}' has no parent and cannot be cloned.`);
     }
 
     return {

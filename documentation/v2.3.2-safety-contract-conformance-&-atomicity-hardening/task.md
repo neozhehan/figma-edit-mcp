@@ -10,69 +10,69 @@
 > - `create_svg` is split across dispatcher guards and handler ordering. Do not ship only one half; the orphan fix requires both.
 
 ## Phase 0: Baseline and Harness Inventory
-- [ ] Read the current dispatcher, guard helpers, handlers, and existing tests before editing:
-  - [ ] `figma_plugin/src/main.ts`
-  - [ ] `figma_plugin/utils/nodeUtils.ts`
-  - [ ] `figma_plugin/handlers/nodeCreators.ts`
-  - [ ] `figma_plugin/handlers/vectorHandlers.ts`
-  - [ ] `figma_plugin/handlers/componentHandlers.ts`
-  - [ ] `src/mcp_server/tests/unit/figma_plugin/atomicityAndValidation.test.ts`
-- [ ] Confirm the existing mocked-dispatcher harness can drive `ui.onmessage` against the real plugin `main.ts`.
-- [ ] Identify existing helper patterns for scope checks, exact-name checks, locked checks, instance-interior checks, and handler-not-called assertions.
-- [ ] Confirm the current version surfaces before the bump: `package.json`, root `package-lock.json`, `server.json`, root `manifest.json`, and the plugin About UI path.
+- [x] Read the current dispatcher, guard helpers, handlers, and existing tests before editing:
+  - [x] `figma_plugin/src/main.ts`
+  - [x] `figma_plugin/utils/nodeUtils.ts`
+  - [x] `figma_plugin/handlers/nodeCreators.ts`
+  - [x] `figma_plugin/handlers/vectorHandlers.ts`
+  - [x] `figma_plugin/handlers/componentHandlers.ts`
+  - [x] `src/mcp_server/tests/unit/figma_plugin/atomicityAndValidation.test.ts`
+- [x] Confirm the existing mocked-dispatcher harness can drive `ui.onmessage` against the real plugin `main.ts`.
+- [x] Identify existing helper patterns for scope checks, exact-name checks, locked checks, instance-interior checks, and handler-not-called assertions.
+- [x] Confirm the current version surfaces before the bump: `package.json`, root `package-lock.json`, `server.json`, root `manifest.json`, and the plugin About UI path.
 
 ## Phase 1: P0 Dispatcher Guard Parity and Parent-Is-Instance Closure - `figma_plugin/src/main.ts`
-- [ ] Route `node_set_effects` through `validateSingleNodeWrite(params, { checkLocked: true })` before calling `setEffects`.
-- [ ] Extend parent-side instance checks so a parent is rejected when `parent.type === "INSTANCE"` or it has an instance ancestor.
-- [ ] Wire the include-self parent-instance rule through every parent-gated dispatcher path that uses `validateParentWrite`, including `create_shape`, `create_frame`, `create_text`, `create_svg`, `create_instance`, and `node_insert_child`.
-- [ ] Route `create_svg` through `validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" })` before calling `createNodeFromSvg`.
-- [ ] Add `validateCloneWrite(params)` in the dispatcher layer:
-  - [ ] Require node-edit permission and a linked scope.
-  - [ ] Resolve `params.nodeId`.
-  - [ ] Check source scope and exact `params.nodeName`.
-  - [ ] Reject locked source nodes and locked ancestors.
-  - [ ] Reject source nodes inside component-instance interiors.
-  - [ ] Require `source.parent`.
-  - [ ] Require an appendable destination parent.
-  - [ ] Reject destination parents outside the current scope, including the scope-root clone case.
-  - [ ] Reject locked destination parents and locked ancestors.
-  - [ ] Reject destination parents that are an `INSTANCE` node or inside an instance interior.
-- [ ] Keep `node_clone` destination parent implicit. Do not add a `parentNodeName` parameter or any MCP input schema change.
-- [ ] Implement the §1 error strings exactly as specified: instance-interior clone denial (`Operation Denied: Cannot clone '...' because it is inside a component instance.`), missing-parent (`node_clone: '...' has no parent and cannot be cloned.`), and non-appendable-parent messages; reuse the existing locked/scope error families for the rest.
-- [ ] Remove or align superseded late dispatcher/handler error variants so only the PRD-approved messages remain.
+- [x] Route `node_set_effects` through `validateSingleNodeWrite(params, { checkLocked: true })` before calling `setEffects`.
+- [x] Extend parent-side instance checks so a parent is rejected when `parent.type === "INSTANCE"` or it has an instance ancestor.
+- [x] Wire the include-self parent-instance rule through every parent-gated dispatcher path that uses `validateParentWrite`, including `create_shape`, `create_frame`, `create_text`, `create_svg`, `create_instance`, and `node_insert_child`.
+- [x] Route `create_svg` through `validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" })` before calling `createNodeFromSvg`.
+- [x] Add `validateCloneWrite(params)` in the dispatcher layer:
+  - [x] Require node-edit permission and a linked scope.
+  - [x] Resolve `params.nodeId`.
+  - [x] Check source scope and exact `params.nodeName`.
+  - [x] Reject locked source nodes and locked ancestors.
+  - [x] Reject source nodes inside component-instance interiors.
+  - [x] Require `source.parent`.
+  - [x] Require an appendable destination parent.
+  - [x] Reject destination parents outside the current scope, including the scope-root clone case.
+  - [x] Reject locked destination parents and locked ancestors.
+  - [x] Reject destination parents that are an `INSTANCE` node or inside an instance interior.
+- [x] Keep `node_clone` destination parent implicit. Do not add a `parentNodeName` parameter or any MCP input schema change.
+- [x] Implement the §1 error strings exactly as specified: instance-interior clone denial (`Operation Denied: Cannot clone '...' because it is inside a component instance.`), missing-parent (`node_clone: '...' has no parent and cannot be cloned.`), and non-appendable-parent messages; reuse the existing locked/scope error families for the rest.
+- [x] Remove or align superseded late dispatcher/handler error variants so only the PRD-approved messages remain.
 
 ### Phase 1 Unit Tests
-- [ ] `node_set_effects` rejects before `setEffects` when node-edit permission is missing.
-- [ ] `node_set_effects` rejects before `setEffects` when no scope is linked.
-- [ ] `node_set_effects` rejects before `setEffects` when the target is outside scope.
-- [ ] `node_set_effects` rejects before `setEffects` when `nodeName` mismatches.
-- [ ] `node_set_effects` rejects before `setEffects` for a locked target.
-- [ ] `node_set_effects` rejects before `setEffects` for a target under a locked ancestor.
-- [ ] `node_set_effects` happy path still succeeds on an unlocked in-scope target.
-- [ ] `create_svg` rejects before `figma.createNodeFromSvg` when node-edit permission is missing.
-- [ ] `create_svg` rejects before `figma.createNodeFromSvg` when no scope is linked.
-- [ ] `create_svg` rejects before `figma.createNodeFromSvg` when the parent is outside scope.
-- [ ] `create_svg` rejects before `figma.createNodeFromSvg` when `parentNodeName` mismatches.
-- [ ] `create_svg` rejects before `figma.createNodeFromSvg` under a locked parent.
-- [ ] `create_svg` rejects before `figma.createNodeFromSvg` under a locked ancestor.
-- [ ] `create_svg` rejects before `figma.createNodeFromSvg` under an instance interior.
-- [ ] `create_svg` rejects before `figma.createNodeFromSvg` when the parent itself is an `INSTANCE`.
-- [ ] `create_svg` happy path still succeeds when the parent is valid.
-- [ ] `node_clone` rejects before `node.clone` when node-edit permission is missing.
-- [ ] `node_clone` rejects before `node.clone` when no scope is linked.
-- [ ] `node_clone` rejects before `node.clone` when the source is outside scope.
-- [ ] `node_clone` rejects before `node.clone` when `nodeName` mismatches.
-- [ ] `node_clone` rejects before `node.clone` for a locked source.
-- [ ] `node_clone` rejects before `node.clone` for a source under a locked ancestor.
-- [ ] `node_clone` rejects before `node.clone` for a source inside an instance.
-- [ ] `node_clone` rejects before `node.clone` when the source has no parent.
-- [ ] `node_clone` rejects before `node.clone` when the parent cannot accept children.
-- [ ] `node_clone` rejects before `node.clone` when the parent is locked or under a locked ancestor.
-- [ ] `node_clone` rejects before `node.clone` when the parent is outside scope.
-- [ ] `node_clone` rejects before `node.clone` when cloning the scope root itself.
-- [ ] `node_clone` rejects before `node.clone` when the parent is an `INSTANCE` or inside an instance interior.
-- [ ] `node_clone` happy path still succeeds for an unlocked in-scope source with an in-scope appendable parent.
-- [ ] Parent-is-instance regression tests reject before mutation for `create_shape`, `create_frame`, `create_text`, `create_instance`, and `node_insert_child`.
+- [x] `node_set_effects` rejects before `setEffects` when node-edit permission is missing.
+- [x] `node_set_effects` rejects before `setEffects` when no scope is linked.
+- [x] `node_set_effects` rejects before `setEffects` when the target is outside scope.
+- [x] `node_set_effects` rejects before `setEffects` when `nodeName` mismatches.
+- [x] `node_set_effects` rejects before `setEffects` for a locked target.
+- [x] `node_set_effects` rejects before `setEffects` for a target under a locked ancestor.
+- [x] `node_set_effects` happy path still succeeds on an unlocked in-scope target.
+- [x] `create_svg` rejects before `figma.createNodeFromSvg` when node-edit permission is missing.
+- [x] `create_svg` rejects before `figma.createNodeFromSvg` when no scope is linked.
+- [x] `create_svg` rejects before `figma.createNodeFromSvg` when the parent is outside scope.
+- [x] `create_svg` rejects before `figma.createNodeFromSvg` when `parentNodeName` mismatches.
+- [x] `create_svg` rejects before `figma.createNodeFromSvg` under a locked parent.
+- [x] `create_svg` rejects before `figma.createNodeFromSvg` under a locked ancestor.
+- [x] `create_svg` rejects before `figma.createNodeFromSvg` under an instance interior.
+- [x] `create_svg` rejects before `figma.createNodeFromSvg` when the parent itself is an `INSTANCE`.
+- [x] `create_svg` happy path still succeeds when the parent is valid.
+- [x] `node_clone` rejects before `node.clone` when node-edit permission is missing.
+- [x] `node_clone` rejects before `node.clone` when no scope is linked.
+- [x] `node_clone` rejects before `node.clone` when the source is outside scope.
+- [x] `node_clone` rejects before `node.clone` when `nodeName` mismatches.
+- [x] `node_clone` rejects before `node.clone` for a locked source.
+- [x] `node_clone` rejects before `node.clone` for a source under a locked ancestor.
+- [x] `node_clone` rejects before `node.clone` for a source inside an instance.
+- [x] `node_clone` rejects before `node.clone` when the source has no parent.
+- [x] `node_clone` rejects before `node.clone` when the parent cannot accept children.
+- [x] `node_clone` rejects before `node.clone` when the parent is locked or under a locked ancestor.
+- [x] `node_clone` rejects before `node.clone` when the parent is outside scope.
+- [x] `node_clone` rejects before `node.clone` when cloning the scope root itself.
+- [x] `node_clone` rejects before `node.clone` when the parent is an `INSTANCE` or inside an instance interior.
+- [x] `node_clone` happy path still succeeds for an unlocked in-scope source with an in-scope appendable parent.
+- [x] Parent-is-instance regression tests reject before mutation for `create_shape`, `create_frame`, `create_text`, `create_instance`, and `node_insert_child`.
 
 ### Phase 1 Live Figma Verification Item
 - [ ] During Phase 8 (after the Phase 7 build), verify in Figma: locked `node_set_effects` rejects with no effect change; `create_svg` under locked/instance parents creates no SVG; `node_clone` rejects locked sources, instance-interior sources, parent-is-instance placement, and cloning the scope root with no out-of-scope clone.
