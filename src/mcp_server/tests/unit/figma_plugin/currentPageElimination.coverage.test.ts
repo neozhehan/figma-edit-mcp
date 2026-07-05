@@ -20,7 +20,7 @@ const { createShape, createFrame, createText, cloneNode } = await import(
     "../../../../../figma_plugin/handlers/nodeCreators.js"
 );
 const { createNodeFromSvg } = await import("../../../../../figma_plugin/handlers/vectorHandlers.js");
-const { createComponentInstance, createComponentSet, getInstanceOverrides } = await import(
+const { createComponentInstance, createComponentSet, validateCreateComponentSetPlan, getInstanceOverrides } = await import(
     "../../../../../figma_plugin/handlers/componentHandlers.js"
 );
 
@@ -60,19 +60,20 @@ describe("createComponentSet: combines on the first component's containing page"
             },
             currentPage: { id: "CURRENT_PAGE", type: "PAGE" },
         };
-        await createComponentSet({
+        const plan = await validateCreateComponentSetPlan({
             components: [
-                { nodeId: "c1", propertyValues: ["A"] },
-                { nodeId: "c2", propertyValues: ["B"] },
+                { nodeId: "c1", nodeName: "c1", propertyValues: ["A"] },
+                { nodeId: "c2", nodeName: "c2", propertyValues: ["B"] },
             ],
             properties: ["Prop"],
             componentSetName: "Set",
-        });
+        }, page);
+        await createComponentSet(plan);
         expect(combinePageArg).toBe(page);
         expect(combinePageArg.id).not.toBe("CURRENT_PAGE");
     });
 
-    it("throws when the first component is detached (no containing page)", async () => {
+    it("throws when a component is detached (no containing page)", async () => {
         const c1: any = { id: "c1", name: "c1", type: "COMPONENT", parent: null };
         (globalThis as any).figma = {
             getNodeByIdAsync: async () => c1,
@@ -80,7 +81,7 @@ describe("createComponentSet: combines on the first component's containing page"
             currentPage: {},
         };
         expect(
-            createComponentSet({ components: [{ nodeId: "c1", propertyValues: ["A"] }], properties: ["Prop"], componentSetName: "Set" })
+            validateCreateComponentSetPlan({ components: [{ nodeId: "c1", nodeName: "c1", propertyValues: ["A"] }], properties: ["Prop"], componentSetName: "Set" }, c1)
         ).rejects.toThrow("not on a page");
     });
 });

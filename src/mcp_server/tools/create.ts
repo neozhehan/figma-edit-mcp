@@ -253,6 +253,10 @@ export function registerCreateTools(server: McpServer) {
             outputSchema: z.object({
                 id: z.string().describe("ID of the created component set"),
                 name: z.string().describe("Name of the component set"),
+                type: z.string().optional().describe("Node type (COMPONENT_SET)"),
+                childCount: z.number().optional().describe("Number of variants in the set"),
+                warning: z.string().optional().describe("Warning message if some properties could not be read"),
+                variantProperties: z.record(z.any()).optional().describe("Variant properties definition")
             }),
             annotations: {
                 openWorldHint: true

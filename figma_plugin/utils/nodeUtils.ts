@@ -184,6 +184,40 @@ export function findInstanceAncestor(node: any): any | null {
 }
 
 /**
+ * Throws the canonical locked-layer denial when the node or an ancestor is locked.
+ */
+export function assertNotLocked(node: any) {
+    const lockedAncestor = findLockedAncestor(node);
+    if (lockedAncestor) {
+        throw new Error(`Operation Denied: Node '${node.name}' (or one of its ancestors, '${lockedAncestor.name}') is locked. Unlock the layer in Figma, or ask the user to unlock it, before editing.`);
+    }
+}
+
+/**
+ * Throws the canonical instance-interior denial when the node is inside a
+ * component instance. Excludes the node itself — parent-side checks that must
+ * also reject the node being an INSTANCE use assertNotInstanceParent.
+ */
+export function assertNotInstanceInterior(node: any, verb: string) {
+    const instanceAncestor = findInstanceAncestor(node);
+    if (instanceAncestor) {
+        throw new Error(`Operation Denied: Node '${node.name}' is inside a component instance ('${instanceAncestor.name}') and cannot be ${verb} directly. Edit the main component, or use instance overrides.`);
+    }
+}
+
+/**
+ * Include-self variant for parent-side instance checks (v2.3.2 parent-is-instance
+ * rule): rejects a parent that IS an INSTANCE node as well as one inside an
+ * instance interior.
+ */
+export function assertNotInstanceParent(parent: any, verb: string) {
+    if (parent.type === "INSTANCE") {
+        throw new Error(`Operation Denied: Node '${parent.name}' is a component instance and cannot be ${verb} directly. Edit the main component, or use instance overrides.`);
+    }
+    assertNotInstanceInterior(parent, verb);
+}
+
+/**
  * Walks node.parent up; true if maybeAncestor is encountered.
  */
 export function isAncestorOf(maybeAncestor: any, node: any): boolean {

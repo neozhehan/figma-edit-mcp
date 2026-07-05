@@ -155,7 +155,8 @@ export async function getComponents(params: any) {
     };
 }
 
-import { getContainingPageNode } from '../utils/nodeUtils.js';
+import { getContainingPageNode, isAncestorOf, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
+import { ERRORS, formatScopeError } from '../utils/errors.js';
 
 function getContainingPageId(node: BaseNode): string {
     return getContainingPageNode(node)?.id ?? 'unknown';
@@ -762,64 +763,206 @@ export async function createComponent(params: any) {
  * @param {string} params.parentId - Parent node ID to place the set in
  * @returns {Promise<Object>} Created component set info
  */
-export async function createComponentSet(params: any) {
+export interface ComponentSetPlan {
+    components: {
+        node: any;
+        originalName: string;
+        variantName: string;
+        propertyValues: string[];
+    }[];
+    properties: string[];
+    containingPage: any;
+    parent?: any;
+    componentSetName?: string;
+}
+
+export async function validateCreateComponentSetPlan(params: any, scopeRoot: BaseNode): Promise<ComponentSetPlan> {
     const { components, properties, componentSetName, parentId } = params;
 
-    // Validate inputs (basic validation done in main.js, but good to be safe)
-    if (!components || components.length === 0) {
-        throw new Error("Components array is empty");
+    if (!components || !Array.isArray(components) || components.length === 0) {
+        throw new Error("components must be a non-empty array");
     }
-    if (!properties || properties.length === 0) {
-        throw new Error("Properties array is empty");
+    if (!properties || !Array.isArray(properties) || properties.length === 0) {
+        throw new Error("properties must be a non-empty array");
     }
 
-    const figmaComponents: any[] = [];
+    const propNamesSeen = new Set<string>();
+    for (const prop of properties) {
+        if (typeof prop !== "string" || prop.trim() === "") {
+            throw new Error("Property names must be non-empty strings");
+        }
+        if (propNamesSeen.has(prop)) {
+            throw new Error(`Duplicate property name found: '${prop}'`);
+        }
+        propNamesSeen.add(prop);
+    }
+
+    const resolvedComponents: ComponentNode[] = [];
+    const seenIds = new Set<string>();
+    let firstContainingPage: any = null;
+
+    for (const comp of components) {
+        if (!comp || !comp.nodeId) {
+            throw new Error("Missing component nodeId");
+        }
+        
+        const node = await figma.getNodeByIdAsync(comp.nodeId);
+        if (!node) {
+            throw new Error(`Node ${comp.nodeId} not found`);
+        }
+
+        if (seenIds.has(node.id)) {
+            throw new Error(`create_component_set: component '${node.name}' (${node.id}) is listed more than once in components.`);
+        }
+        seenIds.add(node.id);
+
+        const inScope = node.id === scopeRoot.id || isAncestorOf(scopeRoot, node);
+        if (!inScope) {
+            throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE, scopeRoot.id));
+        }
+
+        if (node.name !== comp.nodeName) {
+            throw new Error(ERRORS.NAME_MISMATCH);
+        }
+
+        if (node.type !== "COMPONENT") {
+            throw new Error(`create_component_set: '${node.name}' (${node.id}) must be a COMPONENT, got ${node.type}.`);
+        }
+
+        assertNotLocked(node);
+        assertNotInstanceInterior(node, "combined");
+
+        if ('remote' in node && (node as any).remote === true) {
+            throw new Error(`create_component_set: '${node.name}' is a remote shared-library component and cannot be combined into a local component set.`);
+        }
+
+        if (!comp.propertyValues || comp.propertyValues.length !== properties.length) {
+            throw new Error(`Property values count mismatch for component ${node.name}`);
+        }
+
+        for (const val of comp.propertyValues) {
+            if (typeof val !== "string" || val.trim() === "" || val.includes("=") || val.includes(",")) {
+                throw new Error(`create_component_set: property value '${val}' for '${node.name}' must be non-empty and must not contain '=' or ','.`);
+            }
+        }
+
+        if (node.parent && node.parent.type === "COMPONENT_SET") {
+            throw new Error(`create_component_set: '${node.name}' is already a variant in component set '${node.parent.name}'. Combining it would break that set.`);
+        }
+
+        const page = getContainingPageNode(node);
+        if (!page) {
+            throw new Error(`create_component_set: component '${node.name}' (${node.id}) is not on a page (detached).`);
+        }
+        if (!firstContainingPage) {
+            firstContainingPage = page;
+        } else if (page.id !== firstContainingPage.id) {
+            throw new Error("create_component_set: all components must be on the same page before combining variants.");
+        }
+
+        resolvedComponents.push(node as ComponentNode);
+    }
+
     const seenVariants = new Map<string, string>();
-
-    // Process each component: Rename and Collect
-    for (const compData of components) {
-        const component = await figma.getNodeByIdAsync(compData.nodeId);
-        if (!component || component.type !== 'COMPONENT') {
-            throw new Error(`Node ${compData.nodeId} is not a valid component`);
-        }
-
-        // Construct variant name: "Prop1=Val1, Prop2=Val2"
-        if (compData.propertyValues.length !== properties.length) {
-            throw new Error(`Property values count mismatch for component ${component.name}`);
-        }
-
-        const nameParts = properties.map((prop: any, index: any) => `${prop}=${compData.propertyValues[index]}`);
+    const computedVariantNames: string[] = [];
+    for (let i = 0; i < resolvedComponents.length; i++) {
+        const node = resolvedComponents[i];
+        const compData = components[i];
+        const nameParts = properties.map((prop, idx) => `${prop}=${compData.propertyValues[idx]}`);
         const variantName = nameParts.join(", ");
-        
         if (seenVariants.has(variantName)) {
-            throw new Error(`Operation Denied: Duplicate variant combination '${variantName}' across components '${seenVariants.get(variantName)}' and '${component.name}'. Each component in a set must have a unique property-value combination.`);
+            throw new Error(`Operation Denied: Duplicate variant combination '${variantName}' across components '${seenVariants.get(variantName)}' and '${node.name}'. Each component in a set must have a unique property-value combination.`);
         }
-        seenVariants.set(variantName, component.name);
-        
-        component.name = variantName;
-
-        figmaComponents.push(component);
+        seenVariants.set(variantName, node.name);
+        computedVariantNames.push(variantName);
     }
 
-    // Create ComponentSet
-    const containingPage = getContainingPageNode(figmaComponents[0]);
-    if (!containingPage) {
-        throw new Error("First component is not on a page (detached)");
-    }
-    const componentSet = figma.combineAsVariants(figmaComponents, containingPage);
-
-    // Rename ComponentSet
-    if (componentSetName) {
-        componentSet.name = componentSetName;
-    }
-
-    // Reparent if needed (combineAsVariants places it typically where the components were)
+    let resolvedParent: any = undefined;
     if (parentId) {
         const parent = await figma.getNodeByIdAsync(parentId);
-        if (parent) {
-            // @ts-ignore
-            parent.appendChild(componentSet);
+        if (!parent) {
+            throw new Error(`Node ${parentId} not found`);
         }
+
+        const parentInScope = parent.id === scopeRoot.id || isAncestorOf(scopeRoot, parent);
+        if (!parentInScope) {
+            throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE, scopeRoot.id));
+        }
+
+        if (parent.name !== params.parentNodeName) {
+            throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+        }
+
+        if (!("appendChild" in parent)) {
+            throw new Error(`create_component_set: parent '${parent.name}' (type ${parent.type}) cannot contain a component set.`);
+        }
+
+        assertNotLocked(parent);
+        assertNotInstanceParent(parent, "appended to");
+
+        for (const node of resolvedComponents) {
+            if (parent.id === node.id || isAncestorOf(node, parent)) {
+                throw new Error(`create_component_set: parent '${parent.name}' is one of the components being combined (or is inside one) and cannot receive the component set.`);
+            }
+        }
+
+        resolvedParent = parent;
+    }
+
+    return {
+        components: resolvedComponents.map((node, idx) => ({
+            node,
+            originalName: node.name,
+            variantName: computedVariantNames[idx],
+            propertyValues: components[idx].propertyValues
+        })),
+        properties,
+        containingPage: firstContainingPage,
+        parent: resolvedParent,
+        componentSetName
+    };
+}
+
+export async function createComponentSet(plan: ComponentSetPlan) {
+    let componentSet: ComponentSetNode;
+    try {
+        for (const c of plan.components) {
+            c.node.name = c.variantName;
+        }
+        componentSet = figma.combineAsVariants(plan.components.map(c => c.node), plan.containingPage);
+    } catch (error: any) {
+        // A rename or combineAsVariants threw before a component set exists —
+        // restore every original name (skipping removed nodes so restoration
+        // cannot mask the original error) and rethrow. Once the set exists,
+        // renaming members back would corrupt its variant naming, so no
+        // post-combine rollback is attempted (D5).
+        for (const c of plan.components) {
+            if (c.node && (c.node as any).removed !== true) {
+                c.node.name = c.originalName;
+            }
+        }
+        throw error;
+    }
+
+    // Post-combine steps: placement was fully prevalidated, so only R1 TOCTOU
+    // residuals can fail here; they surface as ordinary errors with the set
+    // left at the combineAsVariants location.
+    if (plan.componentSetName) {
+        componentSet.name = plan.componentSetName;
+    }
+
+    if (plan.parent && plan.parent.id !== componentSet.parent?.id) {
+        plan.parent.appendChild(componentSet);
+    }
+
+    // variantGroupProperties can throw after fully successful mutation; never
+    // convert that into a failure — return success with a warning instead.
+    let variantGroupProperties: any = undefined;
+    let warning: string | undefined = undefined;
+    try {
+        variantGroupProperties = componentSet.variantGroupProperties;
+    } catch (err: any) {
+        warning = `Failed to read variant properties: ${err.message || String(err)}`;
     }
 
     return {
@@ -827,7 +970,8 @@ export async function createComponentSet(params: any) {
         name: componentSet.name,
         type: "COMPONENT_SET",
         childCount: componentSet.children.length,
-        variantProperties: componentSet.variantGroupProperties
+        variantProperties: variantGroupProperties,
+        warning
     };
 }
 

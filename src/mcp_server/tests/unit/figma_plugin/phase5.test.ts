@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { setComponentInstanceProperty, manageComponentProperty, createComponentSet } from "../../../../../figma_plugin/handlers/componentHandlers.js";
+import { setComponentInstanceProperty, manageComponentProperty, validateCreateComponentSetPlan } from "../../../../../figma_plugin/handlers/componentHandlers.js";
 import { deleteVariables } from "../../../../../figma_plugin/handlers/variableHandlers.js";
 import { deleteStyle } from "../../../../../figma_plugin/handlers/styleHandlers.js";
 
@@ -112,9 +112,10 @@ describe("Phase 5 Validations", () => {
 
     describe("§11 Duplicate-variant guard", () => {
         it("rejects duplicate combinations", async () => {
-            const comp1 = { id: "1:1", type: "COMPONENT", name: "Comp1" };
-            const comp2 = { id: "1:2", type: "COMPONENT", name: "Comp2" };
-            
+            const page = { id: "0:0", type: "PAGE", name: "Page" };
+            const comp1 = { id: "1:1", type: "COMPONENT", name: "Comp1", parent: page };
+            const comp2 = { id: "1:2", type: "COMPONENT", name: "Comp2", parent: page };
+
             (global.figma.getNodeByIdAsync as any).mockImplementation(async (id: string) => {
                 if (id === "1:1") return comp1;
                 if (id === "1:2") return comp2;
@@ -123,13 +124,13 @@ describe("Phase 5 Validations", () => {
 
             const params = {
                 components: [
-                    { nodeId: "1:1", propertyValues: ["A"] },
-                    { nodeId: "1:2", propertyValues: ["A"] }
+                    { nodeId: "1:1", nodeName: "Comp1", propertyValues: ["A"] },
+                    { nodeId: "1:2", nodeName: "Comp2", propertyValues: ["A"] }
                 ],
                 properties: ["Prop1"]
             };
 
-            await expect(createComponentSet(params))
+            await expect(validateCreateComponentSetPlan(params, page as any))
                 .rejects.toThrow("Operation Denied: Duplicate variant combination 'Prop1=A' across components 'Comp1' and 'Comp2'. Each component in a set must have a unique property-value combination.");
         });
     });

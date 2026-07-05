@@ -78,85 +78,85 @@
 - [ ] During Phase 8 (after the Phase 7 build), verify in Figma: locked `node_set_effects` rejects with no effect change; `create_svg` under locked/instance parents creates no SVG; `node_clone` rejects locked sources, instance-interior sources, parent-is-instance placement, and cloning the scope root with no out-of-scope clone.
 
 ## Phase 2: P0 `create_component_set` Two-Phase Prevalidation and Atomicity
-- [ ] Replace the existing dispatcher prevalidation loop with dispatcher-owned plan orchestration:
-  - [ ] Require edit permission.
-  - [ ] Require linked scope.
-  - [ ] Resolve the scope root; throw the `SCOPE_DELETED` error when it no longer resolves.
-  - [ ] Call `validateCreateComponentSetPlan(params, scopeRoot)`.
-  - [ ] Pass the returned plan to a mutate-only `createComponentSet(plan)`.
-- [ ] Add an exported `ComponentSetPlan` type in `figma_plugin/handlers/componentHandlers.ts` carrying resolved component references, original names, computed variant names, property values, optional resolved parent, optional set name, and containing page.
-- [ ] Implement `validateCreateComponentSetPlan(params, scopeRoot)` so it resolves each referenced node exactly once and mutates nothing.
-- [ ] Prevalidate component-set inputs before any rename:
-  - [ ] `components` is a non-empty array.
-  - [ ] Component node IDs are unique.
-  - [ ] `properties` is a non-empty array.
-  - [ ] Property names are non-empty strings.
-  - [ ] Property names are unique by exact string comparison.
-  - [ ] Every component exists.
-  - [ ] Every component is inside the current scope.
-  - [ ] Every component name exactly matches caller-provided `nodeName`.
-  - [ ] Every component type is exactly `COMPONENT`.
-  - [ ] No component or locked ancestor is locked.
-  - [ ] No component is inside an instance interior.
-  - [ ] No component is remote/shared-library-backed.
-  - [ ] Every component has `propertyValues.length === properties.length`.
-  - [ ] Property values are non-empty strings and contain neither `=` nor `,`.
-  - [ ] Every computed variant combination is unique.
-  - [ ] Every component has a containing page.
-  - [ ] All components are on the same containing page.
-  - [ ] No component is already a child of a `COMPONENT_SET`.
-- [ ] Prevalidate optional parent before any rename:
-  - [ ] Parent exists.
-  - [ ] Parent is inside the current scope.
-  - [ ] `parentNodeName` matches exactly.
-  - [ ] Parent supports `appendChild`.
-  - [ ] Parent and ancestors are not locked.
-  - [ ] Parent is not an `INSTANCE` and is not inside an instance interior.
-  - [ ] Parent is not one of the input components and is not a descendant of one.
-- [ ] Move the existing duplicate-variant error into the plan phase without changing its specified text.
-- [ ] Implement the §2 error strings exactly as specified: wrong type, remote component, duplicate component ID, invalid property value, set-member component, parent-cannot-contain, parent-cycle, and cross-page messages.
-- [ ] Remove handler-side interleaved validation that used to run during rename.
-- [ ] Remove the silent `if (parent)` reparent skip. A requested but invalid parent must fail in prevalidation.
-- [ ] Implement mutate-only `createComponentSet(plan)`:
-  - [ ] Rename components to computed variant names as the first mutation.
-  - [ ] Call `figma.combineAsVariants` using the resolved components and containing page.
-  - [ ] If a rename or `combineAsVariants` throws before a component set exists, restore all original component names (skipping nodes with `removed === true` so restoration cannot mask the original error) and rethrow.
-  - [ ] Do not add a general post-component-set transaction rollback layer.
-  - [ ] Rename the resulting component set when `componentSetName` is supplied.
-  - [ ] Reparent the component set to the resolved parent when supplied and different from the current parent.
-  - [ ] Let residual R1/TOCTOU placement failures surface as ordinary errors with the set left at the combine location.
-- [ ] Wrap result construction so a `variantGroupProperties` getter throw returns success with a warning and omits that field instead of reporting a failure after successful mutation.
-- [ ] Ensure the `create_component_set` MCP **output** schema accepts the optional `warning` field and the omitted `variantProperties` field — otherwise the guarded result recreates the §6 strict-output-schema failure class. (Result-shape only; not an input schema change.)
+- [x] Replace the existing dispatcher prevalidation loop with dispatcher-owned plan orchestration:
+  - [x] Require edit permission.
+  - [x] Require linked scope.
+  - [x] Resolve the scope root; throw the `SCOPE_DELETED` error when it no longer resolves.
+  - [x] Call `validateCreateComponentSetPlan(params, scopeRoot)`.
+  - [x] Pass the returned plan to a mutate-only `createComponentSet(plan)`.
+- [x] Add an exported `ComponentSetPlan` type in `figma_plugin/handlers/componentHandlers.ts` carrying resolved component references, original names, computed variant names, property values, optional resolved parent, optional set name, and containing page.
+- [x] Implement `validateCreateComponentSetPlan(params, scopeRoot)` so it resolves each referenced node exactly once and mutates nothing.
+- [x] Prevalidate component-set inputs before any rename:
+  - [x] `components` is a non-empty array.
+  - [x] Component node IDs are unique.
+  - [x] `properties` is a non-empty array.
+  - [x] Property names are non-empty strings.
+  - [x] Property names are unique by exact string comparison.
+  - [x] Every component exists.
+  - [x] Every component is inside the current scope.
+  - [x] Every component name exactly matches caller-provided `nodeName`.
+  - [x] Every component type is exactly `COMPONENT`.
+  - [x] No component or locked ancestor is locked.
+  - [x] No component is inside an instance interior.
+  - [x] No component is remote/shared-library-backed.
+  - [x] Every component has `propertyValues.length === properties.length`.
+  - [x] Property values are non-empty strings and contain neither `=` nor `,`.
+  - [x] Every computed variant combination is unique.
+  - [x] Every component has a containing page.
+  - [x] All components are on the same containing page.
+  - [x] No component is already a child of a `COMPONENT_SET`.
+- [x] Prevalidate optional parent before any rename:
+  - [x] Parent exists.
+  - [x] Parent is inside the current scope.
+  - [x] `parentNodeName` matches exactly.
+  - [x] Parent supports `appendChild`.
+  - [x] Parent and ancestors are not locked.
+  - [x] Parent is not an `INSTANCE` and is not inside an instance interior.
+  - [x] Parent is not one of the input components and is not a descendant of one.
+- [x] Move the existing duplicate-variant error into the plan phase without changing its specified text.
+- [x] Implement the §2 error strings exactly as specified: wrong type, remote component, duplicate component ID, invalid property value, set-member component, parent-cannot-contain, parent-cycle, and cross-page messages.
+- [x] Remove handler-side interleaved validation that used to run during rename.
+- [x] Remove the silent `if (parent)` reparent skip. A requested but invalid parent must fail in prevalidation.
+- [x] Implement mutate-only `createComponentSet(plan)`:
+  - [x] Rename components to computed variant names as the first mutation.
+  - [x] Call `figma.combineAsVariants` using the resolved components and containing page.
+  - [x] If a rename or `combineAsVariants` throws before a component set exists, restore all original component names (skipping nodes with `removed === true` so restoration cannot mask the original error) and rethrow.
+  - [x] Do not add a general post-component-set transaction rollback layer.
+  - [x] Rename the resulting component set when `componentSetName` is supplied.
+  - [x] Reparent the component set to the resolved parent when supplied and different from the current parent.
+  - [x] Let residual R1/TOCTOU placement failures surface as ordinary errors with the set left at the combine location.
+- [x] Wrap result construction so a `variantGroupProperties` getter throw returns success with a warning and omits that field instead of reporting a failure after successful mutation.
+- [x] Ensure the `create_component_set` MCP **output** schema accepts the optional `warning` field and the omitted `variantProperties` field — otherwise the guarded result recreates the §6 strict-output-schema failure class. (Result-shape only; not an input schema change.)
 
 ### Phase 2 Unit Tests
-- [ ] Empty `components` rejects before any rename and before `combineAsVariants`.
-- [ ] Empty `properties` rejects before any rename and before `combineAsVariants`.
-- [ ] Duplicate property names reject before any rename and before `combineAsVariants`.
-- [ ] Empty property names reject before any rename and before `combineAsVariants`.
-- [ ] Wrong type in component #2 leaves component #1 name unchanged and does not call `combineAsVariants`.
-- [ ] Mismatched `nodeName` in component #2 leaves component #1 name unchanged and does not call `combineAsVariants`.
-- [ ] Out-of-scope component #2 leaves component #1 name unchanged and does not call `combineAsVariants`.
-- [ ] Duplicate variant values leave all names unchanged and do not call `combineAsVariants`.
-- [ ] Duplicate component ID rejects before any rename and before `combineAsVariants`.
-- [ ] Empty property values and values containing `=` or `,` reject before any rename.
-- [ ] A component already inside a `COMPONENT_SET` rejects before any rename.
-- [ ] `variantGroupProperties` getter throw after successful combine returns success with a warning.
-- [ ] Wrong `propertyValues` count leaves all names unchanged and does not call `combineAsVariants`.
-- [ ] Locked component or locked component ancestor leaves all names unchanged.
-- [ ] Instance-interior component leaves all names unchanged.
-- [ ] Remote component leaves all names unchanged.
-- [ ] Locked parent or locked parent ancestor leaves all names unchanged and does not call `combineAsVariants`.
-- [ ] Parent inside an instance interior leaves all names unchanged and does not call `combineAsVariants`.
-- [ ] Parent that is an `INSTANCE` leaves all names unchanged and does not call `combineAsVariants`.
-- [ ] Parent outside scope or mismatched `parentNodeName` leaves all names unchanged and does not call `combineAsVariants`.
-- [ ] Parent without `appendChild` leaves all names unchanged and does not call `combineAsVariants`.
-- [ ] Parent equal to an input component rejects before any rename and before `combineAsVariants`.
-- [ ] Parent descendant of an input component rejects before any rename and before `combineAsVariants`.
-- [ ] Cross-page components reject before any rename, retained as defense-in-depth.
-- [ ] Happy path renames variants, calls `combineAsVariants`, renames the component set, reparents when requested, and returns the expected `COMPONENT_SET` result.
-- [ ] Simulated `combineAsVariants` throw restores original component names.
-- [ ] Simulated mid-loop rename throw restores original component names.
-- [ ] Every prevalidatable placement failure is rejected in the plan phase before any rename.
+- [x] Empty `components` rejects before any rename and before `combineAsVariants`.
+- [x] Empty `properties` rejects before any rename and before `combineAsVariants`.
+- [x] Duplicate property names reject before any rename and before `combineAsVariants`.
+- [x] Empty property names reject before any rename and before `combineAsVariants`.
+- [x] Wrong type in component #2 leaves component #1 name unchanged and does not call `combineAsVariants`.
+- [x] Mismatched `nodeName` in component #2 leaves component #1 name unchanged and does not call `combineAsVariants`.
+- [x] Out-of-scope component #2 leaves component #1 name unchanged and does not call `combineAsVariants`.
+- [x] Duplicate variant values leave all names unchanged and do not call `combineAsVariants`.
+- [x] Duplicate component ID rejects before any rename and before `combineAsVariants`.
+- [x] Empty property values and values containing `=` or `,` reject before any rename.
+- [x] A component already inside a `COMPONENT_SET` rejects before any rename.
+- [x] `variantGroupProperties` getter throw after successful combine returns success with a warning.
+- [x] Wrong `propertyValues` count leaves all names unchanged and does not call `combineAsVariants`.
+- [x] Locked component or locked component ancestor leaves all names unchanged.
+- [x] Instance-interior component leaves all names unchanged.
+- [x] Remote component leaves all names unchanged.
+- [x] Locked parent or locked parent ancestor leaves all names unchanged and does not call `combineAsVariants`.
+- [x] Parent inside an instance interior leaves all names unchanged and does not call `combineAsVariants`.
+- [x] Parent that is an `INSTANCE` leaves all names unchanged and does not call `combineAsVariants`.
+- [x] Parent outside scope or mismatched `parentNodeName` leaves all names unchanged and does not call `combineAsVariants`.
+- [x] Parent without `appendChild` leaves all names unchanged and does not call `combineAsVariants`.
+- [x] Parent equal to an input component rejects before any rename and before `combineAsVariants`.
+- [x] Parent descendant of an input component rejects before any rename and before `combineAsVariants`.
+- [x] Cross-page components reject before any rename, retained as defense-in-depth.
+- [x] Happy path renames variants, calls `combineAsVariants`, renames the component set, reparents when requested, and returns the expected `COMPONENT_SET` result.
+- [x] Simulated `combineAsVariants` throw restores original component names.
+- [x] Simulated mid-loop rename throw restores original component names.
+- [x] Every prevalidatable placement failure is rejected in the plan phase before any rename.
 
 ### Phase 2 Live Figma Verification Item
 - [ ] During Phase 8 (after the Phase 7 build), verify in Figma: bad second component, duplicate variant values, locked parent, non-appendable parent, and parent-cycle input all reject with no partial rename; happy path creates the expected variant set with correct variant names, set properties, and placement.
