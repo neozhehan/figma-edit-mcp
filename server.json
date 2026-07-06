@@ -6,12 +6,12 @@
     "url": "https://github.com/neozhehan/figma-edit-mcp",
     "source": "github"
   },
-  "version": "2.0.0",
+  "version": "2.3.2",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "figma-edit-mcp",
-      "version": "2.0.0",
+      "version": "2.3.2",
       "transport": {
         "type": "stdio"
       }

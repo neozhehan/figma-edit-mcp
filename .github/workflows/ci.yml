@@ -30,6 +30,9 @@ jobs:
       - name: Verify plugin bundle is committed up to date
         run: bun run check:plugin
 
+      - name: Verify version synchronization
+        run: bun run check:versions
+
       - name: Verify generated files are committed up to date
         run: bun run check:generated
 

@@ -5152,7 +5152,9 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       return null;
     }
   }
+  var PLUGIN_VERSION = true ? "2.3.2" : "unknown";
   figma.showUI(__html__, { width: 350, height: 450 });
+  figma.ui.postMessage({ type: "plugin-version", version: PLUGIN_VERSION });
   figma.ui.onmessage = async (msg) => {
     switch (msg.type) {
       case "update-settings":

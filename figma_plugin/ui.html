@@ -329,7 +329,7 @@
           AI-assisted design operations.
           <a class="link" onclick="window.open(`https://github.com/neozhehan/figma-edit-mcp`, '_blank')">Github</a>
         </p>
-        <p>Version: 2.2.0</p>
+        <p id="plugin-version-about">Version: (loading...)</p>
 
         <h2>How to Use</h2>
         <ol>
@@ -848,6 +848,9 @@
       console.log("Received message from plugin:", message);
 
       switch (message.type) {
+        case "plugin-version":
+          document.getElementById("plugin-version-about").textContent = "Version: " + message.version;
+          break;
         case "connection-status":
           updateConnectionStatus(message.connected, message.message);
           break;

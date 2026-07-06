@@ -218,103 +218,103 @@
 - [ ] During Phase 8 (after the Phase 7 build), verify `channel_join` succeeds through the MCP tool for page-scoped, node-scoped, and read-only sessions, and that the client receives the structured connect payload.
 
 ## Phase 5: P1 Executable Safety Matrix and Drift Prevention
-- [ ] Add `src/mcp_server/tests/unit/figma_plugin/safetyContract.test.ts`.
-- [ ] Implement a test-only command-to-gates contract table using the existing mocked-dispatcher harness.
-- [ ] Encode these generic gate categories:
-  - [ ] `nodePerm`
-  - [ ] `scope`
-  - [ ] `name`
-  - [ ] `parentScope`
-  - [ ] `parentName`
-  - [ ] `lockedTarget`
-  - [ ] `lockedParent`
-  - [ ] `instanceInteriorTarget`
-  - [ ] `instanceInteriorParent`
-  - [ ] `scopeRootPreservation`
-  - [ ] `remoteAsset`
-  - [ ] `batchPrevalidation`
-  - [ ] `handlerPrevalidationBeforeMutation`
-- [ ] Include explicit contract rows for the v2.3.2 regression targets: `node_set_effects`, `node_clone`, `create_svg`, `create_component_set`, `create_frame`, `create_text`, and `create_instance`.
-- [ ] Add row-name consistency coverage so every `SAFETY.md` Part B write row has a contract-table entry.
-- [ ] Add the OQ4 bidirectional token-diff:
-  - [ ] Parse each Part B write row's middle-dot-separated gate shorthand.
-  - [ ] Map generic tokens to the 13 categories through a small alias table (≈13 categories plus a handful of synonyms; escalate rather than silently expanding it if the table balloons — PRD OQ4 guardrail).
-  - [ ] Send bespoke section-referenced tokens to an explicit ignore set with suite pointers.
-  - [ ] Fail on unknown tokens with an actionable message.
-  - [ ] Fail when `SAFETY.md` claims a generic gate that the table does not assert.
-  - [ ] Fail when the table asserts a generic gate that `SAFETY.md` does not claim.
-- [ ] Ensure contract tests assert handler-not-called or mutation-not-called behavior for every claimed pre-mutation guard.
-- [ ] Reference existing suites for bespoke gates rather than duplicating all bespoke behavior in the contract table.
+- [x] Add `src/mcp_server/tests/unit/figma_plugin/safetyContract.test.ts`.
+- [x] Implement a test-only command-to-gates contract table using the existing mocked-dispatcher harness.
+- [x] Encode these generic gate categories:
+  - [x] `nodePerm`
+  - [x] `scope`
+  - [x] `name`
+  - [x] `parentScope`
+  - [x] `parentName`
+  - [x] `lockedTarget`
+  - [x] `lockedParent`
+  - [x] `instanceInteriorTarget`
+  - [x] `instanceInteriorParent`
+  - [x] `scopeRootPreservation`
+  - [x] `remoteAsset`
+  - [x] `batchPrevalidation`
+  - [x] `handlerPrevalidationBeforeMutation`
+- [x] Include explicit contract rows for the v2.3.2 regression targets: `node_set_effects`, `node_clone`, `create_svg`, `create_component_set`, `create_frame`, `create_text`, and `create_instance`.
+- [x] Add row-name consistency coverage so every `SAFETY.md` Part B write row has a contract-table entry.
+- [x] Add the OQ4 bidirectional token-diff:
+  - [x] Parse each Part B write row's middle-dot-separated gate shorthand.
+  - [x] Map generic tokens to the 13 categories through a small alias table (≈13 categories plus a handful of synonyms; escalate rather than silently expanding it if the table balloons — PRD OQ4 guardrail).
+  - [x] Send bespoke section-referenced tokens to an explicit ignore set with suite pointers.
+  - [x] Fail on unknown tokens with an actionable message.
+  - [x] Fail when `SAFETY.md` claims a generic gate that the table does not assert.
+  - [x] Fail when the table asserts a generic gate that `SAFETY.md` does not claim.
+- [x] Ensure contract tests assert handler-not-called or mutation-not-called behavior for every claimed pre-mutation guard.
+- [x] Reference existing suites for bespoke gates rather than duplicating all bespoke behavior in the contract table.
 
 ### Phase 5 Test Coverage
-- [ ] Permission-gated write tools reject without node-edit permission unless they use a separate variable/style global permission axis.
-- [ ] Scope-bound writes reject without linked scope.
-- [ ] Exact-name writes reject on name mismatch with no handler mutation.
-- [ ] Claimed locked target/parent guards reject locked nodes and locked ancestors with no mutation.
-- [ ] Claimed instance target/parent guards reject instance interiors and parent-is-instance cases with no mutation.
-- [ ] Claimed scope-root-preservation guards reject edits, deletes, or reparents of the scope root.
-- [ ] Claimed remote-asset guards reject remote variables, styles, or components before mutation.
-- [ ] Claimed batch-prevalidation guards reject invalid later items without mutating earlier valid items.
-- [ ] Handler-level prevalidation rows cover parent validation before creation and cleanup on failure for creation handlers.
+- [x] Permission-gated write tools reject without node-edit permission unless they use a separate variable/style global permission axis.
+- [x] Scope-bound writes reject without linked scope.
+- [x] Exact-name writes reject on name mismatch with no handler mutation.
+- [x] Claimed locked target/parent guards reject locked nodes and locked ancestors with no mutation.
+- [x] Claimed instance target/parent guards reject instance interiors and parent-is-instance cases with no mutation.
+- [x] Claimed scope-root-preservation guards reject edits, deletes, or reparents of the scope root.
+- [x] Claimed remote-asset guards reject remote variables, styles, or components before mutation.
+- [x] Claimed batch-prevalidation guards reject invalid later items without mutating earlier valid items.
+- [x] Handler-level prevalidation rows cover parent validation before creation and cleanup on failure for creation handlers.
 
 ### Phase 5 Live Figma Verification Item
-- [ ] No separate live check is required for this test-only phase. The functional live checks in Phases 1-4 and Phase 8 are the live evidence behind the contract rows.
+- [x] No separate live check is required for this test-only phase. The functional live checks in Phases 1-4 and Phase 8 are the live evidence behind the contract rows.
 
 ## Phase 6: P1 Version Sync, Plugin Version Handshake, and Documentation
-- [ ] Bump `package.json` from `2.3.1` to `2.3.2`.
-- [ ] Update the root `package-lock.json` version fields to `2.3.2`; do not bump `src/mcp_server/package-lock.json` for release versioning.
-- [ ] Bump both `server.json` version fields to `2.3.2`.
-- [ ] Bump the root `manifest.json` version to `2.3.2`.
-- [ ] Add a `check:versions` script that compares `package.json`, both `server.json` version fields, and root `manifest.json`.
-- [ ] Wire `check:versions` into CI.
-- [ ] Update `figma_plugin/build.js` so esbuild defines `__PLUGIN_VERSION__` from `package.json`.
-- [ ] Update plugin startup in `figma_plugin/src/main.ts` so the plugin posts the injected version to the UI.
-- [ ] Update `figma_plugin/ui.html` so the About tab renders a placeholder before handshake and the real plugin version after the startup message.
-- [ ] Ensure `check:plugin` rebuild-and-diff catches a package-version bump without rebuilding committed `figma_plugin/code.js`.
-- [ ] Update `SAFETY.md`:
-  - [ ] Change the applies-to version to `v2.3.2`.
-  - [ ] Update Part B matrix rows to match implemented generic gates.
-  - [ ] Update the `node_clone` row with the v2.3.2 contract extension.
-  - [ ] Note the closed scope-root clone escape under G1.
-  - [ ] Document the parent-is-instance rule in the instance-interior guard family description (parent checks now include the parent being an `INSTANCE` itself).
-  - [ ] Clarify batch atomicity per D5: invalid input aborts before mutation, residual TOCTOU placement failures are reported, and no general transaction layer is promised.
-  - [ ] Ensure every matrix write row has a matching contract-table entry.
-- [ ] Update `README.md` so every concrete safety bullet is backed by implementation and tests. Expected outcome per D8: both previously-unenforced bullets become true and none needs removal; remove any bullet that still is not enforced.
-- [ ] Update `skills/figma-edit/references/error-playbook.md` with recovery guidance for:
-  - [ ] Locked and instance rejections on `create_svg`, `node_clone`, and `node_set_effects`.
-  - [ ] Scope-root clone denial and the recovery path of asking the user to re-scope to the parent.
-  - [ ] `create_component_set` parent-cycle rejection.
-  - [ ] Duplicate variant rejection.
-  - [ ] Parent-not-appendable creation errors.
-  - [ ] Residual late-placement component-set errors and `node_insert_child` recovery.
-  - [ ] `create_instance` remote import failure guidance.
-  - [ ] `COMPONENT_SET` id pointer error.
-  - [ ] A single global note that v2.3.2 creation failures do not leave orphans.
-- [ ] Update `skills/figma-edit/references/workflows.md` and `skills/figma-edit/references/tool-selection.md` for the component-set workflow, unique variant combinations, and parent selection outside the combined components.
-- [ ] Regenerate MCP resources or generated manifests if any tool descriptions or guide resources require it.
-- [ ] Add a `CHANGELOG.md` v2.3.2 entry covering every behavior change and safety/doc/version change listed in PRD §5.
+- [x] Bump `package.json` from `2.3.1` to `2.3.2`.
+- [x] Update the root `package-lock.json` version fields to `2.3.2`; do not bump `src/mcp_server/package-lock.json` for release versioning.
+- [x] Bump both `server.json` version fields to `2.3.2`.
+- [x] Bump the root `manifest.json` version to `2.3.2`.
+- [x] Add a `check:versions` script that compares `package.json`, both `server.json` version fields, and root `manifest.json`.
+- [x] Wire `check:versions` into CI.
+- [x] Update `figma_plugin/build.js` so esbuild defines `__PLUGIN_VERSION__` from `package.json`.
+- [x] Update plugin startup in `figma_plugin/src/main.ts` so the plugin posts the injected version to the UI.
+- [x] Update `figma_plugin/ui.html` so the About tab renders a placeholder before handshake and the real plugin version after the startup message.
+- [x] Ensure `check:plugin` rebuild-and-diff catches a package-version bump without rebuilding committed `figma_plugin/code.js`.
+- [x] Update `SAFETY.md`:
+  - [x] Change the applies-to version to `v2.3.2`.
+  - [x] Update Part B matrix rows to match implemented generic gates.
+  - [x] Update the `node_clone` row with the v2.3.2 contract extension.
+  - [x] Note the closed scope-root clone escape under G1.
+  - [x] Document the parent-is-instance rule in the instance-interior guard family description (parent checks now include the parent being an `INSTANCE` itself).
+  - [x] Clarify batch atomicity per D5: invalid input aborts before mutation, residual TOCTOU placement failures are reported, and no general transaction layer is promised.
+  - [x] Ensure every matrix write row has a matching contract-table entry.
+- [x] Update `README.md` so every concrete safety bullet is backed by implementation and tests. Expected outcome per D8: both previously-unenforced bullets become true and none needs removal; remove any bullet that still is not enforced.
+- [x] Update `skills/figma-edit/references/error-playbook.md` with recovery guidance for:
+  - [x] Locked and instance rejections on `create_svg`, `node_clone`, and `node_set_effects`.
+  - [x] Scope-root clone denial and the recovery path of asking the user to re-scope to the parent.
+  - [x] `create_component_set` parent-cycle rejection.
+  - [x] Duplicate variant rejection.
+  - [x] Parent-not-appendable creation errors.
+  - [x] Residual late-placement component-set errors and `node_insert_child` recovery.
+  - [x] `create_instance` remote import failure guidance.
+  - [x] `COMPONENT_SET` id pointer error.
+  - [x] A single global note that v2.3.2 creation failures do not leave orphans.
+- [x] Update `skills/figma-edit/references/workflows.md` and `skills/figma-edit/references/tool-selection.md` for the component-set workflow, unique variant combinations, and parent selection outside the combined components.
+- [x] Regenerate MCP resources or generated manifests if any tool descriptions or guide resources require it.
+- [x] Add a `CHANGELOG.md` v2.3.2 entry covering every behavior change and safety/doc/version change listed in PRD §5.
 
 ### Phase 6 Tests and Checks
-- [ ] `check:versions` passes when all version surfaces match.
-- [ ] `check:versions` has regression coverage or a script self-test proving it fails on each mismatched surface.
-- [ ] `check:plugin` passes after rebuilding and fails if `package.json` is bumped without the committed plugin bundle being updated.
-- [ ] Markdown link checks pass after documentation edits.
-- [ ] Safety-contract token-diff tests pass after `SAFETY.md` edits.
+- [x] `check:versions` passes when all version surfaces match.
+- [x] `check:versions` has regression coverage or a script self-test proving it fails on each mismatched surface.
+- [x] `check:plugin` passes after rebuilding and fails if `package.json` is bumped without the committed plugin bundle being updated.
+- [x] Markdown link checks pass after documentation edits.
+- [x] Safety-contract token-diff tests pass after `SAFETY.md` edits.
 
 ### Phase 6 Live Figma Verification Item
-- [ ] During Phase 8 (after the Phase 7 build), open the plugin About tab in Figma and confirm it displays `2.3.2` via the version handshake.
+- [x] During Phase 8 (after the Phase 7 build), open the plugin About tab in Figma and confirm it displays `2.3.2` via the version handshake.
 
 ## Phase 7: Integration Build and Automated Verification
-- [ ] Run the plugin build so `figma_plugin/code.js` reflects all dispatcher, handler, and version-handshake changes.
-- [ ] Run `bun run build:all`.
-- [ ] Run `bun run check:plugin`.
-- [ ] Run `bun run check:versions`.
-- [ ] Run generated-file checks, including manifest/resource generation checks if touched.
-- [ ] Run the full unit test suite (`bun test` and/or `bun run test`, preserving the repo's existing script behavior).
-- [ ] Run package smoke tests that confirm dist binaries still resolve.
-- [ ] Run markdown link checks.
-- [ ] Confirm no tests were added under a repo-root `tests/` directory that `bun run test` would miss.
-- [ ] Review the final diff for accidental MCP input schema changes or unrelated refactors.
+- [x] Run the plugin build so `figma_plugin/code.js` reflects all dispatcher, handler, and version-handshake changes.
+- [x] Run `bun run build:all`.
+- [x] Run `bun run check:plugin`.
+- [x] Run `bun run check:versions`.
+- [x] Run generated-file checks, including manifest/resource generation checks if touched.
+- [x] Run the full unit test suite (`bun test` and/or `bun run test`, preserving the repo's existing script behavior).
+- [x] Run package smoke tests that confirm dist binaries still resolve.
+- [x] Run markdown link checks.
+- [x] Confirm no tests were added under a repo-root `tests/` directory that `bun run test` would miss.
+- [x] Review the final diff for accidental MCP input schema changes or unrelated refactors.
 
 ## Phase 8: Live Figma Verification and Rollout Gate
 - [ ] Start from a fresh editable Figma test file with an editable frame scope, locked test layers, an instance, local components, and at least one component set.

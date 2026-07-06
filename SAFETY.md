@@ -1,4 +1,4 @@
-# Safety Manual — `figma-edit-mcp` (v2.3.1)
+# Safety Manual — `figma-edit-mcp` (v2.3.2)
 
 > **What this is.** A *safety manual* for the project: it states the **safety guarantees** the system makes, the **assumptions** under which those guarantees hold, the **residual risks** it does not cover, and the **controls** (cross-cutting invariants + a per-tool gate matrix) that implement them. The framing is borrowed — informally — from functional-safety *safety manuals* (IEC 61508 / ISO 26262), whose job is to state a component's guarantees **and the conditions of safe use**. It is adapted to an MCP server and is **not** a certification artifact.
 >
@@ -6,7 +6,7 @@
 >
 > **Audience.** Contributors changing the enforcement code; host / integrator authors wiring the plugin into an agent; and auditors or agents reasoning about which edits are possible.
 >
-> **Applies to: v2.3.1** (the Bind-Variable Guardrails release). It describes the enforcement state **as of that release** — the v2.1.0 scope-lock / name-verification / batch-atomicity model plus the structural-integrity guards (§1–§16) and the three-axis permission model (§14). Bare `§N` references point into the [v2.2.0 PRD](documentation/completed/v2.2.0-safety-enhancement/prd.md), where those structural guards were specified; sections tagged `v2.3.0 §N` / `v2.3.1 §N` point into their own release PRDs.
+> **Applies to: v2.3.2** (the Conformance & Atomicity Hardening release). It describes the enforcement state **as of that release** — the v2.1.0/v2.2.0/v2.3.0/v2.3.1 scope-lock and name-verification model plus Phase 1 dispatcher guard parity, Phase 2 component set atomicity, and Phase 3 parent-first creation and cleanup. Bare `§N` references point into the [v2.2.0 PRD](documentation/completed/v2.2.0-safety-enhancement/prd.md), where those structural guards were specified; sections tagged `v2.3.0 §N` / `v2.3.1 §N` / `v2.3.2 §N` point into their own release PRDs.
 >
 > **Ground truth.** The enforcement lives in three places, in this order of authority:
 > 1. The plugin dispatcher [`figma_plugin/src/main.ts`](figma_plugin/src/main.ts) — the per-command gate stack; the only layer an agent cannot bypass.
@@ -65,7 +65,7 @@ Explicitly **not** guaranteed — accepted trade-offs a safe integration must ac
 - **R4 — No protection against the host.** A malicious or buggy *host* that bypasses the plugin (violating AS1) is out of scope for this manual.
 - **R5 — Advisory validations are not exhaustive.** Some checks deliberately defer final arbitration to Figma: `INSTANCE_SWAP` values are shape-checked only (§5/D10), and instance-interior *override* writes are permitted with Figma as the final arbiter (§4/D7). A structurally-valid call that Figma still refuses degrades to a normal handler error rather than a pre-emptive `"Operation Denied"`.
 
-> Two limitations present before v2.2.0 are now **closed** and have moved into the guarantees: document-global asset reach from a node-scoped session is gated by the new permission axes (G8 / §14), and remote-library-asset edits are blocked by a structured pre-check (G7 / §7).
+> Limitations present in earlier releases are now **closed** and have moved into the guarantees: document-global asset reach from a node-scoped session is gated by the permission axes (G8 / §14, v2.2.0), remote-library-asset edits are blocked by a structured pre-check (G7 / §7, v2.2.0), and the scope-root clone escape under G1 is closed by the `node_clone` destination-parent scope check (v2.3.2 — cloning the scope root is now denied).
 
 ---
 
@@ -118,7 +118,7 @@ Every modify tool requires a `nodeName`; every create tool a `parentNodeName`; b
 No "current page" fallback. `create_shape`/`create_frame`/`create_text`/`create_svg`/`create_instance` require a resolvable `parentId` + `parentNodeName`.
 
 ### A5. Batch atomicity (pre-validate → zero-mutation abort) → G4
-Batch tools validate **every** item (existence, scope, name, type, **locked**, **instance-interior**, **scope-root**) **before** any mutation. A single bad member aborts the whole batch with **zero mutations**. Once mutation begins, handlers process sequentially, stop on first failure, and return a completed-vs-failed report — **no auto-rollback**. (`text_set_content`, `annotation_set`, `instance_set_overrides`, `create_component_set`, `node_delete`.)
+Batch tools validate **every** item (existence, scope, name, type, **locked**, **instance-interior**, **scope-root**) **before** any mutation. A single bad member aborts the whole batch with **zero mutations**. Once mutation begins, handlers process sequentially, stop on first failure, and return a completed-vs-failed report — **no general transaction layer is promised**. Residual TOCTOU placement failures are reported without auto-rollback. (`text_set_content`, `annotation_set`, `instance_set_overrides`, `create_component_set`, `node_delete`.)
 - **Exception:** `node_delete` (`deleteMultipleNodes`) runs resilient parallel chunks and is excluded from stop-on-first-failure — but its **pre-validation** still runs, so it never *starts* on an invalid target.
 - The v2.2.0 scope-root / locked / instance-interior guards run inside this same pre-validation loop (PRD **D6**), reusing the resolved-node reference.
 
@@ -135,7 +135,7 @@ A node can be locked/unlocked, reparented, or deleted by the user between valida
 Four families of plugin-side guard, each returning `"Operation Denied: …"`:
 - **Scope-root preservation (§1):** refuse to delete/flatten/ungroup/convert the node that *is* `scopeRootId` — it would brick the session with `SCOPE_DELETED`. Covers `node_delete`, `node_flatten`, `node_ungroup`, and `create_component` (which replaces the source frame with a new component id). → **G6**
 - **Locked-layer block (§2):** refuse any write whose target — or any ancestor — is `locked` (`findLockedAncestor`). Single-target writes check the target; batch writes check each item; creation/reparent check the parent (and, for reparent, the child). → **G7**
-- **Instance-interior block (§4):** refuse *structural* edits — delete, reparent, group/ungroup, create-under — inside an `INSTANCE` (`findInstanceAncestor`). Property/override writes remain allowed, with Figma as final arbiter (R5). → **G7**
+- **Instance-interior block (§4):** refuse *structural* edits — delete, reparent, group/ungroup, create-under — inside an `INSTANCE` (`findInstanceAncestor`), or when the parent node is an `INSTANCE` itself. Property/override writes remain allowed, with Figma as final arbiter (R5). → **G7**
 - **Remote-asset block (§7):** refuse edits to remote (shared-library) **styles, variables, and main components** (`.remote`). Instances of remote components stay fully editable (local overrides), so `instance_set_property` is **not** remote-gated. → **G7**
 
 ---
@@ -157,12 +157,14 @@ Gate order in the dispatcher (most-specific error wins): **permission → scope 
 | `node_transform` | node-perm · scope · name · locked · **layout-controlled x/y hard-reject (§9)** · **resize-resets-sizing warning (§9)** |
 | `node_bind_variable` | node-perm · scope · name · locked · **unsupported node / mixed paint guard (v2.3.1 §1)** · **auto-layout precheck (v2.3.1 §3)** · SOLID-only paint bind (**type-mismatch guard**, gated by node-perm not var-perm) |
 | `node_apply_style` | node-perm · scope · name · locked (gated by node-perm, **not** style-perm) |
-| `node_clone` | node-perm · scope(source) · name · locked(source) |
+| `node_clone` | node-perm · scope(source) · name · locked(source) · **instance-interior(source) (§4)** · parent scope · **parent appendable (v2.3.2 §1)** · parent locked · parent instance-interior |
 | `node_flatten` | node-perm · scope · name · locked · **scope-root (§1)** |
 | `node_ungroup` | node-perm · scope · name · locked · **scope-root (§1)** · **instance-interior (§4)** · must be GROUP |
 | `text_set_style` | node-perm · scope · name · locked · type TEXT · **mixed-font load via getStyledTextSegments (§10)** · **full schema↔handler contract incl. fontName + lineHeight AUTO (§15)** |
 | `instance_set_property` | node-perm · scope · name · locked · type INSTANCE · **value type validation BOOLEAN/TEXT/VARIANT/INSTANCE_SWAP (§5)** · **not** remote-gated (local override) |
 | `reaction_update` | node-perm · scope · **name (§6A)** · locked |
+
+> **v2.3.2 contract extension (D9):** the `node_clone` row previously promised only `locked(source)`. The full stack above — source scope/name/locked/instance-interior plus destination-parent scope/appendability/locked/instance checks — is enforced as of v2.3.2 and closes the G1 scope-root clone escape (the destination parent of a scope-root clone is outside scope by definition, so cloning the scope root is denied).
 
 ### B2. Node batch tools (per-item pre-validation, zero-mutation abort)
 
@@ -173,18 +175,18 @@ Gate order in the dispatcher (most-specific error wins): **permission → scope 
 | `text_set_content` | node-perm · scopeRoot · exists · scope · name · type TEXT · **locked** · **correct `characters` contract (§16)** |
 | `annotation_set` | node-perm · scopeRoot · exists · scope · name · supports-annotations · **locked** |
 | `instance_set_overrides` | node-perm · scopeRoot · source exists+INSTANCE · per-target exists+scope+name+INSTANCE+**locked** |
-| `create_component_set` | node-perm · scopeRoot · per-component exists+scope+name+propValues-count+COMPONENT-type · parent scope+name+**locked** · **duplicate-variant uniqueness (§11)** |
+| `create_component_set` | node-perm · scopeRoot · per-component exists+scope+name+propValues-count+COMPONENT-type · **instance-interior (§4)** · **remote block (§7)** · parent scope+name+**locked**+**instance-interior (§4)** · **parent-cycle (v2.3.2 §2)** · **set-member block (v2.3.2 §2)** · **value separator rules (v2.3.2 §2)** · **duplicate component IDs (v2.3.2 §2)** · **duplicate-variant uniqueness (§11)** · **plan/mutate two-phase (v2.3.2 §2)** |
 
 ### B3. Creation tools (gate on the parent)
 
 | Tool | Enforced gate stack |
 |---|---|
-| `create_shape` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · shape-param checks (arcData=ellipse, pointCount≥3, innerRadius=star) · color 0–1 (Zod) |
-| `create_frame` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · color 0–1 (Zod) · **opacity normalized, no NaN (§12)** |
-| `create_text` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · color 0–1 (Zod) · **opacity normalized, no NaN (§12)** |
-| `create_svg` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** |
-| `create_instance` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** |
-| `create_component` | node-perm · scope · name · locked · **scope-root self-destruction (§1)** |
+| `create_shape` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · shape-param checks (arcData=ellipse, pointCount≥3, innerRadius=star) · color 0–1 (Zod) · **parent-first + cleanup (v2.3.2 §3)** |
+| `create_frame` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · color 0–1 (Zod) · **opacity normalized, no NaN (§12)** · **parent-first + cleanup (v2.3.2 §3)** |
+| `create_text` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · color 0–1 (Zod) · **opacity normalized, no NaN (§12)** · **parent-first + cleanup (v2.3.2 §3)** |
+| `create_svg` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **parent-first + cleanup (v2.3.2 §3)** |
+| `create_instance` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **parent-first + cleanup (v2.3.2 §3)** |
+| `create_component` | node-perm · scope · name · locked · **scope-root self-destruction (§1)** · **parent-first + cleanup (v2.3.2 §3)** |
 | `node_insert_child` | node-perm · parent scope+name · child scope+name · **locked(parent & child)** · **self/cyclic-parent (§3)** · **instance-interior, both ids (§4)** · **index bounds (§13)** |
 | `create_connection` | node-perm · connector scope (if set) · per-connection start/end scope+name · locked |
 
@@ -253,6 +255,6 @@ The plugin returns these from [`main.ts` `ERRORS`](figma_plugin/src/main.ts#L45)
 
 ## Maintenance
 
-- This file is the **canonical safety manual** for v2.3.1, an aggregated view regenerated from the dispatcher + handlers + schemas. When a tool's gate stack changes, update both the code and this matrix (or delete the row if the tool is removed). When a guarantee, assumption, or residual risk changes, update the G/AS/R lists too — they are the contract.
+- This file is the **canonical safety manual** for v2.3.2, an aggregated view regenerated from the dispatcher + handlers + schemas. When a tool's gate stack changes, update both the code and this matrix (or delete the row if the tool is removed). Part B's generic gate tokens are **mechanically diffed in both directions** against the executable contract table in `src/mcp_server/tests/unit/figma_plugin/safetyContract.test.ts` (PRD v2.3.2 OQ4): a gate claimed here but not asserted there fails CI, and vice versa; unknown tokens fail with a pointer to the alias/ignore tables. When a guarantee, assumption, or residual risk changes, update the G/AS/R lists too — they are the contract.
 - **Publication:** published at the **repo root** as `SAFETY.md` — the **contributor / integrator / auditor-facing** companion to the agent-facing guides in [`skills/figma-edit/references/`](skills/figma-edit/references/) (`constraints.md` et al.) and to [`DESIGN_PHILOSOPHY.md`](DESIGN_PHILOSOPHY.md). The **end-user-facing** safety value proposition lives in [`README.md`](README.md#safer-than-figma-itself), which links here for the full contract. If the project ever accepts external vulnerability reports, add a *separate* thin `SECURITY.md` for disclosure — it is a different document from this one.
-- Cross-references: holistic agent guidance → `constraints.md`; per-error recovery → `error-playbook.md`; the v2.3.1 change rationale → [`prd.md`](documentation/v2.3.1-bind-variable-guardrails/prd.md); review provenance → [`figma-documentation-check.md`](documentation/completed/v2.2.0-safety-enhancement/figma-documentation-check.md) and [`critique.md`](documentation/v2.3.1-bind-variable-guardrails/critique.md).
+- Cross-references: holistic agent guidance → `constraints.md`; per-error recovery → `error-playbook.md`; the v2.3.2 change rationale → [`prd.md`](documentation/v2.3.2-safety-contract-conformance-&-atomicity-hardening/prd.md) (v2.3.1: [`prd.md`](documentation/v2.3.1-bind-variable-guardrails/prd.md)); review provenance → [`figma-documentation-check.md`](documentation/completed/v2.2.0-safety-enhancement/figma-documentation-check.md) and [`critique.md`](documentation/v2.3.1-bind-variable-guardrails/critique.md).

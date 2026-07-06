@@ -2,6 +2,24 @@
 
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
+## [2.3.2]
+This release makes the documented safety contract match the implementation and prevents future drift: dispatcher guard parity, `create_component_set` atomicity, no-orphan creation handlers, an executable safety matrix, output-schema conformance, and version synchronization across every surface.
+
+### Added
+- **Executable Safety Contract**: `safetyContract.test.ts` encodes a per-tool gate table driven through the real dispatcher, and mechanically diffs `SAFETY.md` Part B's gate shorthand against it **in both directions** — a gate claimed in docs but not asserted in tests fails CI, and vice versa; unknown gate tokens fail with an actionable message.
+- **Version Handshake & About UI**: The Figma plugin receives its package version at build time via esbuild `__PLUGIN_VERSION__` injection, posts it to the UI on startup, and renders it dynamically in the "About" tab (placeholder before handshake). Drift is caught by the existing `check:plugin` rebuild-and-diff.
+- **check:versions Script**: Verifies `package.json`, `manifest.json`, and both `server.json` version fields stay synchronized; wired into CI with a self-test proving it fails on each mismatched surface.
+
+### Changed
+- **`node_clone` scope escape closed (behavior change)**: cloning placed the clone in the source's parent even when that parent was outside the editable scope — cloning the scope root escaped containment entirely (observed live). `node_clone` now validates source lock/instance-interior state and the destination parent's scope, appendability, lock, and instance state before cloning. **Cloning the scope root itself is no longer possible**; re-scope to its parent instead.
+- **`create_component_set` is atomic (behavior change)**: validation now runs as a plan phase before any rename — component type/lock/instance/remote/set-membership, unique variant combinations, duplicate ids, property-value separator rules, page consistency, and parent scope/name/lock/instance/appendability **including the parent-cycle case** (parent must not be one of the combined components). A failed combine restores original component names. The previous **silent reparent skip** (invalid `parentId` ignored with success reported) is now a hard prevalidation error.
+- **Guard parity for `node_set_effects` and `create_svg`**: both now enforce the locked-layer and (for `create_svg`) instance-interior parent gates that `SAFETY.md` already promised — previously effects could be applied to locked nodes and SVGs created inside locked containers (observed live).
+- **Parent-is-instance rule**: every parent-gated tool (`create_shape`, `create_frame`, `create_text`, `create_svg`, `create_instance`, `create_component_set`, `node_insert_child`, `node_clone`) now rejects a parent that **is** an `INSTANCE` node, not just one inside an instance interior.
+- **No-orphan creation (behavior change)**: `create_frame`, `create_text`, `create_svg`, `create_instance`, `create_shape`, `create_component`, and `node_clone` resolve and validate the parent **before** constructing anything, and remove the newly-created object if any later configuration or append step fails. `create_instance` rejects `COMPONENT_SET` ids with a pointer to the set's default variant (also fixing a latent `TypeError`), wraps remote-import failures with the key and recovery guidance, and drops the generic `Error creating component instance:` wrapper.
+- **Output-schema conformance**: `channel_join` declares its full connect payload (page list, node path) and every tool's output schema now tolerates extra document-dependent keys via a shared `looseOutput` helper — previously the strict schemas made clients reject successful results (`-32602`), including every page-mode/read-only `channel_join` (observed live).
+- **Version metadata sync**: `package.json`, root `package-lock.json`, `server.json` (both fields), `manifest.json`, and the plugin About tab all report `2.3.2` (previously 2.3.1 / 2.2.0 / 2.0.0 / 2.0.0 / 2.2.0 respectively).
+- **Docs**: `SAFETY.md` updated to the v2.3.2 contract (extended `node_clone` row, closed G1 escape note, parent-is-instance rule, D5 batch-atomicity clarification); README safety bullets are now all code- and test-backed; the error playbook documents the new denials verbatim with recovery steps and the no-orphan guarantee.
+
 ## [2.3.1]
 This release hardens variable binding and node filling operations, enforcing tighter safety constraints and closing edge cases around auto-layout and unbind behaviors.
 

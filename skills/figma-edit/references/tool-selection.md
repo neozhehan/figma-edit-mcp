@@ -46,7 +46,8 @@ When you only need to know *whether* something is bound, request the raw ID fiel
 | Make a value track a design token | `node_bind_variable` | `node_set_fill` (a literal won't update with the token) |
 | Reuse a library style | `node_apply_style` (by `styleId`) | the raw `node_set_*` setters |
 | Move and/or size a node | `node_transform` ({x?, y?, width?, height?}) | — |
-| Create any basic shape | `create_shape` ({type, …}) | — |
+| Create any basic shape | `create_shape` ({type, parentId, parentNodeName, …}) — parent must not be inside an instance | — |
+| Create a frame, text, SVG, or instance | `create_frame`, `create_text`, `create_svg`, `create_instance` | parent must not be inside an instance |
 
 ## Solid, Image, and Clear Fills (`node_set_fill`)
 

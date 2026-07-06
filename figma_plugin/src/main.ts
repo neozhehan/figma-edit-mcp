@@ -243,8 +243,17 @@ function parseNodeIdFromUrl(url: any) {
     }
 }
 
+declare const __PLUGIN_VERSION__: string;
+// Fallback must NOT be a version literal — that would be a fifth hardcoded
+// version surface, the exact drift class D2 eliminates. "unknown" surfaces a
+// broken define instead of silently reporting a stale version.
+const PLUGIN_VERSION = typeof __PLUGIN_VERSION__ !== "undefined" ? __PLUGIN_VERSION__ : "unknown";
+
 // Show UI
 figma.showUI(__html__, { width: 350, height: 450 });
+
+// Post version to UI on startup
+figma.ui.postMessage({ type: "plugin-version", version: PLUGIN_VERSION });
 
 // Plugin commands from UI
 figma.ui.onmessage = async (msg: any) => {
