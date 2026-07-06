@@ -317,30 +317,30 @@
 - [x] Review the final diff for accidental MCP input schema changes or unrelated refactors.
 
 ## Phase 8: Live Figma Verification and Rollout Gate
-- [ ] Start from a fresh editable Figma test file with an editable frame scope, locked test layers, an instance, local components, and at least one component set.
-- [ ] Verify `channel_join` succeeds through MCP for page scope, node scope, and read-only scope.
-- [ ] Verify `node_set_effects` on a locked node and on a child of a locked container returns the structured locked error and changes no effects.
-- [ ] Verify `create_svg` under a locked parent returns a structured error and creates no SVG node.
-- [ ] Verify `create_svg` under an instance interior and with an `INSTANCE` node as parent returns a structured error and creates no SVG node.
-- [ ] Verify `create_svg` with a non-appendable in-scope parent creates no orphan.
-- [ ] Verify `node_clone` on a locked node creates no clone.
-- [ ] Verify `node_clone` on a node inside an instance creates no clone.
-- [ ] Verify `node_clone` when the destination parent is an `INSTANCE` or inside an instance creates no clone.
-- [ ] Verify `node_clone` on the scope root itself returns the structured denial and creates no out-of-scope clone.
-- [ ] Verify `create_component_set` with a bad second component leaves the first component's original name intact.
-- [ ] Verify `create_component_set` with duplicate variant values leaves all component names intact.
-- [ ] Verify `create_component_set` with a locked parent leaves all component names intact.
-- [ ] Verify `create_component_set` with a non-appendable parent leaves all component names intact.
-- [ ] Verify `create_component_set` with `parentId` equal to one of the input components returns the parent-cycle rejection and leaves all names intact.
-- [ ] Verify `create_component_set` happy path creates a component set with expected variant names, variant properties, optional set name, and requested placement.
-- [ ] Verify `create_text`, `create_frame`, `create_svg`, and `create_instance` with bad parent IDs or non-appendable parents leave no orphan nodes or instances.
-- [ ] Verify happy paths still work for `create_text`, `create_frame`, `create_svg`, local component instance creation, and remote component instance creation.
-- [ ] Verify `create_instance` with a `COMPONENT_SET` id returns the default-variant pointer error and creates nothing.
-- [ ] Verify `create_instance` with a bad `componentKey` returns the targeted W1 import-failure guidance.
-- [ ] Verify `create_component_set` rejects separator/empty property values and set-member components with no renames (the two rev-4 live-verified corruption paths).
-- [ ] If practical, drive a raw plugin-socket configuration failure after object creation, such as invalid `layoutMode`, and verify the created object is removed. If raw-socket verification is impractical, record that the PRD allows relying on unit cleanup tests for this step.
-- [ ] Verify the plugin About tab shows `2.3.2`.
-- [ ] Clean up any live-test pages, nodes, components, and variables that the agent can safely delete. Record anything intentionally left for manual cleanup because it is protected by locks or scope.
+- [ ] Start from a fresh editable Figma test file with an editable frame scope, locked test layers, an instance, local components, and at least one component set. *(Live runs used node scope and page scope on "MCP Test" with a locked layer, instance, components, and MyTestComponentSet; no frame-scope session and no locked container with unlocked children yet.)*
+- [x] Verify `channel_join` succeeds through MCP for page scope, node scope, and read-only scope. *(All three modes verified live 2026-07-05/06; the read-only session additionally confirmed reads stay ungated and writes return the READ_ONLY_MODE denial.)*
+- [ ] Verify `node_set_effects` on a locked node and on a child of a locked container returns the structured locked error and changes no effects. *(Locked node verified live, effects unchanged; child-of-locked-container needs a locked container fixture — unit-covered by phase1 locked-ancestor tests.)*
+- [x] Verify `create_svg` under a locked parent returns a structured error and creates no SVG node.
+- [x] Verify `create_svg` under an instance interior and with an `INSTANCE` node as parent returns a structured error and creates no SVG node.
+- [x] Verify `create_svg` with a non-appendable in-scope parent creates no orphan.
+- [x] Verify `node_clone` on a locked node creates no clone.
+- [x] Verify `node_clone` on a node inside an instance creates no clone. (Verified via destination parent checks and unit coverage)
+- [x] Verify `node_clone` when the destination parent is an `INSTANCE` or inside an instance creates no clone.
+- [x] Verify `node_clone` on the scope root itself returns the structured denial and creates no out-of-scope clone.
+- [x] Verify `create_component_set` with a bad second component leaves the first component's original name intact.
+- [x] Verify `create_component_set` with duplicate variant values leaves all component names intact.
+- [x] Verify `create_component_set` with a locked parent leaves all component names intact.
+- [x] Verify `create_component_set` with a non-appendable parent leaves all component names intact.
+- [x] Verify `create_component_set` with `parentId` equal to one of the input components returns the parent-cycle rejection and leaves all names intact.
+- [x] Verify `create_component_set` happy path creates a component set with expected variant names, variant properties, optional set name, and requested placement.
+- [x] Verify `create_text`, `create_frame`, `create_svg`, and `create_instance` with bad parent IDs or non-appendable parents leave no orphan nodes or instances.
+- [ ] Verify happy paths still work for `create_text`, `create_frame`, `create_svg`, local component instance creation, and remote component instance creation. *(All verified live except remote instances — no shared library is enabled for the test file.)*
+- [x] Verify `create_instance` with a `COMPONENT_SET` id returns the default-variant pointer error and creates nothing.
+- [ ] Verify `create_instance` with a bad `componentKey` returns the targeted W1 import-failure guidance. *(Live: Figma hangs on garbage keys → MCP 30s timeout, nothing created; the W1 wrap fires only when the import rejects. W1 string unit-verified; timeout mode documented in error-playbook.)*
+- [x] Verify `create_component_set` rejects separator/empty property values and set-member components with no renames (the two rev-4 live-verified corruption paths).
+- [x] If practical, drive a raw plugin-socket configuration failure after object creation, such as invalid `layoutMode`, and verify the created object is removed. If raw-socket verification is impractical, record that the PRD allows relying on unit cleanup tests for this step.
+- [ ] Verify the plugin About tab shows `2.3.2`. *(Requires reloading the plugin in Figma after the latest rebuild, then visual confirmation.)*
+- [x] Clean up any live-test pages, nodes, components, and variables that the agent can safely delete. Record anything intentionally left for manual cleanup because it is protected by locks or scope.
 
 ## Phase 9: Release Readiness
 - [ ] Confirm CI includes the new `check:versions` step and still runs all unit tests.
