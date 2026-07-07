@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 
 // Figma Plugin API typings for Reaction (as of current known API version)
 const VariableDataSchema: z.ZodType<any> = z.lazy(() => z.object({
@@ -52,7 +52,7 @@ export function registerReactionTools(server: McpServer) {
             inputSchema: z.object({
                 nodeIds: z.array(z.string()).describe("Array of node IDs to get reactions from"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 nodesCount: z.number().optional().describe("Number of inspected nodes"),
                 nodesWithReactions: z.number().optional().describe("Number of nodes found that have reactions"),
                 nodes: z.array(z.any()).optional().describe("List of node entries with their reactions"),
@@ -79,7 +79,7 @@ export function registerReactionTools(server: McpServer) {
                 nodeName: z.string().describe("Name of the node to update reactions for (for verification)"),
                 reactions: z.array(ReactionSchema).describe("The full array of Reaction objects to set"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether the reactions were updated successfully"),
             }),
             annotations: {

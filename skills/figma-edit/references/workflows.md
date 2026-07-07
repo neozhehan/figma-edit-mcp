@@ -57,7 +57,7 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
 ### Create a node inside a frame
 
 ```
-1. node_info({ nodeIds: [frameId], maxDepth: 0 })       → confirm parent name
+1. node_info({ nodeIds: [frameId], maxDepth: 0 })       → confirm parent name and check that parent is not inside an INSTANCE (structural edits inside instances are blocked)
 2. create_shape({ type: "RECTANGLE", parentId: frameId,
                   parentNodeName: <verbatim name>,
                   x, y, width, height })
@@ -91,6 +91,22 @@ When applying variables, certain properties require the node to be in a specific
 1. Pass the URL-format ID through unchanged (server normalizes dashes → colons)
 2. node_info({ nodeIds: [urlId], maxDepth: 0 })          → discover real name
 3. <write tool>({ nodeId: urlId, nodeName: <name from step 2>, ... })
+```
+
+### Combine components into a component set (create_component_set)
+
+```
+1. node_info({ nodeIds: componentIds, maxDepth: 0 })   → verify each is an unlocked COMPONENT, not inside an instance,
+                                                         not already inside a component set; take names verbatim
+2. Choose properties (e.g. ["Size"]) and one propertyValues row per component — every combination must be
+   unique, and values must be non-empty without '=' or ','
+3. node_info({ nodeIds: [parentId], maxDepth: 0 })     → optional parent: appendable, in scope, not inside an
+                                                         instance, and NOT one of the combined components
+4. create_component_set({
+     components: [ { nodeId, nodeName: <name verbatim>, propertyValues: ["Small"] }, … ],
+     properties: ["Size"],
+     componentSetName: "My Component Set",
+     parentId, parentNodeName: <parent name verbatim> })  → combine (variant names are computed from propertyValues)
 ```
 
 ### Bulk text replacement (large designs)

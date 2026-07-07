@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 
 export function registerTextTools(server: McpServer) {
     // 1. Set Text Contents Tool
@@ -21,7 +21,7 @@ export function registerTextTools(server: McpServer) {
                     )
                     .describe("Array of text objects"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 count: z.number().optional().describe("Number of updated text nodes"),
                 results: z.array(z.any()).optional().describe("Detailed results per node"),
             }),
@@ -91,7 +91,7 @@ export function registerTextTools(server: McpServer) {
                     .optional()
                     .describe("Vertical text alignment"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether style was set successfully"),
                 name: z.string().optional().describe("Name of the modified node"),
             }),

@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 
 // ── style_manage `properties` (hybrid typing) ──────────────────────────────
 // Common cases are fully typed (enums + value-objects) so an LLM gets a real,
@@ -65,7 +65,7 @@ export function registerStyleTools(server: McpServer) {
             title: "List Styles",
             description: "List all local styles (paint/text/effect/grid) in the document.",
             inputSchema: z.object({}),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 colors: z.array(z.any()).describe("List of paint/color styles"),
                 texts: z.array(z.any()).describe("List of text styles"),
                 effects: z.array(z.any()).describe("List of effect styles"),
@@ -100,7 +100,7 @@ export function registerStyleTools(server: McpServer) {
                 styleId: z.string().optional().describe("ID of the style to update (if not creating a new one)"),
                 bindVariables: z.record(z.string(), z.string().nullable()).optional().describe("Map of field names to variable IDs (to bind) or null (to unbind). For PAINT styles, valid fields include 'color'. For TEXT styles, fields include 'fontSize', 'fontFamily', etc."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().describe("ID of the style"),
                 name: z.string().describe("Name of the style"),
                 type: z.string().describe("Type of the style"),
@@ -126,7 +126,7 @@ export function registerStyleTools(server: McpServer) {
                 styleId: z.string().describe("ID of style to delete"),
                 styleName: z.string().describe("Expected name of style to delete (verification)"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().describe("Whether style was successfully deleted"),
                 message: z.string().describe("Success/failure status message"),
             }),

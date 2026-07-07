@@ -223,4 +223,59 @@ describe("Phase 2: variable_delete WS-link stall and concurrency", () => {
         // …but with <1s elapsed the throttle gated EVERY heartbeat (without it, each yield would emit one).
         expect(progressUtils.sendProgressUpdate).not.toHaveBeenCalled();
     });
+
+    it("handles variant COMPONENT children inside COMPONENT_SET without crashing, and detects consumer on the COMPONENT_SET", async () => {
+        const variant = createMockNode("variant-1", "Variant 1", "COMPONENT");
+        const componentSet = createMockNode("set-1", "Component Set 1", "COMPONENT_SET", [variant]);
+        variant.parent = componentSet;
+
+        // Mock Figma's crash behavior for reading componentPropertyDefinitions on a variant
+        Object.defineProperty(variant, "componentPropertyDefinitions", {
+            get: () => {
+                throw new Error("in get_componentPropertyDefinitions: Can only get component property definitions of a component set or non-variant component");
+            }
+        });
+
+        // Set bound variables on the Component Set
+        const defs = {
+            "prop-1": {
+                type: "TEXT",
+                defaultValue: "hello",
+                boundVariables: {
+                    value: { id: "var-1", type: "VARIABLE_ALIAS" }
+                }
+            }
+        };
+        Object.defineProperty(componentSet, "componentPropertyDefinitions", {
+            get: () => defs
+        });
+
+        const page = createMockNode("page-1", "Page 1", "PAGE", [componentSet]);
+        global.figma.root.children = [page];
+
+        const var1 = { id: "var-1", name: "Var1", remove: vi.fn() };
+        const var2 = { id: "var-2", name: "Var2", remove: vi.fn() };
+        (global.figma.variables.getVariableByIdAsync as any).mockImplementation((id: string) => {
+            if (id === "var-1") return var1;
+            if (id === "var-2") return var2;
+            return null;
+        });
+
+        // delete of in-use var-1 should fail and list componentSet as consumer, but not crash on variant
+        const resultVar1 = await deleteVariables({
+            variableIds: ["var-1"],
+            variableNames: ["Var1"]
+        });
+        expect(resultVar1.success).toBe(false);
+        expect(resultVar1.error).toContain("Component Set 1");
+        expect(resultVar1.error).toContain("componentProperty:prop-1");
+
+        // delete of unused var-2 should succeed
+        const resultVar2 = await deleteVariables({
+            variableIds: ["var-2"],
+            variableNames: ["Var2"]
+        });
+        expect(resultVar2.success).toBe(true);
+        expect(var2.remove).toHaveBeenCalled();
+    });
 });

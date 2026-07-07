@@ -32,7 +32,7 @@ When you only need to know *whether* something is bound, request the raw ID fiel
 
 ## Listings and Discovery Tools
 
-* **`component_list`**: Defaults to a `scope` of `'document'`. If `scope` is set to `'page'`, a valid `pageId` (resolving to a `PAGE` type) **must** be provided.
+* **`component_list`**: Defaults to a `scope` of `'document'`. If `scope` is set to `'page'`, a valid `pageId` (resolving to a `PAGE` type) **must** be provided. It only enumerates components that physically exist in the document's page trees, so it does **not** surface **remote (library)** component keys — a library's main components live in the library, not this file (only their *instances* do). To get a remote component's `key` for `create_instance`, read it off an existing instance: `node_info({ nodeIds: [instanceId], properties: ["mainComponent"] })` gives the main component id, then `node_info({ nodeIds: [mainComponentId], properties: ["key", "remote"] })` returns its `key` (and `remote: true`). For a component set, pass a **variant** component's key, not the set's.
 * **`variable_list`**: The `includeConsumers` parameter is optional (defaults to no scan). It accepts `'page'` (requires `pageId` of a valid `PAGE` node) or `'document'`.
 * **`annotation_list`**: Requires **exactly one** of `pageId` or `nodeId` (throws an error if neither or both are provided). If `pageId` is specified, it must resolve to a `PAGE` node.
 
@@ -46,7 +46,8 @@ When you only need to know *whether* something is bound, request the raw ID fiel
 | Make a value track a design token | `node_bind_variable` | `node_set_fill` (a literal won't update with the token) |
 | Reuse a library style | `node_apply_style` (by `styleId`) | the raw `node_set_*` setters |
 | Move and/or size a node | `node_transform` ({x?, y?, width?, height?}) | — |
-| Create any basic shape | `create_shape` ({type, …}) | — |
+| Create any basic shape | `create_shape` ({type, parentId, parentNodeName, …}) — parent must not be inside an instance | — |
+| Create a frame, text, SVG, or instance | `create_frame`, `create_text`, `create_svg`, `create_instance` | parent must not be inside an instance |
 
 ## Solid, Image, and Clear Fills (`node_set_fill`)
 

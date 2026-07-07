@@ -298,6 +298,24 @@
     }
     return null;
   }
+  function assertNotLocked(node) {
+    const lockedAncestor = findLockedAncestor(node);
+    if (lockedAncestor) {
+      throw new Error(`Operation Denied: Node '${node.name}' (or one of its ancestors, '${lockedAncestor.name}') is locked. Unlock the layer in Figma, or ask the user to unlock it, before editing.`);
+    }
+  }
+  function assertNotInstanceInterior(node, verb) {
+    const instanceAncestor = findInstanceAncestor(node);
+    if (instanceAncestor) {
+      throw new Error(`Operation Denied: Node '${node.name}' is inside a component instance ('${instanceAncestor.name}') and cannot be ${verb} directly. Edit the main component, or use instance overrides.`);
+    }
+  }
+  function assertNotInstanceParent(parent, verb) {
+    if (parent.type === "INSTANCE") {
+      throw new Error(`Operation Denied: Node '${parent.name}' is a component instance and cannot be ${verb} directly. Edit the main component, or use instance overrides.`);
+    }
+    assertNotInstanceInterior(parent, verb);
+  }
   function isAncestorOf(maybeAncestor, node) {
     if (!maybeAncestor || !node) return false;
     let current = node == null ? void 0 : node.parent;
@@ -308,6 +326,29 @@
       current = current.parent;
     }
     return false;
+  }
+
+  // figma_plugin/utils/errors.ts
+  var ERRORS = {
+    // Editable Scope Errors
+    READ_ONLY_MODE: "Operation Denied: Figma Plugin in Read-Only Mode. Verify if user intends for changes to be made. If so, advise user to disconnect plugin, paste a link to the page/layer to be edited into Link to Selection field, then reconnect plugin.",
+    OUTSIDE_SCOPE: "Operation Denied: Node outside editable scope. Verify if user intends for changes to be made to this particular node. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
+    PARENT_OUTSIDE_SCOPE: "Operation Denied: Parent outside editable scope. Verify if user intends for changes to be made to the parent node. If so, advise user to disconnect plugin, paste a link to the parent page/layer into Link to Selection field, then reconnect plugin.",
+    CLONING_SOURCE_NODE_OUTSIDE_SCOPE: "Operation Denied: Node to be cloned is outside editable scope. Verify if user intends for this node to be cloned. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
+    SCOPE_DELETED: "Operation Denied: The specific Node set as the Editable Scope no longer exists/cannot be found. Advise user to disconnect the plugin and Select a new Editable Scope.",
+    VARIABLE_EDITS_DISABLED: "Operation Denied: Variable editing is disabled. Ask the user to tick 'Allow AI Agent to modify Variables' in the Figma plugin and reconnect.",
+    STYLE_EDITS_DISABLED: "Operation Denied: Style editing is disabled. Ask the user to tick 'Allow AI Agent to modify Styles' in the Figma plugin and reconnect.",
+    // Node ID Errors
+    NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
+    PARENT_NAME_MISMATCH: "Operation Denied: parentNodeName does not match name of parentId. Refresh context & recheck to ensure correct parentId is passed in.",
+    // Parameter Errors
+    MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
+    MISSING_TARGET_NODE_IDS: "Missing targetNodeIds parameter",
+    MISSING_SOURCE_INSTANCE_ID: "Missing sourceInstanceId parameter",
+    INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array"
+  };
+  function formatScopeError(errorMessage, scopeRootId) {
+    return `${errorMessage} (Current Editable Scope Node ID: ${scopeRootId || "None"})`;
   }
 
   // figma_plugin/handlers/nodeReaders.ts
@@ -930,6 +971,15 @@
   };
 
   // figma_plugin/handlers/nodeCreators.ts
+  async function resolveAppendableParent(parentId, command) {
+    if (!parentId) throw new Error(`${command}: missing parentId parameter.`);
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) throw new Error(`${command}: parent node not found with ID: ${parentId}.`);
+    if (!("appendChild" in parent)) {
+      throw new Error(`${command}: parent '${parent.name}' (type ${parent.type}) cannot contain children.`);
+    }
+    return parent;
+  }
   async function createShape(params) {
     var _a, _b, _c;
     const {
@@ -960,16 +1010,7 @@
     if (innerRadius !== void 0 && upperType !== "STAR") {
       throw new Error(`innerRadius is only supported for shape type STAR, got ${type}`);
     }
-    if (!parentId) {
-      throw new Error("Missing parentId parameter");
-    }
-    const parent = await figma.getNodeByIdAsync(parentId);
-    if (!parent) {
-      throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parent)) {
-      throw new Error(`Parent node does not support children: ${parentId}`);
-    }
+    const parent = await resolveAppendableParent(parentId, "create_shape");
     let node;
     switch (upperType) {
       case "RECTANGLE":
@@ -1009,54 +1050,61 @@
       default:
         throw new Error(`Unsupported shape type: ${type}`);
     }
-    node.x = x;
-    node.y = y;
-    node.resize(width, height);
-    if (name) {
-      node.name = name;
-    } else {
-      node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
-    }
-    if (fillColor) {
-      node.fills = [{
-        type: "SOLID",
-        color: {
-          r: parseFloat(fillColor.r) || 0,
-          g: parseFloat(fillColor.g) || 0,
-          b: parseFloat(fillColor.b) || 0
-        },
-        opacity: typeof fillColor.a === "number" ? fillColor.a : 1
-      }];
-    }
-    if (strokeColor) {
-      node.strokes = [{
-        type: "SOLID",
-        color: {
-          r: parseFloat(strokeColor.r) || 0,
-          g: parseFloat(strokeColor.g) || 0,
-          b: parseFloat(strokeColor.b) || 0
-        },
-        opacity: typeof strokeColor.a === "number" ? strokeColor.a : 1
-      }];
-    }
-    parent.appendChild(node);
-    if (useAbsolutePosition && parentId) {
-      if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
-        node.layoutPositioning = "ABSOLUTE";
-        node.x = x;
-        node.y = y;
+    try {
+      node.x = x;
+      node.y = y;
+      node.resize(width, height);
+      if (name) {
+        node.name = name;
+      } else {
+        node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
       }
+      if (fillColor) {
+        node.fills = [{
+          type: "SOLID",
+          color: {
+            r: parseFloat(fillColor.r) || 0,
+            g: parseFloat(fillColor.g) || 0,
+            b: parseFloat(fillColor.b) || 0
+          },
+          opacity: typeof fillColor.a === "number" ? fillColor.a : 1
+        }];
+      }
+      if (strokeColor) {
+        node.strokes = [{
+          type: "SOLID",
+          color: {
+            r: parseFloat(strokeColor.r) || 0,
+            g: parseFloat(strokeColor.g) || 0,
+            b: parseFloat(strokeColor.b) || 0
+          },
+          opacity: typeof strokeColor.a === "number" ? strokeColor.a : 1
+        }];
+      }
+      parent.appendChild(node);
+      if (useAbsolutePosition && parentId) {
+        if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
+          node.layoutPositioning = "ABSOLUTE";
+          node.x = x;
+          node.y = y;
+        }
+      }
+      return {
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        x: node.x,
+        y: node.y,
+        width: node.width,
+        height: node.height,
+        parentId: node.parent ? node.parent.id : void 0
+      };
+    } catch (error) {
+      if (node && typeof node.remove === "function" && node.removed !== true) {
+        node.remove();
+      }
+      throw error;
     }
-    return {
-      id: node.id,
-      name: node.name,
-      type: node.type,
-      x: node.x,
-      y: node.y,
-      width: node.width,
-      height: node.height,
-      parentId: node.parent ? node.parent.id : void 0
-    };
   }
   async function createFrame(params) {
     const {
@@ -1081,76 +1129,74 @@
       layoutSizingVertical = "FIXED",
       itemSpacing = 0
     } = params || {};
+    const parentNode = await resolveAppendableParent(parentId, "create_frame");
     const frame = figma.createFrame();
-    frame.x = x;
-    frame.y = y;
-    frame.resize(width, height);
-    frame.name = name;
-    if (layoutMode !== "NONE") {
-      frame.layoutMode = layoutMode;
-      frame.layoutWrap = layoutWrap;
-      frame.paddingTop = paddingTop;
-      frame.paddingRight = paddingRight;
-      frame.paddingBottom = paddingBottom;
-      frame.paddingLeft = paddingLeft;
-      frame.primaryAxisAlignItems = primaryAxisAlignItems;
-      frame.counterAxisAlignItems = counterAxisAlignItems;
-      frame.layoutSizingHorizontal = layoutSizingHorizontal;
-      frame.layoutSizingVertical = layoutSizingVertical;
-      frame.itemSpacing = itemSpacing;
-    }
-    if (fillColor) {
-      const paintStyle = {
-        type: "SOLID",
-        color: {
-          r: parseFloat(fillColor.r) || 0,
-          g: parseFloat(fillColor.g) || 0,
-          b: parseFloat(fillColor.b) || 0
-        },
-        opacity: typeof fillColor.a === "number" ? fillColor.a : 1
+    try {
+      frame.x = x;
+      frame.y = y;
+      frame.resize(width, height);
+      frame.name = name;
+      if (layoutMode !== "NONE") {
+        frame.layoutMode = layoutMode;
+        frame.layoutWrap = layoutWrap;
+        frame.paddingTop = paddingTop;
+        frame.paddingRight = paddingRight;
+        frame.paddingBottom = paddingBottom;
+        frame.paddingLeft = paddingLeft;
+        frame.primaryAxisAlignItems = primaryAxisAlignItems;
+        frame.counterAxisAlignItems = counterAxisAlignItems;
+        frame.layoutSizingHorizontal = layoutSizingHorizontal;
+        frame.layoutSizingVertical = layoutSizingVertical;
+        frame.itemSpacing = itemSpacing;
+      }
+      if (fillColor) {
+        const paintStyle = {
+          type: "SOLID",
+          color: {
+            r: parseFloat(fillColor.r) || 0,
+            g: parseFloat(fillColor.g) || 0,
+            b: parseFloat(fillColor.b) || 0
+          },
+          opacity: typeof fillColor.a === "number" ? fillColor.a : 1
+        };
+        frame.fills = [paintStyle];
+      }
+      if (strokeColor) {
+        const strokeStyle = {
+          type: "SOLID",
+          color: {
+            r: parseFloat(strokeColor.r) || 0,
+            g: parseFloat(strokeColor.g) || 0,
+            b: parseFloat(strokeColor.b) || 0
+          },
+          opacity: typeof strokeColor.a === "number" ? strokeColor.a : 1
+        };
+        frame.strokes = [strokeStyle];
+      }
+      if (strokeWeight !== void 0) {
+        frame.strokeWeight = strokeWeight;
+      }
+      parentNode.appendChild(frame);
+      return {
+        id: frame.id,
+        name: frame.name,
+        x: frame.x,
+        y: frame.y,
+        width: frame.width,
+        height: frame.height,
+        fills: frame.fills,
+        strokes: frame.strokes,
+        strokeWeight: frame.strokeWeight,
+        layoutMode: frame.layoutMode,
+        layoutWrap: frame.layoutWrap,
+        parentId: frame.parent ? frame.parent.id : void 0
       };
-      frame.fills = [paintStyle];
+    } catch (error) {
+      if (frame && typeof frame.remove === "function" && frame.removed !== true) {
+        frame.remove();
+      }
+      throw error;
     }
-    if (strokeColor) {
-      const strokeStyle = {
-        type: "SOLID",
-        color: {
-          r: parseFloat(strokeColor.r) || 0,
-          g: parseFloat(strokeColor.g) || 0,
-          b: parseFloat(strokeColor.b) || 0
-        },
-        opacity: typeof strokeColor.a === "number" ? strokeColor.a : 1
-      };
-      frame.strokes = [strokeStyle];
-    }
-    if (strokeWeight !== void 0) {
-      frame.strokeWeight = strokeWeight;
-    }
-    if (!parentId) {
-      throw new Error("Missing parentId parameter");
-    }
-    const parentNode = await figma.getNodeByIdAsync(parentId);
-    if (!parentNode) {
-      throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parentNode)) {
-      throw new Error(`Parent node does not support children: ${parentId}`);
-    }
-    parentNode.appendChild(frame);
-    return {
-      id: frame.id,
-      name: frame.name,
-      x: frame.x,
-      y: frame.y,
-      width: frame.width,
-      height: frame.height,
-      fills: frame.fills,
-      strokes: frame.strokes,
-      strokeWeight: frame.strokeWeight,
-      layoutMode: frame.layoutMode,
-      layoutWrap: frame.layoutWrap,
-      parentId: frame.parent ? frame.parent.id : void 0
-    };
   }
   function getFontStyle(weight) {
     switch (weight) {
@@ -1188,57 +1234,55 @@
       name = "",
       parentId
     } = params || {};
+    const parentNode = await resolveAppendableParent(parentId, "create_text");
     const textNode = figma.createText();
-    textNode.x = x;
-    textNode.y = y;
-    textNode.name = name || text;
     try {
-      await figma.loadFontAsync({
-        family: "Inter",
-        style: getFontStyle(fontWeight)
-      });
-      textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
-      textNode.fontSize = parseInt(fontSize);
+      textNode.x = x;
+      textNode.y = y;
+      textNode.name = name || text;
+      try {
+        await figma.loadFontAsync({
+          family: "Inter",
+          style: getFontStyle(fontWeight)
+        });
+        textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
+        textNode.fontSize = parseInt(fontSize);
+      } catch (error) {
+        console.error("Error setting font size", error);
+      }
+      await setCharacters(textNode, text);
+      const paintStyle = {
+        type: "SOLID",
+        color: {
+          r: parseFloat(fontColor.r) || 0,
+          g: parseFloat(fontColor.g) || 0,
+          b: parseFloat(fontColor.b) || 0
+        },
+        opacity: typeof fontColor.a === "number" ? fontColor.a : 1
+      };
+      textNode.fills = [paintStyle];
+      parentNode.appendChild(textNode);
+      return {
+        id: textNode.id,
+        name: textNode.name,
+        x: textNode.x,
+        y: textNode.y,
+        width: textNode.width,
+        height: textNode.height,
+        characters: textNode.characters,
+        fontSize: textNode.fontSize,
+        fontWeight,
+        fontColor,
+        fontName: textNode.fontName,
+        fills: textNode.fills,
+        parentId: textNode.parent ? textNode.parent.id : void 0
+      };
     } catch (error) {
-      console.error("Error setting font size", error);
+      if (textNode && typeof textNode.remove === "function" && textNode.removed !== true) {
+        textNode.remove();
+      }
+      throw error;
     }
-    await setCharacters(textNode, text);
-    const paintStyle = {
-      type: "SOLID",
-      color: {
-        r: parseFloat(fontColor.r) || 0,
-        g: parseFloat(fontColor.g) || 0,
-        b: parseFloat(fontColor.b) || 0
-      },
-      opacity: typeof fontColor.a === "number" ? fontColor.a : 1
-    };
-    textNode.fills = [paintStyle];
-    if (!parentId) {
-      throw new Error("Missing parentId parameter");
-    }
-    const parentNode = await figma.getNodeByIdAsync(parentId);
-    if (!parentNode) {
-      throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parentNode)) {
-      throw new Error(`Parent node does not support children: ${parentId}`);
-    }
-    parentNode.appendChild(textNode);
-    return {
-      id: textNode.id,
-      name: textNode.name,
-      x: textNode.x,
-      y: textNode.y,
-      width: textNode.width,
-      height: textNode.height,
-      characters: textNode.characters,
-      fontSize: textNode.fontSize,
-      fontWeight,
-      fontColor,
-      fontName: textNode.fontName,
-      fills: textNode.fills,
-      parentId: textNode.parent ? textNode.parent.id : void 0
-    };
   }
   async function cloneNode(params) {
     const { nodeId, x, y } = params || {};
@@ -1250,26 +1294,30 @@
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
     const clone = node.clone();
-    if (x !== void 0 && y !== void 0) {
-      if (!("x" in clone) || !("y" in clone)) {
-        throw new Error(`Cloned node does not support position: ${nodeId}`);
+    try {
+      if (x !== void 0 && y !== void 0) {
+        clone.x = x;
+        clone.y = y;
       }
-      clone.x = x;
-      clone.y = y;
+      if (node.parent) {
+        node.parent.appendChild(clone);
+      } else {
+        throw new Error(`node_clone: '${node.name}' has no parent and cannot be cloned.`);
+      }
+      return {
+        id: clone.id,
+        name: clone.name,
+        x: "x" in clone ? clone.x : void 0,
+        y: "y" in clone ? clone.y : void 0,
+        width: "width" in clone ? clone.width : void 0,
+        height: "height" in clone ? clone.height : void 0
+      };
+    } catch (error) {
+      if (clone && typeof clone.remove === "function" && clone.removed !== true) {
+        clone.remove();
+      }
+      throw error;
     }
-    if (node.parent) {
-      node.parent.appendChild(clone);
-    } else {
-      throw new Error(`Cloned node ${nodeId} has no parent and cannot be cloned`);
-    }
-    return {
-      id: clone.id,
-      name: clone.name,
-      x: "x" in clone ? clone.x : void 0,
-      y: "y" in clone ? clone.y : void 0,
-      width: "width" in clone ? clone.width : void 0,
-      height: "height" in clone ? clone.height : void 0
-    };
   }
 
   // figma_plugin/handlers/nodeModifiers.ts
@@ -2287,37 +2335,47 @@
     }
     return value;
   }
+  var IMPORT_TIMEOUT_MS = 15e3;
   async function createComponentInstance(params) {
     const { componentId, x = 0, y = 0, parentId, componentKey } = params || {};
+    const parentNode = await resolveAppendableParent(parentId, "create_instance");
     if (!componentId && !componentKey) {
-      throw new Error("Missing componentId or componentKey parameter");
+      throw new Error("create_instance: missing componentId or componentKey parameter.");
     }
+    let component;
+    if (componentId) {
+      const node = await figma.getNodeByIdAsync(componentId);
+      if (!node) {
+        throw new Error(`create_instance: component node not found with ID: ${componentId}.`);
+      }
+      if (node.type === "COMPONENT_SET") {
+        const defaultVariant = node.defaultVariant;
+        throw new Error(`create_instance: '${node.name}' is a COMPONENT_SET; pass one of its variant COMPONENTs \u2014 e.g. its default variant '${defaultVariant.name}' (${defaultVariant.id}).`);
+      }
+      if (node.type !== "COMPONENT") {
+        throw new Error(`create_instance: '${node.name}' (${componentId}) is not a COMPONENT (got ${node.type}).`);
+      }
+      component = node;
+    } else {
+      let timeoutId;
+      try {
+        const importPromise = figma.importComponentByKeyAsync(componentKey);
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error(`import timed out after ${IMPORT_TIMEOUT_MS}ms`));
+          }, IMPORT_TIMEOUT_MS);
+        });
+        component = await Promise.race([importPromise, timeoutPromise]);
+      } catch (error) {
+        const raw = (error == null ? void 0 : error.message) || String(error);
+        throw new Error(`create_instance: failed to import remote component with key '${componentKey}': ${raw}. Read the key from an existing instance's mainComponent (component_list does not list remote library keys); confirm the source library is enabled for this file; a component-set key needs a variant's key.`);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    }
+    const instance = component.createInstance();
     try {
-      let component;
-      if (componentId) {
-        const node = await figma.getNodeByIdAsync(componentId);
-        if (!node) {
-          throw new Error(`Component node not found with ID: ${componentId}`);
-        }
-        if (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET") {
-          throw new Error(`Node ${componentId} is not a COMPONENT (got ${node.type})`);
-        }
-        component = node;
-      } else {
-        component = await figma.importComponentByKeyAsync(componentKey);
-      }
-      const instance = component.createInstance();
-      if (!parentId) {
-        throw new Error("Missing parentId parameter");
-      }
-      const parent = await figma.getNodeByIdAsync(parentId);
-      if (!parent) {
-        throw new Error(`Parent node not found with ID: ${parentId}`);
-      }
-      if (!("appendChild" in parent)) {
-        throw new Error(`Parent node does not support children: ${parentId}`);
-      }
-      parent.appendChild(instance);
+      parentNode.appendChild(instance);
       instance.x = x;
       instance.y = y;
       return {
@@ -2331,7 +2389,10 @@
         componentId: instance.componentId
       };
     } catch (error) {
-      throw new Error(`Error creating component instance: ${(error == null ? void 0 : error.message) || String(error)}`);
+      if (instance && typeof instance.remove === "function" && instance.removed !== true) {
+        instance.remove();
+      }
+      throw error;
     }
   }
   async function exportNodeAsImage(params) {
@@ -2603,16 +2664,21 @@
     if (node.type !== "FRAME") {
       throw new Error(`Target node must be a FRAME, got ${node.type}`);
     }
+    const parentNode = node.parent;
+    if (!parentNode) {
+      throw new Error("create_component: parent node not found.");
+    }
+    if (!("appendChild" in parentNode)) {
+      throw new Error(`create_component: parent '${parentNode.name}' (type ${parentNode.type}) cannot contain children.`);
+    }
+    const component = figma.createComponent();
     try {
-      const component = figma.createComponent();
       component.name = node.name;
       component.resize(node.width, node.height);
-      if (node.parent) {
-        const index = node.parent.children.indexOf(node);
-        node.parent.insertChild(index, component);
-        component.x = node.x;
-        component.y = node.y;
-      }
+      const index = parentNode.children.indexOf(node);
+      parentNode.insertChild(index, component);
+      component.x = node.x;
+      component.y = node.y;
       component.fills = node.fills;
       component.strokes = node.strokes;
       component.strokeWeight = node.strokeWeight;
@@ -2656,56 +2722,169 @@
         type: "COMPONENT"
       };
     } catch (error) {
-      throw new Error(`Error creating component: ${error.message}`);
+      if (component && typeof component.remove === "function" && component.removed !== true) {
+        component.remove();
+      }
+      throw error;
     }
   }
-  async function createComponentSet(params) {
+  async function validateCreateComponentSetPlan(params, scopeRoot) {
     const { components, properties, componentSetName, parentId } = params;
-    if (!components || components.length === 0) {
-      throw new Error("Components array is empty");
+    if (!components || !Array.isArray(components) || components.length === 0) {
+      throw new Error("components must be a non-empty array");
     }
-    if (!properties || properties.length === 0) {
-      throw new Error("Properties array is empty");
+    if (!properties || !Array.isArray(properties) || properties.length === 0) {
+      throw new Error("properties must be a non-empty array");
     }
-    const figmaComponents = [];
+    const propNamesSeen = /* @__PURE__ */ new Set();
+    for (const prop of properties) {
+      if (typeof prop !== "string" || prop.trim() === "") {
+        throw new Error("Property names must be non-empty strings");
+      }
+      if (propNamesSeen.has(prop)) {
+        throw new Error(`Duplicate property name found: '${prop}'`);
+      }
+      propNamesSeen.add(prop);
+    }
+    const resolvedComponents = [];
+    const seenIds = /* @__PURE__ */ new Set();
+    let firstContainingPage = null;
+    for (const comp of components) {
+      if (!comp || !comp.nodeId) {
+        throw new Error("Missing component nodeId");
+      }
+      const node = await figma.getNodeByIdAsync(comp.nodeId);
+      if (!node) {
+        throw new Error(`Node ${comp.nodeId} not found`);
+      }
+      if (seenIds.has(node.id)) {
+        throw new Error(`create_component_set: component '${node.name}' (${node.id}) is listed more than once in components.`);
+      }
+      seenIds.add(node.id);
+      const inScope = node.id === scopeRoot.id || isAncestorOf(scopeRoot, node);
+      if (!inScope) {
+        throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE, scopeRoot.id));
+      }
+      if (node.name !== comp.nodeName) {
+        throw new Error(ERRORS.NAME_MISMATCH);
+      }
+      if (node.type !== "COMPONENT") {
+        throw new Error(`create_component_set: '${node.name}' (${node.id}) must be a COMPONENT, got ${node.type}.`);
+      }
+      assertNotLocked(node);
+      assertNotInstanceInterior(node, "combined");
+      if ("remote" in node && node.remote === true) {
+        throw new Error(`create_component_set: '${node.name}' is a remote shared-library component and cannot be combined into a local component set.`);
+      }
+      if (!comp.propertyValues || comp.propertyValues.length !== properties.length) {
+        throw new Error(`Property values count mismatch for component ${node.name}`);
+      }
+      for (const val of comp.propertyValues) {
+        if (typeof val !== "string" || val.trim() === "" || val.includes("=") || val.includes(",")) {
+          throw new Error(`create_component_set: property value '${val}' for '${node.name}' must be non-empty and must not contain '=' or ','.`);
+        }
+      }
+      if (node.parent && node.parent.type === "COMPONENT_SET") {
+        throw new Error(`create_component_set: '${node.name}' is already a variant in component set '${node.parent.name}'. Combining it would break that set.`);
+      }
+      const page = getContainingPageNode(node);
+      if (!page) {
+        throw new Error(`create_component_set: component '${node.name}' (${node.id}) is not on a page (detached).`);
+      }
+      if (!firstContainingPage) {
+        firstContainingPage = page;
+      } else if (page.id !== firstContainingPage.id) {
+        throw new Error("create_component_set: all components must be on the same page before combining variants.");
+      }
+      resolvedComponents.push(node);
+    }
     const seenVariants = /* @__PURE__ */ new Map();
-    for (const compData of components) {
-      const component = await figma.getNodeByIdAsync(compData.nodeId);
-      if (!component || component.type !== "COMPONENT") {
-        throw new Error(`Node ${compData.nodeId} is not a valid component`);
-      }
-      if (compData.propertyValues.length !== properties.length) {
-        throw new Error(`Property values count mismatch for component ${component.name}`);
-      }
-      const nameParts = properties.map((prop, index) => `${prop}=${compData.propertyValues[index]}`);
+    const computedVariantNames = [];
+    for (let i = 0; i < resolvedComponents.length; i++) {
+      const node = resolvedComponents[i];
+      const compData = components[i];
+      const nameParts = properties.map((prop, idx) => `${prop}=${compData.propertyValues[idx]}`);
       const variantName = nameParts.join(", ");
       if (seenVariants.has(variantName)) {
-        throw new Error(`Operation Denied: Duplicate variant combination '${variantName}' across components '${seenVariants.get(variantName)}' and '${component.name}'. Each component in a set must have a unique property-value combination.`);
+        throw new Error(`Operation Denied: Duplicate variant combination '${variantName}' across components '${seenVariants.get(variantName)}' and '${node.name}'. Each component in a set must have a unique property-value combination.`);
       }
-      seenVariants.set(variantName, component.name);
-      component.name = variantName;
-      figmaComponents.push(component);
+      seenVariants.set(variantName, node.name);
+      computedVariantNames.push(variantName);
     }
-    const containingPage = getContainingPageNode(figmaComponents[0]);
-    if (!containingPage) {
-      throw new Error("First component is not on a page (detached)");
-    }
-    const componentSet = figma.combineAsVariants(figmaComponents, containingPage);
-    if (componentSetName) {
-      componentSet.name = componentSetName;
-    }
+    let resolvedParent = void 0;
     if (parentId) {
       const parent = await figma.getNodeByIdAsync(parentId);
-      if (parent) {
-        parent.appendChild(componentSet);
+      if (!parent) {
+        throw new Error(`Node ${parentId} not found`);
       }
+      const parentInScope = parent.id === scopeRoot.id || isAncestorOf(scopeRoot, parent);
+      if (!parentInScope) {
+        throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE, scopeRoot.id));
+      }
+      if (parent.name !== params.parentNodeName) {
+        throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+      }
+      if (!("appendChild" in parent)) {
+        throw new Error(`create_component_set: parent '${parent.name}' (type ${parent.type}) cannot contain a component set.`);
+      }
+      assertNotLocked(parent);
+      assertNotInstanceParent(parent, "appended to");
+      for (const node of resolvedComponents) {
+        if (parent.id === node.id || isAncestorOf(node, parent)) {
+          throw new Error(`create_component_set: parent '${parent.name}' is one of the components being combined (or is inside one) and cannot receive the component set.`);
+        }
+      }
+      resolvedParent = parent;
+    }
+    return {
+      components: resolvedComponents.map((node, idx) => ({
+        node,
+        originalName: node.name,
+        variantName: computedVariantNames[idx],
+        propertyValues: components[idx].propertyValues
+      })),
+      properties,
+      containingPage: firstContainingPage,
+      parent: resolvedParent,
+      componentSetName
+    };
+  }
+  async function createComponentSet(plan) {
+    var _a;
+    let componentSet;
+    try {
+      for (const c of plan.components) {
+        c.node.name = c.variantName;
+      }
+      componentSet = figma.combineAsVariants(plan.components.map((c) => c.node), plan.containingPage);
+    } catch (error) {
+      for (const c of plan.components) {
+        if (c.node && c.node.removed !== true) {
+          c.node.name = c.originalName;
+        }
+      }
+      throw error;
+    }
+    if (plan.componentSetName) {
+      componentSet.name = plan.componentSetName;
+    }
+    if (plan.parent && plan.parent.id !== ((_a = componentSet.parent) == null ? void 0 : _a.id)) {
+      plan.parent.appendChild(componentSet);
+    }
+    let variantGroupProperties = void 0;
+    let warning = void 0;
+    try {
+      variantGroupProperties = componentSet.variantGroupProperties;
+    } catch (err) {
+      warning = `Failed to read variant properties: ${err.message || String(err)}`;
     }
     return {
       id: componentSet.id,
       name: componentSet.name,
       type: "COMPONENT_SET",
       childCount: componentSet.children.length,
-      variantProperties: componentSet.variantGroupProperties
+      variantProperties: variantGroupProperties,
+      warning
     };
   }
   async function setComponentInstanceProperty(params) {
@@ -3844,6 +4023,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     let lastYield = Date.now();
     let lastHeartbeat = Date.now();
     async function walk(node) {
+      var _a;
       walkCount++;
       const now = Date.now();
       if (now - lastYield >= 50 || walkCount % 500 === 0) {
@@ -3891,7 +4071,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           });
         }
       }
-      if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+      if (node.type === "COMPONENT_SET" || node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) !== "COMPONENT_SET") {
         const defs = node.componentPropertyDefinitions;
         if (defs) {
           const matchesByVarId = /* @__PURE__ */ new Map();
@@ -4730,32 +4910,30 @@ Processing annotation ${i + 1}/${annotations.length}:`,
 
   // figma_plugin/handlers/vectorHandlers.ts
   async function createNodeFromSvg(params) {
-    const { parentId, svg, name, x = 0, y = 0 } = params;
-    if (!params.svg) {
+    const { parentId, svg, name, x = 0, y = 0 } = params || {};
+    if (!svg) {
       throw new Error("Missing required parameter: svg string.");
     }
-    const node = figma.createNodeFromSvg(params.svg);
-    if (name) {
-      node.name = name;
+    const parentNode = await resolveAppendableParent(parentId, "create_svg");
+    const node = figma.createNodeFromSvg(svg);
+    try {
+      if (name) {
+        node.name = name;
+      }
+      parentNode.appendChild(node);
+      node.x = x;
+      node.y = y;
+      return {
+        id: node.id,
+        name: node.name,
+        type: node.type
+      };
+    } catch (error) {
+      if (node && typeof node.remove === "function" && node.removed !== true) {
+        node.remove();
+      }
+      throw error;
     }
-    if (!parentId) {
-      throw new Error("Missing parentId parameter");
-    }
-    const parent = await figma.getNodeByIdAsync(parentId);
-    if (!parent) {
-      throw new Error(`Parent node not found with ID: ${parentId}`);
-    }
-    if (!("appendChild" in parent)) {
-      throw new Error(`Parent node does not support children: ${parentId}`);
-    }
-    parent.appendChild(node);
-    node.x = x;
-    node.y = y;
-    return {
-      id: node.id,
-      name: node.name,
-      type: node.type
-    };
   }
 
   // figma_plugin/handlers/connectHandlers.ts
@@ -4845,24 +5023,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   }
 
   // figma_plugin/src/main.ts
-  var ERRORS = {
-    // Editable Scope Errors
-    READ_ONLY_MODE: "Operation Denied: Figma Plugin in Read-Only Mode. Verify if user intends for changes to be made. If so, advise user to disconnect plugin, paste a link to the page/layer to be edited into Link to Selection field, then reconnect plugin.",
-    OUTSIDE_SCOPE: "Operation Denied: Node outside editable scope. Verify if user intends for changes to be made to this particular node. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
-    PARENT_OUTSIDE_SCOPE: "Operation Denied: Parent outside editable scope. Verify if user intends for changes to be made to the parent node. If so, advise user to disconnect plugin, paste a link to the parent page/layer into Link to Selection field, then reconnect plugin.",
-    CLONING_SOURCE_NODE_OUTSIDE_SCOPE: "Operation Denied: Node to be cloned is outside editable scope. Verify if user intends for this node to be cloned. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
-    SCOPE_DELETED: "Operation Denied: The specific Node set as the Editable Scope no longer exists/cannot be found. Advise user to disconnect the plugin and Select a new Editable Scope.",
-    VARIABLE_EDITS_DISABLED: "Operation Denied: Variable editing is disabled. Ask the user to tick 'Allow AI Agent to modify Variables' in the Figma plugin and reconnect.",
-    STYLE_EDITS_DISABLED: "Operation Denied: Style editing is disabled. Ask the user to tick 'Allow AI Agent to modify Styles' in the Figma plugin and reconnect.",
-    // Node ID Errors
-    NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
-    PARENT_NAME_MISMATCH: "Operation Denied: parentNodeName does not match name of parentId. Refresh context & recheck to ensure correct parentId is passed in.",
-    // Parameter Errors
-    MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
-    MISSING_TARGET_NODE_IDS: "Missing targetNodeIds parameter",
-    MISSING_SOURCE_INSTANCE_ID: "Missing sourceInstanceId parameter",
-    INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array"
-  };
   var state = {
     serverPort: 3055,
     // Default port
@@ -4875,8 +5035,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   function getPluginState() {
     return state;
   }
-  function formatScopeError(errorMessage) {
-    return `${errorMessage} (Current Editable Scope Node ID: ${state.scopeRootId || "None"})`;
+  function formatScopeError2(errorMessage) {
+    return formatScopeError(errorMessage, state.scopeRootId);
   }
   async function checkScopeAccess(nodeId) {
     if (!state.allowEditNode) return false;
@@ -4910,18 +5070,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     }
     return node.name === expectedName;
   }
-  function assertNotLocked(node) {
-    const lockedAncestor = findLockedAncestor(node);
-    if (lockedAncestor) {
-      throw new Error(`Operation Denied: Node '${node.name}' (or one of its ancestors, '${lockedAncestor.name}') is locked. Unlock the layer in Figma, or ask the user to unlock it, before editing.`);
-    }
-  }
-  function assertNotInstanceInterior(node, verb) {
-    const instanceAncestor = findInstanceAncestor(node);
-    if (instanceAncestor) {
-      throw new Error(`Operation Denied: Node '${node.name}' is inside a component instance ('${instanceAncestor.name}') and cannot be ${verb} directly. Edit the main component, or use instance overrides.`);
-    }
-  }
   function assertNotScopeRoot(nodeId) {
     if (nodeId === state.scopeRootId) {
       throw new Error(`Operation Denied: This node is the current Editable Scope root; deleting/flattening/ungrouping/converting it would invalidate the scope for the rest of the session. Re-scope to a parent first, or ask the user to select a different Editable Scope.`);
@@ -4929,7 +5077,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   }
   async function validateSingleNodeWrite(params, options) {
     if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-    if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+    if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
     if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
     const node = await figma.getNodeByIdAsync(params == null ? void 0 : params.nodeId);
     if (node) {
@@ -4943,18 +5091,49 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   }
   async function validateParentWrite(params, options) {
     if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-    if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
+    if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError2(ERRORS.PARENT_OUTSIDE_SCOPE));
     if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
     const parent = await figma.getNodeByIdAsync(params == null ? void 0 : params.parentId);
     if (parent) {
       if (options.checkLocked) assertNotLocked(parent);
-      if (options.instanceCheckVerb) assertNotInstanceInterior(parent, options.instanceCheckVerb);
+      if (options.instanceCheckVerb) assertNotInstanceParent(parent, options.instanceCheckVerb);
     }
   }
   async function verifyParentName(parentId, expectedParentName) {
     const node = await figma.getNodeByIdAsync(parentId);
     if (!node) return false;
     return node.name === expectedParentName;
+  }
+  async function validateCloneWrite(params) {
+    if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
+    if (!params || !params.nodeId) throw new Error("Missing nodeId parameter");
+    const source = await figma.getNodeByIdAsync(params.nodeId);
+    if (!source) {
+      throw new Error(`Node not found with ID: ${params.nodeId}`);
+    }
+    if (!await checkScopeAccess(source.id)) {
+      throw new Error(formatScopeError2(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE));
+    }
+    if (!await verifyNodeName(source.id, params.nodeName)) {
+      throw new Error(ERRORS.NAME_MISMATCH);
+    }
+    assertNotLocked(source);
+    const sourceInstanceAncestor = findInstanceAncestor(source);
+    if (sourceInstanceAncestor) {
+      throw new Error(`Operation Denied: Cannot clone '${source.name}' because it is inside a component instance.`);
+    }
+    const parent = source.parent;
+    if (!parent) {
+      throw new Error(`node_clone: '${source.name}' has no parent and cannot be cloned.`);
+    }
+    if (!("appendChild" in parent)) {
+      throw new Error(`node_clone: parent '${parent.name}' (type ${parent.type}) cannot accept cloned children.`);
+    }
+    if (!await checkScopeAccess(parent.id)) {
+      throw new Error(formatScopeError2(ERRORS.PARENT_OUTSIDE_SCOPE));
+    }
+    assertNotLocked(parent);
+    assertNotInstanceParent(parent, "appended to");
   }
   function describeError2(e) {
     if (e == null) return "Error executing command";
@@ -4984,7 +5163,9 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       return null;
     }
   }
+  var PLUGIN_VERSION = true ? "2.3.2" : "unknown";
   figma.showUI(__html__, { width: 350, height: 450 });
+  figma.ui.postMessage({ type: "plugin-version", version: PLUGIN_VERSION });
   figma.ui.onmessage = async (msg) => {
     switch (msg.type) {
       case "update-settings":
@@ -5091,7 +5272,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (!firstNode) throw new Error(`Node ${params.nodes[0].nodeId} not found`);
           const parentId = (_a = firstNode.parent) == null ? void 0 : _a.id;
           for (const item of params.nodes) {
-            if (!await checkScopeAccess(item.nodeId)) throw new Error(formatScopeError(`Operation denied: Node ${item.nodeId} outside editable scope`));
+            if (!await checkScopeAccess(item.nodeId)) throw new Error(formatScopeError2(`Operation denied: Node ${item.nodeId} outside editable scope`));
             if (!await verifyNodeName(item.nodeId, item.nodeName)) throw new Error(ERRORS.NAME_MISMATCH);
             const node = await figma.getNodeByIdAsync(item.nodeId);
             if (node) {
@@ -5113,7 +5294,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "node_insert_child":
         if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "inserted into" });
-        if (!await checkScopeAccess(params ? params.childId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        if (!await checkScopeAccess(params ? params.childId : null)) throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
         if (!await verifyNodeName(params ? params.childId : null, params ? params.childNodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
         const childNode = await figma.getNodeByIdAsync(params == null ? void 0 : params.childId);
         if (childNode) {
@@ -5125,9 +5306,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         await validateSingleNodeWrite(params, { checkLocked: true });
         return await transformNode(params);
       case "node_clone":
-        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-        if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE));
-        if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
+        await validateCloneWrite(params);
         return await cloneNode(params);
       case "create_shape":
         await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
@@ -5144,15 +5323,15 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "create_connection":
         if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (params && params.connectorId) {
-          if (!await checkScopeAccess(params.connectorId)) throw new Error(formatScopeError(`Operation denied: Connector node ${params.connectorId} outside editable scope`));
+          if (!await checkScopeAccess(params.connectorId)) throw new Error(formatScopeError2(`Operation denied: Connector node ${params.connectorId} outside editable scope`));
         }
         if (params && params.connections && Array.isArray(params.connections)) {
           for (const conn of params.connections) {
-            if (!await checkScopeAccess(conn.startNodeId)) throw new Error(formatScopeError(`Operation denied: Start node ${conn.startNodeId} outside editable scope`));
+            if (!await checkScopeAccess(conn.startNodeId)) throw new Error(formatScopeError2(`Operation denied: Start node ${conn.startNodeId} outside editable scope`));
             if (!await verifyNodeName(conn.startNodeId, conn.startNodeName)) throw new Error(ERRORS.NAME_MISMATCH);
             const startNode = await figma.getNodeByIdAsync(conn.startNodeId);
             if (startNode) assertNotLocked(startNode);
-            if (!await checkScopeAccess(conn.endNodeId)) throw new Error(formatScopeError(`Operation denied: End node ${conn.endNodeId} outside editable scope`));
+            if (!await checkScopeAccess(conn.endNodeId)) throw new Error(formatScopeError2(`Operation denied: End node ${conn.endNodeId} outside editable scope`));
             if (!await verifyNodeName(conn.endNodeId, conn.endNodeName)) throw new Error(ERRORS.NAME_MISMATCH);
             const endNode = await figma.getNodeByIdAsync(conn.endNodeId);
             if (endNode) assertNotLocked(endNode);
@@ -5162,7 +5341,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "text_set_content":
         if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.text || !Array.isArray(params.text)) throw new Error("Missing or Invalid text parameter");
-        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        if (!state.scopeRootId) throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
         const textScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
         if (!textScopeRoot) {
           throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
@@ -5173,7 +5352,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             throw new Error(`Node ${item.nodeId} not found`);
           }
           if (!checkScopeAccessRef(node, textScopeRoot)) {
-            throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
           }
           if (node.name !== item.nodeName) {
             throw new Error(ERRORS.NAME_MISMATCH);
@@ -5190,7 +5369,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "annotation_set":
         if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.annotations || !Array.isArray(params.annotations)) throw new Error("Missing or Invalid annotations parameter");
-        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        if (!state.scopeRootId) throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
         const annScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
         if (!annScopeRoot) {
           throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
@@ -5201,7 +5380,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             throw new Error(`Node ${item.nodeId} not found`);
           }
           if (!checkScopeAccessRef(node, annScopeRoot)) {
-            throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
           }
           if (node.name !== item.nodeName) {
             throw new Error(ERRORS.NAME_MISMATCH);
@@ -5215,7 +5394,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "node_delete":
         if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.nodes || !Array.isArray(params.nodes)) throw new Error("Missing or Invalid nodes parameter");
-        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        if (!state.scopeRootId) throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
         const deleteScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
         if (!deleteScopeRoot) {
           throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
@@ -5227,7 +5406,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             throw new Error(`Node ${item.nodeId} not found`);
           }
           if (!checkScopeAccessRef(node, deleteScopeRoot)) {
-            throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+            throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
           }
           if (node.name !== item.nodeName) {
             throw new Error(ERRORS.NAME_MISMATCH);
@@ -5244,7 +5423,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (!Array.isArray(params.targetNodes)) {
             throw new Error("targetNodes must be an array");
           }
-          if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+          if (!state.scopeRootId) throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
           const instScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
           if (!instScopeRoot) {
             throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
@@ -5266,7 +5445,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
               throw new Error(`Node ${item.nodeId} not found`);
             }
             if (!checkScopeAccessRef(node, instScopeRoot)) {
-              throw new Error(formatScopeError(`Operation denied: Target instance ${item.nodeId} outside editable scope`));
+              throw new Error(formatScopeError2(`Operation denied: Target instance ${item.nodeId} outside editable scope`));
             }
             if (node.name !== item.nodeName) {
               throw new Error(ERRORS.NAME_MISMATCH);
@@ -5357,54 +5536,21 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "create_component":
         await validateSingleNodeWrite(params, { checkScopeRoot: true, checkLocked: true });
         return await createComponent(params);
-      case "create_component_set":
+      case "create_component_set": {
         if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-        if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
+        if (!state.scopeRootId) throw new Error(formatScopeError2(ERRORS.OUTSIDE_SCOPE));
         const compSetScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
         if (!compSetScopeRoot) {
           throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
         }
-        const props = params.properties || [];
-        if (params.components) {
-          if (!Array.isArray(params.components)) throw new Error("components must be an array");
-          for (const comp of params.components) {
-            const node = await figma.getNodeByIdAsync(comp.nodeId);
-            if (!node) {
-              throw new Error(`Node ${comp.nodeId} not found`);
-            }
-            if (!checkScopeAccessRef(node, compSetScopeRoot)) {
-              throw new Error(formatScopeError(`Operation denied: Component ${comp.nodeId} outside editable scope`));
-            }
-            if (node.name !== comp.nodeName) {
-              throw new Error(ERRORS.NAME_MISMATCH);
-            }
-            if (!comp.propertyValues || comp.propertyValues.length !== props.length) {
-              throw new Error(`Property values count for component ${comp.nodeName} does not match properties count`);
-            }
-          }
-        }
-        if (params.parentId) {
-          const parentNode = await figma.getNodeByIdAsync(params.parentId);
-          if (!parentNode) {
-            throw new Error(`Node ${params.parentId} not found`);
-          }
-          if (!checkScopeAccessRef(parentNode, compSetScopeRoot)) {
-            throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-          }
-          if (parentNode.name !== params.parentNodeName) {
-            throw new Error(ERRORS.PARENT_NAME_MISMATCH);
-          }
-        }
-        return await createComponentSet(params);
+        const plan = await validateCreateComponentSetPlan(params, compSetScopeRoot);
+        return await createComponentSet(plan);
+      }
       case "create_svg":
-        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-        if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-        if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+        await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
         return await createNodeFromSvg(params);
       case "node_set_effects":
-        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-        if (!await checkScopeAccess(params ? params.nodeId : null)) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
-        if (!await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null)) throw new Error(ERRORS.NAME_MISMATCH);
+        await validateSingleNodeWrite(params, { checkLocked: true });
         return await setEffects(params);
       default:
         throw new Error(`Unknown command: ${command}`);

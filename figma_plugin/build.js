@@ -5,12 +5,15 @@
  */
 
 import * as esbuild from 'esbuild';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+const pkgPath = join(__dirname, '../package.json');
+const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
 
 const isWatch = process.argv.includes('--watch');
 
@@ -25,6 +28,9 @@ async function build() {
         minify: false,
         sourcemap: false,
         logLevel: 'info',
+        define: {
+            __PLUGIN_VERSION__: JSON.stringify(pkg.version),
+        },
     });
 
     if (isWatch) {

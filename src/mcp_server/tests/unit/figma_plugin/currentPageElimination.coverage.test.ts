@@ -20,7 +20,7 @@ const { createShape, createFrame, createText, cloneNode } = await import(
     "../../../../../figma_plugin/handlers/nodeCreators.js"
 );
 const { createNodeFromSvg } = await import("../../../../../figma_plugin/handlers/vectorHandlers.js");
-const { createComponentInstance, createComponentSet, getInstanceOverrides } = await import(
+const { createComponentInstance, createComponentSet, validateCreateComponentSetPlan, getInstanceOverrides } = await import(
     "../../../../../figma_plugin/handlers/componentHandlers.js"
 );
 
@@ -60,19 +60,20 @@ describe("createComponentSet: combines on the first component's containing page"
             },
             currentPage: { id: "CURRENT_PAGE", type: "PAGE" },
         };
-        await createComponentSet({
+        const plan = await validateCreateComponentSetPlan({
             components: [
-                { nodeId: "c1", propertyValues: ["A"] },
-                { nodeId: "c2", propertyValues: ["B"] },
+                { nodeId: "c1", nodeName: "c1", propertyValues: ["A"] },
+                { nodeId: "c2", nodeName: "c2", propertyValues: ["B"] },
             ],
             properties: ["Prop"],
             componentSetName: "Set",
-        });
+        }, page);
+        await createComponentSet(plan);
         expect(combinePageArg).toBe(page);
         expect(combinePageArg.id).not.toBe("CURRENT_PAGE");
     });
 
-    it("throws when the first component is detached (no containing page)", async () => {
+    it("throws when a component is detached (no containing page)", async () => {
         const c1: any = { id: "c1", name: "c1", type: "COMPONENT", parent: null };
         (globalThis as any).figma = {
             getNodeByIdAsync: async () => c1,
@@ -80,7 +81,7 @@ describe("createComponentSet: combines on the first component's containing page"
             currentPage: {},
         };
         expect(
-            createComponentSet({ components: [{ nodeId: "c1", propertyValues: ["A"] }], properties: ["Prop"], componentSetName: "Set" })
+            validateCreateComponentSetPlan({ components: [{ nodeId: "c1", nodeName: "c1", propertyValues: ["A"] }], properties: ["Prop"], componentSetName: "Set" }, c1)
         ).rejects.toThrow("not on a page");
     });
 });
@@ -121,41 +122,41 @@ describe("Creation tools reject bad parents (missing + unresolved; never current
     });
 
     it("create_shape: missing parentId", async () => {
-        expect(createShape({ type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10 })).rejects.toThrow("Missing parentId parameter");
+        expect(createShape({ type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10 })).rejects.toThrow("missing parentId parameter");
     });
     it("create_shape: unresolved parentId", async () => {
-        expect(createShape({ type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10, parentId: "ghost" })).rejects.toThrow("Parent node not found");
+        expect(createShape({ type: "RECTANGLE", x: 0, y: 0, width: 10, height: 10, parentId: "ghost" })).rejects.toThrow("parent node not found");
     });
 
     it("create_frame: missing parentId", async () => {
-        expect(createFrame({ x: 0, y: 0, width: 10, height: 10 })).rejects.toThrow("Missing parentId parameter");
+        expect(createFrame({ x: 0, y: 0, width: 10, height: 10 })).rejects.toThrow("missing parentId parameter");
     });
     it("create_frame: unresolved parentId", async () => {
-        expect(createFrame({ x: 0, y: 0, width: 10, height: 10, parentId: "ghost" })).rejects.toThrow("Parent node not found");
+        expect(createFrame({ x: 0, y: 0, width: 10, height: 10, parentId: "ghost" })).rejects.toThrow("parent node not found");
     });
 
     it("create_text: missing parentId", async () => {
-        expect(createText({ x: 0, y: 0, text: "hi" })).rejects.toThrow("Missing parentId parameter");
+        expect(createText({ x: 0, y: 0, text: "hi" })).rejects.toThrow("missing parentId parameter");
     });
     it("create_text: unresolved parentId", async () => {
-        expect(createText({ x: 0, y: 0, text: "hi", parentId: "ghost" })).rejects.toThrow("Parent node not found");
+        expect(createText({ x: 0, y: 0, text: "hi", parentId: "ghost" })).rejects.toThrow("parent node not found");
     });
 
     it("create_svg: missing parentId", async () => {
-        expect(createNodeFromSvg({ svg: "<svg/>" })).rejects.toThrow("Missing parentId parameter");
+        expect(createNodeFromSvg({ svg: "<svg/>" })).rejects.toThrow("missing parentId parameter");
     });
     it("create_svg: unresolved parentId", async () => {
-        expect(createNodeFromSvg({ svg: "<svg/>", parentId: "ghost" })).rejects.toThrow("Parent node not found");
+        expect(createNodeFromSvg({ svg: "<svg/>", parentId: "ghost" })).rejects.toThrow("parent node not found");
     });
 
     it("create_instance: missing parentId", async () => {
         const comp: any = { id: "comp1", type: "COMPONENT", createInstance: () => ({ id: "i1" }) };
         (globalThis as any).figma.getNodeByIdAsync = async (id: string) => (id === "comp1" ? comp : null);
-        expect(createComponentInstance({ componentId: "comp1", x: 0, y: 0 })).rejects.toThrow("Missing parentId parameter");
+        expect(createComponentInstance({ componentId: "comp1", x: 0, y: 0 })).rejects.toThrow("missing parentId parameter");
     });
     it("create_instance: unresolved parentId", async () => {
         const comp: any = { id: "comp1", type: "COMPONENT", createInstance: () => ({ id: "i1" }) };
         (globalThis as any).figma.getNodeByIdAsync = async (id: string) => (id === "comp1" ? comp : null);
-        expect(createComponentInstance({ componentId: "comp1", x: 0, y: 0, parentId: "ghost" })).rejects.toThrow("Parent node not found");
+        expect(createComponentInstance({ componentId: "comp1", x: 0, y: 0, parentId: "ghost" })).rejects.toThrow("parent node not found");
     });
 });

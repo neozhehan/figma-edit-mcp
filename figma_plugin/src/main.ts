@@ -6,7 +6,8 @@
 // Import utilities
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { sanitizeForPostMessage } from '../utils/sanitize.js';
-import { findLockedAncestor, findInstanceAncestor } from '../utils/nodeUtils.js';
+import { findInstanceAncestor, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
+import { ERRORS, formatScopeError as formatScopeErrorForRoot } from '../utils/errors.js';
 
 // Import handlers
 import { getNodesInfo, getPagesInfo } from '../handlers/nodeReaders.js';
@@ -26,6 +27,7 @@ import {
     setInstanceOverrides,
     createComponent,
     createComponentSet,
+    validateCreateComponentSetPlan,
     setComponentInstanceProperty,
     manageComponentProperty,
     deleteComponentProperty
@@ -40,28 +42,6 @@ import { createStyle, applyStyle, deleteStyle } from '../handlers/styleHandlers.
 import { createNodeFromSvg } from '../handlers/vectorHandlers.js';
 import { getConnectPayload } from '../handlers/connectHandlers.js';
 
-
-// Constants
-const ERRORS: any = {
-    // Editable Scope Errors
-    READ_ONLY_MODE: "Operation Denied: Figma Plugin in Read-Only Mode. Verify if user intends for changes to be made. If so, advise user to disconnect plugin, paste a link to the page/layer to be edited into Link to Selection field, then reconnect plugin.",
-    OUTSIDE_SCOPE: "Operation Denied: Node outside editable scope. Verify if user intends for changes to be made to this particular node. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
-    PARENT_OUTSIDE_SCOPE: "Operation Denied: Parent outside editable scope. Verify if user intends for changes to be made to the parent node. If so, advise user to disconnect plugin, paste a link to the parent page/layer into Link to Selection field, then reconnect plugin.",
-    CLONING_SOURCE_NODE_OUTSIDE_SCOPE: "Operation Denied: Node to be cloned is outside editable scope. Verify if user intends for this node to be cloned. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
-    SCOPE_DELETED: "Operation Denied: The specific Node set as the Editable Scope no longer exists/cannot be found. Advise user to disconnect the plugin and Select a new Editable Scope.",
-    VARIABLE_EDITS_DISABLED: "Operation Denied: Variable editing is disabled. Ask the user to tick 'Allow AI Agent to modify Variables' in the Figma plugin and reconnect.",
-    STYLE_EDITS_DISABLED: "Operation Denied: Style editing is disabled. Ask the user to tick 'Allow AI Agent to modify Styles' in the Figma plugin and reconnect.",
-
-    // Node ID Errors
-    NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
-    PARENT_NAME_MISMATCH: "Operation Denied: parentNodeName does not match name of parentId. Refresh context & recheck to ensure correct parentId is passed in.",
-
-    // Parameter Errors
-    MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
-    MISSING_TARGET_NODE_IDS: "Missing targetNodeIds parameter",
-    MISSING_SOURCE_INSTANCE_ID: "Missing sourceInstanceId parameter",
-    INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array",
-};
 
 // Plugin state
 const state: any = {
@@ -78,7 +58,7 @@ export function getPluginState() {
 
 // Helper: Format error message with current scope ID
 function formatScopeError(errorMessage: any) {
-    return `${errorMessage} (Current Editable Scope Node ID: ${state.scopeRootId || 'None'})`;
+    return formatScopeErrorForRoot(errorMessage, state.scopeRootId);
 }
 
 // Helper: Check if a node is within the allowed scope
@@ -132,22 +112,6 @@ async function verifyNodeName(nodeId: any, expectedName: any) {
     return node.name === expectedName;
 }
 
-// Helper: Assert node is not locked
-function assertNotLocked(node: BaseNode) {
-    const lockedAncestor = findLockedAncestor(node);
-    if (lockedAncestor) {
-        throw new Error(`Operation Denied: Node '${node.name}' (or one of its ancestors, '${lockedAncestor.name}') is locked. Unlock the layer in Figma, or ask the user to unlock it, before editing.`);
-    }
-}
-
-// Helper: Assert node is not inside an instance
-function assertNotInstanceInterior(node: BaseNode, verb: string) {
-    const instanceAncestor = findInstanceAncestor(node);
-    if (instanceAncestor) {
-        throw new Error(`Operation Denied: Node '${node.name}' is inside a component instance ('${instanceAncestor.name}') and cannot be ${verb} directly. Edit the main component, or use instance overrides.`);
-    }
-}
-
 // Helper: Assert node is not the scope root
 function assertNotScopeRoot(nodeId: string) {
     if (nodeId === state.scopeRootId) {
@@ -179,7 +143,7 @@ async function validateParentWrite(params: any, options: { checkLocked?: boolean
     const parent = await figma.getNodeByIdAsync(params?.parentId);
     if (parent) {
         if (options.checkLocked) assertNotLocked(parent);
-        if (options.instanceCheckVerb) assertNotInstanceInterior(parent, options.instanceCheckVerb);
+        if (options.instanceCheckVerb) assertNotInstanceParent(parent, options.instanceCheckVerb);
     }
 }
 
@@ -189,6 +153,57 @@ async function verifyParentName(parentId: any, expectedParentName: any) {
     if (!node) return false;
 
     return node.name === expectedParentName;
+}
+
+// Helper: Clone node validation
+async function validateCloneWrite(params: any) {
+    if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
+    if (!params || !params.nodeId) throw new Error("Missing nodeId parameter");
+
+    const source = await figma.getNodeByIdAsync(params.nodeId);
+    if (!source) {
+        throw new Error(`Node not found with ID: ${params.nodeId}`);
+    }
+
+    // Check source scope
+    if (!(await checkScopeAccess(source.id))) {
+        throw new Error(formatScopeError(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE));
+    }
+    // Verify source name matches expected name
+    if (!(await verifyNodeName(source.id, params.nodeName))) {
+        throw new Error(ERRORS.NAME_MISMATCH);
+    }
+
+    // Reject locked source nodes and locked ancestors
+    assertNotLocked(source);
+
+    // Reject source nodes inside component-instance interiors
+    const sourceInstanceAncestor = findInstanceAncestor(source);
+    if (sourceInstanceAncestor) {
+        throw new Error(`Operation Denied: Cannot clone '${source.name}' because it is inside a component instance.`);
+    }
+
+    // Require source.parent
+    const parent = source.parent;
+    if (!parent) {
+        throw new Error(`node_clone: '${source.name}' has no parent and cannot be cloned.`);
+    }
+
+    // Require an appendable destination parent
+    if (!("appendChild" in parent)) {
+        throw new Error(`node_clone: parent '${parent.name}' (type ${parent.type}) cannot accept cloned children.`);
+    }
+
+    // Reject destination parents outside the current scope, including the scope-root clone case
+    if (!(await checkScopeAccess(parent.id))) {
+        throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
+    }
+
+    // Reject locked destination parents and locked ancestors
+    assertNotLocked(parent);
+
+    // Reject destination parents that are an INSTANCE node or inside an instance interior
+    assertNotInstanceParent(parent, "appended to");
 }
 
 // Helper: Extract a human-readable detail from a thrown value. Figma can throw
@@ -228,8 +243,17 @@ function parseNodeIdFromUrl(url: any) {
     }
 }
 
+declare const __PLUGIN_VERSION__: string;
+// Fallback must NOT be a version literal — that would be a fifth hardcoded
+// version surface, the exact drift class D2 eliminates. "unknown" surfaces a
+// broken define instead of silently reporting a stale version.
+const PLUGIN_VERSION = typeof __PLUGIN_VERSION__ !== "undefined" ? __PLUGIN_VERSION__ : "unknown";
+
 // Show UI
 figma.showUI(__html__, { width: 350, height: 450 });
+
+// Post version to UI on startup
+figma.ui.postMessage({ type: "plugin-version", version: PLUGIN_VERSION });
 
 // Plugin commands from UI
 figma.ui.onmessage = async (msg: any) => {
@@ -401,9 +425,7 @@ async function handleCommand(command: any, params: any) {
             await validateSingleNodeWrite(params, { checkLocked: true });
             return await transformNode(params);
         case "node_clone":
-            if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.CLONING_SOURCE_NODE_OUTSIDE_SCOPE));
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            await validateCloneWrite(params);
             return await cloneNode(params);
 
         case "create_shape":
@@ -687,63 +709,23 @@ async function handleCommand(command: any, params: any) {
             await validateSingleNodeWrite(params, { checkScopeRoot: true, checkLocked: true });
             return await createComponent(params);
 
-        case "create_component_set":
+        case "create_component_set": {
             if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-
             if (!state.scopeRootId) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
             const compSetScopeRoot = await figma.getNodeByIdAsync(state.scopeRootId);
             if (!compSetScopeRoot) {
                 throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
             }
-
-            const props = params.properties || [];
-            if (params.components) {
-                if (!Array.isArray(params.components)) throw new Error("components must be an array");
-
-                for (const comp of params.components) {
-                    const node = await figma.getNodeByIdAsync(comp.nodeId);
-                    if (!node) {
-                        throw new Error(`Node ${comp.nodeId} not found`);
-                    }
-                    if (!checkScopeAccessRef(node, compSetScopeRoot)) {
-                        throw new Error(formatScopeError(`Operation denied: Component ${comp.nodeId} outside editable scope`));
-                    }
-                    if (node.name !== comp.nodeName) {
-                        throw new Error(ERRORS.NAME_MISMATCH);
-                    }
-
-                    if (!comp.propertyValues || comp.propertyValues.length !== props.length) {
-                        throw new Error(`Property values count for component ${comp.nodeName} does not match properties count`);
-                    }
-                }
-            }
-
-            if (params.parentId) {
-                const parentNode = await figma.getNodeByIdAsync(params.parentId);
-                if (!parentNode) {
-                    throw new Error(`Node ${params.parentId} not found`);
-                }
-                if (!checkScopeAccessRef(parentNode, compSetScopeRoot)) {
-                    throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-                }
-                if (parentNode.name !== params.parentNodeName) {
-                    throw new Error(ERRORS.PARENT_NAME_MISMATCH);
-                }
-            }
-
-            return await createComponentSet(params);
+            const plan = await validateCreateComponentSetPlan(params, compSetScopeRoot);
+            return await createComponentSet(plan);
+        }
 
         case "create_svg":
-            if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-            // For creation, we check parent Scope
-            if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-            if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+            await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
             return await createNodeFromSvg(params);
 
         case "node_set_effects":
-            if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-            if (!(await checkScopeAccess(params ? params.nodeId : null))) throw new Error(formatScopeError(ERRORS.OUTSIDE_SCOPE));
-            if (!(await verifyNodeName(params ? params.nodeId : null, params ? params.nodeName : null))) throw new Error(ERRORS.NAME_MISMATCH);
+            await validateSingleNodeWrite(params, { checkLocked: true });
             return await setEffects(params);
 
         default:

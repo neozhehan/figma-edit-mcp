@@ -12,6 +12,19 @@
  * (`.loose()`) and mark non-invariant fields optional so live-document responses
  * never fail validation.
  */
+import { z } from "zod";
+
+/**
+ * Loose output schema per the convention above: declared fields validate,
+ * and extra document-dependent keys always pass — the explicit `catchall`
+ * survives every zod→JSON-Schema converter (older SDK/zod versions emit
+ * `additionalProperties: false` for a plain `z.object`, which made clients
+ * reject successful results — the §6 failure class).
+ */
+export function looseOutput<T extends z.ZodRawShape>(shape: T) {
+    return z.object(shape).catchall(z.any());
+}
+
 export function toolResult(result: unknown) {
     const payload: Record<string, unknown> =
         result && typeof result === "object" ? (result as Record<string, unknown>) : {};

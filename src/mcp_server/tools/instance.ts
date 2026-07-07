@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 
 export function registerInstanceTools(server: McpServer) {
     // 1. Set Instance Property Tool
@@ -16,7 +16,7 @@ export function registerInstanceTools(server: McpServer) {
                 propertyName: z.string().describe("The human-readable name of the component property to change"),
                 value: z.union([z.string(), z.boolean()]).describe("The new value for the property. For INSTANCE_SWAP properties, this must be a component key (the stable library identifier)."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether property update was successful"),
                 results: z.any().optional().describe("Execution details"),
             }),
@@ -42,7 +42,7 @@ export function registerInstanceTools(server: McpServer) {
                     .string()
                     .describe("The ID of the component instance to get overrides from."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether overrides retrieval was successful"),
                 message: z.string().optional().describe("Status message"),
                 sourceInstanceId: z.string().optional().describe("Source instance ID"),
@@ -79,7 +79,7 @@ export function registerInstanceTools(server: McpServer) {
                     )
                     .describe("Array of target instances with their expected names for verification."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether overrides application was successful"),
                 message: z.string().optional().describe("Status message"),
                 totalCount: z.number().optional().describe("Total overrides count"),

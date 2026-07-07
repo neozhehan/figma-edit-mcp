@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 
 const VARIABLE_SCOPES = [
     'ALL_SCOPES',
@@ -50,7 +50,7 @@ export function registerVariableTools(server: McpServer) {
                     .optional()
                     .describe("The page ID to scan for consumers when includeConsumers is 'page'."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 variables: z.array(z.any()).optional().describe("List of variables — present in both list-all and lookup modes (each may carry nodeConsumers/styleConsumers/aliasConsumers when includeConsumers is set)"),
                 collections: z.array(z.any()).optional().describe("List of variable collections (list-all mode only)"),
                 missingIds: z.array(z.string()).optional().describe("Requested variable IDs that did not resolve (lookup mode only; omitted when none)"),
@@ -122,7 +122,7 @@ export function registerVariableTools(server: McpServer) {
                     .optional()
                     .describe("Variable scopes. ALWAYS set explicitly on create; omit on update to leave unchanged."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 id: z.string().optional().describe("ID of the collection or variable"),
                 name: z.string().optional().describe("Name of the collection or variable"),
             }),
@@ -160,7 +160,7 @@ export function registerVariableTools(server: McpServer) {
                     .optional()
                     .describe("Name of the collection to delete, for safety verification. Required if collectionId is used."),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether variables were deleted successfully"),
                 message: z.string().optional().describe("Status message"),
             }),

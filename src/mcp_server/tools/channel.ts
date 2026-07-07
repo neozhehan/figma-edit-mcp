@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { joinChannel, sendCommandToFigma, resetChannel } from "../figma-client.js";
-import { toolResult } from "./_result.js";
+import { toolResult, looseOutput } from "./_result.js";
 
 export function registerChannelTools(server: McpServer) {
     // 1. Join Channel Tool
@@ -15,7 +15,7 @@ export function registerChannelTools(server: McpServer) {
                     .string()
                     .describe("The name of the channel to join"),
             }),
-            outputSchema: z.object({
+            outputSchema: looseOutput({
                 status: z.enum(["success", "error"]).describe("Connection status"),
                 channel: z.string().describe("Channel name"),
                 errorCode: z.string().optional().describe("Error code if status is error"),
@@ -27,6 +27,29 @@ export function registerChannelTools(server: McpServer) {
                 scopeRootId: z.string().nullable().optional().describe("Editable scope root node ID"),
                 documentId: z.string().optional().describe("Figma document ID"),
                 documentName: z.string().optional().describe("Figma document name"),
+                pageCount: z.number().optional().describe("Number of pages in the document"),
+                pages: z.array(z.object({
+                    pageId: z.string(),
+                    pageName: z.string(),
+                    descendantCount: z.number().optional(),
+                    children: z.array(z.object({
+                        id: z.string(),
+                        name: z.string(),
+                        type: z.string()
+                    })).optional()
+                })).optional(),
+                node: z.object({
+                    nodeId: z.string(),
+                    nodeName: z.string(),
+                    type: z.string(),
+                    path: z.array(z.array(z.string())).optional(),
+                    descendantCount: z.number().optional(),
+                    children: z.array(z.object({
+                        id: z.string(),
+                        name: z.string(),
+                        type: z.string()
+                    })).optional()
+                }).optional()
             }),
             annotations: {
                 idempotentHint: true,
