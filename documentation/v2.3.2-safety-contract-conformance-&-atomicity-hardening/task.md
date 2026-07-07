@@ -75,7 +75,7 @@
 - [x] Parent-is-instance regression tests reject before mutation for `create_shape`, `create_frame`, `create_text`, `create_instance`, and `node_insert_child`.
 
 ### Phase 1 Live Figma Verification Item
-- [ ] During Phase 8 (after the Phase 7 build), verify in Figma: locked `node_set_effects` rejects with no effect change; `create_svg` under locked/instance parents creates no SVG; `node_clone` rejects locked sources, instance-interior sources, parent-is-instance placement, and cloning the scope root with no out-of-scope clone.
+- [x] During Phase 8 (after the Phase 7 build), verify in Figma: locked `node_set_effects` rejects with no effect change; `create_svg` under locked/instance parents creates no SVG; `node_clone` rejects locked sources, instance-interior sources, parent-is-instance placement, and cloning the scope root with no out-of-scope clone. *(Verified live across sessions; re-confirmed in the Phase 9 release smoke test on channel `p6b6`, 2026-07-06.)*
 
 ## Phase 2: P0 `create_component_set` Two-Phase Prevalidation and Atomicity
 - [x] Replace the existing dispatcher prevalidation loop with dispatcher-owned plan orchestration:
@@ -159,7 +159,7 @@
 - [x] Every prevalidatable placement failure is rejected in the plan phase before any rename.
 
 ### Phase 2 Live Figma Verification Item
-- [ ] During Phase 8 (after the Phase 7 build), verify in Figma: bad second component, duplicate variant values, locked parent, non-appendable parent, and parent-cycle input all reject with no partial rename; happy path creates the expected variant set with correct variant names, set properties, and placement.
+- [x] During Phase 8 (after the Phase 7 build), verify in Figma: bad second component, duplicate variant values, locked parent, non-appendable parent, and parent-cycle input all reject with no partial rename; happy path creates the expected variant set with correct variant names, set properties, and placement. *(Verified live across sessions; re-confirmed in the Phase 9 release smoke test on channel `p6b6`, 2026-07-06.)*
 
 ## Phase 3: P1 Creation Handlers and Clone Cleanup - No Orphans
 - [x] Add a handler-level `resolveAppendableParent(parentId, command)` helper that checks missing `parentId`, nonexistent parent, and non-appendable parent before construction.
@@ -199,7 +199,7 @@
 - [x] No handler-authored `create_instance` error carries the removed `Error creating component instance:` prefix.
 
 ### Phase 3 Live Figma Verification Item
-- [ ] During Phase 8 (after the Phase 7 build), verify in Figma: bad and non-appendable parents for `create_text`, `create_frame`, `create_svg`, and `create_instance` leave no orphan nodes; happy paths for text, frame, SVG, local component instances, and remote component instances still work. If practical, drive a raw socket malformed-configuration case and confirm cleanup; otherwise record reliance on the unit cleanup tests as allowed by the PRD.
+- [x] During Phase 8 (after the Phase 7 build), verify in Figma: bad and non-appendable parents for `create_text`, `create_frame`, `create_svg`, and `create_instance` leave no orphan nodes; happy paths for text, frame, SVG, local component instances, and remote component instances still work. If practical, drive a raw socket malformed-configuration case and confirm cleanup; otherwise record reliance on the unit cleanup tests as allowed by the PRD. *(Verified live across sessions; re-confirmed in the Phase 9 release smoke test on channel `p6b6`, 2026-07-06.)*
 
 ## Phase 4: P0 `channel_join` Output-Schema Conformance
 - [x] Inspect `src/mcp_server/tools/channel.ts` and the `_result.ts` convention for output schemas allowing extra result keys.
@@ -215,7 +215,7 @@
 - [x] Contract-seam sweep validates each registered tool's representative result against its declared output schema.
 
 ### Phase 4 Live Figma Verification Item
-- [ ] During Phase 8 (after the Phase 7 build), verify `channel_join` succeeds through the MCP tool for page-scoped, node-scoped, and read-only sessions, and that the client receives the structured connect payload.
+- [x] During Phase 8 (after the Phase 7 build), verify `channel_join` succeeds through the MCP tool for page-scoped, node-scoped, and read-only sessions, and that the client receives the structured connect payload. *(Verified live across sessions; re-confirmed in the Phase 9 release smoke test on channel `p6b6`, 2026-07-06.)*
 
 ## Phase 5: P1 Executable Safety Matrix and Drift Prevention
 - [x] Add `src/mcp_server/tests/unit/figma_plugin/safetyContract.test.ts`.
@@ -336,7 +336,7 @@
 - [x] Verify `create_text`, `create_frame`, `create_svg`, and `create_instance` with bad parent IDs or non-appendable parents leave no orphan nodes or instances.
 - [x] Verify happy paths still work for `create_text`, `create_frame`, `create_svg`, local component instance creation, and remote component instance creation. *(All verified live; remote instance created 2026-07-06 from library key `fadb4d8ab…` via importComponentByKeyAsync into Frame 1 — real INSTANCE linked to remote main 1227:2286, appended, then deleted.)*
 - [x] Verify `create_instance` with a `COMPONENT_SET` id returns the default-variant pointer error and creates nothing.
-- [ ] Verify `create_instance` with a bad `componentKey` returns the targeted W1 import-failure guidance. *(Live 2026-07-06: `importComponentByKeyAsync` hangs on both malformed and well-formed-nonexistent keys → MCP 30s timeout + wedged command queue, so the W1 wrap never fires live. **Closed by Phase 8.5 §7** — the 15 s import race makes W1 deliverable; verify there.)*
+- [x] Verify `create_instance` with a bad `componentKey` returns the targeted W1 import-failure guidance. *(Closed by Phase 8.5 §7. W1 guidance confirmed live 2026-07-06 on `3rce` and again in the Phase 9 smoke test on `p6b6` — a bad key returns the reworded `create_instance: failed to import remote component…` error, not a bare 30s timeout.)*
 - [x] Verify `create_component_set` rejects separator/empty property values and set-member components with no renames (the two rev-4 live-verified corruption paths).
 - [x] If practical, drive a raw plugin-socket configuration failure after object creation, such as invalid `layoutMode`, and verify the created object is removed. If raw-socket verification is impractical, record that the PRD allows relying on unit cleanup tests for this step.
 - [x] Verify the plugin About tab shows `2.3.2`. *(Confirmed by the operator after reloading the plugin, 2026-07-06.)*
@@ -403,9 +403,9 @@
 - [x] Extend the `CHANGELOG.md` v2.3.2 entry to cover the §7 import race and the §8 variant-scan crash fix.
 
 ## Phase 9: Release Readiness
-- [ ] Confirm CI includes the new `check:versions` step and still runs all unit tests.
-- [ ] Confirm `SAFETY.md`, README safety bullets, and the executable safety contract agree in both directions.
-- [ ] Confirm `CHANGELOG.md` includes the scope-root clone denial and silent-reparent-skip behavior change.
-- [ ] Confirm package, lockfile, registry manifest, root manifest, plugin About UI, and committed plugin bundle all report or embed `2.3.2`.
-- [ ] Confirm all Phase 1-8.5 unit tests, checks, and live Figma verification items are complete.
-- [ ] Tag/release only after automated CI and manual Figma verification pass.
+- [x] Confirm CI includes the new `check:versions` step and still runs all unit tests.
+- [x] Confirm `SAFETY.md`, README safety bullets, and the executable safety contract agree in both directions.
+- [x] Confirm `CHANGELOG.md` includes the scope-root clone denial and silent-reparent-skip behavior change.
+- [x] Confirm package, lockfile, registry manifest, root manifest, plugin About UI, and committed plugin bundle all report or embed `2.3.2`.
+- [x] Confirm all Phase 1-8.5 unit tests, checks, and live Figma verification items are complete.
+- [x] Tag/release only after automated CI and manual Figma verification pass.
