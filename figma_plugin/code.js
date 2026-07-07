@@ -2335,6 +2335,7 @@
     }
     return value;
   }
+  var IMPORT_TIMEOUT_MS = 15e3;
   async function createComponentInstance(params) {
     const { componentId, x = 0, y = 0, parentId, componentKey } = params || {};
     const parentNode = await resolveAppendableParent(parentId, "create_instance");
@@ -2356,11 +2357,20 @@
       }
       component = node;
     } else {
+      let timeoutId;
       try {
-        component = await figma.importComponentByKeyAsync(componentKey);
+        const importPromise = figma.importComponentByKeyAsync(componentKey);
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error(`import timed out after ${IMPORT_TIMEOUT_MS}ms`));
+          }, IMPORT_TIMEOUT_MS);
+        });
+        component = await Promise.race([importPromise, timeoutPromise]);
       } catch (error) {
         const raw = (error == null ? void 0 : error.message) || String(error);
-        throw new Error(`create_instance: failed to import remote component with key '${componentKey}': ${raw}. Verify the key (component_list), confirm the source library is enabled for this file; a component-set key needs a variant's key.`);
+        throw new Error(`create_instance: failed to import remote component with key '${componentKey}': ${raw}. Read the key from an existing instance's mainComponent (component_list does not list remote library keys); confirm the source library is enabled for this file; a component-set key needs a variant's key.`);
+      } finally {
+        clearTimeout(timeoutId);
       }
     }
     const instance = component.createInstance();
@@ -4013,6 +4023,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     let lastYield = Date.now();
     let lastHeartbeat = Date.now();
     async function walk(node) {
+      var _a;
       walkCount++;
       const now = Date.now();
       if (now - lastYield >= 50 || walkCount % 500 === 0) {
@@ -4060,7 +4071,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           });
         }
       }
-      if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+      if (node.type === "COMPONENT_SET" || node.type === "COMPONENT" && ((_a = node.parent) == null ? void 0 : _a.type) !== "COMPONENT_SET") {
         const defs = node.componentPropertyDefinitions;
         if (defs) {
           const matchesByVarId = /* @__PURE__ */ new Map();

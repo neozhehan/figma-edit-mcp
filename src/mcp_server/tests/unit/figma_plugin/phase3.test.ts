@@ -5,6 +5,7 @@ let mockResizeThrow = false;
 let mockFillsThrow = false;
 let mockImportByKeyThrow = false;
 let mockCloneThrow = false;
+let customImportComponentByKeyAsync: any = null;
 
 // Spies proving the checklist's "throws BEFORE the create method is called".
 let createFrameCalls = 0;
@@ -104,6 +105,9 @@ const gateFigma = {
         return comp;
     },
     importComponentByKeyAsync: async (key: string) => {
+        if (customImportComponentByKeyAsync) {
+            return await customImportComponentByKeyAsync(key);
+        }
         if (mockImportByKeyThrow || key === "bad-key") {
             throw new Error("Figma API connection error");
         }
@@ -144,6 +148,7 @@ describe("Phase 3: Creation Handlers and Clone Cleanup - No Orphans", () => {
         mockFillsThrow = false;
         mockImportByKeyThrow = false;
         mockCloneThrow = false;
+        customImportComponentByKeyAsync = null;
         createFrameCalls = 0;
         createTextCalls = 0;
         createNodeFromSvgCalls = 0;
@@ -504,7 +509,7 @@ describe("Phase 3: Creation Handlers and Clone Cleanup - No Orphans", () => {
             await expect(
                 componentHandlersMod.createComponentInstance({ componentKey: "bad-key", parentId: "parent-id" })
             ).rejects.toThrow(
-                "create_instance: failed to import remote component with key 'bad-key': Figma API connection error. Verify the key (component_list), confirm the source library is enabled for this file; a component-set key needs a variant's key."
+                "create_instance: failed to import remote component with key 'bad-key': Figma API connection error. Read the key from an existing instance's mainComponent (component_list does not list remote library keys); confirm the source library is enabled for this file; a component-set key needs a variant's key."
             );
         });
 
@@ -519,6 +524,92 @@ describe("Phase 3: Creation Handlers and Clone Cleanup - No Orphans", () => {
                 expect(err.message).not.toContain("Error creating component instance:");
                 expect(err.message).toContain("create_instance: failed to import remote component");
             }
+        });
+
+        it("handles never-settling importComponentByKeyAsync and times out", async () => {
+            setupEnvironment();
+            const originalTimeout = componentHandlersMod.IMPORT_TIMEOUT_MS;
+            componentHandlersMod.setImportTimeoutMs(50); // set short timeout for test
+
+            let resolvePromise: any;
+            const pendingPromise = new Promise<any>((resolve) => {
+                resolvePromise = resolve;
+            });
+
+            customImportComponentByKeyAsync = async (key: string) => {
+                return await pendingPromise;
+            };
+
+            const startTime = Date.now();
+            await expect(
+                componentHandlersMod.createComponentInstance({ componentKey: "never-settle", parentId: "parent-id" })
+            ).rejects.toThrow(
+                /create_instance: failed to import remote component with key 'never-settle': import timed out after 50ms/
+            );
+            const duration = Date.now() - startTime;
+            expect(duration).toBeLessThan(500); // verify it didn't hang indefinitely
+
+            // Clean up: resolve the pending promise to avoid unhandled rejection or leaking promise
+            resolvePromise({
+                id: "remote-comp-id",
+                name: "Remote Component",
+                type: "COMPONENT",
+                createInstance: () => ({
+                    id: "inst-1",
+                    name: "Instance",
+                    type: "INSTANCE",
+                    remove: () => {},
+                    removed: false
+                })
+            });
+
+            componentHandlersMod.setImportTimeoutMs(originalTimeout);
+        });
+
+        it("handles late rejection of the abandoned import without unhandled rejection", async () => {
+            setupEnvironment();
+            const originalTimeout = componentHandlersMod.IMPORT_TIMEOUT_MS;
+            componentHandlersMod.setImportTimeoutMs(50); // short timeout
+
+            let rejectPromise: any;
+            const pendingPromise = new Promise<any>((resolve, reject) => {
+                rejectPromise = reject;
+            });
+
+            customImportComponentByKeyAsync = async (key: string) => {
+                return await pendingPromise;
+            };
+
+            await expect(
+                componentHandlersMod.createComponentInstance({ componentKey: "late-reject", parentId: "parent-id" })
+            ).rejects.toThrow(/import timed out/);
+
+            // Trigger late rejection
+            rejectPromise(new Error("Late failure"));
+            
+            // Wait a tick to ensure no unhandled rejection propagates
+            await new Promise(r => setTimeout(r, 10));
+
+            componentHandlersMod.setImportTimeoutMs(originalTimeout);
+        });
+
+        it("succeeds when import resolves quickly", async () => {
+            setupEnvironment();
+            const parent = {
+                id: "parent-id",
+                name: "Parent",
+                type: "FRAME",
+                appendChild: () => {},
+                children: []
+            };
+            gateNodeMap.set("parent-id", parent);
+
+            const res = await componentHandlersMod.createComponentInstance({ componentKey: "valid-key", parentId: "parent-id" });
+            expect(res.id).toBe("inst-1");
+        });
+
+        it("asserts IMPORT_TIMEOUT_MS is strictly less than 30000ms client timeout", () => {
+            expect(componentHandlersMod.IMPORT_TIMEOUT_MS).toBeLessThan(30000);
         });
     });
 });

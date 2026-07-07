@@ -236,6 +236,13 @@ async function validateComponentPropertyValue(
     return value;
 }
 
+// Exported to allow tests to override and avoid waiting a real 15s.
+// Couples with the 30s client timeoutMs; must be strictly less to prevent wedging the serialized command queue.
+export let IMPORT_TIMEOUT_MS = 15000;
+export function setImportTimeoutMs(ms: number) {
+    IMPORT_TIMEOUT_MS = ms;
+}
+
 export async function createComponentInstance(params: any) {
     const { componentId, x = 0, y = 0, parentId, componentKey } = params || {};
 
@@ -260,11 +267,24 @@ export async function createComponentInstance(params: any) {
         }
         component = node as ComponentNode;
     } else {
+        // Bound importComponentByKeyAsync with a race against IMPORT_TIMEOUT_MS so an
+        // unresolvable key can't wedge the serialized command queue. If the timeout wins,
+        // Promise.race keeps a reaction on importPromise, so its later settlement is not an
+        // unhandled rejection. clearTimeout cancels the pending timer when the import wins.
+        let timeoutId: any;
         try {
-            component = await figma.importComponentByKeyAsync(componentKey);
+            const importPromise = figma.importComponentByKeyAsync(componentKey);
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    reject(new Error(`import timed out after ${IMPORT_TIMEOUT_MS}ms`));
+                }, IMPORT_TIMEOUT_MS);
+            });
+            component = await Promise.race([importPromise, timeoutPromise]);
         } catch (error: any) {
             const raw = error?.message || String(error);
-            throw new Error(`create_instance: failed to import remote component with key '${componentKey}': ${raw}. Verify the key (component_list), confirm the source library is enabled for this file; a component-set key needs a variant's key.`);
+            throw new Error(`create_instance: failed to import remote component with key '${componentKey}': ${raw}. Read the key from an existing instance's mainComponent (component_list does not list remote library keys); confirm the source library is enabled for this file; a component-set key needs a variant's key.`);
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 

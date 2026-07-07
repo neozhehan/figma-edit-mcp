@@ -179,7 +179,7 @@ async function findVariableConsumers(
                 });
             }
         }
-        if (node.type === 'COMPONENT' || node.type === 'COMPONENT_SET') {
+        if (node.type === 'COMPONENT_SET' || (node.type === 'COMPONENT' && node.parent?.type !== 'COMPONENT_SET')) {
             const defs = (node as any).componentPropertyDefinitions;
             if (defs) {
                 const matchesByVarId = new Map<string, string[]>();

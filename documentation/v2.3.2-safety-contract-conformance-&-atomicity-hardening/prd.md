@@ -36,6 +36,8 @@ The release goal is not to add new design-editing capability. It is to make the 
 > - `node_clone` gains a stricter guard stack that **extends** the documented contract — `SAFETY.md` B1 previously promised only a locked-source check. The extension is motivated by guarantees G1/G7 and closes a **live scope-containment escape**: today, cloning the scope root itself passes the source-scope check and places the clone *outside* the editable subtree. Consequence of the fix: **cloning the scope root is no longer possible** (its parent is outside scope by definition). This is intentional; see **D3** and the error-playbook update in §5.
 > - `create_component_set` now fully prevalidates components, parent, component type, locks, instance interiors, remote/shared-library status, duplicate variant combinations, page compatibility, and the **parent-cycle case** (parent must not be one of the combined components or a descendant of one) before renaming or combining variants. The current handler’s **silent reparent skip** (a missing parent at placement time is ignored and success is reported with `parentId` unhonored) is replaced by a hard prevalidation error.
 > - `create_frame`, `create_text`, `create_svg`, and `create_instance` validate the parent before creating nodes / instances, **and** clean up the created object on any post-construction failure (cleanup is unconditional — see **D6**).
+> - `create_instance` bounds the remote-component import (`importComponentByKeyAsync`) with a **15 s timeout**: an unresolvable `componentKey` now fails in ~15 s with the actionable W1 import-failure error instead of hanging past the 30 s client timeout and wedging the serialized command queue (§7). No new parameter or schema change.
+> - `variable_delete` (and `variable_list` with `includeConsumers`) no longer **crash** in documents containing variant components: the consumer scan previously read `componentPropertyDefinitions` on variant components, which Figma rejects; it now skips variants (§8). Behavior fix only — the "refuses in-use deletes" guarantee is unchanged.
 
 ---
 
@@ -157,7 +159,7 @@ The release goal is not to add new design-editing capability. It is to make the 
 >
 > ***RESOLVED (rev 6): option (c).*** *Live evidence (rev 4/5) gutted (b)’s main benefit — Figma’s raw errors already self-identify the failing API (`in appendChild: …`) — while exact error strings proved load-bearing for the contract tests and playbook. Note the current wrapper is already inconsistent: the missing-`componentId`/`componentKey` check sits outside the try block, unwrapped. Scope of the targeted handling:*
 >
-> - **W1 — wrap `importComponentByKeyAsync` only** (the sole externally-caused, recoverable failure): `create_instance: failed to import remote component with key '${componentKey}': ${raw}. Verify the key (component_list), confirm the source library is enabled for this file; a component-set key needs a variant's key.`
+> - **W1 — wrap `importComponentByKeyAsync` only** (the sole externally-caused, recoverable failure): `create_instance: failed to import remote component with key '${componentKey}': ${raw}. Read the key from an existing instance's mainComponent (component_list does not list remote library keys); confirm the source library is enabled for this file; a component-set key needs a variant's key.`
 > - **W2 — reject `COMPONENT_SET` ids with a pointer** — this also fixes a **latent `TypeError`** (typings-verified: the type check admits `COMPONENT_SET`, but `createInstance()` exists only on `ComponentNode`; `ComponentSetNode` exposes `defaultVariant`): `create_instance: '${node.name}' is a COMPONENT_SET; pass one of its variant COMPONENTs — e.g. its default variant '${set.defaultVariant.name}' (${set.defaultVariant.id}).` Auto-instantiating `defaultVariant` was **rejected**: it guesses a variant the caller never named (R2) and adds capability in a patch release.
 > - **W3/W4 — prefix alignment, no wraps:** the local-lookup errors (`not found`, wrong type) and the missing-`componentId`/`componentKey` error move to the `create_instance:` prefix family.
 > - **No wrap** for `createInstance()` TOCTOU or configure/append failures — D6’s cleanup rethrows the original error untouched; the “creation failures never leave orphans” fact is documented once in the error-playbook, not appended per message.
@@ -190,6 +192,8 @@ The release goal is not to add new design-editing capability. It is to make the 
 | §4 | Executable safety matrix / guard regression tests | **P1** | `src/mcp_server/tests/unit/figma_plugin/*`, `SAFETY.md` |
 | §5 | Code-backed README, version sync, and safety-doc cleanup | **P1** | `README.md`, `SAFETY.md`, `figma_plugin/ui.html`, `figma_plugin/build.js`, `server.json`, `manifest.json`, `CHANGELOG.md` |
 | §6 | `channel_join` output-schema conformance (found live, rev 4) | **P0** | `src/mcp_server/tools/channel.ts`, `src/mcp_server/tools/_result.ts`, contract-seam tests |
+| §7 | Bound the `create_instance` remote-component import with a 15 s `Promise.race` (anti-hang / anti-queue-wedge resilience, found live rev 8) | **P1** | `figma_plugin/handlers/componentHandlers.ts` |
+| §8 | Fix the `variable_delete` / consumer-scan crash that reads `componentPropertyDefinitions` on **variant** components (pre-existing, found live rev 9) | **P1** | `figma_plugin/handlers/variableHandlers.ts` |
 
 > [!IMPORTANT]
 > **Priorities are implementation *sequencing* only** — per the coverage map below, every row needs both its implementation change and its regression test before the release ships; nothing P1 is droppable. In particular, **`create_svg`’s fix spans §1 (dispatcher guards) and §3 (handler creates the node before parent checks) and the two halves must land together**: shipping §1 alone still leaves the orphan-node bug for an in-scope, name-matched parent that cannot accept children.
@@ -215,6 +219,8 @@ This table is the acceptance checklist for the v2.3.2 audit findings. Each row m
 | `create_component_set` result read can fail after successful mutation (`variantGroupProperties` throw — **live rev 4**) | Wrap result construction; return success + `warning` without the field on getter throw | Simulated getter throw after combine returns success-with-warning, not an error |
 | Parent-side instance guard misses parent-**is**-instance, all creation/reparent tools (**live rev 5**) | Extend parent checks to `parent.type === "INSTANCE" \|\| findInstanceAncestor(parent)` in `validateParentWrite`, `validateCloneWrite`, and the §2 plan phase | Per-tool tests: an `INSTANCE` node as `parentId` rejects with a structured error before any create/clone/insert mutation |
 | `create_instance` admits `COMPONENT_SET` ids but `createInstance()` exists only on `ComponentNode` — latent `TypeError` (typings-verified, **rev 6**) | Reject `COMPONENT_SET` ids with a default-variant pointer (OQ3/W2); remove the catch-all wrapper; add the W1 import wrap; align prefixes (W3/W4) | Set-id rejection test with pointer text; import-failure wrap test; no-legacy-prefix regression |
+| `create_instance` remote import **hangs** on an unresolvable key (malformed *or* well-formed-nonexistent), so the W1 wrap never fires and the serialized command queue wedges behind the unsettled import (**live rev 8**) | Bound `importComponentByKeyAsync` in `createComponentInstance` with a 15 s `Promise.race`; on timeout reject into the existing W1 wrap; swallow the abandoned promise (§7) | Never-settling import rejects with the W1 error within the (test-shortened) timeout — not a hang; fast valid import still succeeds; fast rejection still surfaces W1; timeout constant `<` the 30 s client timeout; queue not wedged (live) |
+| `variable_delete` / consumer scan reads `componentPropertyDefinitions` on **variant** components, which Figma rejects — crashes the in-use guard in any document with variants (**live rev 9, pre-existing**) | Guard the read in `findVariableConsumers` to a `COMPONENT_SET` or non-variant `COMPONENT` (`node.parent?.type !== 'COMPONENT_SET'`); audit sibling type-restricted reads (§8) | Scan over a component set with variant children completes without throwing; real component-property consumers still detected; in-use-refuse / unused-success behavior preserved; live `variable_list includeConsumers:document` returns the report instead of the crash |
 
 ---
 
@@ -659,13 +665,99 @@ Documentation updates:
 
 ---
 
+## §7. `create_instance` remote-import resilience — bound `importComponentByKeyAsync` (P1 — found live rev 8)
+
+**The bug.** `figma.importComponentByKeyAsync(key)` does **not** reject promptly for a key it cannot resolve. Verified live (2026-07-06, document “MCP Test”): both a malformed key (`nonexistent-key-1234`) and a **well-formed-but-nonexistent** key (a 40-hex all-zero string) left the promise unsettled past the MCP client’s 30 s `timeoutMs`. Two consequences:
+
+- The caller receives the bare `Request timed out after 30000ms` instead of the actionable W1 import-failure guidance — the W1 wrap (rev 6) only fires on a *rejection*, which never arrives.
+- Because the dispatcher serializes commands through `state.commandQueue`, the unsettled import **blocks every subsequent command**: the whole plugin session wedges until Figma eventually abandons the import. Observed live — repeated follow-up `node_info` calls each timed out behind the stuck import.
+
+**No pre-check is possible.** The Figma plugin sandbox exposes no component-key existence lookup: `@figma/plugin-typings` `TeamLibraryAPI` is **variable-only** (`getAvailableLibraryVariableCollectionsAsync` / `getVariablesInLibraryCollectionAsync`) — there is no component analog, and the `key` doc comment states you can only import already-published components. The import *is* the only resolution path, so the fix must **bound** it, not front-run it. (A 40-hex format regex would catch only *malformed* keys, not the well-formed-nonexistent case that hangs identically — so it is at most a cosmetic fast-fail, not the fix.)
+
+**v2.3.2 change.** Wrap the sole `importComponentByKeyAsync` call in `createComponentInstance` (`figma_plugin/handlers/componentHandlers.ts`) in a `Promise.race` against a **15 s** timeout. On timeout the race rejects and the **existing W1 catch** turns it into the actionable `create_instance: failed to import remote component with key '…': …` error. No new error family, no new parameter, no MCP schema change.
+
+```ts
+const IMPORT_TIMEOUT_MS = 15000; // must stay below the 30 s client timeoutMs — see rationale
+const importP = figma.importComponentByKeyAsync(componentKey);
+importP.catch(() => {}); // swallow a late settlement so the abandoned import can't surface as an unhandled rejection
+try {
+    component = await Promise.race([
+        importP,
+        new Promise<never>((_, reject) =>
+            setTimeout(
+                () => reject(new Error(`import timed out after ${IMPORT_TIMEOUT_MS}ms — the key may not resolve to an accessible published component`)),
+                IMPORT_TIMEOUT_MS,
+            ),
+        ),
+    ]);
+} catch (error: any) {
+    const raw = error?.message || String(error);
+    throw new Error(`create_instance: failed to import remote component with key '${componentKey}': ${raw}. Read the key from an existing instance's mainComponent (component_list does not list remote library keys); confirm the source library is enabled for this file; a component-set key needs a variant's key.`);
+}
+```
+
+**Rationale — why bound-not-pre-check, and why 15 s.**
+
+- *Bounded, not pre-validated.* No existence check exists (above), so the only lever is a timeout on the import itself. The race also **unblocks the command queue**: when it rejects, the handler returns, the dispatcher’s `catch` completes the queued `.then`, and the next command runs — a stale key can no longer wedge the session. This is the resilience half of the fix, and the reason it is not merely a nicer error string.
+- *The race timeout and the client `timeoutMs` are a coupled pair — protect the margin, not the absolute.* The race must fire early enough that the W1 error is *delivered* before the client’s 30 s fires; otherwise the caller still gets the bare timeout and the fix is defeated. 15 s leaves ~15 s for reject → catch → build → `postMessage` → relay → client. 25 s would leave only ~5 s and risk losing that delivery race — the one thing the mechanism cannot afford. 15 s also bounds the queue-wedge to 15 s per bad key.
+- *15 s is safe on the true-positive side.* The one observed successful remote import (rev 6 live, the Button-group instance) returned effectively instantly, so legitimate imports sit well under the threshold; 15 s false-aborts a valid import only if a library genuinely loads that slowly, which has not been observed. **If tolerating slow libraries later becomes necessary, raise the client `timeoutMs` and the race together (race ≈ client − 8 s) so the margin holds — do not push the race toward a fixed ceiling.** Because `timeoutMs` is per-call, the `create_instance` path may carry its own higher client timeout as the known-slow command.
+- *Residual (R1-consistent).* The abandoned import promise is swallowed with a no-op `.catch`; its late settlement is ignored — it never reaches `createInstance`, so no orphan and no unhandled rejection.
+
+**Tests.** Make the timeout injectable (a module constant the test can shrink, or fake timers) so the suite never waits a real 15 s:
+
+- A never-settling `importComponentByKeyAsync` makes `create_instance` reject within the (shortened) timeout with the W1-prefixed error — **not** a hang.
+- The W1 error carries the timeout detail as its `raw` cause.
+- A fast-resolving valid import still succeeds and appends the instance (the race resolves with the component).
+- A fast-*rejecting* import still surfaces the W1 wrap (pre-existing behavior preserved).
+- The timeout constant is strictly less than the 30 s client `timeoutMs`.
+- A late settlement of the abandoned import (after the race already timed out) produces no unhandled rejection.
+
+Live verification (Phase 8.5 — **closes the previously-deferred Phase 8 bad-`componentKey` W1 check**): a bad or well-formed-nonexistent `componentKey` returns the W1 guidance in ~15 s (not the 30 s bare timeout), and a subsequent command (e.g. `node_info`) responds promptly — proving the queue is not wedged.
+
+---
+
+## §8. `variable_delete` consumer-scan crash on variant components (P1 — found live rev 9, pre-existing)
+
+**The bug.** `variable_delete`’s full-document in-use guard walks every node via `findVariableConsumers` (`figma_plugin/handlers/variableHandlers.ts`) and reads `componentPropertyDefinitions` on every node of type `COMPONENT` or `COMPONENT_SET` (line 183, guarded only by that type check). But a **variant** is a `COMPONENT` whose parent is a `COMPONENT_SET`, and Figma **throws** when `componentPropertyDefinitions` is read on a variant — the definitions live on the parent set. Verified live (2026-07-06, document “MCP Test”): the scan threw `in get_componentPropertyDefinitions: Can only get component property definitions of a component set or non-variant component`.
+
+**Current behavior.**
+
+- `deleteVariables` runs `findVariableConsumers` over every page **unconditionally** after its existence/name/remote prechecks (`variableHandlers.ts` ~line 563). The walk hits line 183 on the first variant component and throws, so **any `variable_delete` in a document containing a variant component crashes** with the opaque error above and deletes nothing — the documented “full-document consumer scan refuses in-use deletes” guarantee is broken across the board (essentially every real design-system file has variants).
+- The same scan is reachable **read-only** via `variable_list` with `includeConsumers` (`page`/`document`), which crashes identically — this is the non-destructive path used to confirm the bug without a live delete.
+- Not affected: `variable_list` without `includeConsumers` (no scan) and `variable_delete` of an empty collection (early return before the scan).
+
+**Provenance / scope.** Pre-existing — introduced by the consumer-scan feature (commit `cd2c4cd`), **not** a v2.3.2 change (`variableHandlers.ts` is untouched by this release’s §1–§7 work). It is folded into v2.3.2 as resilience hardening because it is a live-confirmed crash of a documented safety guarantee, consistent with the release’s intent.
+
+**v2.3.2 change.** Guard the read to skip variants:
+
+```ts
+// Only a component set or a NON-variant component exposes componentPropertyDefinitions.
+// A variant (COMPONENT whose parent is a COMPONENT_SET) throws — its definitions are read
+// when the walk visits the parent COMPONENT_SET, so skipping it loses no consumer match.
+if (node.type === 'COMPONENT_SET' || (node.type === 'COMPONENT' && node.parent?.type !== 'COMPONENT_SET')) {
+    const defs = (node as any).componentPropertyDefinitions;
+    // …existing binding-collection logic…
+}
+```
+
+This both prevents the throw and removes a redundant read (the set’s definitions are already visited on the `COMPONENT_SET` node). Audit the sibling reads in the same walk (`componentProperties` ~line 220, `reactions` ~line 257) for the same node-type-restricted-getter class and guard any that can throw on a legitimately-scanned node type. **No change** to the consumer-report shape or the refuse-in-use behavior — this is a crash fix only.
+
+**Tests.**
+
+- A consumer scan over a `COMPONENT_SET` with variant children completes without throwing (mock the variant’s `componentPropertyDefinitions` getter to throw as Figma does; assert the scan skips it).
+- A component-property-bound variable on the set / a non-variant component is still reported as a consumer (no lost matches).
+- `deleteVariables` of an in-use variable still refuses, and of an unused variable still succeeds, with variants present in the scanned tree.
+- Live: `variable_list includeConsumers:document` in a document with variants returns the consumer report instead of the crash; a `variable_delete` of a safe (unused, local) variable completes.
+
+---
+
 ## Documentation impact
 
 Update the operational guidance used by both humans and agents:
 
 - **`SAFETY.md`** — v2.3.2 safety contract, executable matrix, batch semantics, `node_clone` contract extension.
 - **`README.md`** — safety bullets aligned with implemented guards and tests; version/tool table if needed.
-- **`skills/figma-edit/references/error-playbook.md`** — add recovery guidance for: locked/instance rejections on `create_svg`, `node_clone`, and `node_set_effects`; the **scope-root clone denial** (recovery: ask the user to re-scope to the parent, then clone); the **parent-cycle rejection** on `create_component_set` (recovery: choose a parent outside the combined components, or omit `parentId` and place the set afterwards with `node_insert_child`); duplicate variant rejection; parent-not-appendable creation errors; the residual late-placement case (set left at the combine location — finish placement with `node_insert_child`); the `create_instance` remote-import failure (verify key / enable library) and `COMPONENT_SET`-id pointer error (rev 6); plus a single global note that v2.3.2 creation failures never leave orphans (D6).
+- **`skills/figma-edit/references/error-playbook.md`** — add recovery guidance for: locked/instance rejections on `create_svg`, `node_clone`, and `node_set_effects`; the **scope-root clone denial** (recovery: ask the user to re-scope to the parent, then clone); the **parent-cycle rejection** on `create_component_set` (recovery: choose a parent outside the combined components, or omit `parentId` and place the set afterwards with `node_insert_child`); duplicate variant rejection; parent-not-appendable creation errors; the residual late-placement case (set left at the combine location — finish placement with `node_insert_child`); the `create_instance` remote-import failure (verify key / enable library) and `COMPONENT_SET`-id pointer error (rev 6); plus a single global note that v2.3.2 creation failures never leave orphans (D6). **Update the remote-import row for §7:** an unresolvable `componentKey` now returns the W1 error in ~15 s (the 15 s import-timeout), not a 30 s hang — revise the earlier “Figma hangs / request timeout” wording accordingly.
 - **`skills/figma-edit/references/workflows.md` / `tool-selection.md`** — update component-set workflow: validate component names/types and unique variant combinations before creating a component set; never pass one of the combined components as the parent.
 - **MCP resources / generated manifest** — regenerate if any tool descriptions or guide resources change.
 
@@ -770,3 +862,5 @@ Every issue below was confirmed by static audit before this PRD was written; row
 - **Rev 5, 2026-07-04** — locked-layer live verification: confirmed `node_set_effects` mutates locked nodes and children of locked containers (control `node_rename` correctly denied on the same node), `node_clone` duplicates locked nodes (clone inherits `locked` — undeletable by the agent), and `create_svg` creates inside locked containers (Figma’s API ignores locks). Found and folded in the **parent-is-instance guard hole**: `findInstanceAncestor` excludes the node itself, so every parent-side instance check passes when the parent *is* an `INSTANCE` (live: raw Figma error + orphan through `create_svg`); §1/§2 now require `parent.type === "INSTANCE" || findInstanceAncestor(parent)` across all parent-gated tools. Effects were restored after each test; two locked test artifacts remain for manual cleanup (they are protected from the agent by the very guards under test).
 - **Rev 6, 2026-07-04** — resolved **OQ3 as option (c)**: catch-all wrapper removed; targeted W1 wrap on `importComponentByKeyAsync` with key + recovery guidance; `COMPONENT_SET` ids rejected with a default-variant pointer, also fixing the latent `createInstance`-on-set `TypeError` (typings-verified); local-lookup and missing-parameter messages aligned to the `create_instance:` prefix family; auto-instantiating `defaultVariant` explicitly rejected (guessed intent per R2, new capability in a patch). Added §3 tests, a coverage-map row, a provenance entry, and error-playbook items. Only OQ4 remains open.
 - **Rev 7, 2026-07-04** — resolved **OQ4 as option (b)**: the safety-contract test parses `SAFETY.md` Part B’s `·`-separated gate shorthand, maps generic tokens to the 13 categories via a small alias table (bespoke `§`-tagged tokens ignore-listed, unknown tokens fail), and diffs bidirectionally against the contract table — mechanically enforcing both halves of D9 (no silent weakening, no silent strengthening). All decisions in the PRD are now closed; v2.3.2 is fully specified.
+- **Rev 8, 2026-07-06** — live verification of the `create_instance` remote-import path (after enabling a library on “MCP Test”) surfaced a **resilience defect**: `importComponentByKeyAsync` does not reject promptly on an unresolvable key — a malformed key **and** a well-formed-but-nonexistent 40-hex key both hung past the 30 s client timeout, so the W1 wrap never fired and the serialized `state.commandQueue` wedged behind the unsettled import (follow-up `node_info` calls timed out). Confirmed against `@figma/plugin-typings` that no component-key existence pre-check exists (`TeamLibraryAPI` is variable-only), so a bound is the only available fix. Added **§7 / Phase 8.5**: a 15 s `Promise.race` around the import that rejects into the existing W1 error and frees the queue, with the coupled race/client-timeout margin reasoning recorded. This closes the previously-deferred Phase 8 bad-`componentKey` live check. The happy path (a real remote instance from a live library key) was also verified and cleaned up this session.
+- **Rev 9, 2026-07-06** — verified a **pre-existing crash** during live review: `variable_delete`’s consumer scan (`findVariableConsumers`) reads `componentPropertyDefinitions` on every `COMPONENT`, but Figma throws for **variant** components, so `variable_delete` (and `variable_list` with `includeConsumers`) crash in any document containing a variant — silently breaking the documented “refuses in-use deletes” guarantee. Confirmed live via the read-only `variable_list includeConsumers:document` path (exact error: `in get_componentPropertyDefinitions: Can only get component property definitions of a component set or non-variant component`). Introduced by the consumer-scan feature (commit `cd2c4cd`), **not** by v2.3.2, but folded into this release as **§8 / Phase 8.5** hardening: guard the read to a component set or non-variant component, and audit sibling type-restricted reads. `variableHandlers.ts` was otherwise untouched by v2.3.2.

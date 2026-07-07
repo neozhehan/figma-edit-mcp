@@ -317,9 +317,9 @@
 - [x] Review the final diff for accidental MCP input schema changes or unrelated refactors.
 
 ## Phase 8: Live Figma Verification and Rollout Gate
-- [ ] Start from a fresh editable Figma test file with an editable frame scope, locked test layers, an instance, local components, and at least one component set. *(Live runs used node scope and page scope on "MCP Test" with a locked layer, instance, components, and MyTestComponentSet; no frame-scope session and no locked container with unlocked children yet.)*
+- [x] Start from a fresh editable Figma test file with an editable frame scope, locked test layers, an instance, local components, and at least one component set. *(Across sessions on "MCP Test": frame-scope session on locked "Frame 1" (2026-07-06), plus page/node scope with locked layers, TestMain instance, local components, and MyTestComponentSet.)*
 - [x] Verify `channel_join` succeeds through MCP for page scope, node scope, and read-only scope. *(All three modes verified live 2026-07-05/06; the read-only session additionally confirmed reads stay ungated and writes return the READ_ONLY_MODE denial.)*
-- [ ] Verify `node_set_effects` on a locked node and on a child of a locked container returns the structured locked error and changes no effects. *(Locked node verified live, effects unchanged; child-of-locked-container needs a locked container fixture — unit-covered by phase1 locked-ancestor tests.)*
+- [x] Verify `node_set_effects` on a locked node and on a child of a locked container returns the structured locked error and changes no effects. *(Both verified live: locked node (14:2) and unlocked "Ellipse 1" inside locked "Frame 1" — error names 'Frame 1' as the locked ancestor; effects re-read [] after each.)*
 - [x] Verify `create_svg` under a locked parent returns a structured error and creates no SVG node.
 - [x] Verify `create_svg` under an instance interior and with an `INSTANCE` node as parent returns a structured error and creates no SVG node.
 - [x] Verify `create_svg` with a non-appendable in-scope parent creates no orphan.
@@ -334,18 +334,78 @@
 - [x] Verify `create_component_set` with `parentId` equal to one of the input components returns the parent-cycle rejection and leaves all names intact.
 - [x] Verify `create_component_set` happy path creates a component set with expected variant names, variant properties, optional set name, and requested placement.
 - [x] Verify `create_text`, `create_frame`, `create_svg`, and `create_instance` with bad parent IDs or non-appendable parents leave no orphan nodes or instances.
-- [ ] Verify happy paths still work for `create_text`, `create_frame`, `create_svg`, local component instance creation, and remote component instance creation. *(All verified live except remote instances — no shared library is enabled for the test file.)*
+- [x] Verify happy paths still work for `create_text`, `create_frame`, `create_svg`, local component instance creation, and remote component instance creation. *(All verified live; remote instance created 2026-07-06 from library key `fadb4d8ab…` via importComponentByKeyAsync into Frame 1 — real INSTANCE linked to remote main 1227:2286, appended, then deleted.)*
 - [x] Verify `create_instance` with a `COMPONENT_SET` id returns the default-variant pointer error and creates nothing.
-- [ ] Verify `create_instance` with a bad `componentKey` returns the targeted W1 import-failure guidance. *(Live: Figma hangs on garbage keys → MCP 30s timeout, nothing created; the W1 wrap fires only when the import rejects. W1 string unit-verified; timeout mode documented in error-playbook.)*
+- [ ] Verify `create_instance` with a bad `componentKey` returns the targeted W1 import-failure guidance. *(Live 2026-07-06: `importComponentByKeyAsync` hangs on both malformed and well-formed-nonexistent keys → MCP 30s timeout + wedged command queue, so the W1 wrap never fires live. **Closed by Phase 8.5 §7** — the 15 s import race makes W1 deliverable; verify there.)*
 - [x] Verify `create_component_set` rejects separator/empty property values and set-member components with no renames (the two rev-4 live-verified corruption paths).
 - [x] If practical, drive a raw plugin-socket configuration failure after object creation, such as invalid `layoutMode`, and verify the created object is removed. If raw-socket verification is impractical, record that the PRD allows relying on unit cleanup tests for this step.
-- [ ] Verify the plugin About tab shows `2.3.2`. *(Requires reloading the plugin in Figma after the latest rebuild, then visual confirmation.)*
+- [x] Verify the plugin About tab shows `2.3.2`. *(Confirmed by the operator after reloading the plugin, 2026-07-06.)*
 - [x] Clean up any live-test pages, nodes, components, and variables that the agent can safely delete. Record anything intentionally left for manual cleanup because it is protected by locks or scope.
+
+## Phase 8.5: Post-Verification Resilience Fixes (§7 `create_instance` import race · §8 `variable_delete` variant-scan crash)
+
+> Two resilience defects surfaced during live verification (2026-07-06) and are folded into this hardening release. Neither adds tools, powers, or MCP schema changes.
+
+### §7 — `create_instance` remote-import race (bound `importComponentByKeyAsync`)
+
+> **§7 motivating finding:** a malformed **and** a well-formed-but-nonexistent `componentKey` both hang `importComponentByKeyAsync` past the 30 s client timeout — the W1 wrap never fires and the serialized `state.commandQueue` wedges behind the unsettled import. No component-key existence pre-check exists in the plugin sandbox (`@figma/plugin-typings` `TeamLibraryAPI` is variable-only), so the import must be **bounded**, not front-run. See PRD §7.
+
+#### §7 Implementation - `figma_plugin/handlers/componentHandlers.ts`
+- [x] Wrap the sole `importComponentByKeyAsync` call in `createComponentInstance` in a `Promise.race` against a **15 s** timeout constant (`IMPORT_TIMEOUT_MS = 15000`).
+- [x] On timeout, reject so the **existing W1 catch** produces the actionable `create_instance: failed to import remote component with key '…': …` error — do not add a new error family, parameter, or MCP schema change.
+- [x] Include the timeout detail (e.g. `import timed out after 15000ms …`) as the wrapped `raw` cause.
+- [x] Attach a no-op `.catch()` to the abandoned import promise so a late settlement cannot surface as an unhandled rejection.
+- [x] Keep the timeout constant strictly below the 30 s client `timeoutMs` (delivery-margin invariant); leave a code comment recording the coupled race/client-timeout reasoning.
+- [x] Make the timeout injectable for tests (module constant the test can shrink, or fake timers) so the suite never waits a real 15 s.
+- [x] Confirm the race path frees the command queue on timeout (handler returns, dispatcher `catch` completes the queued `.then`).
+
+#### §7 Unit Tests - `src/mcp_server/tests/unit/figma_plugin/`
+- [x] A never-settling `importComponentByKeyAsync` makes `create_instance` reject within the (shortened) timeout with the W1-prefixed error — not a hang.
+- [x] The W1 error carries the timeout detail as its `raw` cause.
+- [x] A fast-resolving valid import still succeeds and appends the instance (race resolves with the component).
+- [x] A fast-*rejecting* import still surfaces the W1 wrap (pre-existing behavior preserved).
+- [x] The timeout constant is strictly less than the 30 s client `timeoutMs`.
+- [x] A late settlement of the abandoned import (after the race already timed out) produces no unhandled rejection.
+
+#### §7 W1 message correction (remote-import `component_list` hint)
+
+> The W1 error string tells the agent to "Verify the key (component_list)", but W1 fires **only on the remote-import path**, and `component_list` does not surface remote library keys (it scans page trees; remote main components aren't there — verified live: 0 remote results). The hint points at the one tool that can't help. Correct it to the `tool-selection.md` recipe: read the key from an existing instance's `mainComponent`. This is a messaging change whose authoritative copy is a **code** string literal, mirrored in a pinned test and the docs — all must move together.
+
+- [x] Reword the W1 error literal in `createComponentInstance` (`figma_plugin/handlers/componentHandlers.ts`): replace `Verify the key (component_list)` with guidance to read the key from an existing instance's `mainComponent` (noting `component_list` does not list remote library keys); keep the "confirm the source library is enabled" and "a component-set key needs a variant's key" clauses. No logic change.
+- [x] Update the exact-string assertion in `phase3.test.ts` (the `importComponentByKeyAsync`-failure test, and the no-legacy-prefix test if it inlines the string) to match the reworded W1 literal.
+- [x] Update the two PRD W1 copies — the OQ3/W1 decision block (§3 area) and the §7 code sketch — so the recorded string matches the shipped one.
+- [x] Repo-wide grep confirms no `Verify the key (component_list)` copy remains after the reword (code, tests, docs).
+
+#### §7 Live Figma Verification (closes the deferred Phase 8 W1 check)
+- [x] With a bad or well-formed-nonexistent `componentKey`, `create_instance` returns the W1 import-failure guidance (not the 30 s bare timeout), and a subsequent command (e.g. `node_info`) responds promptly — proving the queue is not wedged. *(Verified live 2026-07-06 on channel `3rce`: both a 40-hex-zero key and `nonexistent-key-1234` returned the reworded W1 error with raw cause `Could not find a published component with the key …`, and `node_info` stayed prompt. Note: Figma **fast-rejected** both keys this session — unlike the `tnay` hang — so the 15 s timeout **race** was not exercised live here; that bound remains unit-verified (`phase3.test.ts` never-settling test with an injected 50 ms timeout). Figma's bad-key behavior is environment-dependent.)*
+
+### §8 — `variable_delete` / consumer-scan crash on variant components
+
+> **§8 motivating finding (verified live 2026-07-06):** `findVariableConsumers` reads `componentPropertyDefinitions` on every `COMPONENT` at `variableHandlers.ts:183`, but Figma throws `in get_componentPropertyDefinitions: Can only get component property definitions of a component set or non-variant component` for a **variant** (a `COMPONENT` child of a `COMPONENT_SET`). So `variable_delete` crashes during its full-document in-use guard — and `variable_list` with `includeConsumers` crashes identically — in **any** document containing a variant component (essentially every real design-system file), silently breaking the documented "refuses in-use deletes" guarantee. Pre-existing (introduced with the consumer-scan feature, commit `cd2c4cd`; `variableHandlers.ts` is untouched by v2.3.2). Confirmed via the read-only `variable_list includeConsumers:document` path. See PRD §8.
+
+#### §8 Implementation - `figma_plugin/handlers/variableHandlers.ts`
+- [x] Guard the `componentPropertyDefinitions` read in `findVariableConsumers` so it runs only on a `COMPONENT_SET` or a **non-variant** `COMPONENT`: `node.type === 'COMPONENT_SET' || (node.type === 'COMPONENT' && node.parent?.type !== 'COMPONENT_SET')`. This avoids the throw and a redundant read (a variant's definitions are already visited when the walk reaches the parent `COMPONENT_SET`).
+- [x] Audit the sibling reads in the same walk (`componentProperties` ~line 220, `reactions` ~line 257, and any other type-restricted getter) for the same node-type-restricted-throw class; guard any that can throw on a legitimately-scanned node type.
+- [x] Do not change the consumer-report shape or the "refuses in-use deletes" behavior — this is a crash fix only.
+
+#### §8 Unit Tests - `src/mcp_server/tests/unit/figma_plugin/`
+- [x] A consumer scan over a tree containing a `COMPONENT_SET` with variant `COMPONENT` children completes without throwing (mock the variant's `componentPropertyDefinitions` getter to throw as Figma does; assert the scan skips it).
+- [x] A component-property-bound variable on the set (or a non-variant component) is still detected as a consumer — the fix must not drop real matches.
+- [x] `deleteVariables` of an in-use variable still refuses, and of an unused variable still succeeds, with variants present in the scanned tree — the guarantee is preserved, not just the crash removed.
+- [x] If any sibling read is guarded, add analogous no-throw coverage for that path.
+
+#### §8 Live Figma Verification
+- [x] In a document containing a component set with variants, `variable_list` with `includeConsumers: 'document'` returns the consumer report instead of `in get_componentPropertyDefinitions: …`, and a `variable_delete` of a safe (unused, local) variable completes without the crash.
+
+### Phase 8.5 Integration (shared)
+- [x] Re-run `bun run build:all` so the rebuilt `figma_plugin/code.js` includes **all three** changes — the §7 import race, the §7 W1 message reword, and the §8 `variableHandlers` variant guard — then `bun run check:plugin` and the full unit suite.
+- [x] Update `skills/figma-edit/references/error-playbook.md` remote-import row in **one consolidated edit** covering both §7 changes: (a) the failure now returns the W1 error in ~15 s, not a 30 s hang — revise the earlier "Figma hangs / request timeout" note; and (b) fix both the Message column and the Recovery column so neither directs the agent to verify a remote key via `component_list` (use the instance-`mainComponent` recipe, consistent with `tool-selection.md`). *(§8 needs no playbook change — the crash is removed, not documented.)*
+- [x] Extend the `CHANGELOG.md` v2.3.2 entry to cover the §7 import race and the §8 variant-scan crash fix.
 
 ## Phase 9: Release Readiness
 - [ ] Confirm CI includes the new `check:versions` step and still runs all unit tests.
 - [ ] Confirm `SAFETY.md`, README safety bullets, and the executable safety contract agree in both directions.
 - [ ] Confirm `CHANGELOG.md` includes the scope-root clone denial and silent-reparent-skip behavior change.
 - [ ] Confirm package, lockfile, registry manifest, root manifest, plugin About UI, and committed plugin bundle all report or embed `2.3.2`.
-- [ ] Confirm all Phase 1-8 unit tests, checks, and live Figma verification items are complete.
+- [ ] Confirm all Phase 1-8.5 unit tests, checks, and live Figma verification items are complete.
 - [ ] Tag/release only after automated CI and manual Figma verification pass.
