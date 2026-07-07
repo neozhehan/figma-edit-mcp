@@ -11,7 +11,7 @@ The purpose is not to let the MCP server "trust the LLM more." It is the opposit
 ## Release identity
 
 > [!IMPORTANT]
-> **This is a placeholder future release: v2.x.0.** v2.3.1 (`documentation/v2.3.1-bind-variable-guardrails/`) is the current shipped baseline and `package.json` currently reads `"version": "2.3.1"` (verified). Before implementation starts, replace `x` with the chosen release number. If no other minor release intervenes, this is likely a **v2.4.0** class feature because it adds a new planning tool and a new plugin approval/execution workflow.
+> **This is a placeholder future release: v2.x.0.** v2.3.1 (`documentation/completed/v2.3.1-bind-variable-guardrails/`) is the current shipped baseline and `package.json` currently reads `"version": "2.3.1"` (verified). Before implementation starts, replace `x` with the chosen release number. If no other minor release intervenes, this is likely a **v2.4.0** class feature because it adds a new planning tool and a new plugin approval/execution workflow.
 
 ## API Change Notice (informational)
 
