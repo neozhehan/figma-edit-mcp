@@ -1,6 +1,6 @@
 # v2.3.3 Open Questions
 
-> **Closed, 2026-07-09.** All eight questions are resolved and recorded in [`prd.md`](prd.md) (Q1 → D5; Q2 → D6/Phase 9; Q3 → D8/Phase 7; Q4 → D9; Q5 → Release identity; Q6 → D3; Q7 → D7/Phase 6; Q8 → Compatibility posture). This file is retained as the decision record — each entry keeps its options, pros and cons, and the adopted resolution.
+> **Status.** Q1–Q8 (resolved 2026-07-09) are recorded in [`prd.md`](prd.md) (Q1 → D5; Q2 → D6; Q3 → D8; Q4 → D9; Q5 → Release identity; Q6 → D3; Q7 → D7; Q8 → Compatibility posture); their entries keep the options, pros and cons, and adopted resolutions. **Reopened 2026-07-10:** the follow-up adversarial review ([`revised-prd.md`](revised-prd.md)) made prescriptions that PRD Rev 11 deliberately did **not** adopt; each is tracked as Q9–Q15 below. Q9–Q14 were resolved the same day (PRD Revs 12–18; Q13 via a revised hybrid after live verification on channel `90vr`; Q14 reaffirming Q1 against the reversal); Q15 (release sizing) was resolved 2026-07-10 as **Option C** — a single v2.3.3 release containing every phase of the PRD (PRD Rev 19). **All fifteen questions are resolved; implementation is unblocked.** Rev 11 also corrected Q7's factual premise — see the note on that entry.
 
 This file records the unresolved decisions in [`prd.md`](prd.md) Track 2 (safety-contract gap closure). Each question lists the viable options with pros and cons, and a recommendation. The questions come from an adversarial re-review of the PRD against the source and against live plugin behavior (2026-07-09). Resolve each one by recording the decision in the PRD (new D-note or an edit to D5–D8) and deleting or checking off the entry here.
 
@@ -18,6 +18,13 @@ All recommendations apply one shared criterion: the primary consumer of this con
 | Q6 | D3 says the CI gate is "added last", but it is now Phase 3 of 9 | none (wording) | ✅ **Resolved: Option A** (2026-07-09) — D3 reworded in `prd.md` |
 | Q7 | D7 edge semantics: `status` on early returns, formulas for the other aggregators | Phase 6 | ✅ **Resolved: Option A** (2026-07-09) — recorded in `prd.md` D7 and Phase 6 |
 | Q8 | Confirm: hard cutover with no deprecation window | Phase 8 | ✅ **Resolved: Option A** (2026-07-09) — confirmed in `prd.md`'s Compatibility posture |
+| Q9 | Batch envelopes: adopt the full effect-state algebra and content digests? | future D7 scope | ✅ **Resolved: Option B** (2026-07-10) — recorded in `prd.md` D7 and Phase 6; algebra and digests rejected |
+| Q10 | Annotation retry identity: JCS/SHA-256 payload digests? | future D10 scope | ✅ **Resolved: Option B** (2026-07-10) — counts + list-before-retry confirmed in `prd.md` D10; digests rejected |
+| Q11 | Channel identity: protocol digests, nonces, scope fingerprints? | future D13 scope | ✅ **Resolved: Option B** (2026-07-10) — D13 lite confirmed; digests rejected until evidence; race check → Phase 9 |
+| Q12 | Page scans: pinned scheduler constants and heartbeat cadence? | future D14 scope | ✅ **Resolved: Option B** (2026-07-10) — bounded per-page timeout adopted in `prd.md` D14/Phase 10; constants rejected |
+| Q13 | Connectors (Gap 9): verify-and-fix, full redesign, or leave as is? | Phase 11 | ✅ **Resolved: revised hybrid** (2026-07-10) — explicit-template core adopted, FigJam-only rejected; recorded in `prd.md` D12/Phase 11 |
+| Q14 | Does the emitted-`tools/list` argument overturn Q1's Option B? | **Phase 4** | ✅ **Resolved: Option A** (2026-07-10) — Q1 reaffirmed, reversal rejected; recorded in `prd.md` D5 |
+| Q15 | One release or two, and under which version number? | **before implementation** | ✅ **Resolved: Option C** (2026-07-10) — Single v2.3.3 release |
 
 ---
 
@@ -162,6 +169,8 @@ Gap 3's lesson is that the schema is what teaches the model what to supply. Whic
 
 **Status: ✅ resolved, 2026-07-09 — Option A adopted.** Recorded in [`prd.md`](prd.md): D7 gained an edge-semantics note (shared count-derived formulas, `status` on every return path with early returns ⇒ `"failed"`, the `success === (status === "success")` invariant, actionable per-item reasons), and Phase 6 plus the testing list carry the property test. The options and rationale below are kept for the record.
 
+> **Rev 11 correction (2026-07-10).** This entry's premise that zero-item batches were schema-unreachable was **wrong** — no batch array had `.min(1)`, and `[]` passed validation live. D7 as amended keeps the Option A invariants and adds the `.min(1)` boundary, the three-layer rejection model, and one-row-per-input semantics; see prd.md Gap 7.
+
 **Context.** Phase 6 gives the corrected `success` formula only for `deleteMultipleNodes`. Unspecified: (a) whether the other three aggregators change anything beyond gaining `status`; (b) what `status` is on `setInstanceOverrides`' several early-return `{success:false, message}` paths, where no per-item aggregation ran; (c) the zero-item edge case.
 
 **Option A — one shared invariant, `status` on every batch return path.** Specify: `succeeded > 0 && failed === 0 ⇒ "success"`; `succeeded > 0 && failed > 0 ⇒ "partial_success"`; `succeeded === 0 ⇒ "failed"`. Early returns where nothing was attempted are `"failed"`. The boolean is derived: `success === (status === "success")` — one testable invariant across all four aggregators. Zero-item batches are already unreachable through the schemas (non-empty arrays required); assert in the handler anyway.
@@ -195,3 +204,190 @@ Gap 3's lesson is that the schema is what teaches the model what to supply. Whic
 - Cons: the vulnerability this release exists to close stays open for the whole window; a warning attached to a *successful* result is exactly the signal agents are known to ignore (Gap 5's lesson); adds a release cycle.
 
 **Recommendation.** Option A — confirm the hard cutover. For a safety fix, a grace period is a period in which the fix is off. The shared criterion settles this rather than softening it: a warning attached to a successful result is precisely the signal agents are known to ignore (Gap 5's lesson), so Option B buys no real migration safety for LLM callers. With Q1's dual descriptions preventing most first-call omissions and Q4's self-recovering errors, the cutover's entire migration cost is one recovery round trip per affected agent — exactly the budget the criterion allows.
+
+---
+
+## Q9 — Batch envelopes: how much mutation truth goes into the result?
+
+**Status: ✅ resolved, 2026-07-10 — Option B adopted (PRD Rev 12).** Recorded in [`prd.md`](prd.md): D7's edge-semantics note gained the partial-mutation disclosure bullet (`partialMutation: true` + plain-language what-changed + before-values on text/instance failure rows; additive fields; clean failures never carry the flag), Phase 6 implements and tests it, and the full effect-state algebra and SHA-256 content digests are recorded as **rejected** on the shared criterion. The options and rationale below are kept for the record.
+
+**Context.** D7 as amended returns `status`, counts including `skippedCount`, and one ordered row per input with actionable reasons. The follow-up review proposes going much further: a top-level `effectState: "none" | "committed" | "rolled_back" | "partial"`, a per-row `mutationState` with a closed status×state combination table and precedence rules, immutable per-row `target` descriptors, tool-specific strict `effects` objects, and SHA-256 digests of before/after text content. The underlying failure mode is real — a failed item can leave partial mutation (the follow-up review reports text font fallback before character assignment and instance swap-before-overrides; the ordering claims are partially verified) — but the proposed reporting apparatus is large.
+
+**Option A — adopt the full algebra (revised-prd D7).**
+
+- First-call correctness: **negative.** The result contract the model must internalize before its first batch call grows from one tri-state field to `status` × `effectState` × `mutationState` plus a closed combination table with precedence rules — more to hold, more ways to misread a valid response. Q7 chose a single derived field precisely so the model never reconciles conflicting signals.
+- One-round-trip recovery: **incomplete despite the machinery.** The states tell the model *that* something changed, but a SHA-256 digest cannot tell it *what to write back* — a hash is not invertible by any consumer, least of all an LLM. Restoring still requires a follow-up read, so the text-mutation case remains a two-round-trip recovery after paying the full complexity cost.
+- Other: complete post-failure truthfulness; property-testable invariants for auditors; blind retry structurally impossible; large implementation and test surface.
+
+**Option B — minimal per-row partial-mutation disclosure.** Where a tool can demonstrably mutate and then fail (text content, instance overrides), the failure row's error details gain a `partialMutation: true` flag plus a plain-language statement of what changed, with cheap before-values where available (the original text string, the original `mainComponentId`). No top-level algebra, no digests.
+
+- First-call correctness: **neutral.** The happy-path envelope is unchanged, so nothing new must be internalized before the first call; the disclosure fields appear only inside failure rows the model is already required to read.
+- One-round-trip recovery: **strongest of the three.** The failure row carries the restoring value itself — the original string, the original `mainComponentId` — so the corrective write can be composed directly from the error. Exactly one round trip, no re-read.
+- Other: not a closed algebra — per-tool fields instead of one invariant; auditors get prose, not a provable state machine; future batch tools must remember to disclose.
+
+**Option C — nothing beyond Rev 11's D7.**
+
+- First-call correctness: **neutral now, corrosive later.** The contract stays small but asserts something false — that `failed` implies no effect. A model that learns the documented contract composes its follow-up calls from a wrong world model.
+- One-round-trip recovery: **broken in the partial-mutation case.** Q7's own guidance ("retry exactly the failed items") becomes actively harmful — retrying a half-mutated item can compound the damage — and no signal tells the model a re-read is needed. This is not a slow recovery; it is a recovery the model does not know to attempt.
+- Other: zero cost.
+
+**Recommendation.** Option B. Weighing the two criteria across the options: on first-call correctness, B is neutral, A imposes a materially heavier result contract, and C quietly falsifies the existing one. On one-round-trip recovery, B is the only option that actually achieves it — the error carries the restoring value — while A's digests still force a second round trip and C removes the recovery signal entirely. A's remaining advantage (auditable invariants) serves a consumer the shared criterion ranks secondary.
+
+---
+
+## Q10 — Annotation retry identity: payload digests or counts?
+
+**Status: ✅ resolved, 2026-07-10 — Option B adopted (PRD Rev 13).** Recorded in [`prd.md`](prd.md): D10 gained a retry-identity note confirming per-item before/after counts plus list-before-retry as the contract and recording the JCS/SHA-256 payload digest as **rejected** on the shared criterion — an LLM cannot compute a hash, and in the timeout scenario the digest exists for, no digest ever reached the model; read-and-compare via `annotation_list` is one round trip within the model's native capability. The options and rationale below are kept for the record.
+
+**Context.** D10 ships append-only annotations with per-item before/after counts and list-before-retry guidance. The follow-up review proposes a canonical `annotation-payload-v1` digest — RFC 8785 JSON Canonicalization plus SHA-256, computed on append and recomputed by `annotation_list` — so a caller can match a specific append attempt after a timeout or unknown outcome.
+
+**Option A — adopt the JCS/SHA-256 payload digest.**
+
+- First-call correctness: **slightly negative.** Append targets and list output grow opaque digest fields the model must understand to use the tools as documented; opaque tokens in a schema invite misuse (a model cannot compute SHA-256, so any instruction that implies computing or verifying one is uncomposable).
+- One-round-trip recovery: **inert under the adopted scope.** An LLM can only *string-compare* a digest the server previously handed it. In the exact scenario the digest exists for — a timeout, where the append response never arrived — the model holds no digest to compare against; usable digest recovery presupposes the deferred `COMMAND_OUTCOME_UNKNOWN` detail machinery (Q9's full-algebra sibling). Standing alone, A does not shorten recovery by even one step.
+- Other: deterministic identity for code-level consumers; canonicalization + hashing dependency inside the plugin sandbox; identical appends remain indistinguishable anyway, by the review's own admission.
+
+**Option B — keep counts + list-before-retry (current D10).**
+
+- First-call correctness: **neutral to positive.** A smaller, plain-shape contract with nothing opaque in it — the model composes appends and interprets results from fields it can fully read.
+- One-round-trip recovery: **achieved within the model's native capability.** After an uncertain outcome, one `annotation_list` call returns labels the model literally reads and compares against what it sent — one round trip, no computation the model cannot perform.
+- Other: comparison is textual rather than canonical (whitespace-different near-duplicates could confuse); identical-text duplicates stay ambiguous — exactly as under Option A.
+
+**Recommendation.** Option B. On first-call correctness, A adds opaque schema surface with no compositional gain; on one-round-trip recovery, A is paradoxically *weaker* under the adopted scope — no digest ever reaches the model in the failure case that matters — while B's read-and-compare is one round trip using nothing but the model's ability to read text. B dominates on both criteria; A only ties if Q9's deferred machinery is adopted first, which is the wrong direction of dependency for a recovery aid.
+
+---
+
+## Q11 — Channel identity: how deep should the handshake go?
+
+**Status: ✅ resolved, 2026-07-10 — Option B adopted (PRD Rev 14).** Recorded in [`prd.md`](prd.md): D13 gained a handshake-depth note confirming the lite core and recording protocol digests, nonces, and scope fingerprints as **rejected until evidence**, with the escalation trigger written down (a live same-version different-contract skew that version fields could not have caught). The unverified `ui.html` scope-ready race is adopted as a Phase 9 verification task with its fix defined (UI waits for plugin-main's scope acknowledgement before joining). The options and rationale below are kept for the record.
+
+**Context.** D13 (lite) fixes the verified holes: plugin identity and build version in the join, one-plugin/one-MCP binding, pair-only routing, real leave/reset, fail-closed empty/ambiguous/mismatched channels. The follow-up review proposes a canonical machine-readable protocol contract with a generated JCS/SHA-256 digest compiled into both builds (`gen:protocol-digest`, `check:generated`), plugin-main scope-ready acknowledgements with nonces and revisions, and a `scopeFingerprint` over a strict scope-identity object.
+
+**Option A — adopt the full apparatus.**
+
+- First-call correctness: **marginal gain over lite.** The guarantee that matters to the criterion — the schema and guides the model read describe the peer that will execute — is already delivered for every *released*-version skew by D13 lite's version fields. Digests extend it only to same-version dev-build skew: a contributor-workflow hazard, not an agent-facing one.
+- One-round-trip recovery: **no improvement.** `PROTOCOL_MISMATCH` and `VERSION_MISMATCH` alike are not model-recoverable — the fix is a human reinstall or rebuild. The model can relay the error in one step under either option; nonces and fingerprints add join failure modes without adding any recovery the model can execute.
+- Other: mechanical skew detection for CI; a code-generation subsystem to build and maintain; still self-reported, as the review itself concedes.
+
+**Option B — keep D13 lite; escalate only on evidence.** Add the digest machinery if and when a real incident occurs that version fields would have missed, and verify/fix the `ui.html` scope-ready race as its own small finding.
+
+- First-call correctness: **secures the class that reaches agents.** Version fields plus the one-plugin/one-MCP binding ensure the model's schema matches the bound executor in all normal operation — and the binding is the larger first-call win: without it, a response from the *wrong* plugin silently corrupts the model's world model and poisons every subsequent call it composes.
+- One-round-trip recovery: **equal to A, plus one structural improvement.** Refusals name the version pair for a one-step relay to the user — same as A. And pair-correlated responses mean every error the model recovers from provably came from the peer it addressed, so recovery guidance is never built on another peer's answer.
+- Other: no new environmental failure modes; evidence-triggered escalation; same-version dev-build skew stays undetectable until it happens once; the scope-ready race remains unverified until checked.
+
+**Recommendation.** Option B, plus promptly verifying the scope-ready race. On one-round-trip recovery the options are equivalent — both end in a one-step relay to a human. On first-call correctness, everything the criterion cares about (matching schema, bound executor, uncorrupted response attribution) is delivered by lite; A's increment protects only a contributor-side hazard, purchased with new environmental refusals for every user. When both criteria tie or favor lite, the smaller surface wins.
+
+---
+
+## Q12 — Page scans: pinned scheduler constants or implementation freedom?
+
+**Status: ✅ resolved, 2026-07-10 — Option B adopted (PRD Rev 15).** Recorded in [`prd.md`](prd.md): D14 gained a scheduling-depth note adopting a single bounded per-page timeout (hung loads become structured `PAGE_LOAD_TIMEOUT` errors; the value is implementation behavior, not contract) and recording the pinned constants, concurrency caps, deadlines, and heartbeat cadence as **rejected** — all model-invisible. Phase 10 implements it with the late-settlement test (a load settling after its timeout is provably ignored). The options and rationale below are kept for the record.
+
+**Context.** D14 (lite) isolates per-page `loadAsync` failures, adds `coverage`, and makes destructive scans fail closed explicitly. The follow-up review additionally pins `PAGE_LOAD_TIMEOUT_MS = 12_000`, `PAGE_SCAN_CONCURRENCY = 5`, `PAGE_SCAN_DEADLINE_MS = 60_000`, a 2,000 ms progress-heartbeat cadence, command-token suppression of late-settling loads, and fake-clock worst-case tests (25 pages, all timing out).
+
+**Option A — adopt the pinned scheduler spec.**
+
+- First-call correctness: **neutral.** Constants, concurrency caps, and heartbeat cadence are invisible in the schema and guides; they change nothing about how the model composes a call or interprets a result.
+- One-round-trip recovery: **equal to B.** The model-visible artifact is the same structured `PAGE_LOAD_TIMEOUT` / `coverage` object either way; deterministic internal timing does not change the error the model receives or the recovery step it takes.
+- Other: testable worst-case behavior on pathological documents; constants-as-contract must be amended whenever a real document proves them wrong; a significant fake-clock test investment for a failure profile observed only once.
+
+**Option B — D14 lite plus one bounded per-page timeout.** A single per-page timeout (value chosen in implementation, documented as behavior rather than contract) so a hung load becomes a `PAGE_LOAD_TIMEOUT` page error; everything else stays as D14 lite.
+
+- First-call correctness: **neutral** — nothing schema-visible differs from A.
+- One-round-trip recovery: **secures its precondition.** Recovery requires an error to exist. The timeout converts a hung `loadAsync` into a structured page error with coverage, from which the model decides in one step: retry that page, or proceed on the partial data it was honestly given.
+- Other: constants stay tunable without contract changes; late-settlement suppression is deferred, so a very late resolution after timeout must be proven harmless — a small residual to test.
+
+**Option C — D14 lite as adopted, no timeout.**
+
+- First-call correctness: **neutral.**
+- One-round-trip recovery: **violated at the root.** A permanently hung load returns *nothing* — no error, no envelope, and a wedged serialized queue behind it. That is not a slow recovery; it is the absence of the signal the entire recovery convention depends on, for this call and every call queued after it.
+- Other: smallest.
+
+**Recommendation.** Option B. First-call correctness cannot separate these options — nothing model-visible differs. One-round-trip recovery decides it alone: C permits a failure with no error at all, the one state the D9 convention cannot recover from, while A adds nothing model-visible beyond B's timeout. Pay for exactly the piece that keeps every failure answerable.
+
+---
+
+## Q13 — Connectors (Gap 9): verify-and-fix, full redesign, or leave as is?
+
+**Status: ✅ resolved, 2026-07-10 — revised hybrid adopted (PRD Rev 17).** Neither original option as written: verification (Rev 16) shifted the recommendation to a hybrid, adopted in [`prd.md`](prd.md) D12 and new Phase 11 — Option A's frame (tool keeps its purpose and Design-file support; FigJam-only explicitly rejected because the flagship reaction-flow use case lives in Design) with Option B's explicit-template core (creation-only; required name-verified `connectorId` + `connectorName` per call; cache and auto-adoption removed; `CONNECTOR_TEMPLATE_REQUIRED` bootstrap error; D7 envelope; D11 cleanup). Deciding evidence: the bootstrap dead-end means template discovery happens at least once regardless, so the hidden default bought nothing while costing first-call correctness on every call; and fixing the cross-file cache in place converges to the same cost as removing it. The options and rationale below are kept for the record.
+
+**Context.** The follow-up review reports five connector defects (unscoped `currentPage` template discovery, a cross-file `clientStorage` cache, no name verification for `connectorId`, per-item failures without cleanup, and an unconditionally `success: true` aggregate) and prescribes a redesign: remove default-template management and the cache entirely, require an explicit template and page parent on every call, and restrict creation to FigJam.
+
+> **Verification completed (2026-07-10, PRD Rev 16 — source read + live probes on channel `90vr`).** All five defects are **confirmed**, plus two the review understated: the aggregate's `count` counts error rows as created connections, and a cursor created for a start endpoint leaks when the end endpoint of the same item fails. Live in a Design file: the no-default flow, the type-only template check, and the bootstrap dead-end ("copy a connector from FigJam manually") all reproduced; the clone/cursor-leak and mixed-result probes are blocked pending a FigJam connector fixture and stand on source evidence. Option A's "verify first" step is therefore done — choosing A now means green-lighting the minimal in-shape fix; the evidence bar for B (structural hidden-state problems) is discussed in the recommendation.
+
+**Option A — verify first, then a minimal in-shape safety fix.** Re-verify the five findings against `connectorHandlers.ts`; fix what is confirmed within the existing tool shape (add `connectorName` verification, scope-check the discovery scan, honest D7-style aggregation, per-item cleanup), and remove capabilities only if verification shows a path is unsalvageable.
+
+- First-call correctness: **improved where it is verifiably broken.** The fix must either expose or remove the hidden default-template state: today a call's outcome can depend on a cached template that appears nowhere in the schema or guides — a first-call correctness defect by definition, because the model cannot compose correctly from state it cannot see.
+- One-round-trip recovery: **restored by honest aggregation.** If the unconditional `success: true` is confirmed, connector failures are currently invisible — no error means no recovery of any length. D7-style aggregation plus D9 messages give every connector failure a recovery step.
+- Other: evidence-first, matching the standard every other item in this PRD was held to; preserves capability; two-step latency — both criteria stay degraded until the follow-up lands.
+
+**Option B — adopt the full redesign (revised-prd D12) now.**
+
+- First-call correctness: **the strongest option on this criterion.** An explicit template and page parent on every call puts every input the outcome depends on into the arguments — the model composes entirely from what it reads, at the cost of one guided prerequisite read (template discovery) that the guides can teach.
+- One-round-trip recovery: **equal to A after A's fix** — honest aggregation and structured, recovery-bearing refusals either way; B adds nothing on this axis that A's minimal fix does not.
+- Other: acts on unverified findings; removes shipped default-template management by fiat — a product regression for existing FigJam workflows; the largest single-tool change in the whole proposal.
+
+**Option C — leave connectors unchanged indefinitely.**
+
+- First-call correctness: **degraded, knowingly.** Hidden cached state keeps steering outcomes the model cannot predict from the contract it reads.
+- One-round-trip recovery: **absent in the worst case.** If the unconditional success stands, a failed connector batch tells the model nothing went wrong — and the false success then poisons the *next* first call, when the model references connectors that were never created. The two criteria fail jointly: no recovery now, wrong composition later.
+- Other: zero cost.
+
+**Recommendation.** Option A — scoped by the criteria: the verification targets the two criteria-relevant defects first (hidden default state → first-call correctness; unconditional success → recovery), and the minimal fix must close both, not merely the cheapest subset. Weighing the options: C fails both criteria outright and compounds them; B is the best pure-criteria end state but buys its first-call advantage with unverified claims and a capability removal decided by fiat; A reaches B's recovery guarantee exactly and most of its first-call guarantee once verified, deferring only the product question. If verification shows the hidden-state design is unsalvageable, adopt B's explicit-template model at that point — the criteria would then point there with evidence behind them.
+
+---
+
+## Q14 — Does the emitted-`tools/list` argument overturn Q1's Option B?
+
+**Status: ✅ resolved, 2026-07-10 — Option A adopted (PRD Rev 18).** Recorded in [`prd.md`](prd.md): D5's mechanism bullet gained a reaffirmation note — the Q1 decision stands, the discriminated-union reversal (including `style_manage`'s new required `action` field) is **rejected**, CI expresses requiredness at the level the mechanism supports (`safeParse`-behavior tests plus description-marker tests), and the revisit trigger is written down (live evidence of agents omitting the twice-documented fields at a meaningful rate). Phase 4 references the reaffirmed mechanism. The options and rationale below are kept for the record.
+
+**Context.** Q1 chose Option B (flat schemas, requirements stated twice in prose, `.superRefine()` enforcement, plugin fail-closed backstop). The follow-up review argues for reversal: refinements do not appear in the emitted `tools/list` JSON Schema, so the machine-readable contract still marks D5's fields optional, and a CI rule of the form "a required field missing from emitted `tools/list` fails CI" is unsatisfiable under Option B. Its proposal: `z.discriminatedUnion("action", …)` for `variable_manage`, plus a **new required `action` discriminator** for `style_manage`, with strict per-action members and output unions.
+
+**Option A — reaffirm Option B, adapt the CI check.** Keep the Q1 decision; express the CI guarantee at the level Option B can support: `safeParse`-behavior tests (omission rejected, with the actionable message) plus description-content tests (the "REQUIRED for …" marker present in both field and tool descriptions).
+
+- First-call correctness: **strong for the actual consumer.** Models weight field and tool descriptions heavily; the requirement stated twice, in a flat shape consistent with all ~40 sibling tools, is the form the primary consumer reads best. The residual gap is structural-schema-only consumers (schema-driven codegen), which the criterion explicitly ranks secondary — and enforcement is server-side pre-socket either way, so no unverified write gets through regardless.
+- One-round-trip recovery: **best available.** `.superRefine()` messages are fully authored — violation, the read tool that supplies the correct value, "pass it back verbatim" — so the D9 acceptance check (correct retry derivable from the error alone) is satisfiable by construction.
+- Other: the CI check tests behavior and prose rather than a JSON-Schema `required` array — softer, easier to drift; decision continuity (the tools/list limitation was known and accepted when Q1 was decided).
+
+**Option B — adopt the reversal (revised-prd D5 mechanism).**
+
+- First-call correctness: **gains for structural readers, mixed for LLMs, one guaranteed regression.** The `required` arrays become machine-visible — a real gain for codegen consumers. For the LLM consumer it is a wash at best: the `anyOf` union is the lone alien shape on a server of flat tools (a pattern-generalization cost), and `style_manage`'s brand-new required `action` field guarantees a first-call failure for every existing caller during migration — a certain, immediate first-call cost paid to prevent a hypothesized one.
+- One-round-trip recovery: **weaker by default.** Discriminated-union validation errors report a terse `"Required"` at a path — accurate, not instructive; authoring D9-quality recovery messages inside union branches is possible but harder to build and maintain than one superRefine message.
+- Other: silently-ignored per-action fields become structurally impossible; shared fields duplicate across branches; `anyOf` rendering varies across MCP clients.
+
+**Option C — hybrid: union for `variable_manage`, Option B for `style_manage`.**
+
+- First-call correctness: **undermined by inconsistency.** The model generalizes calling patterns across a server; two mechanisms on two sibling tools break exactly that generalization, so the hybrid's per-tool gains are offset by a cross-tool cost.
+- One-round-trip recovery: **split** — superRefine-quality messages on one tool, terse union errors on the other; the model cannot learn one recovery pattern.
+- Other: partial CI coverage; two mechanisms to maintain indefinitely.
+
+**Recommendation.** Option A. This is the one question where the two criteria are the entire subject, and they point the same way: on first-call correctness, A serves the primary consumer at least as well as B while avoiding B's guaranteed migration failures and C's inconsistency penalty; on one-round-trip recovery, A is strictly strongest — authored recovery messages versus terse union errors. B's real gain, machine-checkable advertisement, protects a secondary consumer and duplicates enforcement the server already performs. Revisit only if live usage shows agents omitting the twice-documented fields at a meaningful rate — evidence that would move the first-call column toward B.
+
+---
+
+## Q15 — One release or two, and under which version number?
+
+**Status: ✅ resolved, 2026-07-10 — Option C adopted**
+
+**Context.** Q5 approved shipping the *original* Track 2 (three gaps) at patch level. Rev 11 roughly triples Track 2: D10–D14 add an annotation contract repair, recursive strictness, containment surgery across nine paths, a socket peer-binding change, and page-coverage semantics. The PRD's own risk table flags reviewability. The revised-prd's escape hatch ("if implementation cannot stay reviewable, split the release") exists but defers the decision to mid-implementation.
+
+**Option A — split now, along the phase boundary.** Release one (v2.3.3): Phases 1–7 — type-check restoration, structured error transport, design-system verification, explicit parents, batch corrections, annotation repair, recursive strictness. Release two (v2.4.0): Phases 8–11 — containment, peer binding, page isolation, and the Q13 connector repair.
+
+- First-call correctness: **maximized soonest.** Nearly every repair that changes what the model composes or reads — required fields advertised in the schemas, the annotation schema made usable at all, recursive strictness rejecting misremembered nested fields, output field names corrected — lives in Phases 1–7 and reaches agents a full release earlier. Phases 8–11 mostly touch execution-side guarantees (containment, binding, page coverage); the connector repair is the one model-facing contract change in the second batch, and its old contract is unusable-to-dangerous anyway (unconditional success), so delaying it costs less than delaying the Phase 1–7 repairs.
+- One-round-trip recovery: **likewise front-loaded.** The entire recovery convention — structured `{error}` transport and the D9 recovery-bearing messages — ships in release one. Every week of delay under a single release is a week agents keep receiving string-flattened errors and Gap 5/6-class false signals they cannot recover from.
+- Other: two release cycles, two contract-doc/guide sync passes, some CHANGELOG duplication; the containment and peer-binding holes stay open until release two — but those are the changes the model cannot observe in its contract either way.
+
+**Option B — one release, renumbered 2.4.0.**
+
+- First-call correctness: **identical end state, delayed.** Every schema repair the model would compose from waits on the slowest and least contract-relevant workstream (socket and page-scan surgery); agents live longest against the contract that currently lies to them.
+- One-round-trip recovery: **identical end state, delayed** — same reasoning: the D9 convention and structured transport are held hostage to work that adds nothing on this axis.
+- Other: one cycle; the minor bump honestly covers the full breaking surface; the reviewability risk the PRD itself flags arrives in full.
+
+**Option C — one release at 2.3.3 (status quo per Q5).**
+
+- First-call correctness / one-round-trip recovery: **exactly as Option B** — the delay profile is identical; only the number on the tin differs, and the model does not read version numbers (established in Q5).
+- Other: no renumbering churn; Q5 policy continuity — though Q5's own rationale ("restores or strengthens a published contract") is stretched past its meaning by a redesigned envelope, removed annotation fields, and new join refusals.
+
+**Recommendation.** Option A. Version numbers are criterion-neutral (Q5), so the two criteria reduce this question to *when the model-facing repairs ship*: A delivers essentially all of the first-call-correctness and recovery improvements in release one, while B and C deliver the same improvements later for no gain on either axis. Reviewability — the PRD's own flagged risk — points the same direction, so no trade-off remains between the criteria and the release logistics.
+
+**Decision (2026-07-10, recorded in PRD Rev 19).** **Option C adopted** — v2.3.3 ships as a single release containing every phase of the PRD. One release cycle, one contract-doc/guide sync pass, no renumbering churn, and Q5 policy continuity outweighed the split's earlier-shipping argument; the reviewability risk is carried by the mitigations already in the PRD's risk table (per-phase commits in dependency order under the Phase 3 type gate; rebuild diffs).
