@@ -189,8 +189,11 @@ async function validateCloneWrite(params: any) {
         throw new Error(`node_clone: '${source.name}' has no parent and cannot be cloned.`);
     }
 
-    // Require an appendable destination parent
-    if (!("appendChild" in parent)) {
+    // Require an appendable destination parent. The typings make this guard statically unreachable
+    // (source.parent is (BaseNode & ChildrenMixin) | null, so every non-null parent has appendChild);
+    // it is kept as runtime defense in depth — do not delete as dead code. The inline cast avoids the
+    // never-narrowing a direct check would produce. (v2.3.3 PRD Rev 21)
+    if (!("appendChild" in (parent as BaseNode))) {
         throw new Error(`node_clone: parent '${parent.name}' (type ${parent.type}) cannot accept cloned children.`);
     }
 
@@ -229,7 +232,7 @@ function describeError(e: any): string {
 // Helper: Parse Node ID from URL
 function parseNodeIdFromUrl(url: any) {
     try {
-        // @ts-ignore
+        // @ts-expect-error TS2552: Cannot find name 'URL'. Did you mean 'url'?
         const urlObj = new URL(url);
         const nodeId = urlObj.searchParams.get("node-id");
         return nodeId ? nodeId.replace(/-/g, ":") : null;
@@ -389,9 +392,9 @@ async function handleCommand(command: any, params: any) {
                         assertNotLocked(node);
                         assertNotInstanceInterior(node, "grouped");
                     }
-                    // @ts-ignore
+                    // @ts-expect-error TS18047: 'node' is possibly 'null'.
                     if (node.parent?.id !== parentId) {
-                        // @ts-ignore
+                        // @ts-expect-error TS18047: 'node' is possibly 'null'.
                         throw new Error(`Invalid Grouping: All nodes must share the same parent. Node "${node.name}" is under a different parent than "${firstNode.name}". Use 'insert_child' to reparent them first.`);
                     }
                 }
@@ -608,7 +611,7 @@ async function handleCommand(command: any, params: any) {
 
                 let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
                 if (!sourceInstanceData.success) {
-                    // @ts-ignore
+                    // @ts-expect-error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
                     figma.notify(sourceInstanceData.message);
                     return { success: false, message: sourceInstanceData.message };
                 }
@@ -665,7 +668,6 @@ async function handleCommand(command: any, params: any) {
             if (!instanceNode) {
                 throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
             }
-            // @ts-ignore
             return await getInstanceOverrides(instanceNode);
         case "reaction_list":
             if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {

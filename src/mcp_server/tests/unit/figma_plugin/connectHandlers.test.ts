@@ -62,7 +62,7 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
     });
 
     it("page-scope branch calls loadAsync on the resolved PAGE node", () => {
-        expect(src).toMatch(/await\s+scopeNode\.loadAsync\(\)/);
+        expect(src).toMatch(/await\s+(\(scopeNode\s+as\s+PageNode\)|scopeNode)\.loadAsync\(\)/);
     });
 
     it("node-scope branch includes path array and descendantCount", () => {

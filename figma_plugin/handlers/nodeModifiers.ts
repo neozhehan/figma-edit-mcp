@@ -79,7 +79,6 @@ export async function transformNode(params: any) {
             }
         }
 
-        // @ts-ignore
         node.resize(newWidth, newHeight);
     }
 
@@ -549,13 +548,13 @@ export async function insertChild(params: any) {
         if (index < 0 || index > length) {
             throw new Error(`Operation Denied: index ${index} is out of range for parent '${parent.name}' (valid: 0–${length}). Omit 'index' to append.`);
         }
-        // @ts-ignore
+        // @ts-expect-error TS2345: Argument of type 'DocumentNode | PageNode | SceneNode' is not assignable to parameter of type 'never'.
         parent.insertChild(index, child);
     } else {
-        // @ts-ignore
+        // @ts-expect-error TS2345: Argument of type 'DocumentNode | PageNode | SceneNode' is not assignable to parameter of type 'never'.
         parent.appendChild(child);
     }
 
-    // @ts-ignore
+    // @ts-expect-error TS2345: Argument of type 'DocumentNode | PageNode | SceneNode' is not assignable to parameter of type 'never'.
     return { childId: child.id, newParentId: parent.id, index: parent.children.indexOf(child) };
 }

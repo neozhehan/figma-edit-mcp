@@ -3,7 +3,7 @@
  */
 
 import { rgbaToHex } from './colorUtils.js';
-import { PathTuple } from '../../shared/nodeTypes.js';
+import { PathTuple } from '../../src/shared/nodeTypes.js';
 import { NODE_DATA_FIELDS } from './nodeFields.generated.js';
 
 /**
@@ -87,7 +87,7 @@ export async function collectNodesToProcess(
     const nodePath = [...parentPath, node.name || `Unnamed ${node.type}`];
 
     // Add this node to the processing list
-    // @ts-ignore
+    // @ts-expect-error TS2345: traversal stack entry object literal is not assignable to the parameter's declared type
     nodesToProcess.push({
         node: node,
         parentPath: nodePath,
@@ -97,7 +97,7 @@ export async function collectNodesToProcess(
     // Recursively add children
     if ("children" in node) {
         for (const child of node.children) {
-            // @ts-ignore
+            // @ts-expect-error TS2345: Argument of type 'any[]' is not assignable to parameter of type 'never[]'.
             await collectNodesToProcess(child, nodePath, depth + 1, nodesToProcess);
         }
     }

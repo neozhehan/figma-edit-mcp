@@ -668,11 +668,11 @@ export async function getNodeVariables(params: any) {
     }
 
     // 1. Get Bound Variables (individual properties)
-    // @ts-ignore
+    // @ts-expect-error TS2339: Property 'boundVariables' does not exist on type 'BaseNode'.
     const boundVariables = node.boundVariables || {};
 
     // 2. Get Explicit Variable Modes (theme settings)
-    // @ts-ignore
+    // @ts-expect-error TS2339: Property 'explicitVariableModes' does not exist on type 'BaseNode'.
     const explicitVariableModes = node.explicitVariableModes || {};
 
     // Resolve mode names (optional, but helpful)
@@ -705,13 +705,13 @@ export async function getNodeVariables(params: any) {
         // boundVariables can be nested (e.g. for fills/strokes/componentProperties)
         // or simple Alias (id, type)
         // Simple handling for now: if it has an id, try to resolve name
-        // @ts-ignore
+        // @ts-expect-error TS2339: Property 'id' does not exist on type '{}'.
         if (alias && alias.id) {
             try {
-                // @ts-ignore
+                // @ts-expect-error TS2339: Property 'id' does not exist on type '{}'.
                 const v = await figma.variables.getVariableByIdAsync(alias.id);
                 resolvedBindings[field] = {
-                    // @ts-ignore
+                    // @ts-expect-error TS2339: Property 'id' does not exist on type '{}'.
                     variableId: alias.id,
                     variableName: v ? v.name : "Unknown Variable"
                 }
@@ -797,7 +797,7 @@ export async function setBoundVariable(params: any) {
             try {
                 const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
                 if (!collection) throw new Error(`Collection ${collectionId} not found`);
-                // @ts-ignore
+                // @ts-expect-error TS2339: Property 'setExplicitVariableModeForCollection' does not exist on type 'BaseNode'.
                 await node.setExplicitVariableModeForCollection(collection, modeId);
                 results.push(`Set mode ${modeId} for collection ${collectionId}`);
             } catch (e: any) {
@@ -822,7 +822,7 @@ export async function setBoundVariable(params: any) {
                     if (!(field in node)) {
                         throw new Error(`node_bind_variable: '${node.name}' (type ${node.type}) has no '${field}' property to bind.`);
                     }
-                    // @ts-ignore
+                    // @ts-expect-error TS7053: '"fills" | "strokes"' cannot index the node type (implicit any)
                     if (node[field] === figma.mixed) {
                         throw new Error(`node_bind_variable: '${field}' on '${node.name}' is mixed (multiple values); bind on a node with a single ${field} value.`);
                     }
@@ -830,7 +830,7 @@ export async function setBoundVariable(params: any) {
                         throw new Error(`node_bind_variable: cannot bind a non-color variable ('${variable.name}', ${variable.resolvedType}) to ${field}; ${field} requires a COLOR variable.`);
                     }
 
-                    // @ts-ignore
+                    // @ts-expect-error TS7053: '"fills" | "strokes"' cannot index the node type (implicit any)
                     const rawPaints = node[field];
 
                     if (rawPaints.length === 0) {
@@ -839,7 +839,7 @@ export async function setBoundVariable(params: any) {
                             const bound = figma.variables.setBoundVariableForPaint(
                                 { type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", variable
                             );
-                            // @ts-ignore
+                            // @ts-expect-error TS7053: '"fills" | "strokes"' cannot index the node type (implicit any)
                             node[field] = [bound];
                             results.push(`Bound ${field} to variable ${variable.name} (created solid paint)`);
                         } else {
@@ -862,7 +862,7 @@ export async function setBoundVariable(params: any) {
                     }
 
                     if (modified) {
-                        // @ts-ignore
+                        // @ts-expect-error TS7053: '"fills" | "strokes"' cannot index the node type (implicit any)
                         node[field] = paints;
                         results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
                     } else {
@@ -893,7 +893,7 @@ export async function setBoundVariable(params: any) {
                     }
                 }
 
-                // @ts-ignore
+                // @ts-expect-error TS2339: Property 'setBoundVariable' does not exist on type 'BaseNode'.
                 node.setBoundVariable(field, variable);
                 results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
             } catch (e: any) {
@@ -980,7 +980,7 @@ export async function handleVariableRequest(params: any) {
             }
 
             // Using collection object for createVariable as requested by error message
-            // @ts-ignore
+            // @ts-expect-error TS2769: No overload matches this call.
             const variable = figma.variables.createVariable(name, collection, resolvedType);
 
             // Apply scopes/value as a unit; roll back the freshly-created variable if any
@@ -993,7 +993,6 @@ export async function handleVariableRequest(params: any) {
 
                 // Set initial value if provided (for default mode)
                 if (value !== undefined) {
-                    // @ts-ignore
                     const defaultModeId = collection.defaultModeId;
 
                     // Value parsing for color (setValueForMode takes r,g,b,a in 0-1)

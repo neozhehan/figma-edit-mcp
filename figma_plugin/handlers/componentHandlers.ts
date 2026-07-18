@@ -290,7 +290,6 @@ export async function createComponentInstance(params: any) {
 
     const instance = component.createInstance();
     try {
-        // @ts-ignore
         parentNode.appendChild(instance);
 
         instance.x = x;
@@ -303,7 +302,7 @@ export async function createComponentInstance(params: any) {
             y: instance.y,
             width: instance.width,
             height: instance.height,
-            // @ts-ignore
+            // @ts-expect-error TS2339: Property 'componentId' does not exist on type 'InstanceNode'.
             componentId: instance.componentId,
         };
     } catch (error) {
@@ -419,12 +418,10 @@ export async function getInstanceOverrides(instanceNode: any) {
         console.log(sourceInstance);
 
         // Get component overrides and main component
-        // @ts-ignore
         const overrides = sourceInstance.overrides || [];
         console.log(`  Raw Overrides:`, overrides);
 
         // Get main component
-        // @ts-ignore
         const mainComponent = await sourceInstance.getMainComponentAsync();
         if (!mainComponent) {
             console.error("Failed to get main component");
@@ -590,26 +587,26 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
                             try {
                                 if (field === "componentProperties") {
                                     // Apply component properties
-                                    // @ts-ignore
+                                    // @ts-expect-error TS2339: Property 'componentProperties' does not exist on type 'BaseNode'. (+1 more)
                                     if (sourceNode.componentProperties && overrideNode.componentProperties) {
                                         const properties: any = {};
-                                        // @ts-ignore
+                                        // @ts-expect-error TS2339: Property 'componentProperties' does not exist on type 'BaseNode'.
                                         for (const key in sourceNode.componentProperties) {
-                                            // @ts-ignore
+                                            // @ts-expect-error TS2339: Property 'componentProperties' does not exist on type 'BaseNode'.
                                             properties[key] = sourceNode.componentProperties[key].value;
                                         }
-                                        // @ts-ignore
+                                        // @ts-expect-error TS2339: Property 'setProperties' does not exist on type 'BaseNode'.
                                         overrideNode.setProperties(properties);
                                     }
                                 } else if (field === "characters" && overrideNode.type === "TEXT") {
                                     // For text nodes, need to load fonts first
-                                    // @ts-ignore
+                                    // @ts-expect-error TS2345: Argument of type 'unique symbol | FontName' is not assignable to parameter of type 'FontName'.
                                     await figma.loadFontAsync(overrideNode.fontName);
-                                    // @ts-ignore
+                                    // @ts-expect-error TS2339: Property 'characters' does not exist on type 'BaseNode'.
                                     overrideNode.characters = sourceNode.characters;
                                 } else if (field in overrideNode) {
                                     // Direct property assignment
-                                    // @ts-ignore
+                                    // @ts-expect-error TS7053: expression of type 'any' cannot index type 'BaseNode' (implicit any)
                                     overrideNode[field] = sourceNode[field];
                                 }
                             } catch (fieldError: any) {
@@ -703,7 +700,10 @@ export async function createComponent(params: any) {
     if (!parentNode) {
         throw new Error("create_component: parent node not found.");
     }
-    if (!("appendChild" in parentNode)) {
+    // The typings make this guard statically unreachable (node.parent is (BaseNode & ChildrenMixin) | null,
+    // so every non-null parent has appendChild); it is kept as runtime defense in depth — do not delete
+    // as dead code. The inline cast avoids the never-narrowing a direct check would produce. (v2.3.3 PRD Rev 21)
+    if (!("appendChild" in (parentNode as BaseNode))) {
         throw new Error(`create_component: parent '${parentNode.name}' (type ${parentNode.type}) cannot contain children.`);
     }
 

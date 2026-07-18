@@ -37,7 +37,7 @@ export const NodeEntrySchema: z.ZodType<NodeEntry> = z.lazy(() => z.object({
     type: z.string(),
     path: z.array(z.tuple([z.string(), z.string(), z.string()])).optional(),
     descendantCount: z.number().int().nonnegative().optional(),
-    properties: z.record(z.unknown()).optional(),
+    properties: z.record(z.string(), z.unknown()).optional(),
     children: z.array(NodeEntrySchema).optional()
 }));
 

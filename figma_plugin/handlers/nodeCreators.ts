@@ -142,12 +142,10 @@ export async function createShape(params: any) {
             }];
         }
 
-        // @ts-ignore
         parent.appendChild(node);
 
         // Handle absolute positioning if requested and parent is auto-layout
         if (useAbsolutePosition && parentId) {
-            // @ts-ignore
             if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
                 node.layoutPositioning = "ABSOLUTE";
                 node.x = x;
@@ -278,7 +276,6 @@ export async function createFrame(params: any) {
             frame.strokeWeight = strokeWeight;
         }
 
-        // @ts-ignore
         parentNode.appendChild(frame);
 
         return {
@@ -377,7 +374,6 @@ export async function createText(params: any) {
         }
         // setCharacters is async (loads fonts + writes characters); must be awaited
         // or the node has no text when we read/return it (characters:"", width:0).
-        // @ts-ignore
         await setCharacters(textNode, text);
 
         // Set text color
@@ -392,7 +388,6 @@ export async function createText(params: any) {
         };
         textNode.fills = [paintStyle];
 
-        // @ts-ignore
         parentNode.appendChild(textNode);
 
         return {
@@ -439,7 +434,7 @@ export async function cloneNode(params: any) {
     }
 
     // Clone the node
-    // @ts-ignore
+    // @ts-expect-error TS2339: Property 'clone' does not exist on type 'BaseNode'.
     const clone = node.clone();
 
     try {

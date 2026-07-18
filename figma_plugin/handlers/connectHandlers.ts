@@ -39,7 +39,7 @@ export async function getConnectPayload() {
 
             if (state.allowEditNode === "page") {
                 try {
-                    await scopeNode.loadAsync();
+                    await (scopeNode as PageNode).loadAsync();
                 } catch (e: any) {
                     return {
                         errorCode: "DOCUMENT_LOAD_FAILED",

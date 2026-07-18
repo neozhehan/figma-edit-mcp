@@ -17,7 +17,7 @@ Safer means more errors are caught and prevented, and fewer ways exist to make o
 ### Safer leads to Cleaner
 
 The first insight explains why the checks actually deliver safety: 
-**A programmatic check is more reliable than instructing the AI, and it costs less.**
+**A programmatic check is more reliable & costs less than instructing the AI.**
 
 There are two ways to stop an AI from making a specific mistake. You can instruct the AI ("never delete a variable that is still in use"), or you can write a program that checks each action and blocks the mistake.
 

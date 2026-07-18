@@ -50,7 +50,7 @@ export async function getReactions(nodeIds: any) {
 
             // If the node has filtered reactions, add it to results and apply highlight effect
             if (hasFilteredReactions) {
-                // @ts-ignore
+                // @ts-expect-error TS2345: reaction-summary object literal is not assignable to the parameter's declared type
                 results.push({
                     id: node.id,
                     name: node.name,
@@ -179,7 +179,7 @@ export async function getReactions(nodeIds: any) {
  * @param {string} params.connectorId - Optional connector ID to set as default
  * @returns {Promise<Object>} Result with connector info
  */
-async function activeSetDefaultConnector(params: any) {
+async function activeSetDefaultConnector(params?: any) {
     const { connectorId } = params || {};
 
     // If connectorId is provided, search and set by that ID (do not check existing storage)
@@ -316,23 +316,23 @@ export async function createCursorNode(targetNodeId: any) {
 
         const cursorNode = importedNode.findOne((node: any) => node.type === 'VECTOR');
         if (cursorNode) {
-            // @ts-ignore
+            // @ts-expect-error TS2339: Property 'fills' does not exist on type 'SceneNode'.
             cursorNode.fills = [{
                 type: 'SOLID',
                 color: { r: 0, g: 0, b: 0 },
                 opacity: 1
             }];
-            // @ts-ignore
+            // @ts-expect-error TS2339: Property 'strokes' does not exist on type 'SceneNode'.
             cursorNode.strokes = [{
                 type: 'SOLID',
                 color: { r: 1, g: 1, b: 1 },
                 opacity: 1
             }];
-            // @ts-ignore
+            // @ts-expect-error TS2339: Property 'strokeWeight' does not exist on type 'SceneNode'.
             cursorNode.strokeWeight = 2;
-            // @ts-ignore
+            // @ts-expect-error TS2339: Property 'strokeAlign' does not exist on type 'SceneNode'.
             cursorNode.strokeAlign = 'OUTSIDE';
-            // @ts-ignore
+            // @ts-expect-error TS2339: Property 'effects' does not exist on type 'SceneNode'.
             cursorNode.effects = [{
                 type: "DROP_SHADOW",
                 color: { r: 0, g: 0, b: 0, a: 0.3 },
@@ -345,7 +345,7 @@ export async function createCursorNode(targetNodeId: any) {
         }
 
         // Append the cursor node to the parent node
-        // @ts-ignore
+        // @ts-expect-error TS2339: Property 'appendChild' does not exist on type 'BaseNode'.
         parentNode.appendChild(importedNode);
 
         // if the parentNode has auto-layout enabled, set the layoutPositioning to ABSOLUTE
@@ -355,19 +355,19 @@ export async function createCursorNode(targetNodeId: any) {
 
         // Adjust the importedNode's position to the targetNode's position
         if (
-            // @ts-ignore
+            // @ts-expect-error TS2339: Property 'absoluteBoundingBox' does not exist on type 'BaseNode'.
             targetNode.absoluteBoundingBox &&
-            // @ts-ignore
+            // @ts-expect-error TS2339: 'absoluteBoundingBox' does not exist on every member of the narrowed node union
             parentNode.absoluteBoundingBox
         ) {
             // if the targetNode has absoluteBoundingBox, set the importedNode's absoluteBoundingBox to the targetNode's absoluteBoundingBox
-            // @ts-ignore
+            // @ts-expect-error TS2339: Property 'absoluteBoundingBox' does not exist on type 'BaseNode'.
             console.log('targetNode.absoluteBoundingBox', targetNode.absoluteBoundingBox);
-            // @ts-ignore
+            // @ts-expect-error TS2339: 'absoluteBoundingBox' does not exist on every member of the narrowed node union
             console.log('parentNode.absoluteBoundingBox', parentNode.absoluteBoundingBox);
-            // @ts-ignore
+            // @ts-expect-error TS2339: Property 'absoluteBoundingBox' does not exist on type 'BaseNode'. (+2 more)
             importedNode.x = targetNode.absoluteBoundingBox.x - parentNode.absoluteBoundingBox.x + targetNode.absoluteBoundingBox.width / 2 - 48 / 2
-            // @ts-ignore
+            // @ts-expect-error TS2339: Property 'absoluteBoundingBox' does not exist on type 'BaseNode'. (+2 more)
             importedNode.y = targetNode.absoluteBoundingBox.y - parentNode.absoluteBoundingBox.y + targetNode.absoluteBoundingBox.height / 2 - 48 / 2;
         } else if (
             'x' in targetNode && 'y' in targetNode && 'width' in targetNode && 'height' in targetNode) {
@@ -379,9 +379,9 @@ export async function createCursorNode(targetNodeId: any) {
             // Fallback: Place at top-left of target if possible, otherwise at (0,0) relative to parent
             if ('x' in targetNode && 'y' in targetNode) {
                 console.log('Fallback to targetNode x/y');
-                // @ts-ignore
+                // @ts-expect-error TS2322: Type 'unknown' is not assignable to type 'number'.
                 importedNode.x = targetNode.x;
-                // @ts-ignore
+                // @ts-expect-error TS2322: Type 'unknown' is not assignable to type 'number'.
                 importedNode.y = targetNode.y;
             } else {
                 console.log('Fallback to (0,0)');
@@ -457,7 +457,6 @@ export async function createConnections(params: any) {
     const defaultConnectorId = await figma.clientStorage.getAsync('defaultConnectorId');
     if (!defaultConnectorId) {
         // Try to find one automatically
-        // @ts-ignore
         const autoResult = await activeSetDefaultConnector();
         if (!autoResult.success) {
             throw new Error('No default connector set. Please create a connector in FigJam/Figma and copy it to the current page, then run "create_connections" with "connectorId".');
@@ -538,7 +537,7 @@ export async function createConnections(params: any) {
                         // First check if default connector has font and use the same
                         if (defaultConnector.text && defaultConnector.text.fontName) {
                             const fontName = defaultConnector.text.fontName;
-                            // @ts-ignore
+                            // @ts-expect-error TS2345: Argument of type 'unique symbol | FontName' is not assignable to parameter of type 'FontName'.
                             await figma.loadFontAsync(fontName);
                             clonedConnector.text.fontName = fontName;
                         } else {

@@ -262,12 +262,12 @@ export async function setCornerRadius(params: any) {
             if (corners[3]) node.bottomLeftRadius = radius;
         } else {
             // Node only supports uniform corner radius
-            // @ts-ignore
+            // @ts-expect-error TS2540: Cannot assign to 'cornerRadius' because it is a read-only property.
             node.cornerRadius = radius;
         }
     } else {
         // Set uniform corner radius
-        // @ts-ignore
+        // @ts-expect-error TS2540: Cannot assign to 'cornerRadius' because it is a read-only property.
         node.cornerRadius = radius;
     }
 

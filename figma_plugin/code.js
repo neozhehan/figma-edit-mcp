@@ -394,7 +394,6 @@
           pageId: node.id,
           pageName: node.name,
           descendantCount: countDescendants(node),
-          // @ts-ignore
           children: node.children.map((child) => ({
             id: child.id,
             name: child.name,
@@ -2385,7 +2384,7 @@
         y: instance.y,
         width: instance.width,
         height: instance.height,
-        // @ts-ignore
+        // @ts-expect-error TS2339: Property 'componentId' does not exist on type 'InstanceNode'.
         componentId: instance.componentId
       };
     } catch (error) {
@@ -3291,8 +3290,8 @@
         importedNode.layoutPositioning = "ABSOLUTE";
       }
       if (
-        // @ts-ignore
-        targetNode.absoluteBoundingBox && // @ts-ignore
+        // @ts-expect-error TS2339: Property 'absoluteBoundingBox' does not exist on type 'BaseNode'.
+        targetNode.absoluteBoundingBox && // @ts-expect-error TS2339: 'absoluteBoundingBox' does not exist on every member of the narrowed node union
         parentNode.absoluteBoundingBox
       ) {
         console.log("targetNode.absoluteBoundingBox", targetNode.absoluteBoundingBox);

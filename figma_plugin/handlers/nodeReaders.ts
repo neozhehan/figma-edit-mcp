@@ -5,7 +5,7 @@
 
 import { buildPathArray, countDescendants, SAFE_LIST_PROPERTIES } from '../utils/nodeUtils.js';
 import { sendProgressUpdate } from '../utils/progressUtils.js';
-import { NodeEntry, PathTuple } from '../../shared/nodeTypes.js';
+import { NodeEntry, PathTuple } from '../../src/shared/nodeTypes.js';
 
 
 /**
@@ -57,15 +57,12 @@ export async function getPagesInfo(params: any) {
         const node = await figma.getNodeByIdAsync(id);
         
         // Strict page check: must be PAGE and parent must be root
-        // @ts-ignore
         if (node && node.type === "PAGE" && node.parent?.id === figma.root.id) {
-            // @ts-ignore
             await node.loadAsync();
             pages.push({
                 pageId: node.id,
                 pageName: node.name,
                 descendantCount: countDescendants(node),
-                // @ts-ignore
                 children: node.children.map((child: any) => ({
                     id: child.id,
                     name: child.name,

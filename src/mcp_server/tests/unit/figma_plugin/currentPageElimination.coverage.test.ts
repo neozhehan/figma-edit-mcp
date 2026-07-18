@@ -1,5 +1,5 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 
 // Phase 6 coverage for the §1 `figma.currentPage` elimination items that lacked
 // unit tests: node_clone parentless, createComponentSet page resolution,
@@ -98,9 +98,8 @@ describe("getSelection / get_selection are removed", () => {
         const src = readFileSync("figma_plugin/src/main.ts", "utf8");
         expect(src).not.toContain('"get_selection"');
     });
-    it("handlers/index.ts no longer re-exports getSelection", () => {
-        const idx = readFileSync("figma_plugin/handlers/index.ts", "utf8");
-        expect(idx).not.toMatch(/getSelection/);
+    it("handlers/index.ts (dead re-export module) is deleted", () => {
+        expect(existsSync("figma_plugin/handlers/index.ts")).toBe(false);
     });
     it("nodeReaders.ts no longer exports getSelection", () => {
         const readers = readFileSync("figma_plugin/handlers/nodeReaders.ts", "utf8");

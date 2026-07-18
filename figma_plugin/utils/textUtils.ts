@@ -95,7 +95,7 @@ export const buildLinearOrder = (node: any) => {
  * @param {Object} options - Options including fallbackFont and smartStrategy
  * @returns {Promise<boolean>} Success status
  */
-export const setCharacters = async (node: any, characters: any, options: any) => {
+export const setCharacters = async (node: any, characters: any, options?: any) => {
     const fallbackFont = (options && options.fallbackFont) || {
         family: "Inter",
         style: "Regular",

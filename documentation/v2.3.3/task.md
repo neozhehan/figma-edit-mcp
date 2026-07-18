@@ -10,21 +10,24 @@ This document tracks the tasks required to fulfill the requirements in the [v2.3
 ---
 
 ## Phase 1: Fix the Config (D1)
-- [ ] Modify `figma_plugin/tsconfig.json` to replace the broken `typeRoots` path with `"types": ["@figma/plugin-typings"]`
-- [ ] Confirm `lib` is set to `["es2018"]` and does **not** include `"dom"` (to avoid redeclaring globals owned by `@figma/plugin-typings`)
-- [ ] Run `tsc --noEmit -p figma_plugin/tsconfig.json` locally and verify the compiler runs and reports approximately 9 residual errors (the exact count may shift with the `shared/`-include detail; the PRD triage table lists the expected 9)
+- [x] Modify `figma_plugin/tsconfig.json` to replace the broken `typeRoots` path with `"types": ["@figma/plugin-typings"]`
+- [x] Confirm `lib` is set to `["es2018"]` and does **not** include `"dom"` (to avoid redeclaring globals owned by `@figma/plugin-typings`)
+- [x] Run `tsc --noEmit -p figma_plugin/tsconfig.json` locally and verify the compiler runs and reports approximately 9 residual errors (the exact count may shift with the `shared/`-include detail; the PRD triage table lists the expected 9)
 
 ---
 
 ## Phase 2: Triage the Residual (D2)
-- [ ] Resolve residual errors 1 & 2 in [componentHandlers.ts:707](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/src/handlers/componentHandlers.ts): Explicitly type `parentNode` (e.g., as `BaseNode`) so negative branch narrowings do not reduce to `never`.
-- [ ] Resolve residual errors 3 & 4 in [main.ts:194](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/src/main.ts): Explicitly type `parent` to prevent `never`-narrowing in `validateCloneWrite`.
-- [ ] Resolve residual error 5 in [connectHandlers.ts:42](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/src/handlers/connectHandlers.ts): Narrow/cast `scopeNode` to `PageNode` before invoking `loadAsync()`.
-- [ ] Resolve residual errors 6 & 7 in [nodeReaders.ts:8](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/src/handlers/nodeReaders.ts) and [nodeUtils.ts:6](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/src/utils/nodeUtils.ts): Fix module resolution by adding the `shared/` directory to `include` in the plugin tsconfig or adjusting resolution settings. Scope the `include` to what the plugin imports; if `shared/` itself has errors, triage or exclude them with a recorded note rather than expanding scope.
-- [ ] Resolve residual errors 8 & 9 in [exportUtils.ts:124–125](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/src/utils/exportUtils.ts): Add a minimal ambient declaration for `TextDecoder` (do not import `dom`; prefer the typings if a future `@figma/plugin-typings` version provides it, with a comment pointing to the PRD).
-- [ ] After each fix, re-run `tsc` and confirm the error count strictly decreases with no new errors appearing.
-- [ ] Guardrails (D2/D4): no `@ts-nocheck`, no `strict` relaxation, no blanket `any` casts. If any fix appears to require a runtime behavior change, **stop and escalate** — do not silently alter a live-verified code path.
-- [ ] Re-run `tsc --noEmit -p figma_plugin/tsconfig.json` and verify the compilation completes with **0 errors**.
+- [x] Resolve residual errors 1 & 2 in [componentHandlers.ts:707](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/handlers/componentHandlers.ts): Explicitly type `parentNode` (e.g., as `BaseNode`) so negative branch narrowings do not reduce to `never`.
+- [x] Resolve residual errors 3 & 4 in [main.ts:194](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/src/main.ts): Explicitly type `parent` to prevent `never`-narrowing in `validateCloneWrite`.
+- [x] Resolve residual error 5 in [connectHandlers.ts:42](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/handlers/connectHandlers.ts): Narrow/cast `scopeNode` to `PageNode` before invoking `loadAsync()`.
+- [x] Resolve residual errors 6 & 7 in [nodeReaders.ts:8](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/handlers/nodeReaders.ts) and [nodeUtils.ts:6](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/utils/nodeUtils.ts): Fix module resolution by adding the `shared/` directory to `include` in the plugin tsconfig or adjusting resolution settings. Scope the `include` to what the plugin imports; if `shared/` itself has errors, triage or exclude them with a recorded note rather than expanding scope.
+- [x] Resolve residual errors 8 & 9 in [exportUtils.ts:124–125](file:///Users/neozhehan/Git/figma-edit-mcp/figma_plugin/utils/exportUtils.ts): Add a minimal ambient declaration for `TextDecoder` (do not import `dom`; prefer the typings if a future `@figma/plugin-typings` version provides it, with a comment pointing to the PRD). Declared in `figma_plugin/types/sandbox-globals.d.ts` (covered by the tsconfig `include`), with typed parameters rather than `any`.
+- [x] After each fix, re-run `tsc` and confirm the error count strictly decreases with no new errors appearing.
+- [x] Guardrails (D2/D4): no `@ts-nocheck`, no `strict` relaxation, no blanket `any` casts. If any fix appears to require a runtime behavior change, **stop and escalate** — do not silently alter a live-verified code path.
+- [x] Re-run `tsc --noEmit -p figma_plugin/tsconfig.json` and verify the compilation completes with **0 errors**.
+- [x] Run the full unit suite after the residual fixes (`bun run test`): Track 1 edits can break static source-matching tests — the Phase 4 §3a test asserting the `loadAsync` call shape required updating for the `PageNode` cast (updated in the same change); suite green (647/647).
+- [x] **Review decision 4 (accepted 2026-07-17):** at both `never`-narrowing guard sites fixed above (the `createComponent` parent check in `componentHandlers.ts` and the `validateCloneWrite` parent check in `main.ts`), add a one-sentence comment recording that the typings prove the guarded branch statically unreachable (`node.parent` is typed `(BaseNode & ChildrenMixin) | null`, so every non-null parent has `appendChild`) and that the guard is kept deliberately as runtime defense-in-depth — removing it would be a behavior change on a live-verified path (D4). Comment-only; its purpose is to stop a future cleanup from deleting the guards as dead code.
+- [x] **Review decision 3 (accepted 2026-07-17) — zero-drift rework of the two alias casts:** replace `const parentNodeBase = parentNode as BaseNode` (the `createComponent` parent check) and `const parentBase = parent as BaseNode` (the `validateCloneWrite` parent check) with a zero-emitted-JS form — a type annotation on the existing declaration, or the inline-cast idiom `connectHandlers.ts` already uses — so Track 1 contributes no code-line changes to the rebuilt bundle. Re-run `tsc` (0 errors), rebuild, and confirm the `code.js` diff against the pre-v2.3.3 baseline is comment-text only. Do this **before the Phase 1–2 commit**, in the same change as the decision-4 rationale comments at the same two sites.
 
 ---
 
@@ -32,6 +35,7 @@ This document tracks the tasks required to fulfill the requirements in the [v2.3
 - [ ] Add `check:types:plugin` script pointing to `tsc --noEmit -p figma_plugin/tsconfig.json` in [package.json](file:///Users/neozhehan/Git/figma-edit-mcp/package.json). (Sequenced by condition: added only after Phase 2 reaches 0 errors.)
 - [ ] Wire the `check:types:plugin` gate into the GitHub Actions CI pipeline [ci.yml](file:///Users/neozhehan/Git/figma-edit-mcp/.github/workflows/ci.yml) alongside `check:plugin` / `check:versions`. The esbuild build pipeline is unchanged — the gate is additive.
 - [ ] Prove the gate red/green locally: temporarily reintroduce a type break (or revert the `types` config), verify `check:types:plugin` fails, then revert and confirm it passes.
+- [ ] **Review decision 2 (accepted 2026-07-17) — suppression policing beside the type gate:** the `tsc` gate stays green when a contributor adds a new suppression, so ship an enforcement check in the same CI step: `@ts-ignore` is forbidden in `figma_plugin/**/*.ts`, and `@ts-expect-error` is allowed only with a description on the same line. The repo has no ESLint, so a small `check:suppressions` script wired into CI beside `check:types:plugin` satisfies this; its failure output must name the offending file:line and state the fix ("replace with `@ts-expect-error <what it suppresses>`"), per the one-round-trip criterion. (`@typescript-eslint/ban-ts-comment` is the equivalent if ESLint is ever adopted.) The check passes on the current tree: all 50 remaining suppressions are `@ts-expect-error` with descriptions (2026-07-17 conversion), tracked for touch-it-clear-it burn-down.
 
 ---
 
@@ -139,10 +143,12 @@ The guarantee is an **observable boundary**: no command may await, emit progress
   - [ ] `node_clone` (append immediately after `clone()`, which defaults to `currentPage`)
 - [ ] Modify `node_flatten` to capture and verify the source's parent and index, and pass both to `figma.flatten(nodes, parent, index)` — true zero-transient placement.
 - [ ] Modify `create_component_set` to pass its (Phase 5-required) verified explicit parent directly to `combineAsVariants`.
+- [ ] Fix the dead `componentId` response field in `createComponentInstance` while it is open for the audit above (Rev 20; live-verified 2026-07-17 on channel `p28j`: `InstanceNode.componentId` does not exist at runtime, so the advertised field is dropped from every response): return `componentId: component.id` from the already-resolved component — both the `componentId` and `componentKey` paths hold it — and remove the now-satisfied `@ts-expect-error`. Additive behavior fix; CHANGELOG entry lands in Phase 13.
 - [ ] Hand off to Phase 12: record the unavoidable same-stack micro-transient as a residual risk in `SAFETY.md`, and word G1 as claiming the observable boundary, not literal zero-transient containment.
 - [ ] **Unit Tests**
   - [ ] Mocked call-trace tests: insertion is the immediate next synchronous call after every implicit creation; `create_text` inserts before font awaits.
   - [ ] Cleanup removes uncommitted nodes on later failure, and runs **only** on failed, uncommitted attempts.
+  - [ ] `create_instance` returns `componentId` equal to the resolved component's id in both the `componentId` and `componentKey` paths.
 
 ---
 
@@ -225,14 +231,14 @@ The guarantee is an **observable boundary**: no command may await, emit progress
   - [ ] The plugin About handshake
 - [ ] Rebuild the plugin bundle using `bun run build:all`.
 - [ ] Verify `check:plugin` and `check:versions` pass.
-- [ ] Add the `CHANGELOG.md` entry for v2.3.3 naming **every** newly required field and breaking repair, each with a before/after example. The PRD's Compatibility posture section is the checklist: required `currentVariableName`/`currentStyleName`/`collectionName`/`scopes`; required parents on the five creators and `create_component_set`; the `annotation_set` field-set change; recursive strictness rejecting nested unknown keys; `.min(1)` and duplicate refusal on batches; corrected `node_delete`/`text_set_content` output field names; the new batch `status` field; `channel_join` version/peer fields and refusals; creation-only `create_connection` with the required name-verified template.
+- [ ] Add the `CHANGELOG.md` entry for v2.3.3 naming **every** newly required field and breaking repair, each with a before/after example. The PRD's Compatibility posture section is the checklist: required `currentVariableName`/`currentStyleName`/`collectionName`/`scopes`; required parents on the five creators and `create_component_set`; the `annotation_set` field-set change; recursive strictness rejecting nested unknown keys; `.min(1)` and duplicate refusal on batches; corrected `node_delete`/`text_set_content` output field names; the new batch `status` field; `channel_join` version/peer fields and refusals; creation-only `create_connection` with the required name-verified template; and the additive `create_instance` `componentId` response field (Rev 20).
 
 ---
 
 ## Phase 14: Verification (Automated + Live Figma)
 - [ ] Run and pass: `bun run build:all`, `bun run check:plugin`, `bun run check:versions`, `bun run check:types:plugin`, `bun run test` (full suite green: the 647+ existing tests as of v2.3.2 plus all new D5–D14 tests).
 - [ ] Confirm the IDE opens the plugin source with zero spurious ambient-global diagnostics.
-- [ ] **Track 1 rebuild-diff:** rebuilding `figma_plugin/code.js` after the Phase 1–2 commits produces no functional emitted-JS change (the residual fixes are types/casts/config only, confirmed via `check:plugin` rebuild + `git diff`); every other emitted-JS change must map to a deliberate D5–D14 edit, reviewed explicitly.
+- [ ] **Track 1 rebuild-diff:** rebuilding `figma_plugin/code.js` after the Phase 1–2 commits produces no functional emitted-JS change (the residual fixes are types/casts/config only, confirmed via `check:plugin` rebuild + `git diff`); every other emitted-JS change must map to a deliberate D5–D14 edit, reviewed explicitly. Per review decision 3 (accepted 2026-07-17), the Track 1 expectation is strengthened from "no functional change" to **no code-line changes at all**: the Track 1 portion of the rebuild diff is comment-text only, machine-distinguishable from the deliberate D5–D14 edits.
 - [ ] **Live Probes Matrix (against a live Figma document)**
   - [ ] ID-only `UPDATE_VARIABLE` call is refused.
   - [ ] `style_manage` update by ID without `currentStyleName` is refused.
@@ -244,6 +250,14 @@ The guarantee is an **observable boundary**: no command may await, emit progress
   - [ ] An annotation append via `annotation_set` succeeds and is rediscovered via `annotation_list`.
   - [ ] A nested `node_flatten` result stays under its original parent.
   - [ ] `create_component_set` lands under its supplied parent.
+  - [ ] `create_instance`'s response includes `componentId` matching the resolved component (regression for the Phase 8 dead-field fix; baseline: the 2026-07-17 `p28j` probe showed the advertised field absent).
   - [ ] `channel_join` reports `serverVersion` and `pluginVersion` for one bound peer; an empty channel is refused with `PLUGIN_PEER_UNAVAILABLE`, a two-plugin channel with `PLUGIN_PEER_AMBIGUOUS`, a second MCP client with `CHANNEL_IN_USE`, and a known version mismatch with `VERSION_MISMATCH`.
   - [ ] `create_connection` without a valid template returns `CONNECTOR_TEMPLATE_REQUIRED`.
   - [ ] An explicit-template connection returns per-item truth. **Fixture-dependent:** requires a pasted FigJam connector in the test file; if unavailable, record the probe as blocked (per the Gap 9 precedent) rather than skipping silently.
+  - [ ] **Manual plugin-UI check** (unreachable over MCP — only the UI's `validate-scope-link` path calls `parseNodeIdFromUrl`; MCP traffic is converted dash→colon server-side): paste a scope link using the percent-encoded node-id form (`node-id=1%3A2`) of a real node. If it validates, the sandbox provides `URL`: add a one-line ambient declaration beside `TextDecoder`'s and delete the suppression in `parseNodeIdFromUrl`. If it reports "Node not found" while the dash form validates, `URL` is absent: update the annotation to record the fact and defer the `decodeURIComponent` regex fix to post-release UI polish. Record the outcome in the PRD Provenance table either way.
+
+---
+
+## Follow-ups outside v2.3.3 scope (tracked, not scheduled)
+
+- [ ] **Server-side type-check gap (review decision 5, accepted 2026-07-17):** open a tracked follow-up (issue or next-release PRD item) for restoring an MCP-server type-check. Recorded facts: root `tsc --noEmit -p tsconfig.json` is currently unrunnable (TS6059 — `rootDir: "src"` is violated by tests importing `figma_plugin/` sources); CI runs no server `tsc` at all (`build` is tsup, which does not type-check); the Phase 4 `.superRefine()` enforcement and dual descriptions — the Q1/Q14 first-call-correctness mechanism — therefore live in unchecked code; and the single-argument `z.record` type error in `src/shared/nodeTypes.ts` sat invisible server-side until the plugin tsconfig surfaced it. Acceptance shape: a `check:types:server` gate analogous to `check:types:plugin`. The audit itself stays out of v2.3.3 per D4 — this item exists so the gap is tracked work, not an unstated non-goal.

@@ -34,7 +34,6 @@ async function setTextContent(params: any) {
     }
 
     // Use the setCharacters utility from textUtils
-    // @ts-ignore
     const success = await setCharacters(node, text);
     if (!success) {
         throw new Error(`Failed to set characters on node ${nodeId}`);

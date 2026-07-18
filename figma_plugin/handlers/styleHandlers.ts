@@ -114,14 +114,14 @@ export async function createStyle(params: any) {
             } else {
                 for (const [field, variableId] of entries) {
                     if (variableId === null) {
-                        // @ts-ignore
+                        // @ts-expect-error TS2551: Property 'setBoundVariable' does not exist on type 'BaseStyle'. Did you mean 'boundVariables'?
                         style.setBoundVariable(field, null);
                     } else {
                         const variable = await figma.variables.getVariableByIdAsync(variableId);
                         if (!variable) {
                             throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
                         }
-                        // @ts-ignore
+                        // @ts-expect-error TS2551: Property 'setBoundVariable' does not exist on type 'BaseStyle'. Did you mean 'boundVariables'?
                         style.setBoundVariable(field, variable);
                     }
                 }
