@@ -2,6 +2,7 @@ import { WebSocket as WsWebSocket } from "ws";
 import { v4 as uuidv4 } from "uuid";
 import { normalizeNodeId, normalizeNodeIds } from "./utils.js";
 import { logger } from "./logger.js";
+import { UNKNOWN_ERROR } from "../shared/errorCodes.js";
 
 // Prefer the runtime's native WebSocket (bun, and node >= 22) over the `ws`
 // package's client. The `ws` client mishandles the HTTP 101 upgrade under bun:
@@ -13,11 +14,29 @@ import { logger } from "./logger.js";
 const WSImpl: any = (globalThis as any).WebSocket ?? WsWebSocket;
 const WS_OPEN = 1; // WebSocket.OPEN === 1 in every implementation
 
+export class FigmaError extends Error {
+    code: string;
+    details?: any;
+    constructor(errorObj: any) {
+        const msg = (errorObj && typeof errorObj === "object" && typeof errorObj.message === "string")
+            ? errorObj.message
+            : (typeof errorObj === "string" ? errorObj : "Error executing command");
+        super(msg);
+        this.code = (errorObj && typeof errorObj === "object" && typeof errorObj.code === "string")
+            ? errorObj.code
+            : UNKNOWN_ERROR;
+        this.details = (errorObj && typeof errorObj === "object")
+            ? errorObj.details
+            : undefined;
+        Object.setPrototypeOf(this, FigmaError.prototype);
+    }
+}
+
 // Define TypeScript interfaces for Figma responses
 export interface FigmaResponse {
     id: string;
     result?: any;
-    error?: string;
+    error?: string | { code: string; message: string; details?: any };
 }
 
 // Define interface for command progress updates
@@ -193,8 +212,12 @@ export function connectToFigma(port: number = defaultPort) {
                     const request = pendingRequests.get(requestId)!;
                     clearTimeout(request.timeout);
                     
-                    const error = new Error(json.message as string);
-                    (error as any).joinErrorCode = json.code;
+                    // Pass through the socket's real code; FigmaError defaults
+                    // absent codes to UNKNOWN_ERROR (Q16 — no ad-hoc codes).
+                    const error = new FigmaError({
+                        code: json.code,
+                        message: json.message
+                    });
                     request.reject(error);
                     
                     pendingRequests.delete(requestId);
@@ -251,8 +274,8 @@ export function connectToFigma(port: number = defaultPort) {
                 clearTimeout(request.timeout);
 
                 if (myResponse.error) {
-                    logger.error(`Error from Figma: ${myResponse.error}`);
-                    request.reject(new Error(myResponse.error));
+                    logger.error(`Error from Figma: ${typeof myResponse.error === "object" ? JSON.stringify(myResponse.error) : myResponse.error}`);
+                    request.reject(new FigmaError(myResponse.error));
                 } else {
                     request.resolve(myResponse.result);
                 }
@@ -276,10 +299,12 @@ export function connectToFigma(port: number = defaultPort) {
         logger.info('Disconnected from Figma socket server');
         ws = null;
 
-        // Reject all pending requests
+        // Reject all pending requests. Coded at origin (Q20): the plugin peer's
+        // connection dropped, so the code is PLUGIN_DISCONNECTED — never
+        // reconstructed from message prose downstream.
         for (const [id, request] of pendingRequests.entries()) {
             clearTimeout(request.timeout);
-            request.reject(new Error("Connection closed"));
+            request.reject(new FigmaError({ code: "PLUGIN_DISCONNECTED", message: "Connection closed" }));
             pendingRequests.delete(id);
         }
 
@@ -307,7 +332,18 @@ export async function joinChannel(channelName: string): Promise<void> {
         logger.info(`Joined channel: ${channelName}`);
     } catch (error) {
         logger.error(`Failed to join channel: ${error instanceof Error ? error.message : String(error)}`);
-        throw error;
+        // Q20: code the join flow's locally-generated failures at origin. An
+        // already-coded error (socket CHANNEL_NOT_FOUND, close-handler
+        // PLUGIN_DISCONNECTED) passes through untouched; an uncoded local
+        // failure — e.g. the request timeout — becomes CHANNEL_JOIN_FAILED.
+        // The check is structural (absence of a code), never message prose.
+        if (error !== null && typeof error === "object" && typeof (error as any).code === "string") {
+            throw error;
+        }
+        throw new FigmaError({
+            code: "CHANNEL_JOIN_FAILED",
+            message: error instanceof Error ? error.message : String(error),
+        });
     }
 }
 

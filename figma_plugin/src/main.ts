@@ -7,7 +7,7 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { sanitizeForPostMessage } from '../utils/sanitize.js';
 import { findInstanceAncestor, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
-import { ERRORS, formatScopeError as formatScopeErrorForRoot } from '../utils/errors.js';
+import { ERRORS, formatScopeError as formatScopeErrorForRoot, getStructuredError } from '../utils/errors.js';
 
 // Import handlers
 import { getNodesInfo, getPagesInfo } from '../handlers/nodeReaders.js';
@@ -209,25 +209,6 @@ async function validateCloneWrite(params: any) {
     assertNotInstanceParent(parent, "appended to");
 }
 
-// Helper: Extract a human-readable detail from a thrown value. Figma can throw
-// error-like objects whose `.message` is undefined/empty, which would otherwise
-// collapse to the generic "Error executing command" and mask the real cause.
-function describeError(e: any): string {
-    if (e == null) return "Error executing command";
-    if (typeof e === "string") return e;
-    if (typeof e.message === "string" && e.message.length > 0) {
-        return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
-    }
-    if (typeof e.toString === "function") {
-        const s = e.toString();
-        if (s && s !== "[object Object]") return s;
-    }
-    try {
-        const json = JSON.stringify(e);
-        if (json && json !== "{}") return json;
-    } catch { /* not serializable */ }
-    return e.name || "Error executing command";
-}
 
 // Helper: Parse Node ID from URL
 function parseNodeIdFromUrl(url: any) {
@@ -323,7 +304,7 @@ figma.ui.onmessage = async (msg: any) => {
                     figma.ui.postMessage({
                         type: "command-error",
                         id: msg.id,
-                        error: describeError(error),
+                        error: getStructuredError(error),
                     });
                 }
             });

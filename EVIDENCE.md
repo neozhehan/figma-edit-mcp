@@ -99,7 +99,7 @@ And the old code did not need to be rewritten:
 
 ## Safer leads to Faster
 
-The second insight: preventing an error costs less than repairing it. The philosophy states this as a net comparison — the same task and action with the check enabled versus absent, counting the validation, any refusal and recovery, and any downstream work an unchecked error would have caused. Evidence is strongest when it measures both sides of that comparison. The entries below are ordered accordingly: the domain failure mode first, then industrial comparisons that counted both the overhead and the savings, then counterevidence that fixes the time horizon, then precedents and illustrations that carry no net-speed weight.
+The second insight: preventing an error costs less than repairing it. The philosophy states this as a net comparison — the same task and action with the check enabled versus absent, counting the validation, any refusal and recovery, and any downstream work an unchecked error would have caused. Evidence is strongest when it measures both sides of that comparison. The entries below are ordered accordingly: the domain failure mode first, then industrial comparisons that counted both the overhead and the savings, then a human-facing operational analogue for the conditions a check must meet, then counterevidence that fixes the time horizon, then precedents and illustrations that carry no net-speed weight.
 
 ### Deleting an in-use variable in Figma
 
@@ -180,6 +180,26 @@ Nichols analyzed detailed activity, effort, defect, and fix-time records from 35
 **Source:** [William R. Nichols Jr., "The Cost and Benefits of Static Analysis During Development" (arXiv:2003.03001, PDF)](https://arxiv.org/pdf/2003.03001)
 
 **Caveats:** the no-tool condition was modeled, not observed; the model is deterministic and does not establish causality; tool use was inconsistent in two of the three organizations; false positives and their cost to developers were not measured; licensing, acquisition, and training costs were excluded; and the paper is an ICSE draft on arXiv rather than a peer-reviewed final publication — it corroborates the argument and should not anchor it.
+
+### Message wording determines whether a check helps (Google Tricorder) — human-facing operational analogue
+
+**Supports:** the operating conditions a check must meet before it contributes to speed at all. The findings are measured on human developers responding to analyzer results, so this is an operational analogue for the plugin's refusals rather than direct evidence about AI agents.
+
+Google's Tricorder paper describes why its earlier static-analysis deployments fell out of use: poor workflow integration, stale or delayed results, scaling problems, high false-positive rates, and inactionable findings. The platform that succeeded enforces strict limits. For checks that run during builds:
+
+> "the effective false positive rate must be essentially zero. They also cannot significantly slow down compiles, so must have < 5% overhead."
+
+For findings shown during code review, Google enforces "a very low effective false positive rate here (< 10%)" and expects "analyses to complete in less than 5 − 10 minutes (ideally much less)". Analyzers can be disabled when they consume excessive resources or annoy developers. And on message wording:
+
+> "for one analyzer 75% of all bugs filed against the tool from Tricorder were due to misinterpretations of the result wording and were fixed by updating the message text and/or linking to additional documentation."
+
+A check helps only when its result is understood: a refusal whose wording sends the reader in the wrong direction converts a cheap early catch into new diagnostic work.
+
+**Sources:**
+- [Sadowski et al., "Tricorder: Building a Program Analysis Ecosystem" (ICSE 2015, PDF)](https://research.google.com/pubs/archive/43322.pdf)
+- [Google Research publication page](https://research.google/pubs/tricorder-building-a-program-analysis-ecosystem/)
+
+**Caveats:** Tricorder surfaces warnings during builds and code review rather than blocking design-file mutations; the thresholds are Google's operational policies, not universally optimal values; and developer clicks and annoyance are proxies for saved time. It measures the conditions for a check to be worth running, not a net speedup, and it measures humans rather than AI agents.
 
 ### Industrial TDD reduced defects but increased initial development time (Nagappan et al., 2008) — counterevidence on the time horizon
 
@@ -403,105 +423,229 @@ The philosophy argues this connection from the system's own design rather than f
 
 ---
 
-## Faster: the fewest reasoning cycles
+## Faster: designing tools around decisions
 
-The fourth insight holds that an AI spends its working time in reasoning cycles, so a task finishes fastest when it needs the fewest of them: few calls per task (batch operations), a correct call on the first try (first-call correctness), and a one-step fix when a call fails (one-round-trip recovery). The evidence below covers first-call correctness and one-round-trip recovery; the case for batch operations rests on the structure of the system itself rather than on external studies. The limiting case of first-call correctness — enforcement that makes an invalid call impossible — is the OpenAI entry under [Safer leads to Cleaner](#safer-leads-to-cleaner).
+The fourth insight is an interface-design claim:
 
-### Informative feedback converts blind retries into fixes (Self-Debugging)
+> **Design tools around decisions, not operations: one model turn should express all work already determined, and one tool result should provide all information needed for the next decision.**
 
-**Supports:** one-round-trip recovery — an error that explains the failure lets the model fix it immediately.
+The claim predicts a crossover. When the model can already specify the remaining operations or the rule that determines them, keeping that execution behind one model boundary should reduce coordination cost. When a new observation requires fresh model judgment, removing the boundary should provide no such benefit and may add planning or execution overhead.
 
-The ICLR 2024 paper "Teaching Large Language Models to Self-Debug" measured what happens when a model's failed code comes back with execution and unit-test feedback instead of nothing. On text-to-SQL:
+"Decision" here means model judgment, not every conditional branch. A program can filter data, repeat a call, compare a value, and choose a branch under a rule the model already supplied. The boundary belongs where the model must interpret a new observation and decide something it could not encode beforehand.
 
-> "Self-Debugging with code explanation consistently improves the baseline by 2-3%, and improves the prediction accuracy on problems of the hardest level by 9%."
+Model turns, MCP invocations, and primitive operations are different units. A host may emit several tool calls from one model turn, and one tool invocation may execute many primitive operations. The evidence below is organized around the substantive distinction: whether another model judgment is needed, and whether the result contains the information that judgment requires. Where an entry reproduces a results table, the figures were checked against the source's published tables in July 2026.
 
-On code translation and generation:
+### Direct crossover evidence: programmatic tool calling helped composed work but not short sequential work
 
-> "Self-Debugging improves the baseline accuracy by up to 12%."
+**Supports:** the placement rule on both its positive and negative sides.
 
-And on round-trip economics — self-debugging with feedback:
+Anthropic's programmatic tool calling lets a model write code that invokes tools repeatedly, processes intermediate results, and returns only the final output to the model. The tools still execute; the model is simply not re-consulted between calls inside the program. The feature documentation reports three results from Anthropic's internal evaluations on a production Claude model:
 
-> "can match or outperform baseline models that generate more than 10x candidate programs"
+> "On a 75-tool project-management agent benchmark, enabling programmatic tool calling reduced billed input tokens by roughly 38% with no change in task accuracy."
 
-**Source:** [Chen et al., "Teaching Large Language Models to Self-Debug" (arXiv:2304.05128, ICLR 2024)](https://arxiv.org/abs/2304.05128)
+> "Across production API traffic, requests whose `tools` array contains 10 to 49 tool definitions see typical token savings of 20% to 40% with programmatic tool calling enabled."
 
-**Caveats:** code-generation benchmarks; the feedback there comes from executing the code, which a design tool must approximate with informative error messages instead.
+> "On τ²-bench (airline, retail, and telecom domains), where each turn makes one or two sequential tool calls, programmatic tool calling left scores unchanged and cost roughly 8% more. Sequential single-call workflows do not benefit."
 
-**Relevance:** one informative error replaces many blind retries. The plugin's refusal messages are written to carry that information.
+Anthropic accordingly identifies fan-out operations and large-result filtering as strong fits, and workflows in which each call depends on Claude reasoning over the preceding result as weak fits.
 
-### The diagnosis must come from the environment (Self-Repair)
+**Source:** [Anthropic, "Programmatic tool calling"](https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling)
 
-**Supports:** one-round-trip recovery — the model cannot reliably work out on its own why a call failed, so the error message must do the diagnosing.
+**Caveats:** vendor-reported internal evaluations and production aggregates. The page publishes neither the project-management benchmark nor confidence intervals, and the results measure token savings rather than elapsed task time. Programmatic calling also combines call composition, code execution, and result filtering, so the savings cannot be attributed to boundary placement alone.
 
-The ICLR 2024 paper "Is Self-Repair a Silver Bullet for Code Generation?" examined models repairing their own failed code. From the abstract:
+**Relevance:** the strongest available evidence for the decision-boundary claim, because the same mechanism helps workloads with composable work and adds cost to workloads with little model mediation to remove.
 
-> "self-repair is bottlenecked by the model's ability to provide feedback on its own code"
+### Executable composition improved multi-tool success while reducing turns (CodeAct)
 
-> "when the cost of carrying out repair is taken into account, performance gains are often modest, vary a lot between subsets of the data, and are sometimes not present at all"
+**Supports:** the action side — giving one model turn a language capable of expressing composed work.
 
-The paper further reports that replacing GPT-4's self-generated feedback with feedback from an experienced human programmer increased the number of repaired programs that pass all unit tests by 1.58×. (This figure appears in the paper body rather than the abstract, so it is stated here without quotation marks.)
+CodeAct replaces one-operation-at-a-time JSON or text actions with executable Python. On M3ToolEval, the paper's 82-task human-curated multi-tool benchmark, gpt-4-1106-preview achieved (paper's Table 3):
 
-**Source:** [Olausson et al., "Is Self-Repair a Silver Bullet for Code Generation?" (arXiv:2306.09896, ICLR 2024)](https://arxiv.org/abs/2306.09896)
+| Action interface | Success rate | Average turns |
+|---|---:|---:|
+| CodeAct | 74.4% | 5.5 |
+| JSON | 52.4% | 7.6 |
+| Text | 53.7% | 7.7 |
 
-**Caveats:** code-generation benchmarks; the strongest condition used human-written feedback, which sets an upper bound rather than a recipe.
+The same paper supplies a scope check on a separate benchmark. On API-Bank's atomic API calls (Table 2), the same model scored **82.7%** with JSON and **76.7%** with CodeAct. Code syntax was not inherently superior; the CodeAct advantage appeared on the benchmark where multi-tool composition was useful.
 
-**Relevance:** if the model must guess why its call failed, recovery is weak and expensive. An error message that states the cause moves the diagnosis from the model to the environment.
+**Source:** [Wang et al., "Executable Code Actions Elicit Better LLM Agents" (ICML 2024)](https://proceedings.mlr.press/v235/wang24h.html)
 
-### The shape of a tool changes the agent's results (SWE-agent)
+**Caveats:** the multi-tool benchmark contains 82 tasks, the models predate current frontier systems, and turn count is not wall-clock time. CodeAct also changes the action language, not only the number of model boundaries, so it is not a same-task ablation of boundary placement alone.
 
-**Supports:** first-call correctness — an interface designed for an LLM consumer outperforms one designed for a human.
+**Relevance:** an action space that can express composed work improved both interaction count and correct completion, and the atomic-task comparison prevents attributing the result to executable syntax alone.
 
-The SWE-agent ablations (same paper as the entry under [Safer leads to Cleaner](#safer-leads-to-cleaner)) compared search-tool designs. A search tool that returned summarized results scored **18.0%** on SWE-bench Lite. A human-style iterative search — results shown one at a time, as in Vim or VS Code — scored **12.0%**, worse than having no search tool at all (**15.7%**). The full LLM-designed interface solved, in the paper's words:
+### Higher-level web tools reduced agent steps while improving success (WALT)
 
-> "10.7 percentage points more instances than the baseline agent, which uses only the default Linux shell."
+**Supports:** designing tools around task-level decisions instead of low-level interface operations.
 
-The paper's abstract states the design goal in terms this project shares:
+WALT exposes deterministic, higher-level website capabilities — such as search, filter, create, edit, and delete — as tools, instead of requiring the agent to perform the corresponding click-and-type sequence. In a VisualWebArena-Classifieds comparison using the same surrounding agent architecture (paper's Table 2):
 
-> "The ACI uses guardrails to prevent common mistakes, and an agent receives specific, concise feedback about a command's effects at every turn."
+| Model | Primitive interface | Discovered tools |
+|---|---:|---:|
+| GPT-4.1 | 7.6 steps, 34.9% success | 6.6 steps, 36.4% success |
+| Gemini 2.5 Flash | 10.5 steps, 52.6% success | 8.3 steps, 55.3% success |
+| GPT-5-mini | 8.9 steps, 57.5% success | 6.5 steps, 61.5% success |
 
-**Source:** [Yang et al., "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering" (arXiv:2405.15793)](https://arxiv.org/abs/2405.15793)
+The engineering happens before the task rather than during it:
 
-**Caveats:** software-engineering tasks; the ablations were measured on the 300-instance SWE-bench Lite subset.
+> "Tool discovery and optimization happen offline during website exploration, ensuring both efficiency and reliability."
 
-### Message wording determines whether a check helps (Google Tricorder)
+**Sources:** [Prabhu et al., "WALT: Web Agents that Learn Tools" (ICLR 2026)](https://iclr.cc/virtual/2026/poster/10008481); [arXiv:2510.01524](https://arxiv.org/abs/2510.01524)
 
-**Supports:** one-round-trip recovery, measured on human developers — and the operating conditions a check must meet before it contributes to speed at all. This is the entry behind the philosophy's Tricorder example.
+**Caveats:** agent steps are not wall-clock latency, offline tool construction is not charged to the runtime task, and browser workflows differ from Figma mutation.
 
-Google's Tricorder paper describes why its earlier static-analysis deployments fell out of use: poor workflow integration, stale or delayed results, scaling problems, high false-positive rates, and inactionable findings. The platform that succeeded enforces strict limits. For checks that run during builds:
+**Relevance:** moving already-engineered low-level work behind a task-level tool reduced model-visible steps without trading away task success.
 
-> "the effective false positive rate must be essentially zero. They also cannot significantly slow down compiles, so must have < 5% overhead."
+### Direct MCP evidence found the same workload boundary (CE-MCP)
 
-For findings shown during code review, Google enforces "a very low effective false positive rate here (< 10%)" and expects "analyses to complete in less than 5 − 10 minutes (ideally much less)". Analyzers can be disabled when they consume excessive resources or annoy developers. And on message wording, the result the philosophy cites:
+**Supports:** MCP-specific corroboration of the crossover.
 
-> "for one analyzer 75% of all bugs filed against the tool from Tricorder were due to misinterpretations of the result wording and were fixed by updating the message text and/or linking to additional documentation."
+The CE-MCP study compared conventional model-mediated MCP orchestration with an architecture in which the model writes code that invokes MCP tools. Across 10 representative MCP servers and 34 tasks, CE-MCP generally reduced tokens, time, and turns while maintaining comparable task quality (scored by GPT-4o-based judges).
 
-**Sources:**
-- [Sadowski et al., "Tricorder: Building a Program Analysis Ecosystem" (ICSE 2015, PDF)](https://research.google.com/pubs/archive/43322.pdf)
-- [Google Research publication page](https://research.google/pubs/tricorder-building-a-program-analysis-ecosystem/)
+Its trace analysis matters more than its aggregate result. Tasks with linear execution chains were, in the paper's words, "handled well by both architectures"; "the CE-MCP is favored in tasks with tree-like or fan-out structures", where the logic can run without repeated model reasoning; and "MCP is favored for tasks with iterative or semantically adaptive structures", where intermediate observations benefit from model interpretation.
 
-**Caveats:** Tricorder surfaces warnings during builds and code review rather than blocking design-file mutations; the thresholds are Google's operational policies, not universally optimal values; and developer clicks and annoyance are proxies for saved time. It measures the conditions for a check to be worth running, not a net speedup.
+The same paper is equally direct about the price of executable orchestration:
 
-### Practitioner guidance for tool authors (Anthropic)
+> "while CE-MCP significantly reduces token usage and execution latency, it introduces a vastly expanded attack surface."
 
-**Supports:** both halves, from the team whose models consume MCP tools. Quoted for principles rather than numbers, because its before-and-after charts publish no figures.
+**Source:** ["From Tool Orchestration to Code Execution: A Study of MCP Design Choices" (arXiv:2602.15945)](https://arxiv.org/html/2602.15945)
 
-On descriptions and parameters (first-call correctness):
+**Caveats:** a recent preprint with a small, programmatically synthesized task set and model-judged quality. Its numeric results should not be generalized to figma-edit-mcp, and its security finding means it argues for the boundary mechanism, not for adopting model-generated code execution in this project.
 
-> "Even small refinements to tool descriptions can yield dramatic improvements."
+**Relevance:** direct evidence that the useful MCP boundary depends on the semantic structure of the task rather than on call count alone.
 
-> "input parameters should be unambiguously named: instead of a parameter named `user`, try a parameter named `user_id`"
+### Fusing sequential operations reduced measured task time (LLM-Tool Compiler)
 
-On error responses (one-round-trip recovery):
+**Supports:** the batch mechanism when primitive operations still execute sequentially — the closest external wall-time test.
 
-> "you can prompt-engineer your error responses to clearly communicate specific and actionable improvements, rather than opaque error codes or tracebacks."
+The LLM-Tool Compiler was evaluated on a geospatial Copilot platform (the GeoLLM-Engine benchmark). Its fused-only ablation presented several operations as one model-visible action while leaving the underlying tool execution sequential (paper's Table 4). Average task time fell by **14.35–22.50%** across GPT-3.5 configurations and **7.33–9.01%** across GPT-4 configurations (chain-of-thought and ReAct, zero- and few-shot). Concurrent execution produced additional savings, but the fused-only condition shows the saving persisted without making the primitive operations simultaneous.
 
-And one outcome-level claim:
+**Source:** [Singh et al., "An LLM-Tool Compiler for Fused Parallel Function Calling" (arXiv:2405.17438)](https://arxiv.org/abs/2405.17438)
 
-> "Claude Sonnet 3.5 achieved state-of-the-art performance on the SWE-bench Verified evaluation after we made precise refinements to tool descriptions"
+**Caveats:** a domain-specific preprint. The fuser adds its own model call, the GPT-3.5 configurations lost roughly 5.5–8.3 percentage points of task success, and the design does not isolate fusion from the added fuser or the altered tool surface. The percentages cannot be transferred to Figma tasks.
 
-**Source:** [Anthropic Engineering: Writing effective tools for AI agents — using AI agents](https://www.anthropic.com/engineering/writing-tools-for-agents)
+### Filtering results before model re-entry improved both performance and token use
 
-**Caveats:** vendor guidance; the internal Slack and Asana evaluation improvements are shown as charts without published numbers.
+**Supports:** the observation side — returning decision-relevant information rather than unfiltered payloads.
+
+Anthropic evaluated Sonnet 4.6 and Opus 4.6 "with and without dynamic filtering and no other tools enabled" across BrowseComp and DeepSearchQA. Dynamic filtering improved performance by an average of **11%** while using **24%** fewer input tokens. On BrowseComp, Sonnet rose from **33.3% to 46.6%** and Opus from **45.3% to 61.6%**.
+
+**Source:** [Anthropic, "Improved Web Search with Dynamic Filtering"](https://claude.com/blog/improved-web-search-with-dynamic-filtering)
+
+**Caveats:** a vendor evaluation of search, not mutation tools, and it does not report wall-clock latency. The filtering mechanism can itself execute multiple queries and transformations. The efficiency result is also not uniform: the post reports that "price-weighted tokens decreased for Sonnet 4.6 on both benchmarks but increased for Opus 4.6", so fewer input tokens did not always mean lower total cost.
+
+**Relevance:** less context and better decisions occurred together — consistent with filtering enough irrelevant material while retaining what the tasks required.
+
+### Admissible alternatives — not formatting alone — produced the large recovery gain
+
+**Supports:** what a refusal must return for the next decision.
+
+"Structured Feedback Improves Repair in an LLM Agent Loop" compared four feedback policies on the same 50 TextWorld games per model, under the same four-call budget. "Admissible alternatives" are the study's term for the actions the validator would have accepted. From the paper's primary results table:
+
+| Feedback | Qwen solved | Llama solved |
+|---|---:|---:|
+| Raw diagnostic | 14/50 | 8/50 |
+| Failure location + observed value | 18/50 | 9/50 |
+| Location + observation + alternatives, in prose | 35/50 | 29/50 |
+| The same repair information in typed fields | 36/50 | 29/50 |
+
+Location and observed value alone stayed near the raw baseline; the paper's ablations place "most of the gain in the admissible alternatives", and it reports that "TypedFields improves over RawDiag by 44 points for Qwen (95% interval 28–60)" and "by 42 points for Llama (28–56)". Prose and keyed fields carrying approximately the same information performed similarly.
+
+**Source:** ["Structured Feedback Improves Repair in an LLM Agent Loop" (arXiv:2607.14167)](https://arxiv.org/html/2607.14167)
+
+**Caveats:** a July 2026 preprint using 50 synthetic games and two relatively small, quantized models (Qwen2.5-Coder-14B-Instruct-AWQ and Llama-3.1-8B-Instruct in 4-bit form). The keyed and prose conditions are closely matched but not punctuation-identical. The mechanism applies only when the validator can detect the failure and expose useful alternatives.
+
+**Relevance:** the matched ablation points to an informational mechanism: supplying the choices required for the next decision mattered far more than JSON syntax alone.
+
+### Counterevidence: smaller tool results can increase total cost and failures
+
+**Supports:** "decision-complete," and rejects "shortest possible result."
+
+"Token Reduction Is Not Cost Reduction" ran, in its own words, "a pre-specified, hash-frozen, paired campaign of 2,908 provider-billed Claude Code runs, of which 2,848 were analyzed, covering 103 tasks, seven repositories, and three models". On compression:
+
+> "An arm that removed 38% of estimated raw tool-output tokens incurred 6.8% higher paired cost (95% CI: +2.8% to +11.3%)"
+
+And in a separate 40-task experiment, "on SWE-bench-derived Go tasks, compression reduced successful patch application from 27/40 to 15/40 by corrupting verbatim edit anchors" — the compressed results no longer contained the exact text the next edit operation needed.
+
+**Source:** ["Token Reduction Is Not Cost Reduction: An Empirical Study of End-to-End Efficiency in API-Based Coding Agents" (arXiv:2607.12161)](https://arxiv.org/abs/2607.12161)
+
+**Caveats:** a recent preprint. The cost result and the patch-application result come from different experimental components, and the latter is a small single-shot study.
+
+**Relevance:** the necessary negative case for result design — a result should omit irrelevant material, not information the next action depends on.
+
+### Production deployment: Cloudflare returns decision-oriented error contracts
+
+**Supports:** a real deployment of compact, actionable refusal information.
+
+Cloudflare deployed RFC 9457 error representations extended with machine-readable fields — `error_code`, `error_name`, `error_category`, `retryable`, `retry_after`, and `owner_action_required`:
+
+> "The YAML frontmatter is the critical layer for automation. It lets an agent extract stable keys without scraping HTML or guessing intent from copy."
+
+For its live error 1015 example, the representations contained:
+
+| Representation | Tokens |
+|---|---:|
+| Browser-oriented HTML | 14,252 |
+| Markdown | 221 |
+| JSON | 256 |
+
+**Source:** [Cloudflare, "Slashing agent token costs by 98% with RFC 9457-compliant error responses"](https://blog.cloudflare.com/rfc-9457-agent-error-pages/)
+
+**Caveats:** Cloudflare measured representation size, not agent retries, wall-clock recovery, or task completion. The deployment demonstrates an architecture, not its end-to-end speed effect.
+
+**Relevance:** a production example of returning the facts needed to decide whether to retry, wait, change the request, or involve the resource owner.
+
+### Mature systems batch known work and synchronize for dependencies
+
+**Supports:** the same boundary rule outside LLM agents.
+
+PostgreSQL pipeline mode lets a client send multiple known statements without waiting for each preceding result, and its documentation states the stopping rule and the arithmetic explicitly:
+
+> "Pipeline mode is not useful when information from one operation is required by the client to produce the next operation. In such cases, the client would have to introduce a synchronization point and wait for a full client/server round-trip to get the results it needs."
+
+> "A 100-statement operation run on a server 300 ms round-trip-time away would take 30 seconds in network latency alone without pipelining; with pipelining it may spend as little as 0.3 s waiting for results from the server."
+
+Amazon Simple Workflow Service uses a corresponding decision architecture. Its developer guide states that "every time a state change occurs for a workflow execution, Amazon SWF schedules a decision task"; a decider interprets the delivered history and returns a list of decisions; and pending work accumulates rather than interleaving — "decision tasks are batched in the sense that, if multiple activities complete while a decider is processing a decision task, Amazon SWF will create only a single new decision task to account for the multiple task completions."
+
+**Sources:** [PostgreSQL, "Pipeline Mode"](https://www.postgresql.org/docs/current/libpq-pipeline-mode.html); [Amazon SWF, "Developing deciders"](https://docs.aws.amazon.com/amazonswf/latest/developerguide/swf-dg-dev-deciders.html)
+
+**Caveats:** PostgreSQL's comparison is round-trip arithmetic rather than an end-to-end application benchmark, and the same page documents the costs: more complex clients, higher memory use, and trickier error recovery. Pipeline mode also synchronizes whenever the client needs a value to construct the next statement, even when deterministic client code — not semantic judgment — would process that value. Amazon SWF documents an operating architecture but publishes no before-and-after speed measurement here. Neither system contains an LLM.
+
+**Relevance:** mature precedents for batching known work and returning at information dependencies — partial analogues, not proof of the finer model-judgment boundary.
+
+### Secondary corroboration
+
+The following evidence remains useful but no longer leads the section:
+
+- **Self-Debugging:** execution and unit-test feedback improved code repair — corroboration that environment feedback can improve the next judgment. Its strongest round-trip result (feedback matching more than 10× candidate sampling) compares against independent candidate generation, not sequential retries. ([Chen et al., ICLR 2024](https://arxiv.org/abs/2304.05128))
+- **SWE-agent search ablation:** summarized search results achieved 18.0% success on SWE-bench Lite, human-style iterative search 12.0%, and no search tool 15.7% — evidence that observation shape affects later decisions, but not a latency or sufficiency experiment. ([Yang et al., NeurIPS 2024](https://arxiv.org/abs/2405.15793))
+- **Wu et al. and EASYTOOL:** refining and standardizing tool instructions reduced redundant or malformed calls — request-legibility evidence, but both interventions change several aspects of the contract at once and do not isolate decision boundaries. ([Wu et al., ACL 2025](https://aclanthology.org/2025.findings-acl.1149/); [Yuan et al., NAACL 2025](https://aclanthology.org/2025.naacl-long.44/))
+- **ProMCP:** shows that planning, schema injection, and final synthesis can dominate latency in some MCP topologies — cost-profile background, not an intervention that tests where a boundary should be placed. ([Anjum et al., ACL 2026](https://aclanthology.org/2026.findings-acl.1967/))
+- **LLMCompiler:** dependency-graph execution implements a compatible principle and reports large gains on parallel tasks, but planner changes and concurrent execution confound the causal mechanism. Its WebShop slowdown remains useful counterevidence against assuming consolidation is free. ([Kim et al., ICML 2024](https://proceedings.mlr.press/v235/kim24y.html))
+- **Microsoft Agent Framework CodeAct demonstration:** with the same model, prompt, output schema, and tools, one reported run fell from 27.81 to 13.23 seconds and from 6,890 to 2,489 tokens when only the orchestration wiring changed. Microsoft states plainly that "the benchmark above is one data point" from an alpha package, and its guidance keeps operations whose side effects require individual approval as direct tool calls. ([Microsoft Agent Framework](https://devblogs.microsoft.com/agent-framework/codeact-with-hyperlight/))
+
+### What the evidence supports
+
+The evidence supports the following mechanism:
+
+- An action interface can reduce model-visible coordination when it lets the model express composed operations or deterministic decision logic in one turn.
+- The benefit has a boundary: when an intermediate observation requires fresh semantic judgment, hiding that observation from the model may not help and can add cost.
+- At a necessary model boundary, selecting decision-relevant information can improve both efficiency and correct completion.
+- "Decision-relevant" is not synonymous with "short." Removing action-critical facts can increase total cost and failure.
+
+The evidence does **not** establish:
+
+- That the fewest tool calls, model turns, or output tokens is always optimal.
+- That every figma-edit-mcp batch makes a task faster.
+- A percentage speedup for Figma editing.
+- That every decision-complete error produces a successful next attempt.
+- That arbitrary model-generated code execution — or collapsing per-operation safety and approval boundaries — is appropriate for figma-edit-mcp.
+- That results from search, read/compute, browser, or synthetic tasks transfer unchanged to safety-constrained, side-effecting Figma mutations.
+
+The strongest defensible external conclusion is:
+
+> **Tool-mediated tasks can benefit when already-determined work stays behind one model boundary and when the next boundary returns the information required for the judgment that follows. The gain can disappear or reverse when consolidation hides a genuine semantic dependency or when result reduction removes action-critical information.**
 
 ---
 
@@ -512,3 +656,5 @@ And one outcome-level claim:
 - **DORA's speed-and-stability findings as causal support for Safer → Faster.** DORA's yearly surveys find that the fastest-shipping teams also run the most stable systems — compatibility evidence that speed and stability are not opposites at the organizational level. They do not compare a workflow with and without a safety check, so they cannot carry the causal claim, and the philosophy no longer cites them. The cohort multipliers (973×, 6,570×) are additionally self-reported, best-versus-worst comparisons whose values swing between report years. ([DORA metrics guide](https://dora.dev/guides/dora-metrics/); [Google Cloud: 2021 Accelerate State of DevOps report announcement](https://cloud.google.com/blog/products/devops-sre/announcing-dora-2021-accelerate-state-of-devops-report))
 - **Gartner's data-quality figures (a $12.9 million average annual cost; 59% of organizations not measuring data quality).** Previously cited as directional support for Cleaner → Faster. The methodology behind the figures is not published, organizational data quality is remote from design-file cleanliness, and as of July 2026 the 59% figure no longer appears on [Gartner's page](https://www.gartner.com/en/data-analytics/topics/data-quality) at all — only the $12.9 million sentence remains. A figure that cannot be traced or re-verified should not carry a causal claim.
 - **SlopCodeBench (coding agents degrade over long-horizon iterative tasks).** The closest emerging agent-side evidence for the third insight: it tracks duplication, structural erosion, correctness, and cost as agents iterate on a growing codebase, and finds quality declining across checkpoints. It does not cleanly isolate Cleaner → Faster — later checkpoints are also intrinsically harder, quality and task progression change together, and quality-focused prompts improved structural metrics without improving solve rates. We treat it as motivation to measure maintainability and later-task cost together, not as proof of the causal arrow. ([Orlanski et al., arXiv:2603.24755](https://arxiv.org/pdf/2603.24755))
+- **Self-Repair ("Is Self-Repair a Silver Bullet for Code Generation?", ICLR 2024).** Previously cited under Faster for error-message quality. Its diagnosis — "self-repair is bottlenecked by the model's ability to provide feedback on its own code" — still motivates informative refusals, but its strongest quantitative result (1.58× more successful repairs) came from replacing the model's feedback with an experienced human programmer's, an upper bound a tool cannot ship. The matched ablation in "Structured Feedback Improves Repair" (see the Faster section) isolates tool-generatable feedback conditions directly, so it carries the recovery claim instead. ([Olausson et al., arXiv:2306.09896](https://arxiv.org/abs/2306.09896))
+- **Anthropic's qualitative tool-author guidance ("Writing effective tools for AI agents").** Previously cited under Faster for schema and error-response design ("Even small refinements to tool descriptions can yield dramatic improvements."). The advice remains sound and informed this project's contract, but its before-and-after charts publish no figures, and Anthropic's measured results now in the Faster section — programmatic tool calling and dynamic filtering — make the same points with published numbers. ([Anthropic Engineering](https://www.anthropic.com/engineering/writing-tools-for-agents))

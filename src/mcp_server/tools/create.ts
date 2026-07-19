@@ -256,7 +256,7 @@ export function registerCreateTools(server: McpServer) {
                 type: z.string().optional().describe("Node type (COMPONENT_SET)"),
                 childCount: z.number().optional().describe("Number of variants in the set"),
                 warning: z.string().optional().describe("Warning message if some properties could not be read"),
-                variantProperties: z.record(z.any()).optional().describe("Variant properties definition")
+                variantProperties: z.record(z.string(), z.any()).optional().describe("Variant properties definition")
             }),
             annotations: {
                 openWorldHint: true

@@ -345,10 +345,97 @@
     MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
     MISSING_TARGET_NODE_IDS: "Missing targetNodeIds parameter",
     MISSING_SOURCE_INSTANCE_ID: "Missing sourceInstanceId parameter",
-    INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array"
+    INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array",
+    // New Refusal and Operational Error Codes (v2.3.3)
+    PLUGIN_PEER_UNAVAILABLE: "Operation Denied: Figma Plugin is not running or available. Please open the Figma document, start the figma-edit-mcp plugin, and reconnect.",
+    PLUGIN_PEER_AMBIGUOUS: "Operation Denied: Multiple plugin peers are connected to this channel. Ensure the figma-edit-mcp plugin is open in exactly one Figma tab/document.",
+    CHANNEL_IN_USE: "Operation Denied: This channel is already in use by another MCP session. Please use a different channel name or disconnect the other session.",
+    VERSION_MISMATCH: "Operation Denied: Version mismatch between MCP server and Figma plugin. Please ensure both are updated to the same version.",
+    // Page codes are operational failures, not safety refusals — no "Operation
+    // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
+    PAGE_LOAD_FAILED: "Failed to load the Figma page \u2014 it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load.",
+    PAGE_NOT_FOUND: "Page not found: the specified page ID does not exist in this document. List pages with page_info and pass a page ID back verbatim.",
+    TARGET_NOT_PAGE: "Target node is not a PAGE. List pages with page_info and pass a page ID, not a node ID.",
+    PAGE_LOAD_TIMEOUT: "Page load timed out. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user.",
+    DOCUMENT_SCAN_INCOMPLETE: "Operation Denied: Document scan incomplete because one or more pages could not be loaded \u2014 a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first.",
+    CONNECTOR_TEMPLATE_REQUIRED: "Operation Denied: No valid connector template was found in the document. Find a connector with page_info/node_info (pasting one from FigJam if the file has none) and pass its ID and exact current name."
   };
+  var REFUSALS = {
+    VARIABLE_NAME_MISSING: () => ({
+      code: "VARIABLE_NAME_MISSING",
+      message: "Operation Denied: currentVariableName is missing. Read the variable's current exact name with variable_list and pass it back verbatim."
+    }),
+    VARIABLE_NAME_MISMATCH: (storedName, received) => ({
+      code: "VARIABLE_NAME_MISMATCH",
+      message: `Operation Denied: currentVariableName does not match the variable's stored name \u2014 stored name "${storedName}", received currentVariableName "${received}". Read the current name with variable_list and pass it back verbatim.`
+    }),
+    COLLECTION_NAME_MISSING: () => ({
+      code: "COLLECTION_NAME_MISSING",
+      message: "Operation Denied: collectionName is missing. Read the collection's current exact name with variable_list and pass it back verbatim."
+    }),
+    COLLECTION_NAME_MISMATCH: (storedName, received) => ({
+      code: "COLLECTION_NAME_MISMATCH",
+      message: `Operation Denied: collectionName does not match the resolved collection's stored name \u2014 stored name "${storedName}", received collectionName "${received}". Read the current name with variable_list and pass it back verbatim.`
+    }),
+    STYLE_NAME_MISSING: () => ({
+      code: "STYLE_NAME_MISSING",
+      message: "Operation Denied: currentStyleName is missing. Read the style's current exact name with style_list and pass it back verbatim."
+    }),
+    STYLE_NAME_MISMATCH: (storedName, received) => ({
+      code: "STYLE_NAME_MISMATCH",
+      message: `Operation Denied: currentStyleName does not match the resolved style's stored name \u2014 stored name "${storedName}", received currentStyleName "${received}". Read the current name with style_list and pass it back verbatim.`
+    }),
+    VARIABLE_SCOPES_MISSING: () => ({
+      code: "VARIABLE_SCOPES_MISSING",
+      message: "Operation Denied: scopes is missing for CREATE_VARIABLE. Pass the allowed scopes explicitly \u2014 supply an empty array to deliberately set none; omission is rejected."
+    })
+  };
+  function withPartialDisclosure(e, whatChanged, before) {
+    const base = getStructuredError(e);
+    return {
+      code: base.code,
+      message: `${base.message} Partial mutation: ${whatChanged}`,
+      details: { ...base.details || {}, partialMutation: true, whatChanged, before }
+    };
+  }
   function formatScopeError(errorMessage, scopeRootId) {
     return `${errorMessage} (Current Editable Scope Node ID: ${scopeRootId || "None"})`;
+  }
+  function describeError(e) {
+    if (e == null) return "Error executing command";
+    if (typeof e === "string") return e;
+    if (typeof e.message === "string" && e.message.length > 0) {
+      return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
+    }
+    if (typeof e.toString === "function") {
+      const s = e.toString();
+      if (s && s !== "[object Object]") return s;
+    }
+    try {
+      const json = JSON.stringify(e);
+      if (json && json !== "{}") return json;
+    } catch (e2) {
+    }
+    return e.name || "Error executing command";
+  }
+  function getStructuredError(e) {
+    if (e && typeof e === "object") {
+      if (typeof e.code === "string") {
+        return {
+          code: e.code,
+          message: e.message || "Error executing command",
+          details: e.details
+        };
+      }
+      if (e.error && typeof e.error.code === "string") {
+        return {
+          code: e.error.code,
+          message: e.error.message || "Error executing command",
+          details: e.error.details
+        };
+      }
+    }
+    return { code: "UNKNOWN_ERROR", message: describeError(e) };
   }
 
   // figma_plugin/handlers/nodeReaders.ts
@@ -4483,7 +4570,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       return { success: true, deleted: idsToCheck };
     }
   }
-  function describeError(e) {
+  function describeError2(e) {
     if (e == null) return String(e);
     if (typeof e === "string") return e;
     if (typeof e.message === "string" && e.message.length > 0) {
@@ -4533,7 +4620,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           await node.setExplicitVariableModeForCollection(collection, modeId);
           results.push(`Set mode ${modeId} for collection ${collectionId}`);
         } catch (e) {
-          throw new Error(`Failed to set explicit variable mode for collection ${collectionId}: ${describeError(e)}`);
+          throw new Error(`Failed to set explicit variable mode for collection ${collectionId}: ${describeError2(e)}`);
         }
       }
     }
@@ -4606,7 +4693,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
         } catch (e) {
           if ((_a = e == null ? void 0 : e.message) == null ? void 0 : _a.startsWith("node_bind_variable:")) throw e;
-          throw new Error(`Failed to set bound variable for ${field}: ${describeError(e)}`);
+          throw new Error(`Failed to set bound variable for ${field}: ${describeError2(e)}`);
         }
       }
     }
@@ -4633,8 +4720,14 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         };
       }
       case "CREATE_VARIABLE": {
-        const { collectionId, name, type, value, scopes } = params;
+        const { collectionId, collectionName, name, type, value, scopes } = params;
         if (!collectionId || !name || !type) throw new Error("Missing required parameters for variable creation");
+        if (scopes === void 0) {
+          throw REFUSALS.VARIABLE_SCOPES_MISSING();
+        }
+        if (!collectionName) {
+          throw REFUSALS.COLLECTION_NAME_MISSING();
+        }
         let resolvedType;
         if (type === "FLOAT") resolvedType = "FLOAT";
         else if (type === "COLOR") resolvedType = "COLOR";
@@ -4644,6 +4737,9 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
         if (!collection) {
           throw new Error(`Collection not found: ${collectionId}`);
+        }
+        if (collection.name !== collectionName) {
+          throw REFUSALS.COLLECTION_NAME_MISMATCH(collection.name, collectionName);
         }
         const variable = figma.variables.createVariable(name, collection, resolvedType);
         try {
@@ -4680,33 +4776,64 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "UPDATE_VARIABLE": {
         const { variableId, name, value, modeId, description, currentVariableName, scopes } = params;
         if (!variableId) throw new Error("Missing variableId for update");
+        if (!currentVariableName) {
+          throw REFUSALS.VARIABLE_NAME_MISSING();
+        }
         const variable = await figma.variables.getVariableByIdAsync(variableId);
         if (!variable) throw new Error(`Variable ${variableId} not found`);
-        if (currentVariableName && variable.name !== currentVariableName) {
-          throw new Error(`Variable name verification failed. Expected "${variable.name}", got "${currentVariableName}"`);
+        if (variable.name !== currentVariableName) {
+          throw REFUSALS.VARIABLE_NAME_MISMATCH(variable.name, currentVariableName);
         }
         if (variable.remote) {
           throw new Error(`Operation Denied: '${variable.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
         }
-        if (name) {
-          variable.name = name;
-        }
-        if (description !== void 0) {
-          variable.description = description;
-        }
-        if (scopes !== void 0) {
-          variable.scopes = scopes;
-        }
         if (value !== void 0) {
           if (!modeId) throw new Error("Missing modeId for setting variable value");
-          if (typeof value === "object" && value.type === "VARIABLE_ALIAS") {
-            variable.setValueForMode(modeId, {
-              type: "VARIABLE_ALIAS",
-              id: value.id
-            });
-          } else {
-            variable.setValueForMode(modeId, value);
+          const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+          if (!collection) {
+            throw new Error(`Collection not found for variable: ${variable.variableCollectionId}`);
           }
+          const isValidMode = collection.modes.some((m) => m.modeId === modeId);
+          if (!isValidMode) {
+            throw new Error(`Invalid modeId: "${modeId}" is not a valid mode in collection "${collection.name}"`);
+          }
+          if (typeof value === "object" && value !== null && value.type === "VARIABLE_ALIAS") {
+            const aliasTarget = await figma.variables.getVariableByIdAsync(value.id);
+            if (!aliasTarget) {
+              throw new Error(`Alias target variable not found: "${value.id}". Read a valid variable ID with variable_list and pass it back verbatim.`);
+            }
+          }
+        }
+        const before = { name: variable.name, description: variable.description };
+        const applied = [];
+        try {
+          if (name) {
+            variable.name = name;
+            applied.push(`name (was "${before.name}")`);
+          }
+          if (description !== void 0) {
+            variable.description = description;
+            applied.push("description");
+          }
+          if (scopes !== void 0) {
+            variable.scopes = scopes;
+            applied.push("scopes");
+          }
+          if (value !== void 0) {
+            if (typeof value === "object" && value.type === "VARIABLE_ALIAS") {
+              variable.setValueForMode(modeId, {
+                type: "VARIABLE_ALIAS",
+                id: value.id
+              });
+            } else {
+              variable.setValueForMode(modeId, value);
+            }
+          }
+        } catch (e) {
+          if (applied.length > 0) {
+            throw withPartialDisclosure(e, `the variable's ${applied.join(", ")} had already been updated when the failure occurred.`, before);
+          }
+          throw e;
         }
         return {
           success: true,
@@ -4725,15 +4852,45 @@ Processing annotation ${i + 1}/${annotations.length}:`,
 
   // figma_plugin/handlers/styleHandlers.ts
   async function createStyle(params) {
-    const { type, name, description, properties, styleId, bindVariables } = params;
-    if (!type || !name) {
-      throw new Error("Missing required parameters: type and name are required.");
+    const { type, name, description, properties, styleId, currentStyleName, bindVariables } = params;
+    if (!type) {
+      throw new Error("Missing required parameter: type is required.");
     }
-    let style;
-    if (styleId) {
+    if (name === "") {
+      throw new Error("Style name must not be empty. Omit name to leave the style's name unchanged.");
+    }
+    if (styleId !== void 0) {
+      if (!currentStyleName) {
+        throw REFUSALS.STYLE_NAME_MISSING();
+      }
+    } else {
+      if (!name) {
+        throw new Error("Missing required parameter: name is required to create a style.");
+      }
+    }
+    const resolvedVariables = {};
+    if (bindVariables && typeof bindVariables === "object") {
+      const entries = Object.entries(bindVariables);
+      for (const [field, variableId] of entries) {
+        if (variableId !== null) {
+          const variable = await figma.variables.getVariableByIdAsync(variableId);
+          if (!variable) {
+            throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
+          }
+          resolvedVariables[field] = variable;
+        } else {
+          resolvedVariables[field] = null;
+        }
+      }
+    }
+    let style = null;
+    if (styleId !== void 0) {
       style = await figma.getStyleByIdAsync(styleId);
       if (!style) {
         throw new Error(`Style with ID ${styleId} not found.`);
+      }
+      if (style.name !== currentStyleName) {
+        throw REFUSALS.STYLE_NAME_MISMATCH(style.name, currentStyleName);
       }
       if (style.type !== type.toUpperCase()) {
         throw new Error(`Style parameter type ${type} does not match retrieved style type ${style.type}`);
@@ -4741,7 +4898,19 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       if (style.remote) {
         throw new Error(`Operation Denied: '${style.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
       }
-    } else {
+    }
+    if (style && type.toUpperCase() === "PAINT" && bindVariables && typeof bindVariables === "object" && Object.keys(bindVariables).length > 0) {
+      const effectivePaints = properties && properties.paints !== void 0 ? properties.paints : style.paints;
+      if (!effectivePaints || effectivePaints.length === 0) {
+        throw new Error("Cannot bind/unbind variables on a paint style with no paints. Set paints first via properties.");
+      }
+    }
+    if (type.toUpperCase() === "TEXT" && properties && style) {
+      await figma.loadFontAsync(properties.fontName ? properties.fontName : style.fontName);
+    }
+    let isNew = false;
+    if (!style) {
+      isNew = true;
       switch (type.toUpperCase()) {
         case "TEXT":
           style = figma.createTextStyle();
@@ -4759,85 +4928,116 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           throw new Error(`Unsupported style type: ${type}`);
       }
     }
+    const before = isNew ? {} : { name: style.name, description: style.description };
+    const applied = [];
     try {
-      style.name = name;
-      if (description) style.description = description;
+      if (isNew && type.toUpperCase() === "TEXT" && properties) {
+        await figma.loadFontAsync(properties.fontName ? properties.fontName : style.fontName);
+      }
+      if (isNew) {
+        style.name = name;
+      } else if (name !== void 0) {
+        style.name = name;
+        applied.push(`name (was "${before.name}")`);
+      }
+      if (description) {
+        style.description = description;
+        applied.push("description");
+      }
       if (properties) {
         switch (type.toUpperCase()) {
           case "TEXT": {
             const s = style;
             if (properties.fontName) {
-              await figma.loadFontAsync(properties.fontName);
               s.fontName = properties.fontName;
-            } else {
-              await figma.loadFontAsync(s.fontName);
+              applied.push("fontName");
             }
-            if (properties.fontSize) s.fontSize = properties.fontSize;
-            if (properties.lineHeight) s.lineHeight = properties.lineHeight;
-            if (properties.letterSpacing) s.letterSpacing = properties.letterSpacing;
-            if (properties.paragraphIndent) s.paragraphIndent = properties.paragraphIndent;
-            if (properties.paragraphSpacing) s.paragraphSpacing = properties.paragraphSpacing;
-            if (properties.textCase) s.textCase = properties.textCase;
-            if (properties.textDecoration) s.textDecoration = properties.textDecoration;
+            if (properties.fontSize) {
+              s.fontSize = properties.fontSize;
+              applied.push("fontSize");
+            }
+            if (properties.lineHeight) {
+              s.lineHeight = properties.lineHeight;
+              applied.push("lineHeight");
+            }
+            if (properties.letterSpacing) {
+              s.letterSpacing = properties.letterSpacing;
+              applied.push("letterSpacing");
+            }
+            if (properties.paragraphIndent) {
+              s.paragraphIndent = properties.paragraphIndent;
+              applied.push("paragraphIndent");
+            }
+            if (properties.paragraphSpacing) {
+              s.paragraphSpacing = properties.paragraphSpacing;
+              applied.push("paragraphSpacing");
+            }
+            if (properties.textCase) {
+              s.textCase = properties.textCase;
+              applied.push("textCase");
+            }
+            if (properties.textDecoration) {
+              s.textDecoration = properties.textDecoration;
+              applied.push("textDecoration");
+            }
             break;
           }
           case "PAINT": {
             const s = style;
-            if (properties.paints) s.paints = properties.paints;
+            if (properties.paints) {
+              s.paints = properties.paints;
+              applied.push("paints");
+            }
             break;
           }
           case "EFFECT": {
             const s = style;
-            if (properties.effects) s.effects = normalizeEffects(properties.effects);
+            if (properties.effects) {
+              s.effects = normalizeEffects(properties.effects);
+              applied.push("effects");
+            }
             break;
           }
           case "GRID": {
             const s = style;
-            if (properties.layoutGrids) s.layoutGrids = properties.layoutGrids;
+            if (properties.layoutGrids) {
+              s.layoutGrids = properties.layoutGrids;
+              applied.push("layoutGrids");
+            }
             break;
           }
         }
       }
-      if (bindVariables && typeof bindVariables === "object") {
-        const entries = Object.entries(bindVariables);
+      const bindingEntries = Object.entries(resolvedVariables);
+      if (bindingEntries.length > 0) {
         if (type.toUpperCase() === "PAINT") {
           const paintStyle = style;
           const paints = [...paintStyle.paints];
           if (paints.length === 0) {
             throw new Error("Cannot bind/unbind variables on a paint style with no paints. Set paints first via properties.");
           }
-          for (const [field, variableId] of entries) {
-            if (variableId === null) {
-              paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, null);
-            } else {
-              const variable = await figma.variables.getVariableByIdAsync(variableId);
-              if (!variable) {
-                throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
-              }
-              paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, variable);
-            }
+          for (const [field, variable] of bindingEntries) {
+            paints[0] = figma.variables.setBoundVariableForPaint(paints[0], field, variable);
           }
           paintStyle.paints = paints;
+          applied.push("variable bindings");
         } else {
-          for (const [field, variableId] of entries) {
-            if (variableId === null) {
-              style.setBoundVariable(field, null);
-            } else {
-              const variable = await figma.variables.getVariableByIdAsync(variableId);
-              if (!variable) {
-                throw new Error(`Variable with ID "${variableId}" not found (for field "${field}").`);
-              }
-              style.setBoundVariable(field, variable);
-            }
+          for (const [field, variable] of bindingEntries) {
+            style.setBoundVariable(field, variable);
+            applied.push(`variable binding "${field}"`);
           }
         }
       }
     } catch (e) {
-      if (!styleId) {
+      if (isNew) {
         try {
           style.remove();
         } catch (e2) {
         }
+        throw e;
+      }
+      if (applied.length > 0) {
+        throw withPartialDisclosure(e, `the style's ${applied.join(", ")} had already been updated when the failure occurred.`, before);
       }
       throw e;
     }
@@ -5134,23 +5334,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     assertNotLocked(parent);
     assertNotInstanceParent(parent, "appended to");
   }
-  function describeError2(e) {
-    if (e == null) return "Error executing command";
-    if (typeof e === "string") return e;
-    if (typeof e.message === "string" && e.message.length > 0) {
-      return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
-    }
-    if (typeof e.toString === "function") {
-      const s = e.toString();
-      if (s && s !== "[object Object]") return s;
-    }
-    try {
-      const json = JSON.stringify(e);
-      if (json && json !== "{}") return json;
-    } catch (e2) {
-    }
-    return e.name || "Error executing command";
-  }
   function parseNodeIdFromUrl(url) {
     try {
       const urlObj = new URL(url);
@@ -5223,7 +5406,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             figma.ui.postMessage({
               type: "command-error",
               id: msg.id,
-              error: describeError2(error)
+              error: getStructuredError(error)
             });
           }
         });

@@ -45,7 +45,7 @@ export function registerAnnotationTools(server: McpServer) {
                             annotationId: z.string().optional().describe("If updating: ID of the existing annotation"),
                             categoryId: z.string().describe("The ID of the category"),
                             status: z.enum(["TODO", "DONE", "NONE"]).optional().describe("Annotation status"),
-                            properties: z.record(z.any()).optional().describe("Custom metadata properties"),
+                            properties: z.record(z.string(), z.any()).optional().describe("Custom metadata properties"),
                         })
                     )
                     .describe("Array of annotations to set"),

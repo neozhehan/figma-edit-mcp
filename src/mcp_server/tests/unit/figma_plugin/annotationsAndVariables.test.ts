@@ -462,6 +462,7 @@ describe("handleVariableRequest Handler (CREATE_VARIABLE / UPDATE_VARIABLE scope
         await handleVariableRequest({
             action: "CREATE_VARIABLE",
             collectionId: "col-1",
+            collectionName: "My Collection",
             name: "Var1",
             type: "FLOAT",
             scopes: ["TEXT_CONTENT", "CORNER_RADIUS"]
@@ -469,21 +470,21 @@ describe("handleVariableRequest Handler (CREATE_VARIABLE / UPDATE_VARIABLE scope
         expect(mockVariable.scopes).toEqual(["TEXT_CONTENT", "CORNER_RADIUS"]);
     });
 
-    it("CREATE_VARIABLE without scopes leaves Figma's default", async () => {
-        await handleVariableRequest({
+    it("CREATE_VARIABLE without scopes is rejected", async () => {
+        await expect(handleVariableRequest({
             action: "CREATE_VARIABLE",
             collectionId: "col-1",
+            collectionName: "My Collection",
             name: "Var2",
             type: "FLOAT",
-        });
-        // createVariable mock returned mockVariable which has ["ALL_SCOPES"]
-        expect(mockVariable.scopes).toEqual(["ALL_SCOPES"]);
+        })).rejects.toThrow("scopes is missing for CREATE_VARIABLE");
     });
 
     it("UPDATE_VARIABLE updates scopes when provided", async () => {
         await handleVariableRequest({
             action: "UPDATE_VARIABLE",
             variableId: "v-1",
+            currentVariableName: "My Variable",
             scopes: ["WIDTH_HEIGHT"]
         });
         expect(mockVariable.scopes).toEqual(["WIDTH_HEIGHT"]);
@@ -493,6 +494,7 @@ describe("handleVariableRequest Handler (CREATE_VARIABLE / UPDATE_VARIABLE scope
         await handleVariableRequest({
             action: "UPDATE_VARIABLE",
             variableId: "v-1",
+            currentVariableName: "My Variable",
             name: "Renamed"
         });
         expect(mockVariable.scopes).toEqual(["ALL_SCOPES"]); // Remains unchanged
@@ -513,6 +515,7 @@ describe("handleVariableRequest Handler (CREATE_VARIABLE / UPDATE_VARIABLE scope
         await expect(handleVariableRequest({
             action: "CREATE_VARIABLE",
             collectionId: "col-1",
+            collectionName: "My Collection",
             name: "Bad",
             type: "FLOAT",
             scopes: ["ALL_FILLS"],

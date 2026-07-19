@@ -64,7 +64,7 @@ export function registerNodeTools(server: McpServer) {
                     .optional()
                     .describe("Array of property names to return (populates each node's `properties` object in the response)."),
                 filter: z
-                    .record(z.array(z.string()))
+                    .record(z.string(), z.array(z.string()))
                     .optional()
                     .describe("Optional filter criteria."),
                 maxDepth: z
@@ -722,7 +722,7 @@ export function registerNodeTools(server: McpServer) {
                     .optional()
                     .describe(`Map of property names to variable IDs (to bind) or null (to unbind). Valid fields: ${BINDABLE_FIELDS.join(", ")}. E.g., { 'fills': 'VariableID:1:2' }`),
                 explicitVariableModes: z
-                    .record(z.string())
+                    .record(z.string(), z.string())
                     .optional()
                     .describe("Map of variable collection IDs to mode IDs. E.g., { 'VariableCollectionID:1:2': 'ModeID:1:3' }"),
             }),

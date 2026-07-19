@@ -112,7 +112,7 @@ describe("Phase 4: Atomicity & Pre-Validation in dispatch", () => {
         const res = await resultPromise;
 
         expect(res.type).toBe("command-error");
-        expect(res.error).toBe("Node ghost-id not found");
+        expect(res.error.message).toBe("Node ghost-id not found");
     });
 
     it("pre-validates types: text_set_content rejects non-TEXT targets", async () => {
@@ -146,7 +146,7 @@ describe("Phase 4: Atomicity & Pre-Validation in dispatch", () => {
         const res = await resultPromise;
 
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("Node is not a text node");
+        expect(res.error.message).toContain("Node is not a text node");
     });
 
     it("pre-validates types: annotation_set rejects unsupported targets", async () => {
@@ -180,7 +180,7 @@ describe("Phase 4: Atomicity & Pre-Validation in dispatch", () => {
         const res = await resultPromise;
 
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("does not support annotations");
+        expect(res.error.message).toContain("does not support annotations");
     });
 
     it("pre-validates types: instance_set_overrides rejects non-INSTANCE targets/source", async () => {
@@ -213,7 +213,7 @@ describe("Phase 4: Atomicity & Pre-Validation in dispatch", () => {
         const res = await resultPromise;
 
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("Target is not an instance node");
+        expect(res.error.message).toContain("Target is not an instance node");
     });
 });
 

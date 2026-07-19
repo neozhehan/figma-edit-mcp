@@ -67,6 +67,8 @@
     "check:plugin": "bun run scripts/check-plugin-build.ts",
     "check:generated": "bun run scripts/check-generated.ts",
     "check:versions": "bun run scripts/check-versions.ts",
+    "check:types:plugin": "tsc --noEmit -p figma_plugin/tsconfig.json",
+    "check:suppressions": "bun run scripts/check-suppressions.ts",
     "gen:node-fields": "bun run scripts/gen-node-fields.ts",
     "gen:manifest": "bun run scripts/gen-manifest-tools.ts",
     "build:smithery": "bash scripts/build-smithery-bundle.sh",

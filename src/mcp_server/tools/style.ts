@@ -87,18 +87,58 @@ export function registerStyleTools(server: McpServer) {
         "style_manage",
         {
             title: "Manage Style",
-            description: "Create a named style (paint/text/effect/grid), or update an existing one when `styleId` is given.",
+            description: "Create a named style (paint/text/effect/grid), or update an existing one when `styleId` is given. UPDATE requires currentStyleName.",
             inputSchema: z.object({
                 type: z
                     .enum(["TEXT", "PAINT", "EFFECT", "GRID"])
                     .describe("Type of style to create or update"),
-                name: z.string().describe("Name of the style"),
+                name: z.string().optional().describe("Name of the style (REQUIRED for CREATE)"),
                 description: z.string().optional().describe("Description of the style"),
                 properties: styleProperties
                     .optional()
                     .describe("Style properties to set; which subset applies depends on `type` (TEXT/PAINT/EFFECT/GRID)."),
                 styleId: z.string().optional().describe("ID of the style to update (if not creating a new one)"),
+                currentStyleName: z
+                    .string()
+                    .optional()
+                    .describe("REQUIRED for UPDATE when styleId is supplied — the style's **current exact** name, passed back verbatim from `style_list`"),
                 bindVariables: z.record(z.string(), z.string().nullable()).optional().describe("Map of field names to variable IDs (to bind) or null (to unbind). For PAINT styles, valid fields include 'color'. For TEXT styles, fields include 'fontSize', 'fontFamily', etc."),
+            }).superRefine((data, ctx) => {
+                // Empty names are rejected, never assigned: a style named ""
+                // could not pass exact-name verification afterward (P4-6).
+                if (data.name === "") {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: ["name"],
+                        message: "name must not be empty. Omit name to leave the style's name unchanged."
+                    });
+                }
+                // Create/update splits on PRESENCE, not truthiness: an explicit
+                // empty styleId is malformed update intent, not a create (P4-2).
+                if (data.styleId !== undefined) {
+                    if (data.styleId === "") {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["styleId"],
+                            message: "styleId must not be empty. Omit styleId to create a new style, or pass a real style ID from style_list back verbatim."
+                        });
+                    }
+                    if (!data.currentStyleName) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["currentStyleName"],
+                            message: "currentStyleName is required for UPDATE when styleId is supplied. Retrieve the style's current exact name from style_list and pass it back verbatim."
+                        });
+                    }
+                } else {
+                    if (!data.name) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["name"],
+                            message: "name is required to create a new style."
+                        });
+                    }
+                }
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the style"),

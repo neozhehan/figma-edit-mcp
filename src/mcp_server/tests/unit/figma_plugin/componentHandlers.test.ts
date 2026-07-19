@@ -358,7 +358,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("Read-Only Mode");
+            expect(result.error.message).toContain("Read-Only Mode");
         });
 
         it("blocks when checkScopeAccess fails (target outside scope)", async () => {
@@ -377,7 +377,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("outside editable scope");
+            expect(result.error.message).toContain("outside editable scope");
         });
 
         it("blocks when verifyNodeName fails (name mismatch)", async () => {
@@ -396,7 +396,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("nodeName does not match");
+            expect(result.error.message).toContain("nodeName does not match");
         });
     });
 
@@ -416,7 +416,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("Read-Only Mode");
+            expect(result.error.message).toContain("Read-Only Mode");
         });
 
         it("blocks when checkScopeAccess fails (any action)", async () => {
@@ -434,7 +434,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("outside editable scope");
+            expect(result.error.message).toContain("outside editable scope");
         });
 
         it("blocks when verifyNodeName fails (any action)", async () => {
@@ -452,7 +452,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("nodeName does not match");
+            expect(result.error.message).toContain("nodeName does not match");
         });
     });
 });

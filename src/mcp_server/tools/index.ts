@@ -1,4 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { z } from "zod";
+import { errorEnvelope } from "./_result.js";
+import { UNKNOWN_ERROR } from "../../shared/errorCodes.js";
 import { registerPageTools } from "./page.js";
 import { registerNodeTools } from "./node.js";
 import { registerCreateTools } from "./create.js";
@@ -26,8 +29,10 @@ import { registerChannelTools } from "./channel.js";
  * Applied centrally here so it cannot be forgotten on a per-tool basis or drift as
  * tools are added. Only `registerTool` is intercepted; all other server methods
  * pass through unchanged (bound to the real server).
+ *
+ * Exported so transport tests can exercise this exact wrapper rather than a copy.
  */
-function withStrictInputSchemas(server: McpServer): McpServer {
+export function withStrictInputSchemas(server: McpServer): McpServer {
     return new Proxy(server, {
         get(target, prop) {
             if (prop === "registerTool") {
@@ -36,7 +41,50 @@ function withStrictInputSchemas(server: McpServer): McpServer {
                     if (schema && typeof schema.strict === "function") {
                         config = { ...config, inputSchema: schema.strict() };
                     }
-                    return (target as any).registerTool(name, config, cb);
+                    // Every advertised output schema must accept the common D9
+                    // error envelope: the pinned SDK client validates any present
+                    // `structuredContent` against the advertised schema even on
+                    // isError results (client/index.js), and the SDK cannot
+                    // advertise a union (`normalizeObjectSchema` drops non-object
+                    // schemas from tools/list). So declared fields become
+                    // optional — their types still validate when present; exact
+                    // field-name conformance is enforced by the registered-
+                    // callback tests — and the envelope is advertised explicitly
+                    // as an optional `error` field.
+                    const out = config?.outputSchema;
+                    if (out && typeof out.partial === "function" && typeof out.extend === "function") {
+                        config = {
+                            ...config,
+                            outputSchema: out.partial().extend({ error: errorEnvelope.optional() }).catchall(z.any()),
+                        };
+                    }
+                    const wrappedCb = async (args: any, extra: any) => {
+                        try {
+                            return await cb(args, extra);
+                        } catch (error: any) {
+                            const isObj = error !== null && typeof error === "object";
+                            const code = (isObj && typeof error.code === "string") ? error.code : UNKNOWN_ERROR;
+                            const message = (isObj && error.message) ? error.message : String(error);
+                            const details = isObj ? error.details : undefined;
+                            return {
+                                content: [
+                                    {
+                                        type: "text" as const,
+                                        text: `Error [${code}]: ${message}`
+                                    }
+                                ],
+                                isError: true,
+                                structuredContent: {
+                                    error: {
+                                        code,
+                                        message,
+                                        details
+                                    }
+                                }
+                            };
+                        }
+                    };
+                    return (target as any).registerTool(name, config, wrappedCb);
                 };
             }
             const value = Reflect.get(target, prop, target);

@@ -170,7 +170,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             pluginState.allowEditNode = false; // missing permission
             const res = await sendCommand("node_set_effects", { nodeId: "target-id", nodeName: "Target Node", effects: [] });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("Read-Only Mode");
+            expect(res.error.message).toContain("Read-Only Mode");
             expect(setEffectsCalled).toBe(false);
         });
 
@@ -179,7 +179,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             pluginState.scopeRootId = null; // no scope linked
             const res = await sendCommand("node_set_effects", { nodeId: "target-id", nodeName: "Target Node", effects: [] });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("outside editable scope");
+            expect(res.error.message).toContain("outside editable scope");
             expect(setEffectsCalled).toBe(false);
         });
 
@@ -188,7 +188,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             targetNode.parent = { id: "other-root", name: "Other Root", type: "FRAME" }; // outside scope
             const res = await sendCommand("node_set_effects", { nodeId: "target-id", nodeName: "Target Node", effects: [] });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("outside editable scope");
+            expect(res.error.message).toContain("outside editable scope");
             expect(setEffectsCalled).toBe(false);
         });
 
@@ -196,7 +196,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             setupEnvironment();
             const res = await sendCommand("node_set_effects", { nodeId: "target-id", nodeName: "Wrong Name", effects: [] });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("nodeName does not match");
+            expect(res.error.message).toContain("nodeName does not match");
             expect(setEffectsCalled).toBe(false);
         });
 
@@ -205,7 +205,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             targetNode.locked = true;
             const res = await sendCommand("node_set_effects", { nodeId: "target-id", nodeName: "Target Node", effects: [] });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is locked");
+            expect(res.error.message).toContain("is locked");
             expect(setEffectsCalled).toBe(false);
         });
 
@@ -214,7 +214,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.locked = true;
             const res = await sendCommand("node_set_effects", { nodeId: "target-id", nodeName: "Target Node", effects: [] });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is locked");
+            expect(res.error.message).toContain("is locked");
             expect(setEffectsCalled).toBe(false);
         });
 
@@ -232,7 +232,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             pluginState.allowEditNode = false;
             const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "Parent Node", svg: "<svg></svg>" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("Read-Only Mode");
+            expect(res.error.message).toContain("Read-Only Mode");
             expect(createNodeFromSvgCalled).toBe(false);
         });
 
@@ -241,7 +241,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             pluginState.scopeRootId = null;
             const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "Parent Node", svg: "<svg></svg>" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("Parent outside editable scope");
+            expect(res.error.message).toContain("Parent outside editable scope");
             expect(createNodeFromSvgCalled).toBe(false);
         });
 
@@ -250,7 +250,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.parent = { id: "other-root", name: "Other Root", type: "FRAME" };
             const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "Parent Node", svg: "<svg></svg>" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("Parent outside editable scope");
+            expect(res.error.message).toContain("Parent outside editable scope");
             expect(createNodeFromSvgCalled).toBe(false);
         });
 
@@ -258,7 +258,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             setupEnvironment();
             const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "Wrong Name", svg: "<svg></svg>" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("parentNodeName does not match");
+            expect(res.error.message).toContain("parentNodeName does not match");
             expect(createNodeFromSvgCalled).toBe(false);
         });
 
@@ -267,7 +267,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.locked = true;
             const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "Parent Node", svg: "<svg></svg>" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is locked");
+            expect(res.error.message).toContain("is locked");
             expect(createNodeFromSvgCalled).toBe(false);
         });
 
@@ -276,7 +276,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             scopeRoot.locked = true;
             const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "Parent Node", svg: "<svg></svg>" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is locked");
+            expect(res.error.message).toContain("is locked");
             expect(createNodeFromSvgCalled).toBe(false);
         });
 
@@ -287,7 +287,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             gateNodeMap.set("instance-anc", instanceAnc);
             const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "Parent Node", svg: "<svg></svg>" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("inside a component instance");
+            expect(res.error.message).toContain("inside a component instance");
             expect(createNodeFromSvgCalled).toBe(false);
         });
 
@@ -296,7 +296,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.type = "INSTANCE";
             const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "Parent Node", svg: "<svg></svg>" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is a component instance and cannot be appended to directly");
+            expect(res.error.message).toContain("is a component instance and cannot be appended to directly");
             expect(createNodeFromSvgCalled).toBe(false);
         });
 
@@ -314,7 +314,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             pluginState.allowEditNode = false;
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Source Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("Read-Only Mode");
+            expect(res.error.message).toContain("Read-Only Mode");
             expect(cloneCalled).toBe(false);
         });
 
@@ -323,7 +323,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             pluginState.scopeRootId = null;
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Source Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("outside editable scope");
+            expect(res.error.message).toContain("outside editable scope");
             expect(cloneCalled).toBe(false);
         });
 
@@ -332,7 +332,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             sourceNode.parent = { id: "other-root", name: "Other Root", type: "FRAME" };
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Source Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("outside editable scope");
+            expect(res.error.message).toContain("outside editable scope");
             expect(cloneCalled).toBe(false);
         });
 
@@ -340,7 +340,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             setupEnvironment();
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Wrong Name" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("nodeName does not match");
+            expect(res.error.message).toContain("nodeName does not match");
             expect(cloneCalled).toBe(false);
         });
 
@@ -349,7 +349,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             sourceNode.locked = true;
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Source Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is locked");
+            expect(res.error.message).toContain("is locked");
             expect(cloneCalled).toBe(false);
         });
 
@@ -358,7 +358,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.locked = true;
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Source Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is locked");
+            expect(res.error.message).toContain("is locked");
             expect(cloneCalled).toBe(false);
         });
 
@@ -369,7 +369,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             gateNodeMap.set("instance-anc", instanceAnc);
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Source Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("inside a component instance");
+            expect(res.error.message).toContain("inside a component instance");
             expect(cloneCalled).toBe(false);
         });
 
@@ -378,7 +378,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             delete scopeRoot.parent;
             const res = await sendCommand("node_clone", { nodeId: "scope-root", nodeName: "Scope Root" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("has no parent and cannot be cloned");
+            expect(res.error.message).toContain("has no parent and cannot be cloned");
             expect(cloneCalled).toBe(false);
         });
 
@@ -387,7 +387,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             delete (parentNode as any).appendChild;
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Source Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("cannot accept cloned children");
+            expect(res.error.message).toContain("cannot accept cloned children");
             expect(cloneCalled).toBe(false);
         });
 
@@ -396,7 +396,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.locked = true;
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Source Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is locked");
+            expect(res.error.message).toContain("is locked");
             expect(cloneCalled).toBe(false);
         });
 
@@ -405,7 +405,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.parent = { id: "other-root", name: "Other Root", type: "FRAME" };
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Source Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("outside editable scope");
+            expect(res.error.message).toContain("outside editable scope");
             expect(cloneCalled).toBe(false);
         });
 
@@ -414,7 +414,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             // Try to clone "scope-root" itself. Its parent is "doc" which is outside scope.
             const res = await sendCommand("node_clone", { nodeId: "scope-root", nodeName: "Scope Root" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("Parent outside editable scope");
+            expect(res.error.message).toContain("Parent outside editable scope");
             expect(cloneCalled).toBe(false);
         });
 
@@ -434,7 +434,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             gateNodeMap.set("parent-id", instanceParent);
             const res = await sendCommand("node_clone", { nodeId: "source-id", nodeName: "Source Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("inside a component instance");
+            expect(res.error.message).toContain("inside a component instance");
             expect(cloneCalled).toBe(false);
         });
 
@@ -452,7 +452,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.type = "INSTANCE";
             const res = await sendCommand("create_shape", { parentId: "parent-id", parentNodeName: "Parent Node", type: "RECTANGLE" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is a component instance and cannot be appended to directly");
+            expect(res.error.message).toContain("is a component instance and cannot be appended to directly");
             expect(createRectangleCalled).toBe(false);
         });
 
@@ -461,7 +461,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.type = "INSTANCE";
             const res = await sendCommand("create_frame", { parentId: "parent-id", parentNodeName: "Parent Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is a component instance and cannot be appended to directly");
+            expect(res.error.message).toContain("is a component instance and cannot be appended to directly");
             expect(createFrameCalled).toBe(false);
         });
 
@@ -470,7 +470,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.type = "INSTANCE";
             const res = await sendCommand("create_text", { parentId: "parent-id", parentNodeName: "Parent Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is a component instance and cannot be appended to directly");
+            expect(res.error.message).toContain("is a component instance and cannot be appended to directly");
             expect(createTextCalled).toBe(false);
         });
 
@@ -479,7 +479,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.type = "INSTANCE";
             const res = await sendCommand("create_instance", { parentId: "parent-id", parentNodeName: "Parent Node", componentId: "remote-comp-id" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is a component instance and cannot be appended to directly");
+            expect(res.error.message).toContain("is a component instance and cannot be appended to directly");
             expect(createInstanceCalled).toBe(false);
         });
 
@@ -488,7 +488,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             parentNode.type = "INSTANCE";
             const res = await sendCommand("node_insert_child", { parentId: "parent-id", parentNodeName: "Parent Node", childId: "target-id", childNodeName: "Target Node" });
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("is a component instance and cannot be inserted into directly");
+            expect(res.error.message).toContain("is a component instance and cannot be inserted into directly");
             expect(appendChildCalledOnParent).toBe(false);
         });
     });

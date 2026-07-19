@@ -101,7 +101,7 @@ const STYLE_DISABLED = "Style editing is disabled";
 
 function expectGateBlocked(result: any, permString: string) {
     expect(result.type).toBe("command-error");
-    expect(result.error).toContain(permString);
+    expect(result.error.message).toContain(permString);
 }
 
 // The gate opened if the command did NOT fail with the permission error. It may
@@ -109,7 +109,7 @@ function expectGateBlocked(result: any, permString: string) {
 // proves the permission check passed, which is all this matrix asserts.
 function expectGateOpen(result: any, permString: string) {
     if (result.type === "command-error") {
-        expect(result.error).not.toContain(permString);
+        expect(result.error.message).not.toContain(permString);
     }
     // command-result ⇒ gate definitively opened.
 }

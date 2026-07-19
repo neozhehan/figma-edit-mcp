@@ -55,6 +55,8 @@ Other industries recognize this insight as well, with evidence showing that earl
 
 Stated precisely: Safer leads to Faster as an expected end-to-end effect for the failure modes the checks cover. The effect is zero in a task where no covered harmful action would otherwise occur and largest for latent, high-fan-out, or difficult-to-reverse errors.
 
+One further check belongs to this insight because it prevents a whole class of repair at once. Batch tools validate every item before changing anything, so a batch that fails validation changes nothing — the file is never left half-modified by a detectably invalid batch. The exact guarantee and its limits are defined in [SAFETY.md](SAFETY.md).
+
 ## Cleaner
 
 Cleaner means fewer errors in the work environment — the design file. Fewer broken references, fewer near-duplicate tokens, fewer layers whose names carry no information.
@@ -82,26 +84,40 @@ Several of the plugin's protections work by comparing what the AI claims against
 
 ## Faster
 
-Faster means tasks take a shorter time to be completed correctly. This goal is where the other two pay out — Safer removes the repairs, Cleaner removes the ambiguity — and the plugin adds a direct contribution of its own, built on the fourth insight.
+Faster means tasks take a shorter time to be completed correctly. This goal is where the other two pay out: Safer prevents work that would otherwise have to be diagnosed and repaired, while Cleaner reduces the search and interpretation imposed by disorder in the file. The plugin also contributes directly, by matching its tool boundaries to decision boundaries.
 
 The fourth insight: 
-**An AI Agent  spends its working time in reasoning cycles — read the last result, think, compose the next call — so a task finishes fastest when it needs the fewest cycles.**
+**Design tools around decisions, not operations: one model turn should express all work already determined, and one tool result should provide all information needed for the next decision.**
 
-The plugin applies this insight at two scales: batch operations reduce the number of calls a task needs, and the tool contract reduces the number of cycles each call needs.
+A model turn is one reasoning cycle: the AI reads the last result, thinks, and composes its next call. A single operation does not justify another turn. Another turn is useful when the AI must see an operation's result before it can determine what follows. If the AI can already state the remaining operations — or a rule that selects them — returning after every operation adds coordination without adding judgment.
 
-### Batch operations: one composition instead of a hundred
+The boundary test is: **can the AI state what follows, or the rule for determining it, before seeing the result?** If yes, the work can stay inside the current call. If no, the result marks a real decision, and control should return to the AI.
 
-The speed of a batch operation does not come from Figma executing it quickly. It comes from the cycles the batch removes. Without a batch tool, the AI updates a hundred layers with a hundred separate calls — a hundred reasoning cycles. Each cycle adds its result to the AI's context, so later calls cost more than earlier ones, and every cycle is another chance for the AI's attention to drift: to skip a layer, or repeat one. A batch replaces the hundred cycles with one: the AI composes the full list of changes once and sends it once.
+"Already determined" covers more than a fixed list. It includes deterministic control logic — a filter, loop, comparison, or branch — that the AI can state now and ordinary code can apply. It does not include a choice that depends on the AI interpreting an observation it has not yet seen.
 
-A batch is also safer than the sequence it replaces. The plugin validates every item in a batch before changing anything, so a batch with one bad item changes nothing. A sequence of single calls has no equivalent property: each call validates only itself, and a sequence that fails at layer 47 of 100 leaves the file half-changed — exactly the kind of inherited defect that the third insight prices: it creates work for every later change that touches it.
+The plugin applies the insight on both sides of each exchange. On the action side, batch tools let one call express many operations, and the schemas and guides make the available actions legible enough to compose that call correctly. On the observation side, success and refusal results carry the information the next decision needs.
 
-### The contract is written for the AI that reads it
+### Batch operations: express the whole decision
 
-The primary consumer of this project's tools is an LLM composing calls. Every tool is therefore designed against two tests. The first is first-call correctness: the AI should be able to compose a correct call from the schema and the guides alone — a correct first call is the fewest possible cycles. The second is one-round-trip recovery: when the plugin refuses a call, the error states clearly what was wrong, so the AI's next attempt succeeds — the failure costs one extra cycle instead of starting a chain of guesses.
+Once the AI has determined the targets and changes, a batch lets it express them in one invocation. The plugin still validates and executes every item; what disappears is the requirement to return to the AI between items that require no new judgment.
 
-Research on AI agents supports both halves with measured results. On recovery: a model that receives informative feedback about a failure fixes it far better than a model that must guess what went wrong. One study measured accuracy gains of up to 12% from execution feedback and found that good feedback can replace more than ten blind retries; another found that self-repair is bottlenecked by the model's ability to diagnose its own failures, and that better diagnostic feedback multiplied successful repairs by 1.58×. On first-call correctness: the SWE-agent team measured that the shape of a tool changes an agent's results — a search tool that presented results the way a human editor does performed worse than no search tool at all — and Anthropic's guidance for tool authors reports that even small refinements to tool descriptions can yield dramatic improvements. ([Quotes and sources](EVIDENCE.md#faster-the-fewest-reasoning-cycles).)
+The current batch tools implement the simplest case: the AI supplies the full list of items and arguments together. The design rule also identifies a future opportunity for higher-level tools: a filter, loop, comparison, or branch could stay inside one call when the AI can state the rule before execution. That an intermediate value selects which branch runs does not by itself require another turn; a turn becomes useful when the AI must see the value before it can decide what the value means for the task.
 
-This insight also completes a claim made under Safer: a refusal replaces later investigation only when the error carries the diagnosis. An opaque error turns the cheap refusal into the expensive guessing that the research above measures. Google measured the same effect on human developers with its Tricorder analysis platform: for one of its checks, 75% of the bug reports filed against the check came from developers misreading the result wording, and updating the message text fixed them. ([Quotes and sources](EVIDENCE.md#faster-the-fewest-reasoning-cycles).)
+This is why the speed of a batch does not depend on Figma executing each operation faster. Its direct contribution is that already-determined work no longer waits for repeated model re-entry.
+
+### The contract makes each exchange decision-complete
+
+The primary consumer of these tools is an LLM composing calls. The contract therefore has two jobs.
+
+Before execution, it must expose the parameters, distinctions, and constraints the AI needs to translate its current decision into a valid request. A required read discovers facts about the design; trial and error caused by an ambiguous interface merely discovers facts the tool already knew.
+
+After execution, the result must supply what the AI needs to decide what happens next. A success response should make the outcome legible. A refusal should identify the failed condition, the observed value that failed it, and — when it can do so safely — the alternatives the plugin would have accepted. An opaque result forces another turn to reconstruct information the tool already possessed.
+
+We call such a result decision-complete: it contains what the next decision needs, and as little else as possible. Decision-complete does not mean short. Irrelevant output consumes context, but removing an exact identifier, an edit anchor, or an accepted value can create more work than the shorter result saves. The goal is the smallest result that makes the next decision possible.
+
+Measured evidence supports this boundary rather than a blanket preference for fewer calls. Anthropic's programmatic tool calling — letting a model run many tool calls inside one turn — cut billed input tokens by roughly 38% with no change in accuracy on a multi-tool benchmark, yet on tasks whose every call depends on fresh model judgment it left scores unchanged and cost roughly 8% more. On the observation side, filtering results down to what the next decision needs improved benchmark performance by 11% while using 24% fewer input tokens; refusals that named the accepted alternatives raised repair success by roughly 40 percentage points over raw diagnostics; and a study that trimmed tool results too aggressively cut tokens but raised total cost and failures. Most of these results measure tokens, steps, and success rather than elapsed time. ([Sources, methods, and limitations](EVIDENCE.md#faster-designing-tools-around-decisions).)
+
+That is the plugin's direct Faster contribution: **keep execution inside the tool until the AI has something new to decide; when control returns, return the facts that decision requires.**
 
 ---
 

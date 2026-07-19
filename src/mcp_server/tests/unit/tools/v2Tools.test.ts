@@ -239,11 +239,31 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
         it("variable_manage accepts valid scopes and rejects an invalid enum value", () => {
             const schema = (server as any)._registeredTools["variable_manage"].inputSchema;
             // valid scopes accepted
-            expect(schema.safeParse({ action: "CREATE_VARIABLE", scopes: ["ALL_FILLS", "STROKE_COLOR"] }).success).toBe(true);
-            // scopes is optional (omitted is fine)
-            expect(schema.safeParse({ action: "CREATE_VARIABLE" }).success).toBe(true);
+            expect(schema.safeParse({
+                action: "CREATE_VARIABLE",
+                collectionId: "coll-1",
+                collectionName: "MyColl",
+                name: "var1",
+                type: "FLOAT",
+                scopes: ["ALL_FILLS", "STROKE_COLOR"]
+            }).success).toBe(true);
+            // scopes omission is rejected
+            expect(schema.safeParse({
+                action: "CREATE_VARIABLE",
+                collectionId: "coll-1",
+                collectionName: "MyColl",
+                name: "var1",
+                type: "FLOAT"
+            }).success).toBe(false);
             // an invalid enum value is rejected by Zod
-            expect(schema.safeParse({ action: "CREATE_VARIABLE", scopes: ["NOT_A_REAL_SCOPE"] }).success).toBe(false);
+            expect(schema.safeParse({
+                action: "CREATE_VARIABLE",
+                collectionId: "coll-1",
+                collectionName: "MyColl",
+                name: "var1",
+                type: "FLOAT",
+                scopes: ["NOT_A_REAL_SCOPE"]
+            }).success).toBe(false);
         });
     });
 

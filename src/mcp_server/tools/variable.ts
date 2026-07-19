@@ -71,7 +71,7 @@ export function registerVariableTools(server: McpServer) {
         "variable_manage",
         {
             title: "Manage Variables",
-            description: "Create collections and variables and set their values/aliases (create/update router).",
+            description: "Create collections and variables and set their values/aliases (create/update router). UPDATE_VARIABLE requires `currentVariableName`. CREATE_VARIABLE requires `collectionName` and `scopes`.",
             inputSchema: z.object({
                 action: z
                     .enum(["CREATE_COLLECTION", "CREATE_VARIABLE", "UPDATE_VARIABLE"])
@@ -86,6 +86,10 @@ export function registerVariableTools(server: McpServer) {
                     .string()
                     .optional()
                     .describe("Collection ID (for CREATE_VARIABLE)"),
+                collectionName: z
+                    .string()
+                    .optional()
+                    .describe("REQUIRED for CREATE_VARIABLE — the parent collection's exact name, passed back verbatim from `variable_list`"),
                 type: z
                     .enum(["FLOAT", "COLOR", "STRING", "BOOLEAN"])
                     .optional()
@@ -115,12 +119,80 @@ export function registerVariableTools(server: McpServer) {
                 currentVariableName: z
                     .string()
                     .optional()
-                    .describe("Current name of the variable to verify against (for UPDATE_VARIABLE)"),
+                    .describe("REQUIRED for UPDATE_VARIABLE — the variable's **current exact** name, passed back verbatim from `variable_list`"),
                 modeId: z.string().optional().describe("Mode ID (for UPDATE_VARIABLE value setting)"),
                 scopes: z
                     .array(z.enum(VARIABLE_SCOPES))
                     .optional()
-                    .describe("Variable scopes. ALWAYS set explicitly on create; omit on update to leave unchanged."),
+                    .describe("REQUIRED for CREATE_VARIABLE — variable scopes. ALWAYS set explicitly on create; omit on update to leave unchanged."),
+            }).superRefine((data, ctx) => {
+                if (data.action === "UPDATE_VARIABLE") {
+                    if (data.name === "") {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["name"],
+                            message: "name must not be empty. Omit name to leave the variable's name unchanged."
+                        });
+                    }
+                    if (!data.variableId) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["variableId"],
+                            message: "variableId is required for UPDATE_VARIABLE. Retrieve the variable ID from variable_list."
+                        });
+                    }
+                    if (!data.currentVariableName) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["currentVariableName"],
+                            message: "currentVariableName is required for UPDATE_VARIABLE. Retrieve the variable's current exact name from variable_list and pass it back verbatim."
+                        });
+                    }
+                } else if (data.action === "CREATE_VARIABLE") {
+                    if (!data.collectionId) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["collectionId"],
+                            message: "collectionId is required for CREATE_VARIABLE. Retrieve the collection ID from variable_list."
+                        });
+                    }
+                    if (!data.collectionName) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["collectionName"],
+                            message: "collectionName is required for CREATE_VARIABLE. Retrieve the parent collection's exact name from variable_list and pass it back verbatim."
+                        });
+                    }
+                    if (!data.scopes) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["scopes"],
+                            message: "scopes is required for CREATE_VARIABLE. Specify the allowed scopes explicitly."
+                        });
+                    }
+                    if (!data.name) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["name"],
+                            message: "name is required for CREATE_VARIABLE."
+                        });
+                    }
+                    if (!data.type) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["type"],
+                            message: "type is required for CREATE_VARIABLE."
+                        });
+                    }
+                } else if (data.action === "CREATE_COLLECTION") {
+                    if (!data.name) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["name"],
+                            message: "name is required for CREATE_COLLECTION."
+                        });
+                    }
+                }
             }),
             outputSchema: looseOutput({
                 id: z.string().optional().describe("ID of the collection or variable"),

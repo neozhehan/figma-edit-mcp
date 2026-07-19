@@ -399,7 +399,7 @@ describe("Phase 5: table-driven nodePerm sweep — every nodePerm-gated write re
             pluginState.scopeRootId = null;
             const res = await sendCommand(tool, {});
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("Read-Only Mode");
+            expect(res.error.message).toContain("Read-Only Mode");
         });
     }
 });

@@ -355,10 +355,12 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect((resetChannel as any).mock.calls.length).toBe(1);
     });
 
-    it("PLUGIN_DISCONNECTED from transport: Connection closed", async () => {
+    it("PLUGIN_DISCONNECTED from transport: coded at origin, passed through (Q20)", async () => {
+        // Mirrors figma-client's close handler, which now codes the rejection
+        // at origin instead of leaving channel.ts to sniff message prose.
         (sendCommandToFigma as any).mockImplementation((cmd: string) =>
             cmd === "get_connect_payload"
-                ? Promise.reject(new Error("Connection closed"))
+                ? Promise.reject(Object.assign(new Error("Connection closed"), { code: "PLUGIN_DISCONNECTED" }))
                 : Promise.resolve({}),
         );
         const r = await registeredTools["join_channel"]({ channel: "ch1" });
@@ -366,6 +368,36 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect(parsed.status).toBe("error");
         expect(parsed.errorCode).toBe("PLUGIN_DISCONNECTED");
         expect((resetChannel as any).mock.calls.length).toBe(1);
+    });
+
+    it("Q20: an unknown structured code passes through verbatim with its message — never collapsed", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(Object.assign(
+                    new Error("Operation Denied: no plugin peer is connected. Open the plugin and rejoin."),
+                    { code: "PLUGIN_PEER_UNAVAILABLE", details: { peers: 0 } },
+                ))
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("PLUGIN_PEER_UNAVAILABLE");
+        expect(parsed.errorMessage).toContain("Open the plugin and rejoin");
+        expect(parsed.errorDetails).toEqual({ peers: 0 });
+    });
+
+    it("Q20: a leg-1 join failure coded CHANNEL_JOIN_FAILED at origin keeps its code", async () => {
+        const { joinChannel } = await import("../../../figma-client.js");
+        (joinChannel as any).mockRejectedValue(Object.assign(
+            new Error("Request timed out after 30000ms"),
+            { code: "CHANNEL_JOIN_FAILED" },
+        ));
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        expect(parsed.errorMessage).toContain("did not acknowledge the join");
     });
 });
 
@@ -486,8 +518,10 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
     });
 
     it("leg-1 CHANNEL_NOT_FOUND: no leg-2 call, no resetChannel needed", async () => {
+        // Mirrors what figma-client actually throws: a FigmaError-shaped
+        // rejection carrying the socket's code on `code` (not `joinErrorCode`).
         const tagged = Object.assign(new Error("not found"), {
-            joinErrorCode: "CHANNEL_NOT_FOUND",
+            code: "CHANNEL_NOT_FOUND",
         });
         (joinChannel as any).mockRejectedValue(tagged);
 

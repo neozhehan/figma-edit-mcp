@@ -30,6 +30,12 @@ jobs:
       - name: Verify plugin bundle is committed up to date
         run: bun run check:plugin
 
+      - name: Verify plugin type safety
+        run: bun run check:types:plugin
+
+      - name: Verify suppression comments
+        run: bun run check:suppressions
+
       - name: Verify version synchronization
         run: bun run check:versions
 

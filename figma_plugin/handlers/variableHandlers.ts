@@ -1,5 +1,6 @@
 // figma_plugin/handlers/variableHandlers.ts
 import { sendProgressUpdate } from '../utils/progressUtils.js';
+import { REFUSALS, withPartialDisclosure } from '../utils/errors.js';
 
 
 export interface StyleConsumerEntry {
@@ -961,8 +962,14 @@ export async function handleVariableRequest(params: any) {
         }
 
         case 'CREATE_VARIABLE': {
-            const { collectionId, name, type, value, scopes } = params;
+            const { collectionId, collectionName, name, type, value, scopes } = params;
             if (!collectionId || !name || !type) throw new Error("Missing required parameters for variable creation");
+            if (scopes === undefined) {
+                throw REFUSALS.VARIABLE_SCOPES_MISSING();
+            }
+            if (!collectionName) {
+                throw REFUSALS.COLLECTION_NAME_MISSING();
+            }
 
             // Resolve resolvedType string to VariableResolvedType
             // 'FLOAT', 'COLOR', 'STRING', 'BOOLEAN'
@@ -977,6 +984,11 @@ export async function handleVariableRequest(params: any) {
             const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
             if (!collection) {
                 throw new Error(`Collection not found: ${collectionId}`);
+            }
+
+            // Verify collectionName matches collection.name
+            if (collection.name !== collectionName) {
+                throw REFUSALS.COLLECTION_NAME_MISMATCH(collection.name, collectionName);
             }
 
             // Using collection object for createVariable as requested by error message
@@ -1024,42 +1036,77 @@ export async function handleVariableRequest(params: any) {
         case 'UPDATE_VARIABLE': {
             const { variableId, name, value, modeId, description, currentVariableName, scopes } = params;
             if (!variableId) throw new Error("Missing variableId for update");
+            if (!currentVariableName) {
+                throw REFUSALS.VARIABLE_NAME_MISSING();
+            }
 
             const variable = await figma.variables.getVariableByIdAsync(variableId);
             if (!variable) throw new Error(`Variable ${variableId} not found`);
 
-            if (currentVariableName && variable.name !== currentVariableName) {
-                throw new Error(`Variable name verification failed. Expected "${variable.name}", got "${currentVariableName}"`);
+            if (variable.name !== currentVariableName) {
+                throw REFUSALS.VARIABLE_NAME_MISMATCH(variable.name, currentVariableName);
             }
 
             if (variable.remote) {
                 throw new Error(`Operation Denied: '${variable.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
             }
 
-            if (name) {
-                variable.name = name;
-            }
-
-            if (description !== undefined) {
-                variable.description = description;
-            }
-
-            if (scopes !== undefined) {
-                variable.scopes = scopes;
-            }
-
+            // Validate-before-mutate: check modeId if value is supplied
             if (value !== undefined) {
                 if (!modeId) throw new Error("Missing modeId for setting variable value");
-
-                // Handle Aliases
-                if (typeof value === 'object' && value.type === 'VARIABLE_ALIAS') {
-                    variable.setValueForMode(modeId, {
-                        type: 'VARIABLE_ALIAS',
-                        id: value.id
-                    });
-                } else {
-                    variable.setValueForMode(modeId, value);
+                const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+                if (!collection) {
+                    throw new Error(`Collection not found for variable: ${variable.variableCollectionId}`);
                 }
+                const isValidMode = collection.modes.some(m => m.modeId === modeId);
+                if (!isValidMode) {
+                    throw new Error(`Invalid modeId: "${modeId}" is not a valid mode in collection "${collection.name}"`);
+                }
+                // Q17 pre-check: an alias value resolves its target before any mutation.
+                if (typeof value === 'object' && value !== null && value.type === 'VARIABLE_ALIAS') {
+                    const aliasTarget = await figma.variables.getVariableByIdAsync(value.id);
+                    if (!aliasTarget) {
+                        throw new Error(`Alias target variable not found: "${value.id}". Read a valid variable ID with variable_list and pass it back verbatim.`);
+                    }
+                }
+            }
+
+            // Q18: an unexpected failure after a write must disclose the partial
+            // mutation with before-values; a clean failure never carries the flag.
+            const before = { name: variable.name, description: variable.description };
+            const applied: string[] = [];
+            try {
+                if (name) {
+                    variable.name = name;
+                    applied.push(`name (was "${before.name}")`);
+                }
+
+                if (description !== undefined) {
+                    variable.description = description;
+                    applied.push("description");
+                }
+
+                if (scopes !== undefined) {
+                    variable.scopes = scopes;
+                    applied.push("scopes");
+                }
+
+                if (value !== undefined) {
+                    // Handle Aliases
+                    if (typeof value === 'object' && value.type === 'VARIABLE_ALIAS') {
+                        variable.setValueForMode(modeId!, {
+                            type: 'VARIABLE_ALIAS',
+                            id: value.id
+                        });
+                    } else {
+                        variable.setValueForMode(modeId!, value);
+                    }
+                }
+            } catch (e) {
+                if (applied.length > 0) {
+                    throw withPartialDisclosure(e, `the variable's ${applied.join(", ")} had already been updated when the failure occurred.`, before);
+                }
+                throw e;
             }
 
             return {

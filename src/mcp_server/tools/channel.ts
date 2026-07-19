@@ -2,6 +2,40 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { joinChannel, sendCommandToFigma, resetChannel } from "../figma-client.js";
 import { toolResult, looseOutput } from "./_result.js";
+import { UNKNOWN_ERROR } from "../../shared/errorCodes.js";
+
+// Q20 (resolved 2026-07-18, Option A): join failures pass their structured
+// codes through verbatim — unknown codes included, never collapsed to
+// UNKNOWN_ERROR — and recovery guidance is keyed by code, never derived from
+// message prose. The two locally-generated failures are coded at origin in
+// figma-client (CHANNEL_JOIN_FAILED on join timeout, PLUGIN_DISCONNECTED on
+// connection close). The in-band envelope shape is unchanged (v2.3.4 PRD Q1).
+const JOIN_RECOVERY: Record<string, (channel: string) => string> = {
+    CHANNEL_NOT_FOUND: (ch) => `Channel '${ch}' was not found. Verify the channel name and that the Figma plugin is running and connected.`,
+    CHANNEL_JOIN_FAILED: (ch) => `Failed to join channel '${ch}'. The Figma plugin did not acknowledge the join within the expected time. Try reconnecting the plugin.`,
+    PLUGIN_DISCONNECTED: () => "The Figma plugin disconnected before the editable scope could be read. Reopen the plugin and try again.",
+};
+
+function joinFailure(channel: string, error: any) {
+    const errorCode = (error !== null && typeof error === "object" && typeof error.code === "string")
+        ? error.code
+        : UNKNOWN_ERROR;
+    const guidance = JOIN_RECOVERY[errorCode];
+    // Codes without local guidance keep their originating message verbatim —
+    // a D9 message already embeds its own recovery.
+    const errorMessage = guidance
+        ? guidance(channel)
+        : errorCode !== UNKNOWN_ERROR
+            ? (error.message || String(error))
+            : `An unexpected error occurred while joining the channel: ${error?.message || String(error)}.`;
+    return {
+        status: "error",
+        channel,
+        errorCode,
+        errorMessage,
+        ...(error !== null && typeof error === "object" && error.details !== undefined ? { errorDetails: error.details } : {}),
+    };
+}
 
 export function registerChannelTools(server: McpServer) {
     // 1. Join Channel Tool
@@ -70,26 +104,7 @@ export function registerChannelTools(server: McpServer) {
                 try {
                     await joinChannel(channel);
                 } catch (error: any) {
-                    let errorCode = "UNKNOWN_ERROR";
-                    let errorMessage = `An unexpected error occurred while joining the channel: ${error.message || String(error)}.`;
-
-                    if (error.joinErrorCode === "CHANNEL_NOT_FOUND") {
-                        errorCode = "CHANNEL_NOT_FOUND";
-                        errorMessage = `Channel '${channel}' was not found. Verify the channel name and that the Figma plugin is running and connected.`;
-                    } else if (error.message && error.message.includes("timed out")) {
-                        errorCode = "CHANNEL_JOIN_FAILED";
-                        errorMessage = `Failed to join channel '${channel}'. The Figma plugin did not acknowledge the join within the expected time. Try reconnecting the plugin.`;
-                    } else if (error.message && error.message.includes("Connection closed")) {
-                        errorCode = "PLUGIN_DISCONNECTED";
-                        errorMessage = "The Figma plugin disconnected before the editable scope could be read. Reopen the plugin and try again.";
-                    }
-
-                    return toolResult({
-                        status: "error",
-                        channel,
-                        errorCode,
-                        errorMessage
-                    });
+                    return toolResult(joinFailure(channel, error));
                 }
 
                 // Get connect payload
@@ -98,20 +113,7 @@ export function registerChannelTools(server: McpServer) {
                     payload = await sendCommandToFigma("get_connect_payload");
                 } catch (error: any) {
                     resetChannel();
-                    let errorCode = "UNKNOWN_ERROR";
-                    let errorMessage = `An unexpected error occurred while joining the channel: ${error.message || String(error)}.`;
-
-                    if (error.message && error.message.includes("Connection closed")) {
-                        errorCode = "PLUGIN_DISCONNECTED";
-                        errorMessage = "The Figma plugin disconnected before the editable scope could be read. Reopen the plugin and try again.";
-                    }
-
-                    return toolResult({
-                        status: "error",
-                        channel,
-                        errorCode,
-                        errorMessage
-                    });
+                    return toolResult(joinFailure(channel, error));
                 }
 
                 // Handle structured plugin error

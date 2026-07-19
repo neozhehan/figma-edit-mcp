@@ -1,6 +1,6 @@
 # v2.3.3 Open Questions
 
-> **Status.** Q1–Q8 (resolved 2026-07-09) are recorded in [`prd.md`](prd.md) (Q1 → D5; Q2 → D6; Q3 → D8; Q4 → D9; Q5 → Release identity; Q6 → D3; Q7 → D7; Q8 → Compatibility posture); their entries keep the options, pros and cons, and adopted resolutions. **Reopened 2026-07-10:** the follow-up adversarial review ([`revised-prd.md`](revised-prd.md)) made prescriptions that PRD Rev 11 deliberately did **not** adopt; each is tracked as Q9–Q15 below. Q9–Q14 were resolved the same day (PRD Revs 12–18; Q13 via a revised hybrid after live verification on channel `90vr`; Q14 reaffirming Q1 against the reversal); Q15 (release sizing) was resolved 2026-07-10 as **Option C** — a single v2.3.3 release containing every phase of the PRD (PRD Rev 19). **All fifteen questions are resolved; implementation is unblocked.** Rev 11 also corrected Q7's factual premise — see the note on that entry.
+> **Status.** Q1–Q8 (resolved 2026-07-09) are recorded in [`prd.md`](prd.md) (Q1 → D5; Q2 → D6; Q3 → D8; Q4 → D9; Q5 → Release identity; Q6 → D3; Q7 → D7; Q8 → Compatibility posture); their entries keep the options, pros and cons, and adopted resolutions. **Reopened 2026-07-10:** the follow-up adversarial review ([`revised-prd.md`](revised-prd.md)) made prescriptions that PRD Rev 11 deliberately did **not** adopt; each is tracked as Q9–Q15 below. Q9–Q14 were resolved the same day (PRD Revs 12–18; Q13 via a revised hybrid after live verification on channel `90vr`; Q14 reaffirming Q1 against the reversal); Q15 (release sizing) was resolved 2026-07-10 as **Option C** — a single v2.3.3 release containing every phase of the PRD (PRD Rev 19). **All fifteen questions are resolved; implementation is unblocked.** Rev 11 also corrected Q7's factual premise — see the note on that entry. **Reopened 2026-07-17:** the adversarial review of the Phase 3–4 *implementation* (working tree, pre-commit) found four gaps where the PRD under-specifies the fix; they are tracked as **Q16–Q19 below**. **All four were resolved 2026-07-18** (Q16: Option A; Q17: Option B; Q18: Option A; Q19: Option A) — Q16 in `prd.md` D9's code-inventory note (Rev 23) and the task-list header, with the legacy-error conversion it defers now specified by the [v2.3.4 PRD](../../v2.3.4/prd.md); Q17 in `prd.md` D5's pre-check-scope bullet (Rev 24); Q18 in `prd.md` D5's partial-disclosure bullet and D7's shared-vocabulary note (Rev 25); Q19 in `prd.md` D5's font-loading-order bullet (Rev 26). **Reopened again 2026-07-18:** the follow-up adversarial review of the Phase 3–4 implementation ([Phase-3-&-4-review.md](Phase-3-&-4-review.md)) raised two findings that need decisions rather than direct fixes — its P4-4 (`channel_join` envelope vs. the recorded v2.3.4 Q1 deferral) and P4-8 (an internal PRD contradiction on the dual-description marker) — tracked as **Q20–Q21 below**. The review's remaining findings are remediation work under the already-resolved decisions, not new questions. **Both were resolved 2026-07-18** — Q20 (Option A) in `prd.md` D9's `channel_join` pass-through note (Rev 28), with the split recorded in the [v2.3.4 PRD](../../v2.3.4/prd.md)'s Q1 context; Q21 (Option B) as the in-place correction of D5's Q14 sentence (Rev 29), with the marker tests upgraded to assert the emitted `tools/list`. **All twenty-one questions are resolved; Phase 4 closes when the review's remediation findings land.** They gate the finalization of Phase 4 (and Q16 gated the Phase 12 playbook), not the start of any other phase. A set of one-line ratifications from the same review is recorded at the end of this file.
 
 This file records the unresolved decisions in [`prd.md`](prd.md) Track 2 (safety-contract gap closure). Each question lists the viable options with pros and cons, and a recommendation. The questions come from an adversarial re-review of the PRD against the source and against live plugin behavior (2026-07-09). Resolve each one by recording the decision in the PRD (new D-note or an edit to D5–D8) and deleting or checking off the entry here.
 
@@ -25,6 +25,12 @@ All recommendations apply one shared criterion: the primary consumer of this con
 | Q13 | Connectors (Gap 9): verify-and-fix, full redesign, or leave as is? | Phase 11 | ✅ **Resolved: revised hybrid** (2026-07-10) — explicit-template core adopted, FigJam-only rejected; recorded in `prd.md` D12/Phase 11 |
 | Q14 | Does the emitted-`tools/list` argument overturn Q1's Option B? | **Phase 4** | ✅ **Resolved: Option A** (2026-07-10) — Q1 reaffirmed, reversal rejected; recorded in `prd.md` D5 |
 | Q15 | One release or two, and under which version number? | **before implementation** | ✅ **Resolved: Option C** (2026-07-10) — Single v2.3.3 release |
+| Q16 | Which error codes exist? Inventory and granularity for the D5 refusals and fallbacks | **Phase 4 finalization, Phase 12** | ✅ **Resolved: Option A** (2026-07-18) — recorded in `prd.md` D9 (Rev 23); legacy conversion deferred to the [v2.3.4 PRD](../../v2.3.4/prd.md) |
+| Q17 | How far does "validate the complete plan before the first write" go? | **Phase 4 finalization** | ✅ **Resolved: Option B** (2026-07-18) — recorded in `prd.md` D5 (Rev 24); alias-target and paints-present pre-checks added, value-type simulation rejected |
+| Q18 | What shape does "reported explicitly as partial" take on non-batch tools? | **Phase 4 finalization** (vocabulary shared with Phase 6) | ✅ **Resolved: Option A** (2026-07-18) — recorded in `prd.md` D5 and D7 (Rev 25); the Q9 fields inside `error.details`, rollback rejected |
+| Q19 | Font-loading order for new TEXT styles: real font or hardcoded default? | **Phase 4 finalization** | ✅ **Resolved: Option A** (2026-07-18) — recorded in `prd.md` D5 (Rev 26); hoist for updates only, creates read the real font, Inter guess rejected |
+| Q20 | `channel_join` failures: how much of the P4-4 fix lands in v2.3.3? | **Phase 4 closure** (review P4-4) | ✅ **Resolved: Option A** (2026-07-18) — recorded in `prd.md` D9 (Rev 28); codes at origin, verbatim pass-through; envelope convergence stays with v2.3.4 Q1 |
+| Q21 | Which dual-description wording is the contract, and where is it asserted? | **Phase 4 closure** (review P4-8) | ✅ **Resolved: Option B** (2026-07-18) — recorded in `prd.md` D5 (Rev 29); D5's example wording ratified, Q14 sentence corrected, tests assert emitted `tools/list` |
 
 ---
 
@@ -391,3 +397,170 @@ Gap 3's lesson is that the schema is what teaches the model what to supply. Whic
 **Recommendation.** Option A. Version numbers are criterion-neutral (Q5), so the two criteria reduce this question to *when the model-facing repairs ship*: A delivers essentially all of the first-call-correctness and recovery improvements in release one, while B and C deliver the same improvements later for no gain on either axis. Reviewability — the PRD's own flagged risk — points the same direction, so no trade-off remains between the criteria and the release logistics.
 
 **Decision (2026-07-10, recorded in PRD Rev 19).** **Option C adopted** — v2.3.3 ships as a single release containing every phase of the PRD. One release cycle, one contract-doc/guide sync pass, no renumbering churn, and Q5 policy continuity outweighed the split's earlier-shipping argument; the reviewability risk is carried by the mitigations already in the PRD's risk table (per-phase commits in dependency order under the Phase 3 type gate; rebuild diffs).
+
+---
+
+## Q16 — Which error codes exist? Inventory and granularity for the D5 refusals and fallbacks
+
+**Status: ✅ resolved, 2026-07-18 — Option A adopted.** Recorded in [`prd.md`](../prd.md) D9 as the code-inventory note (Rev 23), with the amended inventory in the task-list header. The ratified inventory: the ten operational codes plus the six D5 verification codes, each with a Phase 12 playbook entry, plus `UNKNOWN_ERROR` as the documented legacy fallback with its own entry. The dispatcher's prose-matching is deleted (structured object thrown ⇒ pass through; anything else ⇒ `UNKNOWN_ERROR`); every coded refusal originates from the central registry of message factories; the client's `JOIN_ERROR` default is removed in favor of the socket's real code. Converting the legacy failure surface (measured 2026-07-18: 332 inline `throw new Error` sites across 15 files, 51 of them wrapping central-table strings) is **deferred to the [v2.3.4 PRD](../../v2.3.4/prd.md)**, where `UNKNOWN_ERROR` becomes a burn-down metric. The options and rationale below are kept for the record.
+
+**Context.** The task list's header enumerates exactly ten new codes for this release, all belonging to Phases 9–11. But D9 requires every refusal Phase 4 adds or edits to travel as `{error: {code, message, details?}}`, so the D5 verification refusals need codes too — and neither the PRD nor the task list names them. The working-tree implementation minted them ad hoc: six per-object verification codes (`VARIABLE_NAME_MISSING`/`MISMATCH`, `COLLECTION_NAME_MISSING`/`MISMATCH`, `STYLE_NAME_MISSING`/`MISMATCH` — with `COLLECTION_NAME_MISSING` thrown by the handler but absent from the central `ERRORS` registry), plus three fallback codes that appear nowhere in any decision (`UNKNOWN_ERROR`, `JOIN_ERROR`, and `OPERATION_DENIED` — the last derived by prefix-sniffing message prose, which D9 explicitly forbids: "codes are never reconstructed by parsing prose"). Every code needs a Phase 12 playbook entry, so the inventory must be ratified before the playbook can be written. The same resolution should fix the mechanism: the implementation's `getStructuredError` currently assigns codes by substring-matching thrown strings against the `ERRORS` table, and handlers throw inline object literals whose text diverges from the central entries carrying the same code.
+
+**Option A — per-object, per-cause codes; `UNKNOWN_ERROR` ratified as the legacy fallback; prose-matching deleted.** Keep the six verification codes. Handlers throw structured objects built from a central registry of message factories (so one authored text carries the D5 stored/received operands *and* the D9 read-tool + "pass it back verbatim" recovery). Legacy uncoded throws — messages this release did not add or edit — pass through with `UNKNOWN_ERROR`, which is documented as exactly that. `OPERATION_DENIED` and every `includes`/`startsWith` mapping are deleted; `JOIN_ERROR` is either ratified for the join path or replaced by the socket's real codes.
+
+- First-call correctness: **neutral** — codes are recovery surface, not composition surface.
+- One-round-trip recovery: **strongest.** D9 says "name the cause distinctly (missing vs. mismatched vs. stale)"; a distinct code per cause lets the playbook key one entry per code and lets the model branch without reading prose. The factory mechanism ends the current split where the central text names the read tool but lacks operands and the handler text has operands but lacks the read tool.
+- Other: eight-plus playbook entries in Phase 12; the task-list header's "ten codes" claim must be amended to the ratified list.
+
+**Option B — one generic `NAME_VERIFICATION_FAILED` code with `details: {objectType, cause}`.**
+
+- First-call correctness: **neutral.**
+- One-round-trip recovery: **weaker in practice.** The message must still distinguish every cause (D9), so nothing is saved on the authoring side; meanwhile the playbook and the model key on a code that no longer identifies the failure — the distinction migrates into `details`, one level further from where agents look first.
+- Other: smaller code list; less precedent alignment (the existing convention — `PARENT_NAME_MISMATCH` — is already per-cause).
+
+**Option C — keep the implementation as is (prose-derived codes, divergent local strings).**
+
+- Rejected on the record rather than scored: it violates D9's "codes are never reconstructed by parsing prose" verbatim, the substring matching is iteration-order dependent, and two divergent message texts share each code today.
+
+**Recommendation.** Option A. Record the ratified inventory in the task-list header and D9, and require that every coded refusal originates from the central registry — the registry entry is the *only* definition, and handlers pass operands into it rather than composing text locally.
+
+---
+
+## Q17 — How far does "validate the complete plan before the first write" go?
+
+**Status: ✅ resolved, 2026-07-18 — Option B adopted.** Recorded in [`prd.md`](../prd.md) as D5's pre-check-scope bullet (Rev 24): the letter plus the two cheap predictable checks, both before any mutation — an alias `value` on `UPDATE_VARIABLE` resolves its target variable via `getVariableByIdAsync`, and a PAINT-style `bindVariables` request verifies the style has paints before `name`/`description`/`properties` apply. Deep value-type/coercion simulation is rejected (a wrong pre-validation would refuse calls Figma accepts, and drifts with the API). The boundary rule is recorded in D5 for future tools: pre-validate what one read can confirm; disclose what only execution can reveal (disclosure shape: Q18). Phase 4's handler and test tasks carry the two checks. The options and rationale below are kept for the record.
+
+**Context.** D5's letter names two pre-checks: a supplied `value` requires a valid `modeId` before any `UPDATE_VARIABLE` mutation, and style updates resolve every variable binding before applying `name`/properties. Both are implemented. But the review found remaining *predictable* failures that still mutate first and then throw a clean error: an alias `value` whose target variable ID does not resolve, a type-incompatible `value`, and — on the style path — a PAINT-style `bindVariables` request against a style with zero paints (the "set paints first" error is thrown only after name/description/properties have been applied). D5's own heading is "validate the complete plan before the first write" and its principle is "predictable failures return with zero mutation," so the letter and the spirit diverge.
+
+**Option A — the letter only.** Keep the two named checks; every other late failure is handled by the Q18 partial-mutation disclosure.
+
+- First-call correctness: **neutral.**
+- One-round-trip recovery: **degraded for known-predictable cases.** A zero-mutation refusal is the cheapest recovery there is — correct the call and retry, nothing to restore. Leaving foreseeable failures in the "partial" bucket converts a zero-cost recovery into a restore-then-retry.
+- Other: smallest diff; matches the PRD text literally.
+
+**Option B — the letter plus the cheap predictable checks.** Before any mutation: resolve an alias `value`'s target (`getVariableByIdAsync`, one call), and on PAINT styles with a `bindVariables` request, check paints are non-empty (one length check). Deep value-type validation is *not* attempted; genuinely unexpected failures fall to Q18.
+
+- First-call correctness: **neutral.**
+- One-round-trip recovery: **improved where it is cheap.** The two checks close the reachable predictable-late-failure cases the review actually found, at the cost of one async read and one length check.
+- Other: two small, testable additions; the boundary rule is articulable ("pre-check anything that is one read or one property check; never simulate Figma's coercion").
+
+**Option C — full plan validation, including value-type/coercion simulation.**
+
+- First-call correctness: **negative risk.** Replicating Figma's value coercion rules invites a new failure class — a pre-check that refuses a call Figma would have accepted — and the simulation drifts as the plugin API evolves.
+- One-round-trip recovery: **no better than B** for the cases that occur.
+- Other: the largest and most fragile surface for the smallest residual.
+
+**Recommendation.** Option B, with the boundary rule recorded in D5 so future tools apply the same line: pre-validate what one read can confirm; disclose (Q18) what only execution can reveal.
+
+---
+
+## Q18 — What shape does "reported explicitly as partial" take on non-batch tools?
+
+**Status: ✅ resolved, 2026-07-18 — Option A adopted.** Recorded in [`prd.md`](../prd.md) as D5's partial-disclosure bullet plus a shared-vocabulary note in D7's Q9 bullet (Rev 25): an unexpected mid-update failure on `variable_manage`/`style_manage` returns a D9 error whose `details` carries the Q9 fields — `partialMutation: true`, a plain-language statement of what changed, and cheap before-values (the original `name`/`description`, already in hand from verification); a clean failure never carries the flag. Tool-local rollback is rejected (the no-transaction posture; a failed rollback is an undisclosed partial). The field names are recorded as shared between the Phase 4 non-batch shape and the Phase 6 batch rows — drift between them fails review — and both task lists carry the deterministic injected-failure tests. The options and rationale below are kept for the record.
+
+**Context.** The Phase 4 task requires that "an unexpected mid-update failure is reported explicitly as partial via a D9 error — never as a clean failure" for `variable_manage` and `style_manage`. Q9 defined the disclosure vocabulary — `partialMutation: true`, a plain-language statement of what changed, cheap before-values — but only for *batch failure rows*. These two tools are not batches; there is no row envelope, and the field shape for the non-batch case is defined nowhere. The working-tree implementation omitted the disclosure entirely: a style rename followed by a throwing property setter propagates the raw error as a clean failure, and the updated test suite asserts that non-compliant behavior.
+
+**Option A — reuse the Q9 vocabulary inside `error.details`.** The refusal's `details` carries `partialMutation: true`, the plain-language statement, and before-values where cheap. The before-values *are* cheap here: the handler resolved the object and verified its current name before mutating, so the original `name` (and read `description`) are already in hand.
+
+- First-call correctness: **neutral** — the happy path is unchanged.
+- One-round-trip recovery: **achieved, with one convention.** The restoring write composes directly from the error, and the model learns a single partial-mutation vocabulary that means the same thing in a batch row (Phase 6) and a non-batch `details` object (Phase 4).
+- Other: additive fields inside an error shape D9 already defines; Phase 6 and Phase 4 must agree on field names, which is the point.
+
+**Option B — tool-local rollback: capture before-values, restore on failure, report a clean failure.**
+
+- First-call correctness: **neutral.**
+- One-round-trip recovery: **better when it works, worst when it does not.** A rollback that itself fails produces an undisclosed partial — the exact state this requirement exists to eliminate — and the PRD's posture is already chosen: the non-goals reject a rollback/transaction layer, and the Phase 4 text says *report* as partial, not restore.
+- Other: contradicts the recorded posture; more code on the failure path, which is the least-tested path.
+
+**Option C — a new dedicated non-batch shape.**
+
+- One-round-trip recovery: **equal to A** per incident, but the model must learn two vocabularies for one concept, and the guides must teach both.
+- Other: no gain over A anywhere; rejected unless Phase 6 discovers the Q9 fields cannot express something the non-batch case needs.
+
+**Recommendation.** Option A. Record the shared field names in D7/D9 so Phase 6 and Phase 4 cannot drift, and add the deterministic injected-failure tests the Phase 4 task already lists (a mid-update failure carries the flag and before-values; a clean failure never does).
+
+---
+
+## Q19 — Font-loading order for new TEXT styles: real font or hardcoded default?
+
+**Status: ✅ resolved, 2026-07-18 — Option A adopted.** Recorded in [`prd.md`](../prd.md) as D5's font-loading-order bullet (Rev 26): font loading is hoisted only for updates (the target font — the supplied `properties.fontName`, else the style's actual `fontName` — loads before any mutation); creates return to create → read the fresh style's actual `fontName` → load → write properties, inside the existing rollback guard. The hardcoded `{family: "Inter", style: "Regular"}` guess is rejected as a contract-invisible, document-dependent failure. A fork comment records why the two paths order operations differently, and the Phase 4 test task pins the mock's default font to something other than Inter so the guess cannot silently return. This was the last open question — all nineteen are resolved. The options and rationale below are kept for the record.
+
+**Context.** To satisfy validate-before-mutate, the implementation hoisted font loading above the style-mutation block for *both* paths. On the update path that is correct and cheap (the style's real `fontName` is readable before mutation). On the create path no style exists yet to read, so the code guesses a default — `{family: "Inter", style: "Regular"}` — and loads that. If `createTextStyle()`'s actual default ever differs (older documents default to Roboto; Figma controls this, not the plugin), a create-with-text-properties call fails with an unloaded-font error where the pre-Phase-4 code succeeded, because the old code created first and loaded the style's *actual* font. The existing unit test passes only because its mock's default is Inter.
+
+**Option A — hoist for updates only; creates read the real font.** Updates keep load-before-mutate. Creates return to: create the style, read its actual `fontName`, load it (or the explicitly supplied `properties.fontName`), then write properties — inside the existing rollback guard, which removes the fresh style on any failure.
+
+- First-call correctness: **restored for creates on any document.** The call succeeds as composed regardless of the document's default font — no contract-invisible dependency.
+- One-round-trip recovery: **neutral** — failures on either path remain structured and, for creates, roll back cleanly.
+- Other: the two paths order operations differently; a one-sentence comment at the fork records why (an existing style is at risk before mutation; a fresh style is disposable under the rollback guard, so creation-before-load is safe).
+
+**Option B — keep the Inter guess.**
+
+- First-call correctness: **document-dependent failure the model cannot predict.** Nothing in the schema or guides tells the model that create-with-text-properties fails on documents whose default font is not Inter.
+- Other: also sits badly with D4's discipline — a runtime behavior change on a live-verified path that no decision required.
+
+**Option C — guess, then recover: try the default, and on an unloaded-font error read the real name and retry internally.**
+
+- First-call correctness: **equal to A** in outcome.
+- Other: strictly more code than A to preserve a guess A removes; the retry path exists only to compensate for the wrong initial choice.
+
+**Recommendation.** Option A, plus updating the unit test so the mock's default font is *not* Inter — the test should fail if the guess ever returns.
+
+---
+
+## Q20 — `channel_join` failures: how much of the P4-4 fix lands in v2.3.3?
+
+**Status: ✅ resolved, 2026-07-18 — Option A adopted.** Recorded in [`prd.md`](../prd.md) as D9's `channel_join` pass-through note (Rev 28): v2.3.3 fixes the Q16 violations inside the existing in-band envelope — structured codes pass through into `errorCode` verbatim (unknown codes never collapse to `UNKNOWN_ERROR`), `details` is preserved, the prose-classification branches are deleted, and the two locally-generated failures are coded at origin in `figma-client` (`CHANNEL_JOIN_FAILED` on request timeout, `PLUGIN_DISCONNECTED` on connection close). Envelope convergence to `isError` stays deferred to the [v2.3.4 PRD](../../v2.3.4/prd.md)'s Q1, whose context now records that this split reduces Q1 to the envelope question alone. Phase 4's transport tasks and tests carry the pass-through work. The options and rationale below are kept for the record.
+
+**Context.** After the `joinErrorCode` fix, `channel.ts` preserves only `CHANNEL_NOT_FOUND`. Its other branches still classify by prose (`message.includes("timed out")`, `includes("Connection closed")`), any unrecognized structured code collapses to `UNKNOWN_ERROR`, and failures return as a *successful* tool result carrying in-band `status: "error"` + `errorCode` fields — no `isError`. Phase 9's four join codes (`PLUGIN_PEER_UNAVAILABLE`, `PLUGIN_PEER_AMBIGUOUS`, `CHANNEL_IN_USE`, `VERSION_MISMATCH`) would be destroyed on arrival. The finding bundles two different obligations: prose classification and code destruction violate Q16 *now*, while the in-band-envelope shape is exactly the question the [v2.3.4 PRD](../../v2.3.4/prd.md) records as its Q1 (convergence on the D9 `isError` boundary, recommendation Option A there, **deliberately deferred**). The review's literal remediation ("let the production wrapper create the MCP error result") would resolve v2.3.4's Q1 as a side effect of a bug fix.
+
+**Option A — split along the recorded decision boundary.** v2.3.3 fixes the Q16 violations inside the existing envelope: every structured `error.code` passes through into `errorCode` verbatim (unknown codes included — no collapse to `UNKNOWN_ERROR`); the prose-classification branches are deleted, with the two locally-generated failures (request timeout, connection closed) getting their codes assigned **at origin** in `figma-client` (coded `FigmaError`s for the values `channel.ts` already invents: `CHANNEL_JOIN_FAILED`, `PLUGIN_DISCONNECTED`) rather than sniffed from message text; `details` is preserved. The envelope stays in-band; convergence to `isError` remains v2.3.4 Q1's question.
+
+- First-call correctness: **preserved.** The join-result reading contract agents already know does not change mid-release; the guides keep teaching one shape.
+- One-round-trip recovery: **restored where it is broken.** Codes survive verbatim, so Phase 9's refusals arrive intact and the playbook can key on them; prose-derived misclassification is gone.
+- Other: honors the recorded Q1 deferral instead of resolving it by accident; if Q1 later chooses convergence, `channel_join` callers see a second (planned, CHANGELOG'd) envelope change.
+
+**Option B — pull v2.3.4 Q1 forward and converge now.** `channel_join` failures become D9 `isError` + `structuredContent` errors like every other tool; the in-band fields are removed; v2.3.4's Q1 is recorded as resolved-by-execution.
+
+- First-call correctness: **one convention sooner**, at the cost of a breaking envelope change for any caller reading the in-band fields, in a release whose breaking surface is already the largest ever.
+- One-round-trip recovery: **equal to A** once P4-1 is fixed — the same codes arrive either way; only the wrapper differs.
+- Other: depends on the P4-1 remediation landing first (the `isError` envelope is currently rejected by conforming clients for schema'd tools); collapses a documented open decision into a side effect, against this file's own discipline.
+
+**Option C — leave `channel_join` untouched until Phase 9.**
+
+- Rejected on inspection: Phase 9's codes would be born into a transport that destroys them, and the Q16 "codes are never derived from prose" rule is violated by shipped v2.3.3 code today.
+
+**Recommendation.** Option A. The shared criterion cannot separate A from B on recovery, and A wins on process: it fixes every violation that exists now without deciding v2.3.4's Q1 by accident, and it keeps the envelope decision where its options and costs are already written down. Record in the v2.3.4 PRD's Q1 context that the v2.3.3 pass-through fix has landed, so Q1 reduces cleanly to the envelope question alone.
+
+---
+
+## Q21 — Which dual-description wording is the contract, and where is it asserted?
+
+**Status: ✅ resolved, 2026-07-18 — Option B adopted.** Recorded in [`prd.md`](../prd.md) as the in-place correction of D5's Q14 sentence (Rev 29): the contract is the D5 example form — the literal "REQUIRED for …" marker in the field description, a natural sentence naming the action and the field in the tool description ("UPDATE_VARIABLE requires `currentVariableName`") — ratifying the wording the implementation already uses, at zero description churn. The valid half of the finding is adopted regardless: the Phase 4 marker-test task now asserts both locations against the **emitted `tools/list` result** rather than raw registration configuration. This was the last open question — all twenty-one are resolved; the follow-up review's remaining findings are remediation work under recorded decisions. The options and rationale below are kept for the record.
+
+**Context.** The PRD contradicts itself. D5's mechanism bullet gives the tool-description example *"UPDATE_VARIABLE requires `currentVariableName`"* — which the implementation follows verbatim — while the Q14 resolution sentence says CI asserts *"the 'REQUIRED for …' text present in **both** the field and tool descriptions."* The field descriptions carry the literal `REQUIRED for …` marker; the tool descriptions carry the D5 example's plain-English form. The review holds the implementation to the Q14 literal. Separately and validly: the current marker tests assert against raw registration config, not the emitted `tools/list` metadata a client actually sees.
+
+**Option A — the Q14 literal wins.** Tool descriptions are reworded to carry the literal `REQUIRED for …` marker in both locations; D5's example wording is corrected to match; tests assert the literal string in both places.
+
+- First-call correctness: **no measurable gain.** Models read "UPDATE_VARIABLE requires `currentVariableName`" and "REQUIRED for UPDATE_VARIABLE — `currentVariableName`" identically; the marker is a CI-checkability token, not a comprehension aid.
+- Other: churns descriptions that already work to satisfy a sentence written as a test-mechanism summary; the reworded tool description reads less naturally as prose.
+
+**Option B — ratify D5's example; correct the Q14 sentence.** The contract is: field descriptions carry the literal `REQUIRED for …` marker; tool descriptions state the requirement as a natural sentence naming the action and the field (the D5 example form). The Q14 record is amended to say exactly what the marker test asserts at each location.
+
+- First-call correctness: **equal to A** for the LLM consumer — the requirement is stated twice either way, and the natural-sentence form is what D5 deliberately designed for the tool-level summary.
+- Other: zero description churn; one-line doc correction; the contradiction is resolved in favor of the text that carries the design rationale rather than the text that summarizes the test.
+
+**Adopted under both options (the valid half of P4-8):** the marker tests are upgraded to assert against the **emitted `tools/list` result** — the serialized metadata a consumer actually receives — rather than raw registration configuration, for every conditional requirement.
+
+**Recommendation.** Option B. The two options are indistinguishable on the shared criterion; B resolves the contradiction at zero churn by recognizing that Q14's sentence described the test mechanism loosely rather than prescribing wording, while D5's example was the deliberate design. The emitted-`tools/list` upgrade is the substantive fix and ships regardless.
+
+---
+
+## Minor ratifications from the 2026-07-17 implementation review
+
+Small decisions from the same review that need a recorded answer but not an options analysis. Each takes effect when its Phase 4 fix lands; record dissent by editing this list.
+
+1. **`description: ""` semantics.** The implementation changed `if (description)` to `if (description !== undefined)`, so an empty string now clears a style's description — a behavior change no decision required. **Ratify: revert to the old guard** (the non-goals' minimal-edit rule); adopting clear-on-empty-string is a candidate for a future release with its own CHANGELOG line.
+2. **Empty-string current names.** The schemas treat `""` as missing (falsy check); the plugin treats it as present (`=== undefined` check) — a layer inconsistency. **Ratify: the plugin also treats `""` as missing** (fail closed, matching the schema), and the `currentStyleName: ""` test fixture is replaced with the mock's real name.
+3. **`ui.html` defects.** The UI's own pending-request path stringifies object errors (`new Error(data.error)`) and its `state.pendingRequests.delete(id)` references an undefined `id` (should be `data.id`) — both pre-existing, both on the join-adjacent path Phase 9 rewrites. **Ratify: defer both to Phase 9**; this entry is the tracked record.
+4. **`z.record` two-argument fixes** in `annotation.ts`/`create.ts`/`node.ts` are correct zod-4 corrections but belong to no phase. **Ratify: keep, with a provenance row** (the Rev 22 precedent for the identical fix in `src/shared/nodeTypes.ts`).
+5. **CI step layout.** PRD Rev 21 says `check:suppressions` ships "in the same CI step" as the type gate; the implementation uses two adjacent steps. **Ratify: two adjacent steps satisfy the intent**; the task list's "beside" wording governs.

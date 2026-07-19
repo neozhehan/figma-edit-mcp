@@ -25,6 +25,20 @@ export function looseOutput<T extends z.ZodRawShape>(shape: T) {
     return z.object(shape).catchall(z.any());
 }
 
+/**
+ * The D9 structured-error envelope every tool can return in `structuredContent`
+ * on `isError: true` results: `{error: {code, message, details?}}`. Advertised
+ * as an optional field on every output schema (see `withStrictInputSchemas`) so
+ * the pinned SDK client — which validates `structuredContent` against the
+ * advertised output schema even on error results — accepts error envelopes
+ * instead of failing them with `-32602`.
+ */
+export const errorEnvelope = z.object({
+    code: z.string().describe("Stable machine-readable failure code (see the error playbook)"),
+    message: z.string().describe("Human/agent-readable message embedding its own recovery"),
+    details: z.any().optional().describe("Optional structured context (e.g. partialMutation, before-values)"),
+});
+
 export function toolResult(result: unknown) {
     const payload: Record<string, unknown> =
         result && typeof result === "object" ? (result as Record<string, unknown>) : {};

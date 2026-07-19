@@ -16,6 +16,6 @@
         "handlers/**/*",
         "utils/**/*",
         "types/**/*",
-        "../src/shared/**/*"
+        "../src/shared/nodeTypes.ts"
     ]
 }
