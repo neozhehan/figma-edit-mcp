@@ -7,7 +7,7 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { sanitizeForPostMessage } from '../utils/sanitize.js';
 import { findInstanceAncestor, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
-import { ERRORS, formatScopeError as formatScopeErrorForRoot, getStructuredError } from '../utils/errors.js';
+import { ERRORS, REFUSALS, formatScopeError as formatScopeErrorForRoot, getStructuredError } from '../utils/errors.js';
 
 // Import handlers
 import { getNodesInfo, getPagesInfo } from '../handlers/nodeReaders.js';
@@ -139,7 +139,7 @@ async function validateSingleNodeWrite(params: any, options: { checkScopeRoot?: 
 async function validateParentWrite(params: any, options: { checkLocked?: boolean, instanceCheckVerb?: string }) {
     if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
     if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-    if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+    await verifyParentNameOrThrow(params ? params.parentId : null, params ? params.parentNodeName : null);
     const parent = await figma.getNodeByIdAsync(params?.parentId);
     if (parent) {
         if (options.checkLocked) assertNotLocked(parent);
@@ -147,12 +147,39 @@ async function validateParentWrite(params: any, options: { checkLocked?: boolean
     }
 }
 
-// Helper: Verify parent name matches expected name
-async function verifyParentName(parentId: any, expectedParentName: any) {
+// Helper: Verify parent name matches expected name, throwing the coded D6
+// refusal (Q22, Rev 31) with distinct causes — missing vs. mismatched — so an
+// agent that omits the name is not steered into swapping a correct parentId.
+// Defense in depth: the server schema already requires parentNodeName, so a
+// conforming client never reaches the "missing" branch.
+async function verifyParentNameOrThrow(parentId: any, expectedParentName: any) {
+    // C9: omission is nullish (undefined/null), not falsy — a present empty
+    // string is a real value (a parent legitimately named "") and must be
+    // compared exactly, so "" against a non-empty parent is MISMATCH, not
+    // MISSING, and an empty-named parent can still be targeted.
+    if (expectedParentName == null) throw REFUSALS.PARENT_NAME_MISSING();
     const node = await figma.getNodeByIdAsync(parentId);
-    if (!node) return false;
+    if (!node || node.name !== expectedParentName) {
+        throw REFUSALS.PARENT_NAME_MISMATCH(node ? node.name : "(parent not found)", expectedParentName);
+    }
+}
 
-    return node.name === expectedParentName;
+// Defense-in-depth duplicate-target guard for the batch tools (Q23 Option B /
+// ratification 6). The first-class rejection is the schema `.superRefine()` on
+// the batch inputs, so a conforming client never reaches this; a non-conforming
+// client that bypasses the schema still fails closed. Both throws are prose on
+// the UNKNOWN_ERROR fallback (legacy surface, v2.3.4 burn-down) — no new code is
+// minted here. Node-ID spellings are normalized (`1-2` vs `1:2`) before compare.
+function assertNoDuplicateTargets(items: any[]) {
+    const seen = new Set<string>();
+    for (const item of items) {
+        if (!item || !item.nodeId) throw new Error("Missing nodeId parameter");
+        const normalizedId = String(item.nodeId).replace(/-/g, ":");
+        if (seen.has(normalizedId)) {
+            throw new Error(`Operation Denied: Duplicate node ID detected: ${item.nodeId}. Batches must not contain duplicate targets.`);
+        }
+        seen.add(normalizedId);
+    }
 }
 
 // Helper: Clone node validation
@@ -459,6 +486,7 @@ async function handleCommand(command: any, params: any) {
                 throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
             }
 
+            assertNoDuplicateTargets(params.text);
             for (const item of params.text) {
                 const node = await figma.getNodeByIdAsync(item.nodeId);
                 if (!node) {
@@ -519,6 +547,7 @@ async function handleCommand(command: any, params: any) {
                 throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
             }
 
+            assertNoDuplicateTargets(params.nodes);
             const nodeIdsToDelete: any[] = [];
             for (const item of params.nodes) {
                 const node = await figma.getNodeByIdAsync(item.nodeId);
@@ -565,6 +594,7 @@ async function handleCommand(command: any, params: any) {
                     throw new Error(`Source node is not an instance: ${sourceNode.id} (type: ${sourceNode.type})`);
                 }
 
+                assertNoDuplicateTargets(params.targetNodes);
                 const targetNodeIds: any[] = [];
                 for (const item of params.targetNodes) {
                     const node = await figma.getNodeByIdAsync(item.nodeId);
@@ -584,17 +614,21 @@ async function handleCommand(command: any, params: any) {
                     targetNodeIds.push(item.nodeId);
                 }
 
+                // P6-5: these are pre-execution refusals — throw so they surface
+                // as proper errors (isError), not as an envelope-less success
+                // payload that the three-layer contract cannot classify. Prose
+                // messages ride the UNKNOWN_ERROR fallback (legacy surface,
+                // v2.3.4 burn-down).
                 const targetNodesResult = await getValidTargetInstances(targetNodeIds);
                 if (!targetNodesResult.success) {
                     figma.notify(targetNodesResult.message);
-                    return { success: false, message: targetNodesResult.message };
+                    throw new Error(targetNodesResult.message);
                 }
 
                 let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
                 if (!sourceInstanceData.success) {
-                    // @ts-expect-error TS2345: Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
-                    figma.notify(sourceInstanceData.message);
-                    return { success: false, message: sourceInstanceData.message };
+                    figma.notify(sourceInstanceData.message || "Failed to resolve source instance");
+                    throw new Error(sourceInstanceData.message || "Failed to resolve source instance");
                 }
                 return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
             }

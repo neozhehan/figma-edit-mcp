@@ -48,12 +48,12 @@ describe("node_clone (cloneNode): no figma.currentPage fallback", () => {
 
 describe("createComponentSet: combines on the first component's containing page", () => {
     it("passes the containing page (not currentPage) to combineAsVariants", async () => {
-        const page: any = { id: "page-1", type: "PAGE" };
+        const page: any = { id: "page-1", name: "page-1", type: "PAGE", appendChild: () => {} };
         const c1: any = { id: "c1", name: "c1", type: "COMPONENT", parent: page };
         const c2: any = { id: "c2", name: "c2", type: "COMPONENT", parent: page };
         let combinePageArg: any = null;
         (globalThis as any).figma = {
-            getNodeByIdAsync: async (id: string) => ({ c1, c2 } as any)[id] ?? null,
+            getNodeByIdAsync: async (id: string) => ({ c1, c2, "page-1": page } as any)[id] ?? null,
             combineAsVariants: (_comps: any[], pageArg: any) => {
                 combinePageArg = pageArg;
                 return { id: "set1", name: "Set", children: [], variantGroupProperties: {} };
@@ -67,6 +67,8 @@ describe("createComponentSet: combines on the first component's containing page"
             ],
             properties: ["Prop"],
             componentSetName: "Set",
+            parentId: "page-1",
+            parentNodeName: "page-1",
         }, page);
         await createComponentSet(plan);
         expect(combinePageArg).toBe(page);
@@ -74,14 +76,22 @@ describe("createComponentSet: combines on the first component's containing page"
     });
 
     it("throws when a component is detached (no containing page)", async () => {
-        const c1: any = { id: "c1", name: "c1", type: "COMPONENT", parent: null };
+        const f1: any = { id: "f1", name: "f1", type: "FRAME", parent: null, appendChild: () => {} };
+        const c1: any = { id: "c1", name: "c1", type: "COMPONENT", parent: f1 };
+        f1.children = [c1];
         (globalThis as any).figma = {
-            getNodeByIdAsync: async () => c1,
+            getNodeByIdAsync: async (id: string) => ({ c1, f1 } as any)[id] ?? null,
             combineAsVariants: () => ({}),
             currentPage: {},
         };
         expect(
-            validateCreateComponentSetPlan({ components: [{ nodeId: "c1", nodeName: "c1", propertyValues: ["A"] }], properties: ["Prop"], componentSetName: "Set" }, c1)
+            validateCreateComponentSetPlan({
+                components: [{ nodeId: "c1", nodeName: "c1", propertyValues: ["A"] }],
+                properties: ["Prop"],
+                componentSetName: "Set",
+                parentId: "f1",
+                parentNodeName: "f1",
+            }, f1)
         ).rejects.toThrow("not on a page");
     });
 });

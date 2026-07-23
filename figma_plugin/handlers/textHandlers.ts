@@ -7,53 +7,25 @@ import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js
 import { delay } from '../utils/helpers.js';
 import { setCharacters } from '../utils/textUtils.js';
 import { collectNodesToProcess } from '../utils/nodeUtils.js';
+import { batchEnvelope } from '../utils/batchResult.js';
 
 
 
 /**
- * Sets text content for a single text node
+ * Sets text content for multiple text nodes.
+ *
+ * `deps.setCharacters` is an injectable seam (defaults to the real utility) —
+ * the module-level `setCharacters` import is globally replaced by bun's
+ * `mock.module` in other test files and cannot be un-mocked per-file, so this
+ * seam lets the fault-path tests drive a controlled font-mutation-then-failure
+ * deterministically. Production always uses the default.
+ *
  * @param {Object} params - Parameters object
- * @param {string} params.nodeId - ID of the text node
- * @param {string} params.text - New text content
- * @returns {Promise<Object>} Result of the operation
- */
-async function setTextContent(params: any) {
-    const { nodeId, text } = params || {};
-
-    if (!nodeId) {
-        throw new Error("Missing nodeId parameter");
-    }
-
-    const node = await figma.getNodeByIdAsync(nodeId);
-    if (!node) {
-        throw new Error(`Node not found with ID: ${nodeId}`);
-    }
-
-    if (node.type !== "TEXT") {
-        throw new Error(`Node is not a text node: ${nodeId} (type: ${node.type})`);
-    }
-
-    // Use the setCharacters utility from textUtils
-    const success = await setCharacters(node, text);
-    if (!success) {
-        throw new Error(`Failed to set characters on node ${nodeId}`);
-    }
-
-    return {
-        success: true,
-        nodeId: nodeId,
-        text: text,
-    };
-}
-
-/**
- * Sets text content for multiple text nodes
- * @param {Object} params - Parameters object
- * @param {string} params.nodeId - Parent node ID (for context)
- * @param {Array} params.text - Array of {nodeId, text} objects
+ * @param {Array} params.text - Array of {nodeId, characters} objects
  * @returns {Promise<Object>} Results of the operations
  */
-export async function setMultipleTextContents(params: any) {
+export async function setMultipleTextContents(params: any, deps: { setCharacters?: typeof setCharacters } = {}) {
+    const applyChars = deps.setCharacters || setCharacters;
     const { text } = params || {};
     const commandId = params.commandId || generateCommandId();
 
@@ -88,58 +60,86 @@ export async function setMultipleTextContents(params: any) {
         text.length,
         0,
         `Starting text replacement for ${text.length} nodes`,
-        { totalReplacements: text.length }
+        { requestedCount: text.length }
     );
 
     const results: any[] = [];
     let successCount = 0;
     let failureCount = 0;
+    let skippedCount = 0;
+    let hasFailed = false;
 
     for (let i = 0; i < text.length; i++) {
         const replacement = text[i];
+        if (hasFailed) {
+            skippedCount++;
+            results.push({
+                success: false,
+                status: "skipped",
+                nodeId: replacement.nodeId || "unknown",
+                error: "Skipped due to previous failure in batch",
+            });
+            continue;
+        }
+
         if (!replacement.nodeId || replacement.characters === undefined) {
+            hasFailed = true;
             failureCount++;
             results.push({
                 success: false,
+                status: "failed",
                 nodeId: replacement.nodeId || "unknown",
                 error: "Missing nodeId or characters in replacement entry",
             });
-            break; // Stop on first failure
+            continue;
         }
 
+        let originalText = "";
+        // C1: the report is loop-scoped so the catch can read it even when
+        // setTextContent throws (a character-assignment failure after the font
+        // was mutated). setCharacters fills beforeFont before any mutation.
+        const report: { fontMutated?: boolean; beforeFont?: any } = {};
         try {
             console.log(`Attempting to replace text in node: ${replacement.nodeId}`);
             const textNode = await figma.getNodeByIdAsync(replacement.nodeId);
 
             if (!textNode) {
+                hasFailed = true;
                 failureCount++;
                 results.push({
                     success: false,
+                    status: "failed",
                     nodeId: replacement.nodeId,
                     error: `Node not found: ${replacement.nodeId}`,
                 });
-                break; // Stop on first failure
+                continue;
             }
 
             if (textNode.type !== "TEXT") {
+                hasFailed = true;
                 failureCount++;
                 results.push({
                     success: false,
+                    status: "failed",
                     nodeId: replacement.nodeId,
                     error: `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`,
                 });
-                break; // Stop on first failure
+                continue;
             }
 
-            const originalText = textNode.characters;
-            await setTextContent({
-                nodeId: replacement.nodeId,
-                text: replacement.characters,
-            });
+            originalText = textNode.characters;
+            // Apply directly to the already-validated node (no redundant re-fetch)
+            // and forward the Q24 report so a font mutation before a failed
+            // character assignment is disclosed.
+            const ok = await applyChars(textNode, replacement.characters, undefined, report);
+            if (!ok) {
+                throw new Error(`Failed to set characters on node ${replacement.nodeId}`);
+            }
 
             successCount++;
             results.push({
                 success: true,
+                status: "success",
                 nodeId: replacement.nodeId,
                 originalText: originalText,
                 translatedText: replacement.characters,
@@ -152,20 +152,34 @@ export async function setMultipleTextContents(params: any) {
                 "in_progress",
                 Math.round(((i + 1) / text.length) * 100),
                 text.length,
-                successCount + failureCount,
+                successCount + failureCount + skippedCount,
                 `Processed ${i + 1}/${text.length} text replacements`
             );
             await new Promise(r => setTimeout(r, 0));
 
         } catch (error: any) {
             console.error(`Error replacing text in node ${replacement.nodeId}: ${error.message}`);
+            hasFailed = true;
             failureCount++;
-            results.push({
+            // Q24 (as corrected for C1/C2): disclose partial mutation whenever
+            // setCharacters actually changed the node's font before the character
+            // assignment failed — the fallback path AND the mixed-font
+            // normalization path both mutate `fontName`. The before-value is the
+            // pre-mutation font snapshot. Clean failures (node gone, not TEXT,
+            // char-assign failure with no font change) carry no flag.
+            const row: any = {
                 success: false,
+                status: "failed",
                 nodeId: replacement.nodeId,
                 error: `Error applying replacement: ${error.message}`,
-            });
-            break; // Stop on first failure
+            };
+            if (report.fontMutated) {
+                row.partialMutation = true;
+                row.whatChanged = "the node's font was changed to satisfy the text edit before the character assignment failed";
+                row.before = { fontName: report.beforeFont };
+            }
+            results.push(row);
+            continue;
         }
     }
 
@@ -176,21 +190,21 @@ export async function setMultipleTextContents(params: any) {
         failureCount > 0 ? "error" : "completed",
         100,
         text.length,
-        successCount + failureCount,
-        `Text replacement complete: ${successCount} successful, ${failureCount} failed`,
+        successCount + failureCount + skippedCount,
+        `Text replacement complete: ${successCount} successful, ${failureCount} failed, ${skippedCount} skipped`,
         {
-            totalReplacements: text.length,
-            replacementsApplied: successCount,
-            replacementsFailed: failureCount,
+            // Q26: only the shared envelope counts — the legacy `totalReplacements`
+            // / `replacementsApplied` progress copies are dropped.
+            requestedCount: text.length,
+            succeededCount: successCount,
+            failedCount: failureCount,
+            skippedCount: skippedCount,
             results: results,
         }
     );
 
     return {
-        success: successCount > 0 && failureCount === 0,
-        replacementsApplied: successCount,
-        replacementsFailed: failureCount,
-        totalReplacements: text.length,
+        ...batchEnvelope(text.length, successCount, failureCount, skippedCount),
         results: results,
         commandId,
     };

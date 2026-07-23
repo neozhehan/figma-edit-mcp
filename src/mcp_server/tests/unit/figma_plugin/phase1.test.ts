@@ -258,7 +258,16 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             setupEnvironment();
             const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "Wrong Name", svg: "<svg></svg>" });
             expect(res.type).toBe("command-error");
-            expect(res.error.message).toContain("parentNodeName does not match");
+            expect(res.error.code).toBe("PARENT_NAME_MISMATCH");
+            expect(res.error.message).toContain("does not match the parent's stored name");
+            expect(createNodeFromSvgCalled).toBe(false);
+        });
+
+        it("rejects when parentNodeName is omitted with PARENT_NAME_MISSING (Q22/P5-2 defense in depth)", async () => {
+            setupEnvironment();
+            const res = await sendCommand("create_svg", { parentId: "parent-id", svg: "<svg></svg>" });
+            expect(res.type).toBe("command-error");
+            expect(res.error.code).toBe("PARENT_NAME_MISSING");
             expect(createNodeFromSvgCalled).toBe(false);
         });
 

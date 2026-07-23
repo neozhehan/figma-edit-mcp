@@ -127,12 +127,19 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
         return { page, scopeRoot, comp1, comp2, parentNode };
     }
 
-    async function sendCommand(params: any) {
+    // injectParent defaults ON for the existing tests, but is opt-OUT so the
+    // omission tests (P5-2) can exercise the plugin's missing-parent branch
+    // instead of it being masked by the helper's defaults.
+    async function sendCommand(params: any, opts: { injectParent?: boolean } = {}) {
+        const injectParent = opts.injectParent !== false;
+        const mergedParams = { ...params };
+        if (injectParent && !("parentId" in mergedParams)) mergedParams.parentId = "parent-id";
+        if (injectParent && !("parentNodeName" in mergedParams)) mergedParams.parentNodeName = "Parent Node";
         const msg = {
             type: "execute-command",
             command: "create_component_set",
             id: Math.random().toString(),
-            params
+            params: mergedParams
         };
         const resultPromise = new Promise<any>((resolve) => {
             gatePendingPromises.set(msg.id, resolve);
@@ -489,9 +496,46 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentNodeName: "Wrong Name"
         });
         expect(res2.type).toBe("command-error");
-        expect(res2.error.message).toContain("parentNodeName does not match");
+        expect(res2.error.code).toBe("PARENT_NAME_MISMATCH");
+        expect(res2.error.message).toContain("does not match the parent's stored name");
 
         expect(comp1.name).toBe("Button");
+        expect(combineAsVariantsCalled).toBe(false);
+    });
+
+    it("omitted parentNodeName fails closed with PARENT_NAME_MISSING (Q22/P5-2 defense in depth)", async () => {
+        const { comp1, comp2 } = setupEnvironment();
+        const res = await sendCommand({
+            components: [
+                { nodeId: "comp-1", nodeName: "Button", propertyValues: ["Small"] },
+                { nodeId: "comp-2", nodeName: "Button", propertyValues: ["Large"] }
+            ],
+            properties: ["Size"],
+            parentId: "parent-id"
+            // parentNodeName omitted
+        }, { injectParent: false });
+        expect(res.type).toBe("command-error");
+        expect(res.error.code).toBe("PARENT_NAME_MISSING");
+        expect(comp1.name).toBe("Button");
+        expect(comp2.name).toBe("Button");
+        expect(combineAsVariantsCalled).toBe(false);
+    });
+
+    it("omitted parentId fails closed with a parentId-specific message (Q22/P5-1)", async () => {
+        const { comp1, comp2 } = setupEnvironment();
+        const res = await sendCommand({
+            components: [
+                { nodeId: "comp-1", nodeName: "Button", propertyValues: ["Small"] },
+                { nodeId: "comp-2", nodeName: "Button", propertyValues: ["Large"] }
+            ],
+            properties: ["Size"],
+            parentNodeName: "Parent Node"
+            // parentId omitted
+        }, { injectParent: false });
+        expect(res.type).toBe("command-error");
+        expect(res.error.message).toContain("parentId is missing");
+        expect(comp1.name).toBe("Button");
+        expect(comp2.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
 

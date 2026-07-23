@@ -1,7 +1,10 @@
 import { describe, it, expect, mock } from "bun:test";
 
+// C7: a mutable transport return so the callback tests can drive a specific
+// handler-shaped payload through the REAL registered callback.
+let nextTransportResult: any = {};
 mock.module("../../../figma-client.js", () => ({
-    sendCommandToFigma: mock(() => Promise.resolve({})),
+    sendCommandToFigma: mock(() => Promise.resolve(nextTransportResult)),
     joinChannel: mock(() => Promise.resolve()),
     resetChannel: mock(() => { }),
 }));
@@ -14,11 +17,13 @@ const { registerAllTools } = await import("../../../tools/index.js");
 const { toJsonSchemaCompat } = await import("@modelcontextprotocol/sdk/server/zod-json-schema-compat.js");
 const { AjvJsonSchemaValidator } = await import("@modelcontextprotocol/sdk/validation/ajv-provider.js");
 
-// Capture every registered tool's schema
+// Capture every registered tool's schema and (C7) its wrapped callback
 const TOOLS: Record<string, any> = {};
+const HANDLERS: Record<string, Function> = {};
 const mockServer: any = {
     registerTool: (name: string, config: any, handler: Function) => {
         TOOLS[name] = config?.outputSchema;
+        HANDLERS[name] = handler;
     },
     tool: (name: string, _d: any, _s: any, handler: Function) => {
         // Ignored or handle differently
@@ -176,13 +181,15 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 name: "New Name",
                 oldName: "Old Name"
             },
-            // deleteMultipleNodes return shape
+            // deleteMultipleNodes return shape (Q26: envelope counts only)
             node_delete: {
                 success: true,
-                nodesDeleted: 1,
-                nodesFailed: 0,
-                totalNodes: 1,
-                results: [{ success: true, nodeId: "1:2" }],
+                status: "success",
+                requestedCount: 1,
+                succeededCount: 1,
+                failedCount: 0,
+                skippedCount: 0,
+                results: [{ success: true, status: "success", nodeId: "1:2" }],
                 completedInChunks: 1
             },
             node_clone: {
@@ -358,12 +365,14 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 success: true,
                 message: "Style deleted"
             },
-            // setMultipleTextContents return shape
+            // setMultipleTextContents return shape (Q26: envelope counts only)
             text_set_content: {
                 success: true,
-                replacementsApplied: 1,
-                replacementsFailed: 0,
-                totalReplacements: 1,
+                status: "success",
+                requestedCount: 1,
+                succeededCount: 1,
+                failedCount: 0,
+                skippedCount: 0,
                 results: []
             },
             // setTextStyle return shape
@@ -406,8 +415,13 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             },
             instance_set_overrides: {
                 success: true,
+                status: "success",
+                requestedCount: 1,
+                succeededCount: 1,
+                failedCount: 0,
+                skippedCount: 0,
+                totalAppliedCount: 1,
                 message: "Overrides applied",
-                totalCount: 1,
                 results: []
             },
             reaction_list: {
@@ -439,6 +453,11 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             },
             annotation_set: {
                 success: true,
+                status: "success",
+                requestedCount: 1,
+                succeededCount: 1,
+                failedCount: 0,
+                skippedCount: 0,
                 results: []
             }
         };
@@ -453,10 +472,91 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             });
         }
 
+        // Q26 (review P6-8/P6-11): the four batch tools advertise ONLY the shared
+        // envelope counts — no tool-specific duplicate count survives in the
+        // declared schema. Asserting against the declared (pre-relaxation) shape
+        // so a re-added alias fails here rather than being masked by looseOutput.
+        it("batch tools declare envelope counts only — no legacy duplicate counts", () => {
+            const legacyByTool: Record<string, string[]> = {
+                node_delete: ["nodesDeleted", "nodesFailed", "totalNodes", "deletedCount"],
+                text_set_content: ["replacementsApplied", "replacementsFailed", "totalReplacements", "count"],
+                annotation_set: ["annotationsApplied", "annotationsFailed", "totalAnnotations"],
+                instance_set_overrides: ["totalCount"],
+            };
+            const envelope = ["status", "requestedCount", "succeededCount", "failedCount", "skippedCount"];
+            for (const [tool, legacy] of Object.entries(legacyByTool)) {
+                // TOOLS[tool] is the registered (loose-relaxed) output schema; its
+                // `.shape` still lists exactly the declared field names.
+                const declared = (TOOLS[tool] as any).shape as Record<string, unknown>;
+                for (const gone of legacy) {
+                    expect(declared[gone], `${tool} must not declare legacy count ${gone}`).toBeUndefined();
+                }
+                for (const keep of envelope) {
+                    expect(declared[keep], `${tool} must declare envelope field ${keep}`).toBeDefined();
+                }
+            }
+        });
+
         it("has no stale representative entries for unregistered tools", () => {
             for (const name of Object.keys(REPRESENTATIVE_OUTPUTS)) {
                 expect(TOOLS[name]).toBeDefined();
             }
         });
+    });
+
+    // C7 (ratification 1): invoke the REAL registered callback over the mocked
+    // transport and assert its `structuredContent` — the actual bytes a client
+    // receives — carries the envelope and no legacy count field, and validates
+    // against the declared schema. This closes the gap the critique found: the
+    // representative-payload tests never exercised a callback.
+    describe("C7: registered batch callbacks surface envelope-only output", () => {
+        const batchReturns: Record<string, any> = {
+            node_delete: {
+                success: true, status: "success",
+                requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                results: [{ success: true, status: "success", nodeId: "1:2" }],
+            },
+            text_set_content: {
+                success: true, status: "success",
+                requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                results: [{ success: true, status: "success", nodeId: "1:2" }],
+            },
+            annotation_set: {
+                success: true, status: "success",
+                requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                results: [{ success: true, status: "success", nodeId: "1:2" }],
+            },
+            instance_set_overrides: {
+                success: true, status: "success",
+                requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                totalAppliedCount: 1,
+                results: [{ success: true, status: "success", nodeId: "1:2" }],
+            },
+        };
+        const legacyByTool: Record<string, string[]> = {
+            node_delete: ["nodesDeleted", "nodesFailed", "totalNodes", "deletedCount"],
+            text_set_content: ["replacementsApplied", "replacementsFailed", "totalReplacements", "count"],
+            annotation_set: ["annotationsApplied", "annotationsFailed", "totalAnnotations"],
+            instance_set_overrides: ["totalCount"],
+        };
+
+        for (const [tool, handlerReturn] of Object.entries(batchReturns)) {
+            it(`${tool} callback returns the exact envelope with no legacy count`, async () => {
+                nextTransportResult = handlerReturn;
+                const res: any = await HANDLERS[tool]({}, {} as any);
+                const sc = res.structuredContent;
+                // Round-trips the handler shape faithfully.
+                expect(sc).toEqual(handlerReturn);
+                // Envelope present, legacy absent.
+                for (const key of ["status", "requestedCount", "succeededCount", "failedCount", "skippedCount"]) {
+                    expect(sc[key], `${tool} envelope field ${key}`).toBeDefined();
+                }
+                for (const gone of legacyByTool[tool]) {
+                    expect(sc[gone], `${tool} must not surface legacy ${gone}`).toBeUndefined();
+                }
+                // The declared schema validates the real callback output.
+                expect((TOOLS[tool] as any).safeParse(sc).success).toBe(true);
+            });
+        }
     });
 });

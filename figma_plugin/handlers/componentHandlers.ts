@@ -156,7 +156,8 @@ export async function getComponents(params: any) {
 }
 
 import { getContainingPageNode, isAncestorOf, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
-import { ERRORS, formatScopeError } from '../utils/errors.js';
+import { ERRORS, REFUSALS, formatScopeError } from '../utils/errors.js';
+import { batchEnvelope } from '../utils/batchResult.js';
 import { resolveAppendableParent } from './nodeCreators.js';
 
 function getContainingPageId(node: BaseNode): string {
@@ -467,9 +468,17 @@ export async function getValidTargetInstances(targetNodeIds: any) {
         }
         for (const targetNodeId of targetNodeIds) {
             const targetNode = await figma.getNodeByIdAsync(targetNodeId);
-            if (targetNode && targetNode.type === "INSTANCE") {
-                targetInstances.push(targetNode);
+            // C5: fail the whole command if any requested target is no longer a
+            // resolvable INSTANCE. The dispatcher validated every target moments
+            // earlier, so a mismatch here is a genuine TOCTOU change; silently
+            // dropping it would understate requestedCount and omit its row.
+            if (!targetNode || targetNode.type !== "INSTANCE") {
+                return {
+                    success: false,
+                    message: `Target instance ${targetNodeId} is no longer available or is not an instance (it may have changed since validation). Re-read the instances with node_info and resend.`,
+                };
             }
+            targetInstances.push(targetNode);
         }
         if (targetInstances.length === 0) {
             return { success: false, message: "No valid instances provided" };
@@ -544,16 +553,40 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
         let totalAppliedCount = 0;
         let successCount = 0;
         let failureCount = 0;
+        let skippedCount = 0;
+        let hasFailed = false;
 
         for (const targetInstance of targetInstances) {
+            if (hasFailed) {
+                skippedCount++;
+                // Q25: shared row vocabulary — nodeId identity, error reason.
+                results.push({
+                    success: false,
+                    status: "skipped",
+                    nodeId: targetInstance.id,
+                    instanceName: targetInstance.name,
+                    error: "Skipped due to previous failure in batch"
+                });
+                continue;
+            }
+
             let appliedCount = 0;
             let hasFailure = false;
             let failureMsg = "";
+            let swapped = false;
+            const appliedFields: any[] = []; // C4: override fields actually written
+            // P6-1: the sandbox is dynamic-page, so the synchronous mainComponent
+            // getter throws — read it asynchronously before the swap so the Q24
+            // before-value is captured without breaking the batch.
+            let originalMainComponentId: string | null = null;
 
             try {
+                const originalMain = await targetInstance.getMainComponentAsync();
+                originalMainComponentId = originalMain ? originalMain.id : null;
                 // Swap component
                 try {
                     targetInstance.swapComponent(mainComponent);
+                    swapped = true;
                     console.log(`Swapped component for instance "${targetInstance.name}"`);
                 } catch (error: any) {
                     hasFailure = true;
@@ -561,32 +594,40 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
                 }
 
                 if (!hasFailure) {
-                    // Apply each override
+                    // Apply each override. C4: an unresolved override/source node
+                    // or a requested field that no branch can apply is a FAILURE,
+                    // not a silent skip — otherwise the instance is counted as a
+                    // success after dropping requested work. `appliedFields`
+                    // records every field actually written so the failure row can
+                    // disclose all known changes.
                     for (const override of overrides) {
-                        // Skip if no ID or overriddenFields
                         if (!override.id || !override.overriddenFields || override.overriddenFields.length === 0) {
-                            continue;
+                            continue; // nothing requested for this override entry
                         }
 
                         // Replace source instance ID with target instance ID in the node path
                         const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
                         const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
-
                         if (!overrideNode) {
-                            continue;
+                            hasFailure = true;
+                            failureMsg = `Override target node not found: ${overrideNodeId}`;
+                            break;
                         }
 
                         // Get source node to copy properties from
                         const sourceNode = await figma.getNodeByIdAsync(override.id);
                         if (!sourceNode) {
-                            continue;
+                            hasFailure = true;
+                            failureMsg = `Override source node not found: ${override.id}`;
+                            break;
                         }
 
                         // Apply each overridden field
                         for (const field of override.overriddenFields) {
+                            let fieldApplied = false;
+                            let beforeValue: any = undefined;
                             try {
                                 if (field === "componentProperties") {
-                                    // Apply component properties
                                     // @ts-expect-error TS2339: Property 'componentProperties' does not exist on type 'BaseNode'. (+1 more)
                                     if (sourceNode.componentProperties && overrideNode.componentProperties) {
                                         const properties: any = {};
@@ -597,23 +638,34 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
                                         }
                                         // @ts-expect-error TS2339: Property 'setProperties' does not exist on type 'BaseNode'.
                                         overrideNode.setProperties(properties);
+                                        fieldApplied = true; // before-state of properties is not cheaply serializable
                                     }
                                 } else if (field === "characters" && overrideNode.type === "TEXT") {
-                                    // For text nodes, need to load fonts first
+                                    beforeValue = overrideNode.characters;
                                     // @ts-expect-error TS2345: Argument of type 'unique symbol | FontName' is not assignable to parameter of type 'FontName'.
                                     await figma.loadFontAsync(overrideNode.fontName);
                                     // @ts-expect-error TS2339: Property 'characters' does not exist on type 'BaseNode'.
                                     overrideNode.characters = sourceNode.characters;
+                                    fieldApplied = true;
                                 } else if (field in overrideNode) {
-                                    // Direct property assignment
+                                    // @ts-expect-error TS7053: expression of type 'any' cannot index type 'BaseNode' (implicit any)
+                                    beforeValue = overrideNode[field];
                                     // @ts-expect-error TS7053: expression of type 'any' cannot index type 'BaseNode' (implicit any)
                                     overrideNode[field] = sourceNode[field];
+                                    fieldApplied = true;
                                 }
                             } catch (fieldError: any) {
                                 hasFailure = true;
                                 failureMsg = `Field ${field} error: ${fieldError.message}`;
                                 break;
                             }
+
+                            if (!fieldApplied) {
+                                hasFailure = true;
+                                failureMsg = `Requested override field '${field}' could not be applied on ${overrideNodeId}`;
+                                break;
+                            }
+                            appliedFields.push({ nodeId: overrideNodeId, field, before: beforeValue });
                         }
 
                         if (hasFailure) {
@@ -628,49 +680,80 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
             }
 
             if (hasFailure) {
+                hasFailed = true;
                 failureCount++;
-                results.push({
+                // Q25: nodeId + error are the contract keys; instanceName additive.
+                const rowResult: any = {
                     success: false,
-                    instanceId: targetInstance.id,
+                    status: "failed",
+                    nodeId: targetInstance.id,
                     instanceName: targetInstance.name,
-                    message: `Error: ${failureMsg}`
-                });
-                break; // Stop on first failure
+                    error: `Error: ${failureMsg}`
+                };
+                // C4: disclose ALL known mutations — the main-component swap and
+                // every override field already applied before the failure.
+                if (swapped || appliedFields.length > 0) {
+                    rowResult.partialMutation = true;
+                    const changes: string[] = [];
+                    if (swapped) changes.push(`main component swapped to ${mainComponent.id}`);
+                    if (appliedFields.length > 0) changes.push(`${appliedFields.length} override field(s) applied`);
+                    rowResult.whatChanged = `${changes.join(" and ")} before the operation failed`;
+                    rowResult.before = {
+                        ...(swapped ? { mainComponentId: originalMainComponentId } : {}),
+                        ...(appliedFields.length > 0 ? { appliedFields } : {}),
+                    };
+                }
+                results.push(rowResult);
             } else {
                 successCount++;
                 totalAppliedCount += appliedCount;
                 results.push({
                     success: true,
-                    instanceId: targetInstance.id,
+                    status: "success",
+                    nodeId: targetInstance.id,
                     instanceName: targetInstance.name,
                     appliedCount
                 });
             }
         }
 
-        // Return results
-        if (successCount > 0 && failureCount === 0) {
-            const message = `Applied ${totalAppliedCount} overrides to ${successCount} instances`;
-            figma.notify(message);
-            return {
-                success: true,
-                message,
-                totalCount: totalAppliedCount,
-                results
-            };
-        } else {
-            const message = failureCount > 0
-                ? `Failed to apply overrides: ${results[results.length - 1].message}`
-                : "No overrides applied to any instance";
-            figma.notify(message);
-            return { success: false, message, results };
-        }
+        const envelope = batchEnvelope(targetInstances.length, successCount, failureCount, skippedCount);
+        const message = envelope.status === "success"
+            ? `Applied ${totalAppliedCount} overrides to ${successCount} instances`
+            : (failureCount > 0 ? `Failed to apply overrides: ${results.find(r => r.status === "failed")?.error}` : "No overrides applied to any instance");
+
+        figma.notify(message);
+
+        // Q26: only the shared envelope counts; `totalAppliedCount` is a genuine
+        // override-property count (not an item count), kept as one field — the
+        // duplicate `totalCount` is dropped.
+        return {
+            ...envelope,
+            totalAppliedCount,
+            message,
+            results
+        };
 
     } catch (error: any) {
+        // P6-5: an unexpected setup failure still returns the full envelope with
+        // one row per input, never an envelope-less shape.
         console.error("Error in setInstanceOverrides:", error);
         const message = `Error: ${error.message}`;
         figma.notify(message);
-        return { success: false, message };
+        const targets: any[] = Array.isArray(targetInstances) ? targetInstances : [];
+        const rows = targets.map((t: any) => ({
+            success: false,
+            status: "failed",
+            nodeId: t ? t.id : "unknown",
+            instanceName: t ? t.name : undefined,
+            error: message
+        }));
+        return {
+            ...batchEnvelope(targets.length, 0, targets.length, 0),
+            totalAppliedCount: 0,
+            message,
+            results: rows
+        };
     }
 }
 
@@ -907,37 +990,46 @@ export async function validateCreateComponentSetPlan(params: any, scopeRoot: Bas
         computedVariantNames.push(variantName);
     }
 
-    let resolvedParent: any = undefined;
-    if (parentId) {
-        const parent = await figma.getNodeByIdAsync(parentId);
-        if (!parent) {
-            throw new Error(`Node ${parentId} not found`);
-        }
-
-        const parentInScope = parent.id === scopeRoot.id || isAncestorOf(scopeRoot, parent);
-        if (!parentInScope) {
-            throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE, scopeRoot.id));
-        }
-
-        if (parent.name !== params.parentNodeName) {
-            throw new Error(ERRORS.PARENT_NAME_MISMATCH);
-        }
-
-        if (!("appendChild" in parent)) {
-            throw new Error(`create_component_set: parent '${parent.name}' (type ${parent.type}) cannot contain a component set.`);
-        }
-
-        assertNotLocked(parent);
-        assertNotInstanceParent(parent, "appended to");
-
-        for (const node of resolvedComponents) {
-            if (parent.id === node.id || isAncestorOf(node, parent)) {
-                throw new Error(`create_component_set: parent '${parent.name}' is one of the components being combined (or is inside one) and cannot receive the component set.`);
-            }
-        }
-
-        resolvedParent = parent;
+    // Q22: distinct causes. A missing parentId is its own message (steering the
+    // caller to the ID, not the name); a missing parentNodeName is the coded
+    // MISSING refusal; a name that does not match is the coded MISMATCH refusal.
+    if (parentId == null) {
+        throw new Error("create_component_set: parentId is missing. Supply the parent container's ID (and its exact current name as parentNodeName).");
     }
+    // C9: nullish omission, so a present empty parentNodeName is compared exactly
+    // rather than misclassified as missing.
+    if (params.parentNodeName == null) {
+        throw REFUSALS.PARENT_NAME_MISSING();
+    }
+
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) {
+        throw new Error(`Node ${parentId} not found`);
+    }
+
+    const parentInScope = parent.id === scopeRoot.id || isAncestorOf(scopeRoot, parent);
+    if (!parentInScope) {
+        throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE, scopeRoot.id));
+    }
+
+    if (parent.name !== params.parentNodeName) {
+        throw REFUSALS.PARENT_NAME_MISMATCH(parent.name, params.parentNodeName);
+    }
+
+    if (!("appendChild" in parent)) {
+        throw new Error(`create_component_set: parent '${parent.name}' (type ${parent.type}) cannot contain a component set.`);
+    }
+
+    assertNotLocked(parent);
+    assertNotInstanceParent(parent, "appended to");
+
+    for (const node of resolvedComponents) {
+        if (parent.id === node.id || isAncestorOf(node, parent)) {
+            throw new Error(`create_component_set: parent '${parent.name}' is one of the components being combined (or is inside one) and cannot receive the component set.`);
+        }
+    }
+
+    const resolvedParent = parent;
 
     return {
         components: resolvedComponents.map((node, idx) => ({

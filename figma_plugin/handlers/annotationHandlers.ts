@@ -4,6 +4,7 @@
  */
 
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
+import { batchEnvelope } from '../utils/batchResult.js';
 
 /**
  * Gets annotations from nodes
@@ -211,10 +212,23 @@ export async function setMultipleAnnotations(params: any) {
     const results: any[] = [];
     let successCount = 0;
     let failureCount = 0;
+    let skippedCount = 0;
+    let hasFailed = false;
 
     // Process annotations sequentially
     for (let i = 0; i < annotations.length; i++) {
         const annotation = annotations[i];
+        if (hasFailed) {
+            skippedCount++;
+            results.push({
+                success: false,
+                status: "skipped",
+                nodeId: annotation.nodeId || "unknown",
+                error: "Skipped due to previous failure in batch",
+            });
+            continue;
+        }
+
         console.log(
             `\nProcessing annotation ${i + 1}/${annotations.length}:`,
             JSON.stringify(annotation, null, 2)
@@ -239,36 +253,40 @@ export async function setMultipleAnnotations(params: any) {
 
             if (result.success) {
                 successCount++;
-                results.push({ success: true, nodeId: annotation.nodeId });
+                results.push({
+                    success: true,
+                    status: "success",
+                    nodeId: annotation.nodeId
+                });
                 console.log(`✓ Annotation ${i + 1} applied successfully`);
             } else {
+                hasFailed = true;
                 failureCount++;
                 results.push({
                     success: false,
+                    status: "failed",
                     nodeId: annotation.nodeId,
                     error: result.error,
                 });
                 console.error(`✗ Annotation ${i + 1} failed:`, result.error);
-                break; // Stop on first failure
             }
         } catch (error: any) {
+            hasFailed = true;
             failureCount++;
-            const errorResult: any = {
+            results.push({
                 success: false,
+                status: "failed",
                 nodeId: annotation.nodeId,
                 error: error.message,
-            };
-            results.push(errorResult);
+            });
             console.error(`✗ Annotation ${i + 1} failed with error:`, error);
-            break; // Stop on first failure
         }
     }
 
+    // Q26: shared envelope counts only — `annotationsApplied`/`annotationsFailed`
+    // dropped. Ratification 4: derived via the shared helper.
     const summary: any = {
-        success: successCount > 0 && failureCount === 0,
-        annotationsApplied: successCount,
-        annotationsFailed: failureCount,
-        totalAnnotations: annotations.length,
+        ...batchEnvelope(annotations.length, successCount, failureCount, skippedCount),
         results: results,
     };
 

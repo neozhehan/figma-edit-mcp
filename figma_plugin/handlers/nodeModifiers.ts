@@ -6,6 +6,7 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { delay } from '../utils/helpers.js';
 import { getContainingPageNode, isAncestorOf } from '../utils/nodeUtils.js';
+import { batchEnvelope } from '../utils/batchResult.js';
 
 /**
  * Moves and/or resizes a node (sets absolute coordinates and dimensions)
@@ -130,7 +131,7 @@ export async function deleteMultipleNodes(params: any) {
         nodeIds.length,
         0,
         `Starting deletion of ${nodeIds.length} nodes`,
-        { totalNodes: nodeIds.length }
+        { requestedCount: nodeIds.length }
     );
 
     const results: any[] = [];
@@ -157,7 +158,7 @@ export async function deleteMultipleNodes(params: any) {
         0,
         `Preparing to delete ${nodeIds.length} nodes using ${chunks.length} chunks`,
         {
-            totalNodes: nodeIds.length,
+            requestedCount: nodeIds.length,
             chunks: chunks.length,
             chunkSize: CHUNK_SIZE,
         }
@@ -281,20 +282,28 @@ export async function deleteMultipleNodes(params: any) {
         successCount + failureCount,
         `Node deletion complete: ${successCount} successful, ${failureCount} failed`,
         {
-            totalNodes: nodeIds.length,
-            nodesDeleted: successCount,
-            nodesFailed: failureCount,
+            // Q26: only the shared envelope counts in the progress payload.
+            requestedCount: nodeIds.length,
+            succeededCount: successCount,
+            failedCount: failureCount,
             completedInChunks: chunks.length,
             results: results,
         }
     );
 
+    // Q25: shared row vocabulary (nodeId/status/error); nodeInfo stays additive.
+    const formattedResults = results.map((r: any) => ({
+        success: r.success,
+        status: r.success ? "success" : "failed",
+        nodeId: r.nodeId,
+        error: r.error,
+        nodeInfo: r.nodeInfo
+    }));
+
+    // Q26: shared envelope counts only — `nodesDeleted`/`nodesFailed` dropped.
     return {
-        success: successCount > 0,
-        nodesDeleted: successCount,
-        nodesFailed: failureCount,
-        totalNodes: nodeIds.length,
-        results: results,
+        ...batchEnvelope(nodeIds.length, successCount, failureCount, 0),
+        results: formattedResults,
         completedInChunks: chunks.length,
         commandId,
     };

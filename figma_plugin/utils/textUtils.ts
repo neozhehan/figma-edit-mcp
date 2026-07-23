@@ -93,13 +93,22 @@ export const buildLinearOrder = (node: any) => {
  * @param {TextNode} node - Figma text node
  * @param {string} characters - New text content
  * @param {Object} options - Options including fallbackFont and smartStrategy
+ * @param {Object} report - Optional out-param for the Q24 partial-mutation
+ *   disclosure. `report.beforeFont` is the serializable snapshot of the node's
+ *   font BEFORE any change (a `{family, style}` for a single font, or
+ *   `{mixed: true, segments}` for a mixed-font node). `report.fontMutated` is
+ *   set true whenever this function assigns `node.fontName` — the fallback path
+ *   AND the mixed-font normalization path both mutate the font before character
+ *   assignment (C2), so both are disclosed. A failure that never mutated the
+ *   font leaves `fontMutated` unset and carries no disclosure.
  * @returns {Promise<boolean>} Success status
  */
-export const setCharacters = async (node: any, characters: any, options?: any) => {
+export const setCharacters = async (node: any, characters: any, options?: any, report?: { fontMutated?: boolean; beforeFont?: any }) => {
     const fallbackFont = (options && options.fallbackFont) || {
         family: "Inter",
         style: "Regular",
     };
+    if (report) report.beforeFont = captureFontSnapshot(node);
     try {
         if (node.fontName === figma.mixed) {
             if (options && options.smartStrategy === "prevail") {
@@ -119,6 +128,7 @@ export const setCharacters = async (node: any, characters: any, options?: any) =
                 };
                 await figma.loadFontAsync(prevailedFont);
                 node.fontName = prevailedFont;
+                if (report) report.fontMutated = true;
             } else if (options && options.smartStrategy === "strict") {
                 return setCharactersWithStrictMatchFont(node, characters, fallbackFont);
             } else if (options && options.smartStrategy === "experimental") {
@@ -127,6 +137,7 @@ export const setCharacters = async (node: any, characters: any, options?: any) =
                 const firstCharFont = node.getRangeFontName(0, 1);
                 await figma.loadFontAsync(firstCharFont);
                 node.fontName = firstCharFont;
+                if (report) report.fontMutated = true;
             }
         } else {
             await figma.loadFontAsync({
@@ -141,6 +152,9 @@ export const setCharacters = async (node: any, characters: any, options?: any) =
         );
         await figma.loadFontAsync(fallbackFont);
         node.fontName = fallbackFont;
+        // Q24: the font was mutated to the fallback. If the character assignment
+        // below then fails, this is the partial mutation the batch discloses.
+        if (report) report.fontMutated = true;
     }
     try {
         node.characters = characters;
@@ -150,6 +164,30 @@ export const setCharacters = async (node: any, characters: any, options?: any) =
         return false;
     }
 };
+
+/**
+ * Serializable snapshot of a text node's font BEFORE mutation (Q24). A single
+ * font is returned as `{family, style}`; a mixed-font node captures its styled
+ * segments so the disclosure is genuinely restorable (falling back to
+ * `{mixed: true}` if the segment API is unavailable, e.g. in unit mocks).
+ */
+function captureFontSnapshot(node: any): any {
+    const fn = node.fontName;
+    if (fn && typeof fn === "object" && "family" in fn) {
+        return { family: fn.family, style: fn.style };
+    }
+    try {
+        if (typeof node.getStyledTextSegments === "function") {
+            const segments = node.getStyledTextSegments(["fontName"]).map((s: any) => ({
+                start: s.start,
+                end: s.end,
+                fontName: s.fontName,
+            }));
+            return { mixed: true, segments };
+        }
+    } catch { /* segment API unavailable */ }
+    return { mixed: true };
+}
 
 /**
  * Sets characters with strict font matching

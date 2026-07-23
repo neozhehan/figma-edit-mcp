@@ -35,7 +35,7 @@ export function registerAnnotationTools(server: McpServer) {
         "annotation_set",
         {
             title: "Set Annotations",
-            description: "Create or update native annotations on one or more nodes in a batched call (per item: `annotationId` present = update, absent = create).",
+            description: "Create or update native annotations on one or more nodes in a batched call (per item: `annotationId` present = update, absent = create). If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped).",
             inputSchema: z.object({
                 annotations: z
                     .array(
@@ -48,11 +48,17 @@ export function registerAnnotationTools(server: McpServer) {
                             properties: z.record(z.string(), z.any()).optional().describe("Custom metadata properties"),
                         })
                     )
+                    .min(1)
                     .describe("Array of annotations to set"),
             }),
             outputSchema: looseOutput({
-                success: z.boolean().optional().describe("Whether annotations were set successfully"),
-                results: z.any().optional().describe("Detailed execution results"),
+                success: z.boolean().describe("Whether all annotations were set successfully"),
+                status: z.enum(["success", "partial_success", "failed"]).describe("Overall status of the batch operation"),
+                requestedCount: z.number().describe("Number of requested annotations"),
+                succeededCount: z.number().describe("Number of succeeded annotations"),
+                failedCount: z.number().describe("Number of failed annotations"),
+                skippedCount: z.number().describe("Number of skipped annotations"),
+                results: z.array(z.any()).optional().describe("Detailed execution results"),
             }),
             annotations: {
                 idempotentHint: true,

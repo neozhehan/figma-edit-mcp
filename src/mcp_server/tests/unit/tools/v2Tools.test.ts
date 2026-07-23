@@ -160,7 +160,7 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
     });
 
     describe("v2.1.0 schema constraints", () => {
-        it("all five creation tools require parentId", () => {
+        it("all five creation tools require parentId and parentNodeName", () => {
             const registered = (server as any)._registeredTools;
             // Input schemas are now STRICT (reject unknown keys), so each tool gets
             // exactly its own required fields — a shared superset would be rejected
@@ -174,9 +174,24 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             };
             for (const [t, fields] of Object.entries(requiredByTool)) {
                 const schema = registered[t].inputSchema;
-                expect(schema.safeParse({ ...fields }).success).toBe(false);          // no parentId → rejected
-                expect(schema.safeParse({ ...fields, parentId: "p1" }).success).toBe(true);
+                expect(schema.safeParse({ ...fields }).success).toBe(false);          // no parentId or parentNodeName → rejected
+                expect(schema.safeParse({ ...fields, parentId: "p1" }).success).toBe(false);          // no parentNodeName → rejected
+                expect(schema.safeParse({ ...fields, parentNodeName: "parent" }).success).toBe(false); // no parentId → rejected
+                expect(schema.safeParse({ ...fields, parentId: "p1", parentNodeName: "parent" }).success).toBe(true);
             }
+        });
+
+        it("create_component_set requires parentId and parentNodeName", () => {
+            const registered = (server as any)._registeredTools;
+            const schema = registered["create_component_set"].inputSchema;
+            const baseFields = {
+                components: [{ nodeId: "c1", nodeName: "c1", propertyValues: ["A"] }],
+                properties: ["Prop"]
+            };
+            expect(schema.safeParse({ ...baseFields }).success).toBe(false); // missing both
+            expect(schema.safeParse({ ...baseFields, parentId: "p1" }).success).toBe(false); // missing parentNodeName
+            expect(schema.safeParse({ ...baseFields, parentNodeName: "parent" }).success).toBe(false); // missing parentId
+            expect(schema.safeParse({ ...baseFields, parentId: "p1", parentNodeName: "parent" }).success).toBe(true);
         });
 
         it("instance_get_overrides requires nodeId", () => {

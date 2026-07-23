@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
 import { toolResult, looseOutput } from "./_result.js";
+import { noDuplicateTargets } from "./_batch.js";
 
 export function registerTextTools(server: McpServer) {
     // 1. Set Text Contents Tool
@@ -9,7 +10,7 @@ export function registerTextTools(server: McpServer) {
         "text_set_content",
         {
             title: "Set Text Contents",
-            description: "Set the text of one or more text nodes in a single batched, per-item-validated call.",
+            description: "Set the text of one or more text nodes in a single batched, per-item-validated call. If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped).",
             inputSchema: z.object({
                 text: z
                     .array(
@@ -19,10 +20,17 @@ export function registerTextTools(server: McpServer) {
                             characters: z.string().describe("New text content"),
                         })
                     )
+                    .min(1)
+                    .superRefine(noDuplicateTargets)
                     .describe("Array of text objects"),
             }),
             outputSchema: looseOutput({
-                count: z.number().optional().describe("Number of updated text nodes"),
+                success: z.boolean().describe("Whether all replacements succeeded"),
+                status: z.enum(["success", "partial_success", "failed"]).describe("Overall status of the batch operation"),
+                requestedCount: z.number().describe("Number of requested text replacements"),
+                succeededCount: z.number().describe("Number of succeeded text replacements"),
+                failedCount: z.number().describe("Number of failed text replacements"),
+                skippedCount: z.number().describe("Number of skipped text replacements"),
                 results: z.array(z.any()).optional().describe("Detailed results per node"),
             }),
             annotations: {

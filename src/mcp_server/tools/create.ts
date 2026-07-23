@@ -18,7 +18,7 @@ export function registerCreateTools(server: McpServer) {
                 height: z.number().describe("Height of the shape"),
                 name: z.string().optional().describe("Optional name for the shape"),
                 parentId: z.string().describe("Parent node ID to append the shape to"),
-                parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
                 useAbsolutePosition: z.boolean().optional().describe("If true and parent is an auto-layout frame, forces absolute positioning to prevent layout shifts."),
                 fillColor: z.object({
                     r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -67,7 +67,7 @@ export function registerCreateTools(server: McpServer) {
                 height: z.number().describe("Height of the frame"),
                 name: z.string().optional().describe("Optional name for the frame"),
                 parentId: z.string().describe("Parent node ID to append the frame to"),
-                parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
                 fillColor: z.object({
                     r: z.number().min(0).max(1).describe("Red component (0-1)"),
                     g: z.number().min(0).max(1).describe("Green component (0-1)"),
@@ -131,7 +131,7 @@ export function registerCreateTools(server: McpServer) {
                 }).optional().describe("Font color in RGBA format"),
                 name: z.string().optional().describe("Semantic layer name for the text node"),
                 parentId: z.string().describe("Parent node ID to append the text to"),
-                parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created text node"),
@@ -163,7 +163,7 @@ export function registerCreateTools(server: McpServer) {
                 svg: z.string().describe("The SVG XML string"),
                 name: z.string().optional().describe("Name for the new node"),
                 parentId: z.string().describe("Parent ID to append to"),
-                parentNodeName: z.string().optional().describe("Parent Name to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
                 x: z.number().optional().describe("X position"),
                 y: z.number().optional().describe("Y position"),
             }),
@@ -217,7 +217,7 @@ export function registerCreateTools(server: McpServer) {
                 x: z.number().describe("X position"),
                 y: z.number().describe("Y position"),
                 parentId: z.string().describe("Parent node ID to append the instance to"),
-                parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component instance"),
@@ -247,8 +247,8 @@ export function registerCreateTools(server: McpServer) {
                 })).describe("Array of component objects"),
                 properties: z.array(z.string()).describe("Array of property names (e.g. ['Size', 'State'])"),
                 componentSetName: z.string().optional().describe("Name for the component set"),
-                parentId: z.string().optional().describe("Parent frame to place the set in"),
-                parentNodeName: z.string().optional().describe("Name of parent node (required if parentId provided, for verification)"),
+                parentId: z.string().describe("ID of the appendable parent container (frame, group, page, section, etc.) to place the set in; discover it with node_info"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component set"),

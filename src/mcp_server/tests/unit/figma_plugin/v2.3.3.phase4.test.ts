@@ -3,7 +3,7 @@ import { z } from "zod";
 import { registerVariableTools } from "../../../tools/variable.js";
 import { registerStyleTools } from "../../../tools/style.js";
 import { withStrictInputSchemas } from "../../../tools/index.js";
-import { OPERATIONAL_CODES, VERIFICATION_CODES, RATIFIED_CODES, UNKNOWN_ERROR } from "../../../../shared/errorCodes.js";
+import { OPERATIONAL_CODES, VERIFICATION_CODES, PARENT_VERIFICATION_CODES, RATIFIED_CODES, UNKNOWN_ERROR } from "../../../../shared/errorCodes.js";
 import { ERRORS, REFUSALS, getStructuredError } from "../../../../../figma_plugin/utils/errors.js";
 
 // Loaded under a cache-busting query key so this file always gets the REAL
@@ -352,8 +352,8 @@ describe("v2.3.3 Phase 4: Dispatcher emits structured errors (real main.ts)", ()
 // =============================================================================
 
 describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
-    it("the ratified inventory is exact: seventeen codes plus the fallback, no duplicates", () => {
-        expect(RATIFIED_CODES.length).toBe(18);
+    it("the ratified inventory is exact: nineteen codes plus the fallback, no duplicates", () => {
+        expect(RATIFIED_CODES.length).toBe(20);
         expect(new Set(RATIFIED_CODES).size).toBe(RATIFIED_CODES.length);
         expect(RATIFIED_CODES).toContain(UNKNOWN_ERROR);
     });
@@ -366,8 +366,8 @@ describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
     });
 
     it("every ratified verification code has exactly one message factory producing its own code", () => {
-        expect(Object.keys(REFUSALS).sort()).toEqual([...VERIFICATION_CODES].sort());
-        for (const code of VERIFICATION_CODES) {
+        expect(Object.keys(REFUSALS).sort()).toEqual([...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES].sort());
+        for (const code of [...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES]) {
             const produced = (REFUSALS as any)[code].length > 0
                 ? (REFUSALS as any)[code]("stored-operand", "received-operand")
                 : (REFUSALS as any)[code]();
@@ -381,6 +381,7 @@ describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
             ["VARIABLE_NAME_MISMATCH", "variable_list"],
             ["COLLECTION_NAME_MISMATCH", "variable_list"],
             ["STYLE_NAME_MISMATCH", "style_list"],
+            ["PARENT_NAME_MISMATCH", "node_info"],
         ];
         for (const [code, readTool] of cases) {
             const msg = (REFUSALS as any)[code]("StoredName", "ReceivedName").message;
@@ -388,6 +389,20 @@ describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
             expect(msg).toContain('"ReceivedName"');
             expect(msg).toContain(readTool);
             expect(msg).toContain("pass it back verbatim");
+        }
+    });
+
+    it("missing factories name their read tool and the verbatim instruction (C13 — D9 one-round-trip recovery)", () => {
+        const cases: Array<[string, string]> = [
+            ["VARIABLE_NAME_MISSING", "variable_list"],
+            ["COLLECTION_NAME_MISSING", "variable_list"],
+            ["STYLE_NAME_MISSING", "style_list"],
+            ["PARENT_NAME_MISSING", "node_info"],
+        ];
+        for (const [code, readTool] of cases) {
+            const msg = (REFUSALS as any)[code]().message;
+            expect(msg, `${code} must name its read tool`).toContain(readTool);
+            expect(msg, `${code} must say "pass it back verbatim"`).toContain("pass it back verbatim");
         }
     });
 

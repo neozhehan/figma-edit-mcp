@@ -36,6 +36,18 @@ export const VERIFICATION_CODES = [
 ] as const;
 
 /**
+ * D6 parent-verification refusal codes (Phase 5; Q22, Rev 31). The edited
+ * parent-name refusal joins the coded regime as a distinct-cause pair —
+ * missing vs. mismatched — on D9's "adds or edits" rule (the same precedent
+ * that added VARIABLE_SCOPES_MISSING). Message factories live beside the D5
+ * refusals in the plugin registry.
+ */
+export const PARENT_VERIFICATION_CODES = [
+    "PARENT_NAME_MISSING",
+    "PARENT_NAME_MISMATCH",
+] as const;
+
+/**
  * Pre-existing join-flow codes — NOT new v2.3.3 inventory. Origin-assigned
  * since Q20 (figma-client codes them where the failure is created; channel.ts
  * passes them through and keys recovery guidance on them, never on prose).
@@ -47,9 +59,10 @@ export const JOIN_CODES = [
     "PLUGIN_DISCONNECTED",
 ] as const;
 
-/** The full ratified v2.3.3 inventory: seventeen codes plus the fallback. */
+/** The full ratified v2.3.3 inventory: nineteen codes plus the fallback. */
 export const RATIFIED_CODES = [
     ...OPERATIONAL_CODES,
     ...VERIFICATION_CODES,
+    ...PARENT_VERIFICATION_CODES,
     UNKNOWN_ERROR,
 ] as const;

@@ -19,7 +19,9 @@ export const ERRORS: any = {
 
     // Node ID Errors
     NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
-    PARENT_NAME_MISMATCH: "Operation Denied: parentNodeName does not match name of parentId. Refresh context & recheck to ensure correct parentId is passed in.",
+    // PARENT_NAME_MISSING / PARENT_NAME_MISMATCH moved to the REFUSALS factory
+    // registry below (Q22, Rev 31 — distinct-cause coded pair). The merged
+    // string that was here is superseded.
 
     // Parameter Errors
     MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
@@ -79,6 +81,16 @@ export const REFUSALS = {
     VARIABLE_SCOPES_MISSING: () => ({
         code: "VARIABLE_SCOPES_MISSING",
         message: "Operation Denied: scopes is missing for CREATE_VARIABLE. Pass the allowed scopes explicitly — supply an empty array to deliberately set none; omission is rejected.",
+    }),
+    // D6 parent verification (Q22, Rev 31) — distinct causes, so an agent that
+    // omits the name is not steered into swapping a correct parentId.
+    PARENT_NAME_MISSING: () => ({
+        code: "PARENT_NAME_MISSING",
+        message: "Operation Denied: parentNodeName is missing. Read the parent node's current exact name with node_info and pass it back verbatim.",
+    }),
+    PARENT_NAME_MISMATCH: (storedName: string, received: string) => ({
+        code: "PARENT_NAME_MISMATCH",
+        message: `Operation Denied: parentNodeName does not match the parent's stored name — stored name "${storedName}", received parentNodeName "${received}". Read the parent's current name with node_info and pass it back verbatim.`,
     }),
 };
 

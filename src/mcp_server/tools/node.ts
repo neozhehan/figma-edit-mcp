@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
 import { toolResult, looseOutput } from "./_result.js";
+import { noDuplicateTargets } from "./_batch.js";
 import { resizeIfOversized } from "../imageResize.js";
 // Allowlist of bindable fields, generated from @figma/plugin-typings
 // (VariableBindableNodeField ∪ VariableBindableTextField + fills/strokes) by
@@ -165,7 +166,7 @@ export function registerNodeTools(server: McpServer) {
         "node_delete",
         {
             title: "Delete Nodes",
-            description: "Delete one or more nodes in a single batched, per-item-validated call. No API undo.",
+            description: "Delete one or more nodes in a single batched, per-item-validated call. No API undo. If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped).",
             inputSchema: z.object({
                 nodes: z
                     .array(
@@ -174,11 +175,17 @@ export function registerNodeTools(server: McpServer) {
                             nodeName: z.string().describe("Name of the node to modify"),
                         })
                     )
+                    .min(1)
+                    .superRefine(noDuplicateTargets)
                     .describe("Array of nodes to delete"),
             }),
             outputSchema: looseOutput({
-                success: z.boolean().describe("Whether the operation succeeded"),
-                deletedCount: z.number().optional().describe("Number of deleted nodes"),
+                success: z.boolean().describe("Whether all deletions succeeded"),
+                status: z.enum(["success", "partial_success", "failed"]).describe("Overall status of the batch operation"),
+                requestedCount: z.number().describe("Number of requested deletions"),
+                succeededCount: z.number().describe("Number of succeeded deletions"),
+                failedCount: z.number().describe("Number of failed deletions"),
+                skippedCount: z.number().describe("Number of skipped deletions"),
                 results: z.array(z.any()).optional().describe("Detailed deletion results"),
             }),
             annotations: {

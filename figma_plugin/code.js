@@ -24,8 +24,12 @@
       }
       update.payload = payload;
     }
-    figma.ui.postMessage(update);
-    await new Promise((r) => setTimeout(r, 0));
+    try {
+      figma.ui.postMessage(update);
+      await new Promise((r) => setTimeout(r, 0));
+    } catch (err) {
+      console.warn(`Progress update delivery failed (ignored): ${err && err.message}`);
+    }
     console.log(`Progress update: ${status} - ${progress}% - ${message}`);
     return update;
   }
@@ -340,7 +344,9 @@
     STYLE_EDITS_DISABLED: "Operation Denied: Style editing is disabled. Ask the user to tick 'Allow AI Agent to modify Styles' in the Figma plugin and reconnect.",
     // Node ID Errors
     NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
-    PARENT_NAME_MISMATCH: "Operation Denied: parentNodeName does not match name of parentId. Refresh context & recheck to ensure correct parentId is passed in.",
+    // PARENT_NAME_MISSING / PARENT_NAME_MISMATCH moved to the REFUSALS factory
+    // registry below (Q22, Rev 31 — distinct-cause coded pair). The merged
+    // string that was here is superseded.
     // Parameter Errors
     MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
     MISSING_TARGET_NODE_IDS: "Missing targetNodeIds parameter",
@@ -388,6 +394,16 @@
     VARIABLE_SCOPES_MISSING: () => ({
       code: "VARIABLE_SCOPES_MISSING",
       message: "Operation Denied: scopes is missing for CREATE_VARIABLE. Pass the allowed scopes explicitly \u2014 supply an empty array to deliberately set none; omission is rejected."
+    }),
+    // D6 parent verification (Q22, Rev 31) — distinct causes, so an agent that
+    // omits the name is not steered into swapping a correct parentId.
+    PARENT_NAME_MISSING: () => ({
+      code: "PARENT_NAME_MISSING",
+      message: "Operation Denied: parentNodeName is missing. Read the parent node's current exact name with node_info and pass it back verbatim."
+    }),
+    PARENT_NAME_MISMATCH: (storedName, received) => ({
+      code: "PARENT_NAME_MISMATCH",
+      message: `Operation Denied: parentNodeName does not match the parent's stored name \u2014 stored name "${storedName}", received parentNodeName "${received}". Read the parent's current name with node_info and pass it back verbatim.`
     })
   };
   function withPartialDisclosure(e, whatChanged, before) {
@@ -939,11 +955,12 @@
     });
     return fontTree.sort((a, b) => +a.start - +b.start).map(({ family, style, delimiter }) => ({ family, style, delimiter }));
   };
-  var setCharacters = async (node, characters, options) => {
+  var setCharacters = async (node, characters, options, report) => {
     const fallbackFont = options && options.fallbackFont || {
       family: "Inter",
       style: "Regular"
     };
+    if (report) report.beforeFont = captureFontSnapshot(node);
     try {
       if (node.fontName === figma.mixed) {
         if (options && options.smartStrategy === "prevail") {
@@ -963,6 +980,7 @@
           };
           await figma.loadFontAsync(prevailedFont);
           node.fontName = prevailedFont;
+          if (report) report.fontMutated = true;
         } else if (options && options.smartStrategy === "strict") {
           return setCharactersWithStrictMatchFont(node, characters, fallbackFont);
         } else if (options && options.smartStrategy === "experimental") {
@@ -971,6 +989,7 @@
           const firstCharFont = node.getRangeFontName(0, 1);
           await figma.loadFontAsync(firstCharFont);
           node.fontName = firstCharFont;
+          if (report) report.fontMutated = true;
         }
       } else {
         await figma.loadFontAsync({
@@ -985,6 +1004,7 @@
       );
       await figma.loadFontAsync(fallbackFont);
       node.fontName = fallbackFont;
+      if (report) report.fontMutated = true;
     }
     try {
       node.characters = characters;
@@ -994,6 +1014,24 @@
       return false;
     }
   };
+  function captureFontSnapshot(node) {
+    const fn = node.fontName;
+    if (fn && typeof fn === "object" && "family" in fn) {
+      return { family: fn.family, style: fn.style };
+    }
+    try {
+      if (typeof node.getStyledTextSegments === "function") {
+        const segments = node.getStyledTextSegments(["fontName"]).map((s) => ({
+          start: s.start,
+          end: s.end,
+          fontName: s.fontName
+        }));
+        return { mixed: true, segments };
+      }
+    } catch (e) {
+    }
+    return { mixed: true };
+  }
   var setCharactersWithStrictMatchFont = async (node, characters, fallbackFont) => {
     const fontHashTree = {};
     for (let i = 1; i < node.characters.length; i++) {
@@ -1406,6 +1444,24 @@
     }
   }
 
+  // figma_plugin/utils/batchResult.ts
+  function deriveBatchStatus(succeeded, failed, skipped) {
+    if (succeeded > 0 && failed === 0 && skipped === 0) return "success";
+    if (succeeded > 0) return "partial_success";
+    return "failed";
+  }
+  function batchEnvelope(requested, succeeded, failed, skipped) {
+    const status = deriveBatchStatus(succeeded, failed, skipped);
+    return {
+      success: status === "success",
+      status,
+      requestedCount: requested,
+      succeededCount: succeeded,
+      failedCount: failed,
+      skippedCount: skipped
+    };
+  }
+
   // figma_plugin/handlers/nodeModifiers.ts
   async function transformNode(params) {
     const { nodeId, x, y, width, height } = params || {};
@@ -1495,7 +1551,7 @@
       nodeIds.length,
       0,
       `Starting deletion of ${nodeIds.length} nodes`,
-      { totalNodes: nodeIds.length }
+      { requestedCount: nodeIds.length }
     );
     const results = [];
     let successCount = 0;
@@ -1515,7 +1571,7 @@
       0,
       `Preparing to delete ${nodeIds.length} nodes using ${chunks.length} chunks`,
       {
-        totalNodes: nodeIds.length,
+        requestedCount: nodeIds.length,
         chunks: chunks.length,
         chunkSize: CHUNK_SIZE
       }
@@ -1614,19 +1670,24 @@
       successCount + failureCount,
       `Node deletion complete: ${successCount} successful, ${failureCount} failed`,
       {
-        totalNodes: nodeIds.length,
-        nodesDeleted: successCount,
-        nodesFailed: failureCount,
+        // Q26: only the shared envelope counts in the progress payload.
+        requestedCount: nodeIds.length,
+        succeededCount: successCount,
+        failedCount: failureCount,
         completedInChunks: chunks.length,
         results
       }
     );
+    const formattedResults = results.map((r) => ({
+      success: r.success,
+      status: r.success ? "success" : "failed",
+      nodeId: r.nodeId,
+      error: r.error,
+      nodeInfo: r.nodeInfo
+    }));
     return {
-      success: successCount > 0,
-      nodesDeleted: successCount,
-      nodesFailed: failureCount,
-      totalNodes: nodeIds.length,
-      results,
+      ...batchEnvelope(nodeIds.length, successCount, failureCount, 0),
+      results: formattedResults,
       completedInChunks: chunks.length,
       commandId
     };
@@ -2586,9 +2647,13 @@
       }
       for (const targetNodeId of targetNodeIds) {
         const targetNode = await figma.getNodeByIdAsync(targetNodeId);
-        if (targetNode && targetNode.type === "INSTANCE") {
-          targetInstances.push(targetNode);
+        if (!targetNode || targetNode.type !== "INSTANCE") {
+          return {
+            success: false,
+            message: `Target instance ${targetNodeId} is no longer available or is not an instance (it may have changed since validation). Re-read the instances with node_info and resend.`
+          };
         }
+        targetInstances.push(targetNode);
       }
       if (targetInstances.length === 0) {
         return { success: false, message: "No valid instances provided" };
@@ -2630,6 +2695,7 @@
     };
   }
   async function setInstanceOverrides(targetInstances, sourceResult) {
+    var _a;
     try {
       const { sourceInstance, mainComponent, overrides } = sourceResult;
       console.log(`Processing ${targetInstances.length} instances with ${overrides.length} overrides`);
@@ -2639,13 +2705,32 @@
       let totalAppliedCount = 0;
       let successCount = 0;
       let failureCount = 0;
+      let skippedCount = 0;
+      let hasFailed = false;
       for (const targetInstance of targetInstances) {
+        if (hasFailed) {
+          skippedCount++;
+          results.push({
+            success: false,
+            status: "skipped",
+            nodeId: targetInstance.id,
+            instanceName: targetInstance.name,
+            error: "Skipped due to previous failure in batch"
+          });
+          continue;
+        }
         let appliedCount = 0;
         let hasFailure = false;
         let failureMsg = "";
+        let swapped = false;
+        const appliedFields = [];
+        let originalMainComponentId = null;
         try {
+          const originalMain = await targetInstance.getMainComponentAsync();
+          originalMainComponentId = originalMain ? originalMain.id : null;
           try {
             targetInstance.swapComponent(mainComponent);
+            swapped = true;
             console.log(`Swapped component for instance "${targetInstance.name}"`);
           } catch (error) {
             hasFailure = true;
@@ -2659,13 +2744,19 @@
               const overrideNodeId = override.id.replace(sourceInstance.id, targetInstance.id);
               const overrideNode = await figma.getNodeByIdAsync(overrideNodeId);
               if (!overrideNode) {
-                continue;
+                hasFailure = true;
+                failureMsg = `Override target node not found: ${overrideNodeId}`;
+                break;
               }
               const sourceNode = await figma.getNodeByIdAsync(override.id);
               if (!sourceNode) {
-                continue;
+                hasFailure = true;
+                failureMsg = `Override source node not found: ${override.id}`;
+                break;
               }
               for (const field of override.overriddenFields) {
+                let fieldApplied = false;
+                let beforeValue = void 0;
                 try {
                   if (field === "componentProperties") {
                     if (sourceNode.componentProperties && overrideNode.componentProperties) {
@@ -2674,18 +2765,29 @@
                         properties[key] = sourceNode.componentProperties[key].value;
                       }
                       overrideNode.setProperties(properties);
+                      fieldApplied = true;
                     }
                   } else if (field === "characters" && overrideNode.type === "TEXT") {
+                    beforeValue = overrideNode.characters;
                     await figma.loadFontAsync(overrideNode.fontName);
                     overrideNode.characters = sourceNode.characters;
+                    fieldApplied = true;
                   } else if (field in overrideNode) {
+                    beforeValue = overrideNode[field];
                     overrideNode[field] = sourceNode[field];
+                    fieldApplied = true;
                   }
                 } catch (fieldError) {
                   hasFailure = true;
                   failureMsg = `Field ${field} error: ${fieldError.message}`;
                   break;
                 }
+                if (!fieldApplied) {
+                  hasFailure = true;
+                  failureMsg = `Requested override field '${field}' could not be applied on ${overrideNodeId}`;
+                  break;
+                }
+                appliedFields.push({ nodeId: overrideNodeId, field, before: beforeValue });
               }
               if (hasFailure) {
                 break;
@@ -2698,44 +2800,66 @@
           failureMsg = instanceError.message;
         }
         if (hasFailure) {
+          hasFailed = true;
           failureCount++;
-          results.push({
+          const rowResult = {
             success: false,
-            instanceId: targetInstance.id,
+            status: "failed",
+            nodeId: targetInstance.id,
             instanceName: targetInstance.name,
-            message: `Error: ${failureMsg}`
-          });
-          break;
+            error: `Error: ${failureMsg}`
+          };
+          if (swapped || appliedFields.length > 0) {
+            rowResult.partialMutation = true;
+            const changes = [];
+            if (swapped) changes.push(`main component swapped to ${mainComponent.id}`);
+            if (appliedFields.length > 0) changes.push(`${appliedFields.length} override field(s) applied`);
+            rowResult.whatChanged = `${changes.join(" and ")} before the operation failed`;
+            rowResult.before = {
+              ...swapped ? { mainComponentId: originalMainComponentId } : {},
+              ...appliedFields.length > 0 ? { appliedFields } : {}
+            };
+          }
+          results.push(rowResult);
         } else {
           successCount++;
           totalAppliedCount += appliedCount;
           results.push({
             success: true,
-            instanceId: targetInstance.id,
+            status: "success",
+            nodeId: targetInstance.id,
             instanceName: targetInstance.name,
             appliedCount
           });
         }
       }
-      if (successCount > 0 && failureCount === 0) {
-        const message = `Applied ${totalAppliedCount} overrides to ${successCount} instances`;
-        figma.notify(message);
-        return {
-          success: true,
-          message,
-          totalCount: totalAppliedCount,
-          results
-        };
-      } else {
-        const message = failureCount > 0 ? `Failed to apply overrides: ${results[results.length - 1].message}` : "No overrides applied to any instance";
-        figma.notify(message);
-        return { success: false, message, results };
-      }
+      const envelope = batchEnvelope(targetInstances.length, successCount, failureCount, skippedCount);
+      const message = envelope.status === "success" ? `Applied ${totalAppliedCount} overrides to ${successCount} instances` : failureCount > 0 ? `Failed to apply overrides: ${(_a = results.find((r) => r.status === "failed")) == null ? void 0 : _a.error}` : "No overrides applied to any instance";
+      figma.notify(message);
+      return {
+        ...envelope,
+        totalAppliedCount,
+        message,
+        results
+      };
     } catch (error) {
       console.error("Error in setInstanceOverrides:", error);
       const message = `Error: ${error.message}`;
       figma.notify(message);
-      return { success: false, message };
+      const targets = Array.isArray(targetInstances) ? targetInstances : [];
+      const rows = targets.map((t) => ({
+        success: false,
+        status: "failed",
+        nodeId: t ? t.id : "unknown",
+        instanceName: t ? t.name : void 0,
+        error: message
+      }));
+      return {
+        ...batchEnvelope(targets.length, 0, targets.length, 0),
+        totalAppliedCount: 0,
+        message,
+        results: rows
+      };
     }
   }
   async function createComponent(params) {
@@ -2897,31 +3021,34 @@
       seenVariants.set(variantName, node.name);
       computedVariantNames.push(variantName);
     }
-    let resolvedParent = void 0;
-    if (parentId) {
-      const parent = await figma.getNodeByIdAsync(parentId);
-      if (!parent) {
-        throw new Error(`Node ${parentId} not found`);
-      }
-      const parentInScope = parent.id === scopeRoot.id || isAncestorOf(scopeRoot, parent);
-      if (!parentInScope) {
-        throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE, scopeRoot.id));
-      }
-      if (parent.name !== params.parentNodeName) {
-        throw new Error(ERRORS.PARENT_NAME_MISMATCH);
-      }
-      if (!("appendChild" in parent)) {
-        throw new Error(`create_component_set: parent '${parent.name}' (type ${parent.type}) cannot contain a component set.`);
-      }
-      assertNotLocked(parent);
-      assertNotInstanceParent(parent, "appended to");
-      for (const node of resolvedComponents) {
-        if (parent.id === node.id || isAncestorOf(node, parent)) {
-          throw new Error(`create_component_set: parent '${parent.name}' is one of the components being combined (or is inside one) and cannot receive the component set.`);
-        }
-      }
-      resolvedParent = parent;
+    if (parentId == null) {
+      throw new Error("create_component_set: parentId is missing. Supply the parent container's ID (and its exact current name as parentNodeName).");
     }
+    if (params.parentNodeName == null) {
+      throw REFUSALS.PARENT_NAME_MISSING();
+    }
+    const parent = await figma.getNodeByIdAsync(parentId);
+    if (!parent) {
+      throw new Error(`Node ${parentId} not found`);
+    }
+    const parentInScope = parent.id === scopeRoot.id || isAncestorOf(scopeRoot, parent);
+    if (!parentInScope) {
+      throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE, scopeRoot.id));
+    }
+    if (parent.name !== params.parentNodeName) {
+      throw REFUSALS.PARENT_NAME_MISMATCH(parent.name, params.parentNodeName);
+    }
+    if (!("appendChild" in parent)) {
+      throw new Error(`create_component_set: parent '${parent.name}' (type ${parent.type}) cannot contain a component set.`);
+    }
+    assertNotLocked(parent);
+    assertNotInstanceParent(parent, "appended to");
+    for (const node of resolvedComponents) {
+      if (parent.id === node.id || isAncestorOf(node, parent)) {
+        throw new Error(`create_component_set: parent '${parent.name}' is one of the components being combined (or is inside one) and cannot receive the component set.`);
+      }
+    }
+    const resolvedParent = parent;
     return {
       components: resolvedComponents.map((node, idx) => ({
         node,
@@ -3603,29 +3730,8 @@
   }
 
   // figma_plugin/handlers/textHandlers.ts
-  async function setTextContent(params) {
-    const { nodeId, text } = params || {};
-    if (!nodeId) {
-      throw new Error("Missing nodeId parameter");
-    }
-    const node = await figma.getNodeByIdAsync(nodeId);
-    if (!node) {
-      throw new Error(`Node not found with ID: ${nodeId}`);
-    }
-    if (node.type !== "TEXT") {
-      throw new Error(`Node is not a text node: ${nodeId} (type: ${node.type})`);
-    }
-    const success = await setCharacters(node, text);
-    if (!success) {
-      throw new Error(`Failed to set characters on node ${nodeId}`);
-    }
-    return {
-      success: true,
-      nodeId,
-      text
-    };
-  }
-  async function setMultipleTextContents(params) {
+  async function setMultipleTextContents(params, deps = {}) {
+    const applyChars = deps.setCharacters || setCharacters;
     const { text } = params || {};
     const commandId = params.commandId || generateCommandId();
     if (!text || !Array.isArray(text)) {
@@ -3653,51 +3759,72 @@
       text.length,
       0,
       `Starting text replacement for ${text.length} nodes`,
-      { totalReplacements: text.length }
+      { requestedCount: text.length }
     );
     const results = [];
     let successCount = 0;
     let failureCount = 0;
+    let skippedCount = 0;
+    let hasFailed = false;
     for (let i = 0; i < text.length; i++) {
       const replacement = text[i];
+      if (hasFailed) {
+        skippedCount++;
+        results.push({
+          success: false,
+          status: "skipped",
+          nodeId: replacement.nodeId || "unknown",
+          error: "Skipped due to previous failure in batch"
+        });
+        continue;
+      }
       if (!replacement.nodeId || replacement.characters === void 0) {
+        hasFailed = true;
         failureCount++;
         results.push({
           success: false,
+          status: "failed",
           nodeId: replacement.nodeId || "unknown",
           error: "Missing nodeId or characters in replacement entry"
         });
-        break;
+        continue;
       }
+      let originalText = "";
+      const report = {};
       try {
         console.log(`Attempting to replace text in node: ${replacement.nodeId}`);
         const textNode = await figma.getNodeByIdAsync(replacement.nodeId);
         if (!textNode) {
+          hasFailed = true;
           failureCount++;
           results.push({
             success: false,
+            status: "failed",
             nodeId: replacement.nodeId,
             error: `Node not found: ${replacement.nodeId}`
           });
-          break;
+          continue;
         }
         if (textNode.type !== "TEXT") {
+          hasFailed = true;
           failureCount++;
           results.push({
             success: false,
+            status: "failed",
             nodeId: replacement.nodeId,
             error: `Node is not a text node: ${replacement.nodeId} (type: ${textNode.type})`
           });
-          break;
+          continue;
         }
-        const originalText = textNode.characters;
-        await setTextContent({
-          nodeId: replacement.nodeId,
-          text: replacement.characters
-        });
+        originalText = textNode.characters;
+        const ok = await applyChars(textNode, replacement.characters, void 0, report);
+        if (!ok) {
+          throw new Error(`Failed to set characters on node ${replacement.nodeId}`);
+        }
         successCount++;
         results.push({
           success: true,
+          status: "success",
           nodeId: replacement.nodeId,
           originalText,
           translatedText: replacement.characters
@@ -3708,19 +3835,27 @@
           "in_progress",
           Math.round((i + 1) / text.length * 100),
           text.length,
-          successCount + failureCount,
+          successCount + failureCount + skippedCount,
           `Processed ${i + 1}/${text.length} text replacements`
         );
         await new Promise((r) => setTimeout(r, 0));
       } catch (error) {
         console.error(`Error replacing text in node ${replacement.nodeId}: ${error.message}`);
+        hasFailed = true;
         failureCount++;
-        results.push({
+        const row = {
           success: false,
+          status: "failed",
           nodeId: replacement.nodeId,
           error: `Error applying replacement: ${error.message}`
-        });
-        break;
+        };
+        if (report.fontMutated) {
+          row.partialMutation = true;
+          row.whatChanged = "the node's font was changed to satisfy the text edit before the character assignment failed";
+          row.before = { fontName: report.beforeFont };
+        }
+        results.push(row);
+        continue;
       }
     }
     await sendProgressUpdate(
@@ -3729,20 +3864,20 @@
       failureCount > 0 ? "error" : "completed",
       100,
       text.length,
-      successCount + failureCount,
-      `Text replacement complete: ${successCount} successful, ${failureCount} failed`,
+      successCount + failureCount + skippedCount,
+      `Text replacement complete: ${successCount} successful, ${failureCount} failed, ${skippedCount} skipped`,
       {
-        totalReplacements: text.length,
-        replacementsApplied: successCount,
-        replacementsFailed: failureCount,
+        // Q26: only the shared envelope counts — the legacy `totalReplacements`
+        // / `replacementsApplied` progress copies are dropped.
+        requestedCount: text.length,
+        succeededCount: successCount,
+        failedCount: failureCount,
+        skippedCount,
         results
       }
     );
     return {
-      success: successCount > 0 && failureCount === 0,
-      replacementsApplied: successCount,
-      replacementsFailed: failureCount,
-      totalReplacements: text.length,
+      ...batchEnvelope(text.length, successCount, failureCount, skippedCount),
       results,
       commandId
     };
@@ -3969,8 +4104,20 @@
     const results = [];
     let successCount = 0;
     let failureCount = 0;
+    let skippedCount = 0;
+    let hasFailed = false;
     for (let i = 0; i < annotations.length; i++) {
       const annotation = annotations[i];
+      if (hasFailed) {
+        skippedCount++;
+        results.push({
+          success: false,
+          status: "skipped",
+          nodeId: annotation.nodeId || "unknown",
+          error: "Skipped due to previous failure in batch"
+        });
+        continue;
+      }
       console.log(
         `
 Processing annotation ${i + 1}/${annotations.length}:`,
@@ -3992,35 +4139,37 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         console.log("setAnnotation result:", JSON.stringify(result, null, 2));
         if (result.success) {
           successCount++;
-          results.push({ success: true, nodeId: annotation.nodeId });
+          results.push({
+            success: true,
+            status: "success",
+            nodeId: annotation.nodeId
+          });
           console.log(`\u2713 Annotation ${i + 1} applied successfully`);
         } else {
+          hasFailed = true;
           failureCount++;
           results.push({
             success: false,
+            status: "failed",
             nodeId: annotation.nodeId,
             error: result.error
           });
           console.error(`\u2717 Annotation ${i + 1} failed:`, result.error);
-          break;
         }
       } catch (error) {
+        hasFailed = true;
         failureCount++;
-        const errorResult = {
+        results.push({
           success: false,
+          status: "failed",
           nodeId: annotation.nodeId,
           error: error.message
-        };
-        results.push(errorResult);
+        });
         console.error(`\u2717 Annotation ${i + 1} failed with error:`, error);
-        break;
       }
     }
     const summary = {
-      success: successCount > 0 && failureCount === 0,
-      annotationsApplied: successCount,
-      annotationsFailed: failureCount,
-      totalAnnotations: annotations.length,
+      ...batchEnvelope(annotations.length, successCount, failureCount, skippedCount),
       results
     };
     console.log("\n=== setMultipleAnnotations Summary ===");
@@ -5291,17 +5440,30 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   async function validateParentWrite(params, options) {
     if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
     if (!await checkScopeAccess(params ? params.parentId : null)) throw new Error(formatScopeError2(ERRORS.PARENT_OUTSIDE_SCOPE));
-    if (!await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null)) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+    await verifyParentNameOrThrow(params ? params.parentId : null, params ? params.parentNodeName : null);
     const parent = await figma.getNodeByIdAsync(params == null ? void 0 : params.parentId);
     if (parent) {
       if (options.checkLocked) assertNotLocked(parent);
       if (options.instanceCheckVerb) assertNotInstanceParent(parent, options.instanceCheckVerb);
     }
   }
-  async function verifyParentName(parentId, expectedParentName) {
+  async function verifyParentNameOrThrow(parentId, expectedParentName) {
+    if (expectedParentName == null) throw REFUSALS.PARENT_NAME_MISSING();
     const node = await figma.getNodeByIdAsync(parentId);
-    if (!node) return false;
-    return node.name === expectedParentName;
+    if (!node || node.name !== expectedParentName) {
+      throw REFUSALS.PARENT_NAME_MISMATCH(node ? node.name : "(parent not found)", expectedParentName);
+    }
+  }
+  function assertNoDuplicateTargets(items) {
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of items) {
+      if (!item || !item.nodeId) throw new Error("Missing nodeId parameter");
+      const normalizedId = String(item.nodeId).replace(/-/g, ":");
+      if (seen.has(normalizedId)) {
+        throw new Error(`Operation Denied: Duplicate node ID detected: ${item.nodeId}. Batches must not contain duplicate targets.`);
+      }
+      seen.add(normalizedId);
+    }
   }
   async function validateCloneWrite(params) {
     if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
@@ -5528,6 +5690,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         if (!textScopeRoot) {
           throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
         }
+        assertNoDuplicateTargets(params.text);
         for (const item of params.text) {
           const node = await figma.getNodeByIdAsync(item.nodeId);
           if (!node) {
@@ -5581,6 +5744,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         if (!deleteScopeRoot) {
           throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
         }
+        assertNoDuplicateTargets(params.nodes);
         const nodeIdsToDelete = [];
         for (const item of params.nodes) {
           const node = await figma.getNodeByIdAsync(item.nodeId);
@@ -5620,6 +5784,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           if (sourceNode.type !== "INSTANCE") {
             throw new Error(`Source node is not an instance: ${sourceNode.id} (type: ${sourceNode.type})`);
           }
+          assertNoDuplicateTargets(params.targetNodes);
           const targetNodeIds = [];
           for (const item of params.targetNodes) {
             const node = await figma.getNodeByIdAsync(item.nodeId);
@@ -5641,12 +5806,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           const targetNodesResult = await getValidTargetInstances(targetNodeIds);
           if (!targetNodesResult.success) {
             figma.notify(targetNodesResult.message);
-            return { success: false, message: targetNodesResult.message };
+            throw new Error(targetNodesResult.message);
           }
           let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
           if (!sourceInstanceData.success) {
-            figma.notify(sourceInstanceData.message);
-            return { success: false, message: sourceInstanceData.message };
+            figma.notify(sourceInstanceData.message || "Failed to resolve source instance");
+            throw new Error(sourceInstanceData.message || "Failed to resolve source instance");
           }
           return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
         }
