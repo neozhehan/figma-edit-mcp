@@ -1,5 +1,6 @@
 import { getPluginState } from '../src/main.js';
 import { buildPathArray, countDescendants } from '../utils/nodeUtils.js';
+import { UNKNOWN_ERROR } from '../utils/errors.js';
 
 export async function getConnectPayload() {
     try {
@@ -93,7 +94,7 @@ export async function getConnectPayload() {
 
     } catch (e: any) {
         return {
-            errorCode: "UNKNOWN_ERROR",
+            errorCode: UNKNOWN_ERROR,
             errorMessage: `An unexpected error occurred while joining the channel: ${e.message || String(e)}.`
         };
     }

@@ -333,6 +333,7 @@
   }
 
   // figma_plugin/utils/errors.ts
+  var UNKNOWN_ERROR = "UNKNOWN_ERROR";
   var ERRORS = {
     // Editable Scope Errors
     READ_ONLY_MODE: "Operation Denied: Figma Plugin in Read-Only Mode. Verify if user intends for changes to be made. If so, advise user to disconnect plugin, paste a link to the page/layer to be edited into Link to Selection field, then reconnect plugin.",
@@ -351,22 +352,54 @@
     MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
     MISSING_TARGET_NODE_IDS: "Missing targetNodeIds parameter",
     MISSING_SOURCE_INSTANCE_ID: "Missing sourceInstanceId parameter",
-    INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array",
-    // New Refusal and Operational Error Codes (v2.3.3)
-    PLUGIN_PEER_UNAVAILABLE: "Operation Denied: Figma Plugin is not running or available. Please open the Figma document, start the figma-edit-mcp plugin, and reconnect.",
-    PLUGIN_PEER_AMBIGUOUS: "Operation Denied: Multiple plugin peers are connected to this channel. Ensure the figma-edit-mcp plugin is open in exactly one Figma tab/document.",
-    CHANNEL_IN_USE: "Operation Denied: This channel is already in use by another MCP session. Please use a different channel name or disconnect the other session.",
-    VERSION_MISMATCH: "Operation Denied: Version mismatch between MCP server and Figma plugin. Please ensure both are updated to the same version.",
-    // Page codes are operational failures, not safety refusals — no "Operation
-    // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
-    PAGE_LOAD_FAILED: "Failed to load the Figma page \u2014 it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load.",
-    PAGE_NOT_FOUND: "Page not found: the specified page ID does not exist in this document. List pages with page_info and pass a page ID back verbatim.",
-    TARGET_NOT_PAGE: "Target node is not a PAGE. List pages with page_info and pass a page ID, not a node ID.",
-    PAGE_LOAD_TIMEOUT: "Page load timed out. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user.",
-    DOCUMENT_SCAN_INCOMPLETE: "Operation Denied: Document scan incomplete because one or more pages could not be loaded \u2014 a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first.",
-    CONNECTOR_TEMPLATE_REQUIRED: "Operation Denied: No valid connector template was found in the document. Find a connector with page_info/node_info (pasting one from FigJam if the file has none) and pass its ID and exact current name."
+    INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array"
   };
   var REFUSALS = {
+    // Phase 9–11 operational codes. No live throw site yet — each call site
+    // migrates from `ERRORS`-string prototyping to `REFUSALS.CODE()` as its
+    // phase lands, per the same precedent that moved the D6 parent codes.
+    PLUGIN_PEER_UNAVAILABLE: () => ({
+      code: "PLUGIN_PEER_UNAVAILABLE",
+      message: "Operation Denied: Figma Plugin is not running or available. Please open the Figma document, start the figma-edit-mcp plugin, and reconnect."
+    }),
+    PLUGIN_PEER_AMBIGUOUS: () => ({
+      code: "PLUGIN_PEER_AMBIGUOUS",
+      message: "Operation Denied: Multiple plugin peers are connected to this channel. Ensure the figma-edit-mcp plugin is open in exactly one Figma tab/document."
+    }),
+    CHANNEL_IN_USE: () => ({
+      code: "CHANNEL_IN_USE",
+      message: "Operation Denied: This channel is already in use by another MCP session. Please use a different channel name or disconnect the other session."
+    }),
+    VERSION_MISMATCH: () => ({
+      code: "VERSION_MISMATCH",
+      message: "Operation Denied: Version mismatch between MCP server and Figma plugin. Please ensure both are updated to the same version."
+    }),
+    // Page codes are operational failures, not safety refusals — no "Operation
+    // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
+    PAGE_LOAD_FAILED: () => ({
+      code: "PAGE_LOAD_FAILED",
+      message: "Failed to load the Figma page \u2014 it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load."
+    }),
+    PAGE_NOT_FOUND: () => ({
+      code: "PAGE_NOT_FOUND",
+      message: "Page not found: the specified page ID does not exist in this document. List pages with page_info and pass a page ID back verbatim."
+    }),
+    TARGET_NOT_PAGE: () => ({
+      code: "TARGET_NOT_PAGE",
+      message: "Target node is not a PAGE. List pages with page_info and pass a page ID, not a node ID."
+    }),
+    PAGE_LOAD_TIMEOUT: () => ({
+      code: "PAGE_LOAD_TIMEOUT",
+      message: "Page load timed out. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user."
+    }),
+    DOCUMENT_SCAN_INCOMPLETE: () => ({
+      code: "DOCUMENT_SCAN_INCOMPLETE",
+      message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded \u2014 a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first."
+    }),
+    CONNECTOR_TEMPLATE_REQUIRED: () => ({
+      code: "CONNECTOR_TEMPLATE_REQUIRED",
+      message: "Operation Denied: No valid connector template was found in the document. Find a connector with page_info/node_info (pasting one from FigJam if the file has none) and pass its ID and exact current name."
+    }),
     VARIABLE_NAME_MISSING: () => ({
       code: "VARIABLE_NAME_MISSING",
       message: "Operation Denied: currentVariableName is missing. Read the variable's current exact name with variable_list and pass it back verbatim."
@@ -451,7 +484,7 @@
         };
       }
     }
-    return { code: "UNKNOWN_ERROR", message: describeError(e) };
+    return { code: UNKNOWN_ERROR, message: describeError(e) };
   }
 
   // figma_plugin/handlers/nodeReaders.ts
@@ -5364,7 +5397,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       };
     } catch (e) {
       return {
-        errorCode: "UNKNOWN_ERROR",
+        errorCode: UNKNOWN_ERROR,
         errorMessage: `An unexpected error occurred while joining the channel: ${e.message || String(e)}.`
       };
     }

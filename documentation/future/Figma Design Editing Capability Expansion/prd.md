@@ -19,7 +19,8 @@ The public surface changes are:
 
 | Change | Old tool | Future tool |
 | :- | :- | :- |
-| Expand | `page_info` | `page_info` with strict search plus `USED` / `AVAILABLE` font discovery |
+| Expand | `page_info` | `page_info` with strict `SUMMARY` / `MATCHES` result modes, direct variable-binding matching, plus `USED` / `AVAILABLE` font discovery |
+| Expand | `node_info` | `node_info` with one strict filter language, direct variable-binding matching, and explicit `TREE` / `MATCHES` result modes |
 | Expand | `node_transform` | `node_transform` with rotation plus existing-ellipse `arcData` patches |
 | Rename and expand | `node_set_auto_layout` | `node_set_layout` |
 | Rename and expand | `node_set_effects` | `node_set_appearance` |
@@ -37,14 +38,14 @@ The public surface changes are:
 
 All other work extends existing tools without adding public names. Font discovery is an opt-in `page_info` mode, not a standalone tool. With a hard cutover, five tools are renamed, four are added, two are removed, and the release has a net increase of two tools.
 
-**Compatibility posture:** do not expose permanent old-name aliases, aliases for removed tools, or parallel legacy paint branches. They would make the model choose between two contracts for the same decision and weaken first-call correctness. Release notes and guides must provide an old-to-new tool-name table, a removed-tool migration table, and old-to-new fill/stroke call-shape examples, and every in-repo reference must change in the same release.
+**Compatibility posture:** do not expose permanent old-name aliases, aliases for removed tools, parallel legacy paint branches, or a parallel `search` predicate. They would make the model choose between two contracts for the same decision and weaken first-call correctness. Release notes and guides must provide an old-to-new tool-name table, a removed-tool migration table, old-to-new fill/stroke call-shape examples, and `node_info.filter.type` / `filter.layoutMode` migrations to strict `filter.types` / `filter.layoutModes`; every in-repo reference must change in the same release.
 
 | Retired tool | Required migration guidance |
 | :- | :- |
 | `instance_set_property` | Use `instance_set_component_properties` with one exact instance and a non-empty `properties` map keyed by the identities returned in `node_info.componentProperties`. |
 | `instance_get_overrides` | Use `node_info({ nodeIds: [nodeId], properties: ["mainComponent", "overrides", "componentProperties"], maxDepth: 0 })`. The read result, not a dedicated override tool, is the canonical discovery path. |
 | `instance_set_overrides` | There is deliberately no one-call equivalent. Choose the operation that matches the intent: `instance_swap_component` for component identity, `instance_set_component_properties` for exposed component properties, explicit node/text/style setters for known direct edits, or `node_clone` when an independent copy of the complete source instance is acceptable. The former source-to-target hybrid transfer and its silent unsupported-field skips are removed. |
-| `node_group` | Use `node_combine({ operation: "GROUP", nodes, parentId, parentNodeName, index?, name? })`. If the parent is not already present in a `page_info`/search path, read each input with `node_info({ nodeIds, properties: ["parent"], maxDepth: 0 })`, then read the one shared parent with `node_info({ nodeIds: [parentId], maxDepth: 1 })` to obtain its exact name and child order. The future contract no longer infers or hides the destination parent. |
+| `node_group` | Use `node_combine({ operation: "GROUP", nodes, parentId, parentNodeName, index?, name? })`. If the parent is not already present in a `page_info`/match-result path, read each input with `node_info({ nodeIds, properties: ["parent"], maxDepth: 0 })`, then read the one shared parent with `node_info({ nodeIds: [parentId], maxDepth: 1 })` to obtain its exact name and child order. The future contract no longer infers or hides the destination parent. |
 
 ---
 
@@ -85,6 +86,8 @@ This PRD covers every complete item in the source checklist plus the explicitly 
 | 29 | Add guarded `instance_remove_overrides` with `destructiveHint: true` | Section 14 |
 | 30 | Add existing-ellipse arc editing to `node_transform` with strict radian fields and complete-call preflight | Section 2 |
 | 31 | Replace `node_group` with `node_combine` and add `UNION`, `SUBTRACT`, `INTERSECT`, and `EXCLUDE` branches | Section 19 |
+| 32 | Add run-aware font family/style and Text Style identity/link-state filtering to `NodeFilter` | Section 1 |
+| 33 | Add exact-ID direct variable-binding filtering to `NodeFilter` as a node-centric complement to `variable_list` consumer discovery | Section 1 |
 
 The formerly unfinished line **"Expand `variable_manage` to include"** is resolved by item 25: variable-collection rename. It no longer remains an open question.
 
@@ -94,6 +97,9 @@ The formerly unfinished line **"Expand `variable_manage` to include"** is resolv
 - No implicit-current-page write behavior.
 - No page creation, page deletion, or dedicated page rename tool. Page rename is deliberately absorbed into `node_rename` and is permitted only for the page that is the active page-scope root.
 - No new standalone `search_nodes`, `scan_text_nodes`, `scan_nodes_by_types`, `set_visible`, `set_opacity`, `set_blend_mode`, `set_mask`, `set_constraints`, `rotate_nodes`, `create_section`, `create_slice`, `create_line`, `create_vector`, `set_variable_code_syntax`, `add_variable_mode`, or `rename_variable` tools.
+- No standalone font-consumer or Text-Style-consumer search tool. Use `node_info` or `page_info` `MATCHES` with `filter.font` or `filter.textStyle`.
+- No standalone variable-consumer search tool and no parallel variable-definition filter in `variable_list` in this release. Use `node_info` or `page_info` `MATCHES` with `filter.variableBinding` for scoped direct node bindings; use `variable_list({ variableId, includeConsumers })` for the broader variable-centric inventory of node, style, alias, and reaction consumers.
+- No transitive alias, style-mediated, inferred-variable, prototype-reaction, or explicit/resolved-mode matching under `NodeFilter.variableBinding`. Those are not direct node bindings and must not be presented as though the node were directly bound to the queried variable.
 - No standalone `get_fonts` or `font_list` tool. Used-font and available-font discovery are explicit, mutually exclusive `page_info.fontDiscovery` modes.
 - No standalone `import_image`, `get_image_dimensions`, collection-rename, fill-stack, stroke-stack, or text-range tool. These capabilities extend `node_set_fill`, `node_set_stroke`, `node_info`, `variable_manage`, and the existing text tools.
 - No separate `set_text_range` or multiple-range array for one text node. `text_set_content` retains its existing batch across distinct nodes, with at most one optional range per batch item.
@@ -119,7 +125,7 @@ The formerly unfinished line **"Expand `variable_manage` to include"** is resolv
 > **D2 - Use strict mode-specific contracts.** Multi-purpose tools must publish discriminated input branches or equivalent strict refinements. Fields that do not apply to the selected action or node type are rejected at the MCP boundary, not ignored by the plugin.
 
 > [!NOTE]
-> **D3 - Preserve explicit discovery.** Search scopes come from explicit page IDs, explicit root node IDs, or the connected editable scope. Creation always has an explicit and exact-name-verified parent or source node. No branch reads `figma.currentPage.selection`.
+> **D3 - Preserve explicit discovery.** Match traversal scopes come from explicit page IDs, explicit root node IDs, or the connected editable scope. Creation always has an explicit and exact-name-verified parent or source node. No branch reads `figma.currentPage.selection`.
 
 > [!NOTE]
 > **D4 - Read back the result.** Every write returns the resulting values needed to verify the mutation. Success payloads must not merely say `success: true` when an exact resulting value, new node ID, canonical property key, remaining mode list, or before/after component identity is available.
@@ -179,7 +185,7 @@ The formerly unfinished line **"Expand `variable_manage` to include"** is resolv
 > **D22 - Collection rename is a `variable_manage` action.** Renaming keeps the collection ID, mode IDs, variable IDs, bindings, and aliases stable. A dedicated tool would add a selection decision without changing the underlying permission or identity model.
 
 > [!NOTE]
-> **D23 - Font discovery is an explicit `page_info` mode.** `fontDiscovery.source` is required and distinguishes page-scoped `USED` fonts from editor-session `AVAILABLE` fonts. `USED` scans exact `pageIds` or every document page when they are omitted; `AVAILABLE` calls `listAvailableFontsAsync()` and forbids `pageIds`. Font discovery is mutually exclusive with search, ordinary `page_info` calls remain lightweight, and no branch reads the current page or selection.
+> **D23 - Font discovery is an explicit `page_info` mode.** `fontDiscovery.source` is required and distinguishes page-scoped `USED` fonts from editor-session `AVAILABLE` fonts. `USED` scans exact `pageIds` or every document page when they are omitted; `AVAILABLE` calls `listAvailableFontsAsync()` and forbids `pageIds`. Font discovery is mutually exclusive with `resultMode: "MATCHES"` and its filter/property fields, ordinary `page_info` calls remain lightweight, and no branch reads the current page or selection.
 
 > [!NOTE]
 > **D24 - Component-property writes batch properties, not instances.** `instance_set_property` is replaced by `instance_set_component_properties`, whose single target carries one non-empty exact-key map. This matches the one-instance call unit accepted by Figma's native `setProperties()` API, eliminates ambiguous display-name lookup, and lets one already-decided set of property changes share one preflight and one readback. A target array or multi-instance envelope is forbidden because it would add partial-success semantics and make recovery materially harder.
@@ -196,13 +202,19 @@ The formerly unfinished line **"Expand `variable_manage` to include"** is resolv
 > [!NOTE]
 > **D28 - Group and boolean creation become one required structural-combine decision.** `node_group` is hard-replaced by `node_combine`, with required `operation: "GROUP" | "UNION" | "SUBTRACT" | "INTERSECT" | "EXCLUDE"`. Every branch consumes the same explicit ordered node list and exact parent/index plan, performs the same complete structural preflight, and returns one normalized container/child result. The combined tool takes the broadest static annotation (`destructiveHint: true`) because MCP annotations cannot vary by operation. No optional/default operation is allowed: omitting `operation` must fail rather than silently creating a plain group.
 
+> [!NOTE]
+> **D29 - Matching predicates and result shape are orthogonal.** `page_info` and `node_info` share one strict `filter` predicate with node-level `name`, `characters`, `types`, `layoutModes`, and `variableBinding` plus run-aware `font` and `textStyle`; there is no parallel public `search` object. `node_info.resultMode` explicitly selects `TREE` or `MATCHES`, while `page_info.resultMode` selects `SUMMARY` or `MATCHES`. Existing ordinary reads retain their default result modes. `MATCHES` requires a non-empty filter and is the only branch that accepts top-level `maxResults`, so output shape never changes implicitly because of a supplied predicate. When `font` and `textStyle` are combined, one text run must satisfy both; independent runs may not produce a false node-level match.
+
+> [!NOTE]
+> **D30 - Variable-binding matching is exact, direct, and node-centric.** `NodeFilter.variableBinding` accepts exact variable IDs plus optional bindable fields and matches raw direct aliases owned by the candidate node. It returns the node path, requested properties, and exact binding-location evidence needed for targeted migration or verification. It does not follow variable-alias chains, infer variables from literal values, treat a style consumer as a direct node binding, inspect prototype references, or equate collection modes with bindings. `variable_list({ variableId, includeConsumers })` remains the variable-centric impact/discovery path for node, style, alias, and reaction consumers; the two tools share direct-binding extraction but answer different questions.
+
 ---
 
 ## Priority and ownership
 
 | Section | Capability | Priority | Primary implementation areas |
 | :-: | :- | :-: | :- |
-| 1 | Search in `page_info` / `node_info` plus font discovery in `page_info` | P0 | `src/mcp_server/tools/page.ts`, `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/nodeReaders.ts` |
+| 1 | Filtering and match discovery in `page_info` / `node_info`, including direct variable bindings, plus font discovery in `page_info` | P0 | `src/mcp_server/tools/page.ts`, `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/nodeReaders.ts`, shared variable-binding extractor |
 | 2 | Transform rotation and existing-ellipse arc geometry | P0 | `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/nodeModifiers.ts`, shared `ArcData` schema/validator |
 | 3 | Container, child, grid, and viewport layout | P0 | `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/layoutHandlers.ts`, dispatcher gates |
 | 4 | Appearance and mask containment | P0 | `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/stylingHandlers.ts`, dispatcher gates |
@@ -218,64 +230,143 @@ The formerly unfinished line **"Expand `variable_manage` to include"** is resolv
 
 ---
 
-## 1. Search in `page_info` / `node_info` and font discovery in `page_info` (P0)
+## 1. Filtering and match discovery in `page_info` / `node_info` and font discovery in `page_info` (P0)
 
 ### Problem
 
-`node_info` can recursively return known roots and currently filters only exact `type` and `layoutMode` values. It cannot directly find nodes by name substring or text content, and it returns a pruned tree rather than a compact flat match list. `page_info` lists pages and, for explicit IDs, top-level children; it cannot search across selected pages.
+`node_info` can recursively return known roots and currently filters only exact `type` and `layoutMode` values. It cannot directly find nodes by name substring, text content, typography identity, or direct variable binding, and it returns a pruned tree rather than a compact flat match list. `page_info` lists pages and, for explicit IDs, top-level children; it cannot search across selected pages.
 
 Figwright addresses these jobs with three tools: `search_nodes`, `scan_text_nodes`, and `scan_nodes_by_types`. The local project can cover all three decisions without adding three names.
 
+The local `variable_list({ variableId, includeConsumers })` already starts from one or more exact variable IDs and returns a broader variable-centric inventory, including node, style, alias, and prototype-reaction consumers. It does not provide rooted subtree matching, combine variable use with other node predicates, return document paths/requested node properties, or produce the pruned-tree result needed for targeted migration. `NodeFilter.variableBinding` complements that read rather than replacing it.
+
 ### Contract
 
-Add a shared strict `search` object to both read tools:
+Replace the loose legacy filter shape with one shared strict predicate object:
 
 ```ts
-type NodeSearch = {
-  name?: {
-    value: string;
-    match?: "CONTAINS" | "EXACT"; // default CONTAINS
-    caseSensitive?: boolean;       // default false
-  };
-  characters?: {
-    value: string;
-    match?: "CONTAINS" | "EXACT"; // TEXT and TEXT_PATH only
-    caseSensitive?: boolean;       // default false
-  };
-  types?: string[];                 // exact Figma node-type names
-  maxResults?: number;              // integer 1..500, default 100
+type StringMatch = {
+  value: string;
+  match?: "CONTAINS" | "EXACT"; // default CONTAINS
+  caseSensitive?: boolean;       // default false
+};
+
+type FontFilter = {
+  family?: StringMatch;
+  style?: StringMatch;
+};
+
+type TextStyleFilter =
+  | { by: "ID"; id: string }
+  | { by: "KEY"; key: string }
+  | { by: "NAME"; name: StringMatch }
+  | { by: "LINK_STATE"; state: "LINKED" | "UNLINKED" };
+
+type VariableBindingField =
+  | VariableBindableNodeField
+  | VariableBindableTextField
+  | "fills"
+  | "strokes"
+  | "effects"
+  | "layoutGrids"
+  | "componentProperties"
+  | "textRangeFills";
+
+type VariableBindingFilter = {
+  variableIds: string[]; // exact non-empty IDs; OR semantics
+  fields?: VariableBindingField[]; // strict non-empty enum; OR semantics
+};
+
+type VariableBindingLocation =
+  | {
+      source: "NODE";
+      field: Exclude<VariableBindingField, "componentProperties">;
+    }
+  | {
+      source: "COMPONENT_PROPERTY_DEFINITION";
+      field: "componentProperties";
+      propertyId: string; // exact canonical property key
+    }
+  | {
+      source: "INSTANCE_COMPONENT_PROPERTY";
+      field: "componentProperties";
+      propertyId: string; // exact canonical property key
+    };
+
+type NodeFilter = {
+  name?: StringMatch;
+  characters?: StringMatch; // TEXT and TEXT_PATH only
+  font?: FontFilter; // effective font on at least one text run
+  textStyle?: TextStyleFilter; // linked Text Style identity on at least one text run
+  variableBinding?: VariableBindingFilter; // direct aliases owned by the node
+  types?: NodeType[]; // exact Figma node-type names
+  layoutModes?: Array<"NONE" | "HORIZONTAL" | "VERTICAL" | "GRID">;
 };
 ```
 
 Rules:
 
-- At least one of `name`, `characters`, or non-empty `types` is required.
-- Different predicates are ANDed. Values within `types` are ORed.
-- Empty query strings and empty type arrays are rejected.
-- Unknown node-type strings are rejected with the accepted enum values and a closest-match suggestion.
-- `search` and the legacy `filter` object cannot appear in the same `node_info` call. Search predicates belong in `search`; `filter` remains available only for the existing pruned-tree read mode.
-- Search is recursive and returns a flat match list in document order.
-- `truncated: true` is a successful bounded result, not an error.
-- Search results always include `id`, `name`, `type`, and `path`. Requested `properties` are included only for matching nodes.
+- `filter` is optional only for `node_info` `TREE` mode. Whenever it is present, at least one of `name`, `characters`, `font`, `textStyle`, `variableBinding`, non-empty `types`, or non-empty `layoutModes` is required.
+- `font` is strict and requires at least one of `family` or `style`. If both are supplied, the same effective text run must satisfy both. Exact family/style matching should be explicit for identity-sensitive follow-up edits; `CONTAINS` remains useful for discovery such as every style containing `"Bold"`.
+- Font matching uses the effective family/style stored on the run and does not require the pair to appear in `AVAILABLE` font discovery. Used-but-unavailable fonts remain searchable so missing-font audits are possible.
+- `textStyle` is a strict discriminated union. `ID` compares the raw non-empty `textStyleId`; `KEY` compares the exact resolved library key; `NAME` uses `StringMatch`; and `LINK_STATE` distinguishes a non-empty style link from an unlinked empty ID. Fields from another branch are rejected.
+- `font` and `textStyle` apply only to `TEXT` and `TEXT_PATH`. A node matches when at least one effective run satisfies every supplied run-aware predicate. If both predicates are present, a font on one run and a Text Style on another cannot satisfy the filter.
+- For uniform non-empty or empty text, use the concrete node-level `fontName` and `textStyleId` as one effective run. If either required field is `figma.mixed`, call `getStyledTextSegments()` once with the minimal union of `fontName` and `textStyleId` needed by the filter.
+- Resolve distinct non-empty style IDs at most once per command with `getStyleByIdAsync()` when `KEY` or `NAME` matching requires the `TextStyle` object. Resolve only candidate runs that already satisfy node-level predicates and any supplied font predicate; require resolved type `TEXT`. `ID` and `LINK_STATE` matching do not require resolution.
+- A `KEY` or `NAME` traversal that cannot resolve a candidate run's linked style fails closed because silently treating it as a nonmatch would claim false completeness. The error reports unresolved IDs and completed scope and directs an ID-aware caller to the exact `by: "ID"` shape.
+- Text Style name matching is discovery, not identity: duplicate names all match and every result returns the exact IDs/keys that matched. Text Style linkage also does not assert visual conformance; direct formatting can differ while the run retains the same `textStyleId`.
+- `variableBinding` is strict. `variableIds` is required, non-empty, and duplicate-free; every ID is an exact case-sensitive identity obtained from `variable_list` or a prior `node_info.properties.boundVariables` read. `fields`, when present, is non-empty and duplicate-free. Names, keys, collection names, resolved values, and link-state shortcuts are not accepted as variable identities in this release.
+- A node satisfies `variableBinding` when at least one raw direct alias has a `variableId` in `variableIds` and, when `fields` is present, its normalized field is in `fields`. Values within each array are ORed; the identity and field conditions are ANDed.
+- Direct-binding extraction covers the candidate node's complete `boundVariables` shape, including scalar node fields, text-field alias arrays, fills, strokes, effects, layout grids, text-range fills, and component-property maps. It also normalizes direct `componentPropertyDefinitions[*].boundVariables.defaultValue` and `componentProperties[*].boundVariables.value` references into the two explicit component-property location branches.
+- If a supported binding-bearing branch cannot be read or normalized, fail closed rather than returning an apparently complete result. The structured error reports the affected node/location and completed scope, and gives a narrower `node_info` retry. This completeness rule applies to binding extraction, not optional variable-object enrichment.
+- Matching compares raw alias IDs and therefore remains exact even if `getVariableByIdAsync()` cannot resolve a deleted, unavailable, or remote variable object. Resolve each distinct matched ID at most once per command only to enrich evidence; resolution failure produces `resolved: false` evidence and never converts an exact raw-ID match into a nonmatch or an incomplete-result failure.
+- `variableBinding` does not follow `Variable.valuesByMode` alias chains, styles bound to the variable, nodes that merely consume such a style, `inferredVariables`, reaction/action expressions, or `explicitVariableModes`/`resolvedVariableModes`. Use `variable_list({ variableId, includeConsumers: "page" | "document", pageId? })` for the broader variable-centric node/style/alias/reaction inventory. An exact variable value or rename updates through the stable binding ID without requiring this filter; the filter is for impact inspection, targeted rebinding, and post-migration verification.
+- `variableBinding` is a node-level predicate. When combined with `font` or `textStyle`, the candidate node must satisfy both predicate groups, but the contract does not claim that the binding and typography match occur on the same text run. Callers needing range-level binding context request styled-text segments after locating the node.
+- Different predicates are ANDed. Values within `types`, `layoutModes`, `variableBinding.variableIds`, and `variableBinding.fields` are ORed.
+- Empty query strings and empty arrays are rejected.
+- Unknown node-type or layout-mode strings are rejected with accepted enum values and a closest-match suggestion.
+- The public schemas do not expose a parallel `search` field. Unknown-key validation rejects it and directs the caller to `resultMode: "MATCHES"` plus `filter`.
+- Matching is recursive and uses one predicate evaluator for filtered trees and match lists in both tools.
+- `maxResults` controls returned match output, not predicate evaluation. It is top-level, valid only with `resultMode: "MATCHES"`, and is an integer from 1 through 500 with a default of 100.
+- Match traversal completes the selected scope so `matchedCount`, `returnedCount`, and scan counts remain exact. `truncated` means `matchedCount > returnedCount`; it is a successful bounded result, not an error.
+- Match results always include `id`, `name`, `type`, and `path`. Requested `properties` are included only for matching nodes. A font, Text Style, or variable-binding predicate also adds `matchEvidence` containing the exact font pairs, style identities, or direct variable-binding locations that caused the match. Evidence is deduplicated in first traversal order, reports exact unique counts, is capped at 50 entries per category, and sets `evidenceTruncated: true` when any complete category exceeds that cap.
+- When `filter.font` is supplied, every matching node requires both `fontNames` and `matchedFontNameCount`. When `filter.textStyle` is supplied, it requires both `textStyles` and `matchedTextStyleCount`. Omit the unrelated evidence category unless its predicate was also supplied.
+- When `filter.variableBinding` is supplied, every matching node requires `variableBindings` and `matchedVariableBindingCount`. A binding entry is unique by `{ variableId, location }`; the exact count covers all matching entries even when the returned evidence is capped. Omit variable evidence when the predicate was not supplied.
+- This hard-cutover release replaces legacy `filter.type` and `filter.layoutMode` with strict plural `filter.types` and `filter.layoutModes`; no aliases or silently ignored filter keys remain.
 
-### `node_info` search scope
+### `node_info` result modes
 
 ```ts
-node_info({
-  nodeIds?: string[],       // explicit subtree roots
-  search: NodeSearch,
-  properties?: string[],
-  maxDepth?: number,
-  concurrencyLimit?: number
-})
+type NodeInfoInput =
+  | {
+      resultMode?: "TREE"; // default
+      nodeIds?: string[];
+      filter?: NodeFilter;
+      properties?: string[];
+      maxDepth?: number;
+      concurrencyLimit?: number;
+      maxResults?: never;
+    }
+  | {
+      resultMode: "MATCHES";
+      nodeIds?: string[];
+      filter: NodeFilter;
+      properties?: string[];
+      maxDepth?: number;
+      concurrencyLimit?: number;
+      maxResults?: number; // integer 1..500, default 100
+    };
 ```
 
-- If `nodeIds` is omitted, use the connected editable scope root exactly as ordinary `node_info` does.
+- `TREE` without a filter preserves the existing recursive subtree read and `nodes` output.
+- `TREE` with a filter returns a pruned hierarchy. A nonmatching ancestor remains when it leads to a matching descendant; requested properties and `matchEvidence` are attached only to matching nodes.
+- `MATCHES` returns only matching nodes as a flat list in document order. Paths preserve the ancestry that a flat result omits.
+- If `nodeIds` is omitted in either branch, use the connected editable scope root exactly as ordinary `node_info` does.
 - A node-read-only session with no roots and no editable scope returns a structured error instructing the model to obtain roots from `page_info`; it must not fall back to the current page.
 - Multiple roots are deduplicated by ID. A descendant included under two requested roots appears once, under the first root in request order.
-- Existing non-search `node_info` behavior and its `nodes` tree output remain available.
+- Existing unfiltered `TREE` behavior and its `nodes` output remain byte-for-byte compatible except for additive output-schema fields.
 
-Search-mode output:
+`MATCHES` output:
 
 ```ts
 {
@@ -285,39 +376,92 @@ Search-mode output:
     type: string;
     path: Array<[type: string, id: string, name: string]>;
     properties?: Record<string, unknown>;
+    matchEvidence?: {
+      fontNames?: Array<{ family: string; style: string }>;
+      matchedFontNameCount?: number;
+      textStyles?: Array<
+        | { state: "UNLINKED" }
+        | {
+            state: "LINKED";
+            id: string;
+            resolved: false;
+          }
+        | {
+            state: "LINKED";
+            id: string;
+            resolved: true;
+            key: string;
+            name: string;
+            remote: boolean;
+          }
+      >;
+      matchedTextStyleCount?: number;
+      variableBindings?: Array<
+        | {
+            variableId: string;
+            resolved: false;
+            location: VariableBindingLocation;
+          }
+        | {
+            variableId: string;
+            resolved: true;
+            name: string;
+            key: string;
+            collectionId: string;
+            remote: boolean;
+            location: VariableBindingLocation;
+          }
+      >;
+      matchedVariableBindingCount?: number;
+      evidenceTruncated?: boolean;
+    };
   }>;
-  matchCount: number;
+  matchedCount: number;
+  returnedCount: number;
   truncated: boolean;
   scannedNodeCount: number;
   missingNodeIds?: string[];
 }
 ```
 
-### `page_info` search scope
+### `page_info` result modes
 
 ```ts
-page_info({
-  pageIds?: string[],       // omitted means every page
-  search: NodeSearch,
-  properties?: string[]
-})
+type PageInfoReadInput =
+  | {
+      resultMode?: "SUMMARY"; // default
+      pageIds?: string[];
+      filter?: never;
+      properties?: never;
+      maxResults?: never;
+    }
+  | {
+      resultMode: "MATCHES";
+      pageIds?: string[]; // omitted means every page
+      filter: NodeFilter;
+      properties?: string[];
+      maxResults?: number; // integer 1..500, default 100
+    };
 ```
 
-- `pageIds` limits the scan to exact pages. Omission means document-wide search, not current page.
+- `SUMMARY` preserves existing `page_info()` and `page_info({ pageIds })` behavior. It performs no recursive match traversal and forbids filter/match-only fields.
+- In `MATCHES`, `pageIds` limits traversal to exact pages. Omission means document-wide matching, not current page.
+- Because `page_info` and `node_info` share `NodeFilter`, cross-page `MATCHES` supports the same font, Text Style, and direct variable-binding predicates and returns the same per-node evidence; it does not introduce a second identity-filter contract.
 - Dynamic-page access loads pages one at a time and emits progress before yielding, following the existing page-scan timeout discipline.
 - A failed page load fails closed for a result that claims document completeness. The error reports completed and failed page IDs so the model can retry only failed pages.
-- Results are grouped by page while preserving document order.
+- Returned matches are capped globally across the selected pages in document order, then grouped by page. Omit page groups with no returned matches.
 
-Search-mode output:
+`MATCHES` output:
 
 ```ts
 {
   pages: Array<{
     pageId: string;
     pageName: string;
-    matches: NodeSearchMatch[];
+    matches: NodeMatch[];
   }>;
-  matchCount: number;
+  matchedCount: number;
+  returnedCount: number;
   truncated: boolean;
   scannedPageCount: number;
   scannedNodeCount: number;
@@ -329,20 +473,37 @@ Search-mode output:
 
 | Desired job | Consolidated call |
 | :- | :- |
-| Name search | `node_info({ search: { name: { value: "Button" } } })` |
-| Type scan | `node_info({ search: { types: ["COMPONENT", "COMPONENT_SET"] } })` |
-| Text scan | `node_info({ search: { types: ["TEXT"] }, properties: ["characters", "fontSize", "fontName"] })` |
-| Text-content search | `node_info({ search: { characters: { value: "Checkout" } }, properties: ["characters"] })` |
-| Cross-page search | same predicates through `page_info` |
+| Pruned hierarchy | `node_info({ resultMode: "TREE", filter: { types: ["FRAME"], layoutModes: ["HORIZONTAL"] } })` |
+| Name search | `node_info({ resultMode: "MATCHES", filter: { name: { value: "Button" } } })` |
+| Type scan | `node_info({ resultMode: "MATCHES", filter: { types: ["COMPONENT", "COMPONENT_SET"] } })` |
+| Text scan | `node_info({ resultMode: "MATCHES", filter: { types: ["TEXT"] }, properties: ["characters", "fontSize", "fontName"] })` |
+| Text-content search | `node_info({ resultMode: "MATCHES", filter: { characters: { value: "Checkout" } }, properties: ["characters"] })` |
+| Font-family/style search | `node_info({ resultMode: "MATCHES", filter: { font: { family: { value: "Inter", match: "EXACT" }, style: { value: "Bold", match: "CONTAINS" } } } })` |
+| Exact Text Style consumers | `node_info({ resultMode: "MATCHES", filter: { textStyle: { by: "ID", id: "S:123" } } })` |
+| Unstyled text audit | `node_info({ resultMode: "MATCHES", filter: { textStyle: { by: "LINK_STATE", state: "UNLINKED" } } })` |
+| Direct consumers of exact variables | `node_info({ resultMode: "MATCHES", filter: { variableBinding: { variableIds: ["VariableID:123", "VariableID:456"] } } })` |
+| Fill consumers of an exact variable | `node_info({ resultMode: "MATCHES", filter: { variableBinding: { variableIds: ["VariableID:123"], fields: ["fills"] } }, properties: ["fills", "boundVariables"] })` |
+| Variable migration inside one component subtree | `node_info({ resultMode: "MATCHES", nodeIds: ["123:456"], filter: { variableBinding: { variableIds: ["VariableID:old"] } }, properties: ["boundVariables"] })` |
+| Cross-page search | same `resultMode: "MATCHES"` plus `filter` through `page_info` |
 
-### Search acceptance criteria
+### Filtering and matching acceptance criteria
 
-- Search never reads current selection and never silently uses current page.
+- Neither result mode reads current selection or silently uses current page.
 - Name matching is case-insensitive substring by default.
-- A search combining name, characters, and types applies AND semantics correctly.
-- A result capped by `maxResults` reports `truncated: true` and exact scan counts.
-- Direct `node_info` tree reads remain byte-for-byte compatible except for additive output-schema fields.
-- Schema descriptions explain when to choose `page_info` versus `node_info` search.
+- A filter combining node-level predicates applies the documented AND/OR semantics identically in tree and match-result traversal.
+- Uniform, empty, and mixed text nodes apply font and Text Style predicates correctly. Combined font/style predicates match one run, never two unrelated runs.
+- Font evidence returns the exact deduplicated family/style pairs and unique count that matched. Text Style evidence returns the exact unique count plus linked IDs and, when resolved, name/key/remote metadata; unlinked matches are explicit.
+- Text Style ID and link-state matching remain complete without style-object resolution. Name/key matching fails closed on unresolved style IDs, and duplicate style names return every exact matching identity.
+- A Text Style match means “linked to this identity,” never “effective properties equal the style object.”
+- Variable-binding matching uses exact raw IDs, optional exact field narrowing, and complete direct-binding extraction across ordinary node fields plus component-property definitions/values. It returns deterministic structured locations and remains complete when optional variable-object enrichment is unavailable.
+- A variable-binding match means “this node directly owns this alias at this location.” It never means the variable is reached transitively through another variable, a shared style, an inferred literal value, a prototype reference, or a collection mode.
+- For the same page or document scope and IDs, `NodeFilter.variableBinding` and the direct-binding portion of `variable_list` consumer scanning use one shared extractor and cannot disagree. `variable_list` continues to add style, alias, and reaction consumer categories that `NodeFilter` deliberately excludes.
+- `node_info` emits a strict `TREE`/`MATCHES` union; `page_info` emits a strict `SUMMARY`/`MATCHES` union plus the two font branches.
+- `MATCHES` requires a non-empty filter. `TREE` forbids `maxResults`; `SUMMARY` forbids `filter`, `properties`, and `maxResults`.
+- The removed `search` field and legacy singular filter keys fail with a complete corrected-call example.
+- A result capped by `maxResults` reports exact `matchedCount`, `returnedCount`, scan counts, and `truncated: true`.
+- Ordinary unfiltered `node_info` tree reads and `page_info` summary reads remain byte-for-byte compatible except for additive output-schema fields.
+- Schema descriptions explain `TREE` versus `MATCHES`, `SUMMARY` versus `MATCHES`, and when page-wide versus rooted matching is appropriate.
 
 ### Font-discovery problem
 
@@ -353,6 +514,8 @@ Text editing requires two font sets that must not be conflated:
 
 Figwright's `get_fonts` covers only used fonts on an implicit current page. This project instead makes the source and scope explicit and keeps discovery within the existing document/page read surface.
 
+`filter.font` answers a different question: which exact text nodes contain a matching effective font run? It returns node identities and bounded match evidence through `TREE`/`MATCHES`. `fontDiscovery.source: "USED"` returns an aggregate page-scoped inventory, while `AVAILABLE` returns assignable editor-session pairs. Tool descriptions and guides must keep these three decisions distinct.
+
 ### Font-discovery contract
 
 Add two strict, opt-in branches to the future `page_info` mode union:
@@ -361,8 +524,10 @@ Add two strict, opt-in branches to the future `page_info` mode union:
 type PageFontDiscoveryInput =
   | {
       pageIds?: string[]; // omitted means every document page
-      search?: never;
+      resultMode?: never;
+      filter?: never;
       properties?: never;
+      maxResults?: never;
       fontDiscovery: {
         source: "USED";
         query?: string;
@@ -371,8 +536,10 @@ type PageFontDiscoveryInput =
     }
   | {
       pageIds?: never;
-      search?: never;
+      resultMode?: never;
+      filter?: never;
       properties?: never;
+      maxResults?: never;
       fontDiscovery: {
         source: "AVAILABLE";
         query?: string;
@@ -384,7 +551,7 @@ type PageFontDiscoveryInput =
 Rules:
 
 - `fontDiscovery.source` is required. `USED` and `AVAILABLE` are different result branches, not flags that can be combined.
-- `fontDiscovery` and `search` are mutually exclusive. A font branch also rejects search-only `properties`.
+- `fontDiscovery` is mutually exclusive with `resultMode`, `filter`, match-only `properties`, and top-level `maxResults`.
 - Ordinary `page_info()` and `page_info({ pageIds })` retain their existing lightweight behavior. Neither font list is computed or returned without `fontDiscovery`.
 - `query`, when present, must be non-empty and performs a case-insensitive substring match across family and style.
 - Results are normalized, deduplicated by exact `{ family, style }` pair, deterministically sorted, bounded by `maxResults`, and accompanied by exact match/return counts and `truncated`. `maxResults` limits only the returned pair array; it does not short-circuit traversal or make usage/ranking counts partial.
@@ -441,7 +608,7 @@ type PageFontDiscoveryResult =
     };
 ```
 
-The broadened `page_info` title must be **Get Document and Page Information**. Its description must name direct page reads, search, used-font discovery, and available-font discovery, and must explain the `USED` versus `AVAILABLE` distinction at tool-selection time.
+The broadened `page_info` title must be **Get Document and Page Information**. Its description must name `SUMMARY` reads, `MATCHES` traversal, used-font discovery, and available-font discovery, and must explain the `USED` versus `AVAILABLE` distinction at tool-selection time.
 
 ### Text-write integration and recovery
 
@@ -453,7 +620,7 @@ The broadened `page_info` title must be **Get Document and Page Information**. I
 
 ### Font-discovery acceptance criteria
 
-- Emitted JSON Schema exposes mutually exclusive direct, search, `USED`, and `AVAILABLE` branches with correct required and forbidden fields.
+- Emitted JSON Schema exposes mutually exclusive `SUMMARY`, `MATCHES`, `USED`, and `AVAILABLE` branches with correct required and forbidden fields.
 - Ordinary direct `page_info` calls do no catalog or document traversal work beyond their existing behavior.
 - `USED` never reads `figma.currentPage`; omitted `pageIds` means all document pages and explicit IDs constrain the scan exactly.
 - Uniform and mixed-font nodes produce the specified distinct-node, segment, and per-page counts.
@@ -566,7 +733,7 @@ Combined example: `rotation` is `45` degrees while the arc ends at `Math.PI` rad
 - Position/size-only, rotation-only, arc-only, and combined size/rotation/arc calls work.
 - An empty transform fails at schema validation with the accepted field list.
 - An empty or unknown-key arc patch fails at schema validation; invalid radius and non-finite values fail before mutation.
-- `arcData` on a non-ellipse returns `ARC_TARGET_NOT_ELLIPSE` before any valid position, size, or rotation field changes. Error details include the observed type, required type, and exact prerequisite `node_info({ search: { types: ["ELLIPSE"] }, properties: ["arcData"] })`. When at least one non-arc mutation remains, also include a complete valid transform-only retry with `arcData` omitted; never emit an empty transform retry for an arc-only failure.
+- `arcData` on a non-ellipse returns `ARC_TARGET_NOT_ELLIPSE` before any valid position, size, or rotation field changes. Error details include the observed type, required type, and exact prerequisite `node_info({ resultMode: "MATCHES", filter: { types: ["ELLIPSE"] }, properties: ["arcData"] })`. When at least one non-arc mutation remains, also include a complete valid transform-only retry with `arcData` omitted; never emit an empty transform retry for an arc-only failure.
 - Omitted arc fields retain their live values, including in combined resize/rotation calls.
 - Degree rotation and radian arc angles are independently asserted in emitted-schema descriptions and handler tests.
 - Unsupported transform capabilities fail before any position, size, rotation, or arc field is changed.
@@ -1922,7 +2089,7 @@ Rules:
 - `start` and `end` follow the same paired, bounds, and surrogate-boundary rules as `text_set_style`.
 - Use `TextNode.getStyledTextSegments(fields, start?, end?)`; do not reconstruct runs by repeatedly calling individual range getters.
 - Support `TEXT` and `TEXT_PATH`, but reject requested fields that the target text type cannot expose.
-- The option works in ordinary subtree reads and node-search mode. Non-text nodes omit the computed property.
+- The option works in ordinary `TREE` reads and `MATCHES` results. Non-text nodes omit the computed property.
 - Preserve variable alias identity as `{ type: "VARIABLE_ALIAS", id, name? }`; resolving a display name must not discard the ID needed for a later write.
 - Normalize paint-valued segment fields with the same write-ready `PaintInput` serializer specified in Section 18.1.
 - `maxSegments` bounds output. A truncated result reports the full segment count and tells the caller to retry with a narrower character range.
@@ -1949,7 +2116,7 @@ Acceptance criteria:
 
 - Mixed font, fill, hyperlink, list, style-ID, and variable-binding runs expose correct UTF-16 boundaries.
 - Requested fields determine segmentation exactly as Figma's API does.
-- Segment reads work for explicit roots and search matches without using current selection/page.
+- Segment reads work for explicit roots and `MATCHES` results without using current selection/page.
 - Invalid ranges and unsupported TEXT_PATH fields return actionable read errors.
 - A model can take a returned segment's `start`/`end` and text and use them unchanged in `text_set_style` or as the guarded range/`expectedText` for `text_set_content`.
 
@@ -2204,7 +2371,7 @@ Rules:
 - The flag requires `properties` to include `fills`, `strokes`, or both. Otherwise schema/refinement failure gives the exact corrected request.
 - For each returned node, inspect IMAGE paints only, deduplicate hashes for API calls, resolve with `figma.getImageByHash`, and await `getSizeAsync()`.
 - Add the same `paintField`, `paintIndex`, `imageHash`, `intrinsicSize`, and `aspectRatio` entries under that node's `properties.imageDimensions`. Do not include image bytes.
-- The flag works in direct subtree and search results without consulting current selection/page. It follows existing result caps and concurrency limits.
+- The flag works in direct `TREE` and `MATCHES` results without consulting current selection/page. It follows the selected result mode's caps and concurrency limits.
 - A missing/unloadable hash does not fabricate zero dimensions. Return it under `unresolvedImageHashes` with an actionable per-hash reason while preserving dimensions that did resolve.
 - Dimensions are metadata only. Neither read nor paint write resizes, crops, or transforms the target node. The caller may use the returned size/aspect ratio in a subsequent explicit `node_transform` call.
 
@@ -2228,11 +2395,11 @@ The rename is a hard cutover. There is no `node_group` alias and no standalone b
 
 ### Discovery and migration workflow
 
-Use the parent tuple from a prior `page_info` or search-result `path` when available. For callers that have only the input IDs/names, the exact selection-independent discovery sequence is:
+Use the parent tuple from a prior `page_info` `MATCHES` result or `node_info` `MATCHES` result when available. For callers that have only the input IDs/names, the exact selection-independent discovery sequence is:
 
 1. Call `node_info({ nodeIds, properties: ["parent"], maxDepth: 0 })`. Require every returned `properties.parent` ID to be identical and non-null.
 2. Call `node_info({ nodeIds: [parentId], maxDepth: 1 })`. The root entry supplies `parentNodeName`; its immediate `children` supply the current sibling order needed to choose or omit `index`.
-3. Pass the discovered identities back verbatim. A structured search-result path tuple is authoritative; do not parse a human-formatted path string or choose a parent/index from current page or selection state.
+3. Pass the discovered identities back verbatim. A structured match-result path tuple is authoritative; do not parse a human-formatted path string or choose a parent/index from current page or selection state.
 
 This is discovery before mutation, not write-failure recovery. Once `node_combine` is called, any parent mismatch error must include the observed exact parent identities so one corrected retry or explicit reparent prerequisite does not require another read.
 
@@ -2394,8 +2561,8 @@ The existing `instance_get_overrides`, `instance_set_overrides`, `instance_set_p
 
 | Tool | Required plugin-side controls beyond type-specific validation |
 | :- | :- |
-| `page_info` search/font discovery | Existing explicit-page/all-document read rules; strict direct/search/font-mode exclusion; bounded output; one-page-at-a-time loading and fail-closed completeness for `USED`; editor-session scope for `AVAILABLE` |
-| `node_info` computed metadata | Existing explicit-root/read-scope rules; styled-field/range validation and cap; image-dimension flag/property dependency; bounded hash resolution |
+| `page_info` matching/font discovery | Existing explicit-page/all-document read rules; strict `SUMMARY`/`MATCHES`/font-mode exclusion; non-empty match filter; same-run typography matching; exact raw-ID direct variable-binding matching; cached Text Style/variable enrichment; bounded match/evidence output; one-page-at-a-time loading and fail-closed completeness for `USED`; editor-session scope for `AVAILABLE` |
+| `node_info` filtering/computed metadata | Existing explicit-root/read-scope rules; strict `TREE`/`MATCHES` dispatch; same-run font/Text Style matching; exact raw-ID direct variable-binding and field matching; shared complete binding extraction; raw-ID/link-state behavior; cached and type-checked Text Style resolution with fail-closed name/key completeness; bounded match evidence; styled-field/range validation and cap; image-dimension flag/property dependency; bounded hash resolution |
 | `node_transform` | Existing node-write stack; complete affine-support/layout preflight; rotation support check; `arcData` requires exact ELLIPSE type, current-state merge, strict radians/radius validation, and zero predictable mutation before the entire combined plan passes |
 | `node_rename` PAGE | Existing node-write and exact-name stack; target must be the exact active page-scope root; reject node scope, another page's scope, and page dividers |
 | `node_set_layout` | Node-write stack; target/parent mixin checks; effective-mode validation; grid bounds/occupancy preflight; active-constraint, sizing, viewport, and style-link checks |
@@ -2424,7 +2591,7 @@ The existing `instance_get_overrides`, `instance_set_overrides`, `instance_set_p
 
 New conditions need stable central codes. The final taxonomy may consolidate causes, but it must distinguish at least:
 
-- search predicate missing, search root unavailable, conflicting `page_info` modes, invalid font-discovery scope, and incomplete used-font page scan;
+- match filter missing, match root unavailable, result-mode/filter mismatch, conflicting `page_info` modes, invalid font filter, invalid Text Style filter branch, invalid/duplicate/empty variable-binding IDs or fields, incomplete direct-binding extraction, unresolved/non-TEXT style identity during name/key matching, invalid font-discovery scope, and incomplete used-font page scan;
 - requested font unavailable, including its exact family/style pair and bounded assignable candidates;
 - styled-text field unavailable, range invalid, segment limit invalid, or image-dimension property dependency missing;
 - image source/hash invalid, image dimensions unavailable, pattern source outside scope, or paint branch invalid;
@@ -2486,7 +2653,7 @@ MCP annotations are advisory, not enforcement. Plugin-side guards remain authori
 4. Mutually exclusive modes are checked at the MCP boundary and again in the plugin because schema validation is not a safety boundary.
 5. Numeric limits use schema constraints: opacity, positions on a path, and ellipse `innerRadius` in `[0,1]`, positive dimensions, integer text indices/mode counts, finite transform/arc numbers, and non-empty arrays where required.
 6. Enum values come from the pinned `@figma/plugin-typings` surface or a generated allowlist where drift is likely.
-7. Tool descriptions explain the nearest alternatives that models commonly confuse: visible versus opacity, frame versus section versus slice, SVG versus vector paths, degree-based node rotation versus radian ellipse arc angles, component swap versus detach versus direct-override removal, component-property writes versus direct node overrides, variable unbind versus mode clear, whole-text versus range editing, intrinsic image pixels versus node size, literal paints/grids versus shared styles, and editable group/boolean combinations versus lossy flattening.
+7. Tool descriptions explain the nearest alternatives that models commonly confuse: visible versus opacity, frame versus section versus slice, SVG versus vector paths, degree-based node rotation versus radian ellipse arc angles, component swap versus detach versus direct-override removal, component-property writes versus direct node overrides, variable unbind versus mode clear, direct node variable-binding matching versus `variable_list` impact discovery, whole-text versus range editing, intrinsic image pixels versus node size, literal paints/grids versus shared styles, node-level font matching versus aggregate/available font discovery, Text Style linkage versus effective formatting conformance, and editable group/boolean combinations versus lossy flattening.
 8. `component_manage_property` and `component_delete_property` distinguish creation names (`propertyName`) from existing canonical identities (`propertyId`) in both schema names and descriptions.
 9. `instance_set_component_properties` requires one `nodeId`, one `nodeName`, and one non-empty exact-key `properties` map. It exposes no display-name compatibility branch and no instance/target array. A `VARIABLE_ALIAS` object is strict and cannot carry extra keys.
 10. `node_info.styledTextSegments.fields` is an enum-backed non-empty array, and its optional `start`/`end` pair cannot be supplied partially.
@@ -2496,11 +2663,14 @@ MCP annotations are advisory, not enforcement. Plugin-side guards remain authori
 14. The whole/range `text_set_content` item union is visible in emitted JSON schema. A ranged item requires `start`, `end`, and `expectedText` together and forbids a second range for the same target.
 15. `node_info.resolveImageDimensions: true` requires `properties` to contain `fills` or `strokes`; its schema description distinguishes intrinsic image pixels from node dimensions.
 16. `variable_manage.RENAME_COLLECTION` requires `collectionId`, current `collectionName`, and new `name`, while forbidding variable/mode fields.
-17. `page_info` emits a strict exclusive union for direct, search, `fontDiscovery.source: "USED"`, and `fontDiscovery.source: "AVAILABLE"` modes. `USED` permits explicit `pageIds`; `AVAILABLE` forbids them; both font branches forbid search-only properties.
+17. `page_info` emits a strict exclusive union for default/explicit `SUMMARY`, explicit `MATCHES`, `fontDiscovery.source: "USED"`, and `fontDiscovery.source: "AVAILABLE"` modes. `MATCHES` requires a strict non-empty `filter`; `USED` permits explicit `pageIds`; `AVAILABLE` forbids them; both font branches forbid result/filter/property fields. `node_info` separately emits a strict default/explicit `TREE` versus explicit `MATCHES` union.
 18. `FontName` inputs and outputs always carry an exact non-empty `{ family, style }` pair. Tool descriptions distinguish used fonts from editor-session available fonts and state that discovery cannot install a font.
 19. `instance_remove_overrides.expectedOverrides` is required and is an array of strict `{ id, overriddenFields }` entries. The schema requires non-empty strings and non-empty field arrays; plugin validation rejects duplicate IDs or duplicate fields before deterministic sorting and returns the exact corrected one-target call on stale state.
 20. `node_transform.arcData` is a strict non-empty patch. The emitted schema and descriptions distinguish degree `rotation` from radian `startingAngle`/`endingAngle`, constrain `innerRadius` to `0..1`, and include `arcData` in the top-level at-least-one-mutation refinement.
 21. `node_combine.operation` is required with exactly five values and no default. Its schema requires at least two unique exact node identities plus one exact parent identity, makes the supplied node order semantically significant, and rejects unknown fields in the top level and every node item.
+22. `NodeFilter.font` is strict and non-empty. `NodeFilter.textStyle` emits four strict discriminated branches for `ID`, `KEY`, `NAME`, and `LINK_STATE`; branch-specific fields cannot be combined. Descriptions state that font and Text Style predicates apply to one run, style names are non-unique discovery values, and linkage does not prove visual conformance.
+23. `NodeFilter.variableBinding` is a strict object with required, non-empty, duplicate-free `variableIds` and optional non-empty, duplicate-free `fields`. `fields` is an enum generated from the pinned `VariableBindableNodeField` and `VariableBindableTextField` literals plus `fills`, `strokes`, `effects`, `layoutGrids`, `componentProperties`, and `textRangeFills`; unknown or stale field names fail with the accepted values and a corrected-call example. The schema accepts no name, key, value, collection, mode, inferred, reaction, alias-traversal, or link-state branch.
+24. Variable-binding evidence emits strict resolved/unresolved variable branches plus a strict `NODE` / `COMPONENT_PROPERTY_DEFINITION` / `INSTANCE_COMPONENT_PROPERTY` location union. A component-property location requires its exact canonical `propertyId`; a `NODE` location forbids it. Descriptions state that ID and field arrays use OR semantics, separate `NodeFilter` predicates use AND semantics, and variable-binding conjunction with typography is node-level rather than same-run.
 
 ---
 
@@ -2509,22 +2679,26 @@ MCP annotations are advisory, not enforcement. Plugin-side guards remain authori
 ### Phase 1 - Contract scaffolding and migration map
 
 - Ratify the future release number; the former empty `variable_manage` item is resolved as `RENAME_COLLECTION`.
-- Define shared strict schemas/enums for the `page_info` mode union, exact `FontName`, search, blend mode, paints/image sources, stroke geometry, layout/grid fields, constraints, `ArcData` fields/patches, text paints/decorations, styled-text fields, region branches, variable actions/modes, canonical component-property IDs, exact instance-property values, canonical direct-override manifests, component destinations, `NodeCombineOperation`, and the explicit structural parent/index plan.
+- Define shared strict schemas/enums for the `page_info` and `node_info` result-mode unions, `NodeFilter`, `FontFilter`, discriminated `TextStyleFilter`, `VariableBindingFilter`, pinned bindable fields, strict binding locations, exact `FontName`, match evidence, blend mode, paints/image sources, stroke geometry, layout/grid fields, constraints, `ArcData` fields/patches, text paints/decorations, styled-text fields, region branches, variable actions/modes, canonical component-property IDs, exact instance-property values, canonical direct-override manifests, component destinations, `NodeCombineOperation`, and the explicit structural parent/index plan.
 - Add old-to-new and removed-tool migration tests. Remove the five renamed old names plus `instance_get_overrides` and `instance_set_overrides` from expected tool lists; register only the four additions named in Release identity.
-- Add central structured-error codes and playbook entries, including font mode/scope/availability, incomplete page traversal, paint/image, grid/parent state, ellipse arc type/value/unit recovery, combined-transform partial disclosure, stale text range, collection rename, page-scope rename, exact component-property maps, malformed/stale override-manifest recovery, and structural-combine operation/input/parent/index/order/partial-mutation paths, before handlers depend on them.
+- Add central structured-error codes and playbook entries, including result-mode/filter mismatch, invalid font/Text Style/variable-binding predicates, incomplete Text Style name/key resolution, incomplete direct-binding extraction, font mode/scope/availability, incomplete page traversal, paint/image, grid/parent state, ellipse arc type/value/unit recovery, combined-transform partial disclosure, stale text range, collection rename, page-scope rename, exact component-property maps, malformed/stale override-manifest recovery, and structural-combine operation/input/parent/index/order/partial-mutation paths, before handlers depend on them.
 
-### Phase 2 - Read/search and font-discovery surface
+### Phase 2 - Read filtering/matching and font-discovery surface
 
-- Implement bounded flat search in `nodeReaders.ts`.
-- Reuse one predicate evaluator for page and node searches.
-- Broaden the `page_info` title/description and implement its strict direct/search/`USED`/`AVAILABLE` mode dispatch without changing ordinary direct reads.
+- Implement strict `TREE`/`MATCHES` and `SUMMARY`/`MATCHES` dispatch plus bounded match output in `nodeReaders.ts`.
+- Replace the loose legacy filter evaluator with one shared predicate evaluator for page matching, node matching, and pruned-tree reads. Do not retain a hidden `search` route or singular `type`/`layoutMode` aliases.
+- Implement one typography-run extractor shared by `filter.font`, `filter.textStyle`, used-font discovery, and styled-text reads. Use concrete node-level values for uniform/empty text and one minimal `getStyledTextSegments()` call when a required field is mixed.
+- Resolve and cache each distinct Text Style ID once per command for `KEY`/`NAME` matching; validate `TEXT` type, preserve raw-ID/link-state matching without resolution, fail closed on incomplete name/key resolution, and emit bounded exact match evidence.
+- Implement one recursive direct-binding extractor shared by `filter.variableBinding` and the direct-binding portion of `variable_list` consumer scanning. It must cover every pinned `boundVariables` scalar/array/map branch plus component-property definition/value bindings, normalize exact locations, preserve raw IDs, deduplicate by `{ variableId, location }`, and exclude aliases-in-values, styles, inferred variables, reactions, and mode maps.
+- Match `variableBinding` by raw exact ID and optional normalized field before resolving metadata. Cache `getVariableByIdAsync()` once per distinct matched ID for evidence only; emit `resolved: false` without failing or dropping the raw-ID match when enrichment is unavailable. Apply the same 50-entry category cap and exact-count/truncation rules as typography evidence.
+- Broaden the `page_info` title/description and implement its strict `SUMMARY`/`MATCHES`/`USED`/`AVAILABLE` dispatch without changing ordinary summary reads.
 - Implement `USED` traversal over explicit pages or all document pages, mixed-font segmentation and exact counts, a live availability cross-check, deterministic bounds, progress, and fail-closed page-load reporting.
 - Implement `AVAILABLE` with a live `listAvailableFontsAsync()` call, editor-session scope, exact-pair deduplication, filtering, deterministic ordering, counts, and truncation.
 - Implement `node_info.styledTextSegments` with native `getStyledTextSegments()` calls, bounded output, and preserved variable IDs. This prerequisite must ship before Phase 4 range editing.
 - Make `node_info` the canonical instance-state read: for an exact `INSTANCE` request, serialize `mainComponent`, the complete direct `{ id, overriddenFields }[]` override manifest, and exact `componentProperties` without requiring a dedicated instance reader. Canonicalize override-manifest ordering in the same shared helper used by removal preflight.
 - Implement opt-in image-dimension resolution with deduplicated `getImageByHash()`/`getSizeAsync()` calls and per-hash unresolved metadata.
-- Preserve existing direct-read/tree behavior.
-- Add progress, page-load failure, font-scan completeness, exact font counts, search/font/segment truncation, ordering, duplicate-root, UTF-16 range, image-hash deduplication, and count tests.
+- Preserve existing unfiltered direct-read/tree behavior and the documented pruned-tree ancestor semantics.
+- Add progress, page-load failure, font-scan completeness, exact font counts, result/evidence/font/segment truncation, typography same-run behavior, variable-binding node-level conjunction, direct-binding extraction/evidence completeness, style/variable resolution behavior, ordering, duplicate-root, UTF-16 range, image-hash deduplication, and count tests.
 
 ### Phase 3 - Core node setters
 
@@ -2560,6 +2734,7 @@ MCP annotations are advisory, not enforcement. Plugin-side guards remain authori
 - Add code-syntax read/write/remove behavior, collection rename, and mode add/rename.
 - Extend explicit mode maps with null clear.
 - Replace `variable_delete` input with the target discriminator and add mode-consumer scanning.
+- Refactor `variable_list` node-consumer scanning to reuse Phase 2's direct-binding extractor while retaining its separate style, alias, and prototype-reaction passes. Document that its broader variable-centric output and `NodeFilter.variableBinding`'s scoped node-centric output intentionally differ.
 
 ### Phase 7 - Components and instances
 
@@ -2574,7 +2749,7 @@ MCP annotations are advisory, not enforcement. Plugin-side guards remain authori
 ### Phase 8 - Contract synchronization and release
 
 - Update `README.md`, `SAFETY.md`, `CHANGELOG.md`, tool-selection/workflow/constraint/error-playbook guides, and their `figma-edit://guide/*` resource mirrors.
-- Publish concrete migration examples for the plural one-instance component-property map, the `node_info` override read, each explicit alternative to the removed source-template transfer workflow, and `node_group` to `node_combine({ operation: "GROUP", ... })`. State where no behavior-preserving one-call migration exists.
+- Publish concrete migration examples for `node_info.filter.type`/`layoutMode` to strict plural fields, `TREE` versus `MATCHES`, font and Text Style consumer matching, exact-ID `variableBinding` matching, choosing `variableBinding` versus `variable_list.includeConsumers`, the plural one-instance component-property map, the `node_info` override read, each explicit alternative to the removed source-template transfer workflow, and `node_group` to `node_combine({ operation: "GROUP", ... })`. State where no behavior-preserving one-call migration exists.
 - Regenerate `figma_plugin/code.js`; do not hand-edit it.
 - Update tool-count, tool-list, strict-schema, permission-matrix, safety-contract, retired-command absence, and MCP-boundary tests for four additions, two removals, five renames, and net +2 tools.
 - Run server and plugin type checks, generated-file checks, suppression checks, plugin build verification, version checks, and the full unit suite.
@@ -2588,7 +2763,9 @@ MCP annotations are advisory, not enforcement. Plugin-side guards remain authori
 
 - Snapshot emitted `tools/list` contracts, not only local Zod objects.
 - Assert each discriminator's required, optional, and forbidden fields.
-- Assert `page_info` direct/search/`USED`/`AVAILABLE` exclusivity, including required `source`, `AVAILABLE` page-scope refusal, non-empty queries, and `maxResults` bounds.
+- Assert `page_info` `SUMMARY`/`MATCHES`/`USED`/`AVAILABLE` exclusivity and `node_info` `TREE`/`MATCHES` exclusivity, including default modes, required filters/source, forbidden branch fields, `AVAILABLE` page-scope refusal, non-empty queries, and `maxResults` bounds.
+- Assert `NodeFilter` is strict and non-empty; `font` requires family or style; `textStyle` emits exact `ID`/`KEY`/`NAME`/`LINK_STATE` branches; `variableBinding` requires unique exact IDs and permits only unique pinned fields; cross-branch fields, names/keys/modes under `variableBinding`, empty identity strings/arrays, duplicates, legacy singular keys, and the removed `search` field fail with corrected-call guidance.
+- Assert match output exposes bounded `matchEvidence` with exact font pairs, strict resolved/unresolved Text Style reference branches, unlinked evidence, strict resolved/unresolved variable references, exact binding-location branches, exact unique counts, and `evidenceTruncated`.
 - Assert all five old renamed names and both removed override tools are absent, all four additions are registered, and the total is exactly the expected net +2 surface.
 - Assert `node_transform` includes `arcData` in its top-level at-least-one refinement; the patch is strict and non-empty; radius is `0..1`; and emitted descriptions label rotation as degrees and arc angles as radians with concrete numeric constants.
 - Assert nested unknown keys fail.
@@ -2605,12 +2782,16 @@ MCP annotations are advisory, not enforcement. Plugin-side guards remain authori
 - One success, one wrong-type failure, one exact-name failure, and one no-partial-mutation failure per branch.
 - Readback matches the actual target after mutation.
 - Cleanup tests inject a failure after creation and prove no orphan remains.
+- Filter/matching tests cover `TREE` and `MATCHES`, explicit/default roots, pruned ancestors, node-level AND/OR predicates, uniform/empty/mixed `TEXT` and `TEXT_PATH`, font family-only/style-only/combined matching, exact/contains/case-sensitive behavior, used-but-unavailable font pairs, and complete traversal/count/truncation metadata.
+- Text Style filter tests cover raw ID, exact key, exact/partial duplicate names, linked/unlinked runs, local and remote styles, one-resolution-per-ID caching, resolution only after cheaper predicates identify candidate runs, unresolved/non-TEXT fail-closed behavior for name/key, raw-ID matching without resolution, same-run font/style conjunction, exact evidence ordering/deduplication/caps, and proof that linkage is not reported as visual conformance.
+- Variable-binding filter tests cover one/multiple exact IDs, optional field narrowing, scalar and array node fields, fills/strokes/effects/layout grids/text-range fills, component-property definition/value maps, local/remote/unresolvable IDs, one-enrichment-attempt-per-ID caching, raw-ID matches without enrichment, deterministic location ordering/deduplication/caps, and exact match counts. Negative cases prove that aliases-in-values, shared-style bindings, inferred variables, reactions, and explicit/resolved modes do not match; combined typography tests prove the documented node-level rather than same-run conjunction.
+- Shared-extractor parity tests prove that, for the same page or document scan scope and IDs, `NodeFilter.variableBinding` and the direct-binding subset of `variable_list.nodeConsumers` identify the same nodes/fields while `variable_list` alone retains style, alias, and reaction consumer categories. Rooted subtree matching remains exclusive to `NodeFilter`.
 - Font-discovery tests cover `USED` and `AVAILABLE`, explicit/all-page scope, uniform and mixed runs, distinct-node/segment/page counts, exact-pair availability, filtering, deduplication, ordering, bounds, truncation, and fail-closed page loads.
 - Text-font tests cover exact replacement/default pairs, missing-font candidates and corrected discovery calls, no fallback, mixed fonts, range boundaries, and TEXT_PATH subsets.
 - Styled-segment/content tests cover mixed properties, UTF-16 offsets, requested-field segmentation, aliases, TEXT_PATH restrictions, truncation metadata, guarded replacement/insertion/deletion, stale expected text, inheritance sides, and whole-batch preflight.
 - Layout tests cover horizontal/vertical/wrap/grid modes, grid tracks, occupied-cell shrink/collision, child placement/span, sizing/grow/align/absolute positioning, min/max bounds, active constraints, clipping, overflow, and literal layout grids.
 - Paint tests cover multi-paint order, all strict paint branches, color-variable aliases, clear arrays, reused/imported images, pattern source verification, mixed text refusal, linked-style readback, full preflight, and every common stroke geometry field.
-- Image tests cover stored/source dimensions, server resize, fill/stroke references, repeated-hash deduplication, missing hashes, and direct/search `node_info` paths.
+- Image tests cover stored/source dimensions, server resize, fill/stroke references, repeated-hash deduplication, missing hashes, and `TREE`/`MATCHES` `node_info` paths.
 - Transform/arc tests cover position, resize, degree rotation, full/half/partial radian arcs, rings, arc-only and combined calls, live-state preservation of omitted arc fields, exact ELLIPSE enforcement, auto-layout interactions, invalid/empty patches, non-finite numbers, radius bounds, deterministic mutation order, exact readback, and injected residual failures with partial-state disclosure.
 - Variable tests cover local/remote/extended collection rename and identity preservation, mode ownership, plan limits, explicit-mode consumers, and code-syntax null removal.
 - Component-property tests prove ADD/EDIT return authoritative keys, rename returns a replacement key, exact-key delete targets only one definition, and stale keys return valid recovery keys.
@@ -2639,6 +2820,7 @@ MCP annotations are advisory, not enforcement. Plugin-side guards remain authori
 - Removing overrides from a nested explicit target leaves ancestor-instance override state unchanged, and inherited overrides remain untouched.
 - A locked descendant or override ID outside the named instance blocks override removal before the native call.
 - Any invalid `node_combine` input or parent aborts the complete operation before the native structural call; authorization covers every explicit input and the exact parent, never current selection or an inferred parent.
+- Typography and variable-binding filters inspect only nodes inside the explicit page/root/editable scope, never current page or selection. Name/key Text Style matching cannot return an apparently complete result after required style resolution fails; variable-object enrichment cannot erase an exact raw-ID binding match.
 - No handler references `figma.currentPage.selection`.
 - No font-discovery handler reads `figma.currentPage`; omitted `USED.pageIds` resolves from document pages.
 
@@ -2646,7 +2828,7 @@ MCP annotations are advisory, not enforcement. Plugin-side guards remain authori
 
 At minimum, verify in a real Figma Design file:
 
-1. name/type/text searches under one node and across two pages, plus `USED` font inventory across those pages and an `AVAILABLE` catalog query;
+1. `TREE` and `MATCHES` filtering by name/type/text under one node and across two pages; uniform, mixed, and empty text matching by exact/partial font family/style and by local/remote Text Style ID/key/name/link state; exact-ID direct variable-binding matching with field narrowing under one subtree and across those pages; a same-run font/style negative case; a node-level variable/typography conjunction case; unresolved style/variable evidence behavior; parity with the direct-binding subset of `variable_list`; plus `USED` font inventory across those pages and an `AVAILABLE` catalog query;
 2. degree rotation plus arc-only and combined resize/rotation/radian-arc edits on an existing ellipse, omitted-field preservation, wrong-type atomic refusal, and horizontal/vertical/grid layout, child placement, bounds, constraints, clipping, overflow, and layout-grid readback;
 3. multi-paint solid/gradient/image/pattern fills and strokes, common stroke geometry, clear arrays, and an invalid-stack atomic refusal;
 4. base64 image resize plus URL/reused-hash intrinsic dimensions on write and through `node_info`;
@@ -2677,6 +2859,9 @@ The release is complete only when:
 - `node_info` is the canonical direct-override discovery path, and `instance_remove_overrides` removes only a matching expected direct manifest from one instance while preserving inherited override state.
 - Migration guidance says plainly that the removed source-template override-transfer operation has no behavior-preserving one-call replacement and directs each former intent to an explicit tool.
 - `page_info` exposes strict, opt-in `USED` and `AVAILABLE` font branches while ordinary direct reads remain lightweight and compatible.
+- `node_info` and `page_info` use one strict filter language with explicit result modes; font and Text Style predicates find exact text-node consumers across uniform, empty, and mixed text without cross-run false positives, while `variableBinding` finds exact direct node consumers by raw variable ID and optional field.
+- Match evidence returns the exact font pairs, Text Style identities, and direct variable-binding locations needed for a follow-up decision. Style-name/key incompleteness fails closed, style linkage is never mislabeled as visual conformance, and variable-object enrichment failure never erases a raw-ID match.
+- `NodeFilter.variableBinding` and `variable_list` have explicit complementary roles: rooted/composable node matching versus broader variable-centric node/style/alias/reaction impact discovery. Documentation and outputs never label the direct-binding filter as a complete dependency graph.
 - `node_transform` edits existing ellipse arcs without a new public tool, preserves omitted live arc fields, keeps degree rotation distinct from radian arc angles, and applies no predictable transform mutation when arc validation fails.
 - `node_combine` exposes all five required structural operations without adding a public tool, sends the explicit node order and parent/index plan unchanged to the matching native API, and returns enough resulting hierarchy to verify the operation without a second read.
 - No workflow depends on current selection.
@@ -2700,6 +2885,11 @@ The release is complete only when:
 | :- | :-: | :- |
 | Renamed or removed tools break existing prompts/clients | High | Major/hard-cutover release, rename/removal migration tables, repo-wide reference checks, and no ambiguous aliases |
 | Consolidated schemas become difficult for models | Medium | Strict discriminators, type-specific fields, examples, emitted-schema tests, explicit alternatives in descriptions |
+| A mixed text node falsely matches a font from one run and a Text Style from another | High without run semantics | Evaluate every supplied typography predicate against one effective run; use one minimal styled-segment call when required fields are mixed; add explicit cross-run negative tests |
+| Text Style names, unresolved objects, or direct formatting are mistaken for exact style identity/conformance | High without identity rules | Prefer exact ID/key branches, return every exact identity behind name matches, fail closed when name/key resolution is incomplete, and state that `textStyleId` linkage does not prove effective-property equality |
+| A direct variable-binding match is mistaken for a complete variable dependency graph | High without a boundary | Name the predicate `variableBinding`; accept exact IDs only; return concrete binding locations; explicitly exclude alias chains, styles, inferred values, reactions, and modes; direct broader impact analysis to `variable_list.includeConsumers` |
+| `node_info` and `variable_list` disagree about direct variable consumers | Medium without shared extraction | Use one recursive direct-binding extractor for both paths, normalize component-property locations once, and assert parity over every pinned binding shape |
+| Unavailable variable metadata hides a real raw binding | Medium without raw-ID semantics | Match before enrichment, cache resolution only for evidence, emit `resolved: false`, and preserve exact match/count completeness |
 | Models confuse degree rotation with radian ellipse arc angles | High without explicit wording | Put units in the tool and every affected field description, include `Math.PI`/`2 * Math.PI` numeric examples, assert emitted descriptions, and never guess or convert units |
 | A bad arc patch partially moves, resizes, or rotates the ellipse | High without preflight | Resolve current `arcData` and validate the entire affine/layout/merged-arc plan before the first setter; disclose exact residual state after unexpected native failures |
 | Used fonts are mistaken for fonts that can be assigned, or an implicit visible page changes results | High without an explicit contract | Required `USED`/`AVAILABLE` source, explicit page/editor scope in results, exact live availability cross-check, and no `currentPage` access |
@@ -2738,12 +2928,13 @@ The following claims were verified from code, not repository popularity metrics.
 
 | Item | Verified source | Finding |
 | :- | :- | :- |
-| Local read surface | `src/mcp_server/tools/page.ts`, `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/nodeReaders.ts` | `page_info` has page-ID lookup but no used-font aggregate or available-font catalog; `node_info` has recursive reads and only type/layoutMode filter logic, with no flat name/text search |
+| Local read surface | `src/mcp_server/tools/page.ts`, `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/nodeReaders.ts` | `page_info` has page-ID lookup but no used-font aggregate or available-font catalog; `node_info` has recursive reads and only type/layoutMode filter logic, with no flat name/text/font/Text-Style/direct-variable-binding consumer matching |
 | Local transform/layout/appearance | `src/mcp_server/tools/node.ts`, `src/mcp_server/tools/create.ts`, corresponding plugin handlers | Transform publishes x/y/width/height only. `create_shape` can set partial `arcData` while creating an ellipse and `node_info` can read it, but no write edits `arcData` on an existing ellipse. Layout is limited to horizontal/vertical auto-layout basics and lacks constraints, grid, child participation, bounds, clipping, overflow, and visual grids; effects has no node visibility/opacity/blend/mask fields. |
 | Local paint and image surface | `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/stylingHandlers.ts` | Fill replaces the stack with one solid/image or clears it; stroke replaces it with one solid and exposes weights only; neither path supports strict multi-paint gradients/patterns nor returns `Image.getSizeAsync()` dimensions |
 | Local text surface | `src/mcp_server/tools/text.ts`, `figma_plugin/handlers/textHandlers.ts` | Style is whole-node and publishes a subset; content batches replace complete TEXT-node strings and expose no range/expected-substring branch |
 | Local creation surface | `src/mcp_server/tools/create.ts`, `nodeCreators.ts`, `vectorHandlers.ts` | No LINE, TEXT_PATH, native VECTOR_PATHS, SECTION, or SLICE branch |
 | Local variable surface | `src/mcp_server/tools/variable.ts`, `variableHandlers.ts` | Actions are create collection/create variable/update variable; no collection rename, code syntax, or mode add/rename/delete; explicit mode values are strings only |
+| Local variable-consumer surface | `src/mcp_server/tools/variable.ts`, `figma_plugin/handlers/variableHandlers.ts` | `variable_list` lookup accepts exact variable IDs and can scan one page or the document for node consumers while separately returning local style and variable-alias consumers; its node walk also recognizes component-property and prototype-reaction references. It does not expose rooted/composable `NodeFilter` matching, paths, requested node properties, or pruned-tree output. |
 | Local component/instance surface | `src/mcp_server/tools/component.ts`, `instance.ts`, `componentHandlers.ts` | Component add/edit discards returned canonical keys; no direct swap, detach, override-removal, or component-property-reference binding tool |
 | Local component-property identity | `figma_plugin/handlers/componentHandlers.ts`, `src/mcp_server/tools/component.ts` | Existing EDIT/delete inputs are display names; handlers split keys at `#`, select by readable prefix, and do not expose authoritative ADD/EDIT return keys |
 | Local instance property setter | `src/mcp_server/tools/instance.ts`, `figma_plugin/handlers/componentHandlers.ts` | Accepts one display-name property with a string/boolean value, selects the first matching canonical key, and cannot submit an exact multi-property map or `VariableAlias` |
@@ -2751,7 +2942,7 @@ The following claims were verified from code, not repository popularity metrics.
 | Local styled-text discovery | `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/nodeReaders.ts`, `textHandlers.ts` | `node_info` does not expose styled runs; `getStyledTextSegments(["fontName"])` is used internally only to load fonts for writes |
 | Local page rename path | `src/mcp_server/tools/node.ts`, `figma_plugin/src/main.ts`, `nodeModifiers.ts` | The generic rename route assigns `node.name` after ordinary scope/name/lock validation, but its public contract and tests do not explicitly define the exact page-scope-only PAGE branch or its recovery error |
 | Local structural-combine surface | `src/mcp_server/tools/node.ts`, `figma_plugin/src/main.ts`, `figma_plugin/handlers/nodeModifiers.ts`, `nodeReaders.ts` | `node_group` accepts an ordered list and optional name, infers the shared parent from the first input, has no explicit parent/index contract, and supports only grouping. Its dispatcher already requires same-parent, exact-name, scope, lock, scope-root, and instance-interior checks. Direct `node_info.properties.parent` returns the parent ID only, while a second parent-rooted read returns its exact name and immediate child order. `node_ungroup` hard-rejects every type except `GROUP`. |
-| Pinned Figma API | `@figma/plugin-typings` 1.125.0 | Provides `listAvailableFontsAsync()`, writable complete `EllipseNode.arcData`, degree-based node rotation, strict paint variants, async pattern paint setters, common stroke geometry, `Image.getSizeAsync`, text insert/delete and range setters, grid/container/child layout fields, mutable collection names, mode/code-syntax maintenance, exact-map `InstanceNode.setProperties()`, direct-only `InstanceNode.overrides`, `removeOverrides()`, component swap/detach, native `group`/`union`/`subtract`/`intersect`/`exclude` calls with parent/index arguments, and a broad `ungroup(SceneNode & ChildrenMixin)` signature used or probed by this PRD |
+| Pinned Figma API | `@figma/plugin-typings` 1.125.0 | Provides `listAvailableFontsAsync()`, whole-node and styled-segment `fontName`/`textStyleId`, `getStyledTextSegments()`, `getStyleByIdAsync()`, Text Style ID/name/key/remote metadata, the complete scalar/array/map `SceneNode.boundVariables` shape, styled-text `boundVariables`, component-property definition/value bindings, variable ID/name/key/collection/remote metadata, writable complete `EllipseNode.arcData`, degree-based node rotation, strict paint variants, async pattern paint setters, common stroke geometry, `Image.getSizeAsync`, text insert/delete and range setters, grid/container/child layout fields, mutable collection names, mode/code-syntax maintenance, exact-map `InstanceNode.setProperties()`, direct-only `InstanceNode.overrides`, `removeOverrides()`, component swap/detach, native `group`/`union`/`subtract`/`intersect`/`exclude` calls with parent/index arguments, and a broad `ungroup(SceneNode & ChildrenMixin)` signature used or probed by this PRD |
 | Figwright comparison baseline | `awdr74100/figwright` at commit `e2a30a3de38fada3ad1c058a500c4b3b81641053` | Its `get_fonts` scans text on implicit `figma.currentPage` and does not list editor-session available fonts; this PRD keeps those concepts explicit and selection-independent while consolidating other capabilities under local safety and naming conventions |
 
 ---
@@ -2766,3 +2957,6 @@ The following claims were verified from code, not repository popularity metrics.
 - **Rev 6, 2026-07-19** - Resolves ellipse-arc Q3 as Option B and records D27. Expands `node_transform` with a strict existing-ellipse `arcData` patch, explicit degree/radian semantics, live-state merge behavior, complete combined-call preflight, deterministic mutation order, exact readback, and residual partial-failure disclosure. Synchronizes the public surface, non-goals, safety/errors, schemas, rollout, tests, success measures, risks, and provenance without adding a public tool.
 - **Rev 7, 2026-07-19** - Resolves boolean-operation Q4 as Option B and records D28. Hard-replaces `node_group` with `node_combine`, requires an explicit `GROUP`/boolean operation plus ordered nodes and exact parent/index planning, applies one complete structural preflight and normalized readback across all branches, conservatively marks the combined tool destructive, and gates release on native ordering/index/subtract-base plus boolean-ungroup probes. Synchronizes migration guidance, safety/errors, schemas, rollout, tests, success measures, risks, provenance, and the fifth rename without changing the net public-tool count.
 - **Rev 8, 2026-07-21** - Tightens the adopted Q4 contract after a discovery/recovery audit. Adds the exact selection-independent `node_info` sequence for obtaining a shared parent name and sibling order, preserves verbatim exact-name behavior, specifies recovery-bearing structural error payloads and multi-error ordering, and requires partial-state disclosure when naming or readback fails after native combination.
+- **Rev 9, 2026-07-23** - Replaces the separate search predicate with one strict shared `filter` and explicit output discriminators: `node_info` `TREE`/`MATCHES` and `page_info` `SUMMARY`/`MATCHES`. Moves `maxResults` to the match-result branch, hard-replaces singular legacy filter keys with plural enum-backed fields, records D29, and synchronizes page/font mode exclusion, examples, safety, errors, implementation, tests, and migration guidance.
+- **Rev 10, 2026-07-24** - Adds run-aware `NodeFilter.font` and discriminated `NodeFilter.textStyle` consumer matching. Defines uniform/empty/mixed text behavior, same-run conjunction, exact ID/key/name/link-state semantics, cached fail-closed style resolution, bounded exact match evidence, linkage-versus-conformance wording, and synchronized schemas, errors, rollout, tests, success measures, risks, and provenance.
+- **Rev 11, 2026-07-24** - Adds exact-ID `NodeFilter.variableBinding` as the scoped node-centric complement to `variable_list` and records D30. Defines direct raw-alias and optional field semantics, structured node/component-property locations, enrichment-without-match-dependence, evidence bounds/counts, exclusions for aliases/styles/inferred values/reactions/modes, shared-extractor parity, and synchronized safety, schemas, implementation, tests, success measures, risks, and provenance.

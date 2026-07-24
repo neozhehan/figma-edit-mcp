@@ -59,7 +59,7 @@ One further check belongs to this insight because it prevents a whole class of r
 
 ## Cleaner
 
-Cleaner means fewer errors in the work environment — the design file. Fewer broken references, fewer near-duplicate tokens, fewer layers whose names carry no information.
+Cleaner means fewer errors and less ambiguous, duplicated, or implicit state in the work environment — the design file. Broken relationships and accidental near-duplicates are removed; shared decisions are represented through authoritative variables, styles, or components when appropriate; consumers keep explicit links to those sources; and names distinguish legitimate alternatives.
 
 ### Cleaner leads to Faster
 
@@ -80,7 +80,25 @@ Stated precisely: Cleaner leads to Faster as an expected lifecycle effect. The e
 
 ### Cleaner leads to Safer
 
-Several of the plugin's protections work by comparing what the AI claims against what the file actually contains. Those comparisons identify a wrong target far more reliably when layers have distinct, meaningful names than when thirty layers are all named "Frame 427". A tidy file therefore makes the plugin's own protections more effective. Cleaner and Safer reinforce each other: the checks keep the file clean, and the clean file makes the checks more accurate.
+The first insight explains why a programmatic check is more reliable than an instruction once a condition can be evaluated. Cleaner leads back to Safer by determining which conditions are available to evaluate:
+**A safeguard can reliably enforce only the relationships the file makes observable.**
+
+Much design intent can exist either as structure or as convention. A layer can be explicitly bound to a variable, or it can merely contain the same value. A reusable object can remain an instance of a component, or it can be a detached copy that people still expect to follow the component. A current token can be the only valid choice, or it can sit beside obsolete near-duplicates. In each pair, the initial visual result may be the same. The safety properties are not: software can inspect the structured relationship, but it cannot reliably reconstruct the missing convention.
+
+A cleaner file makes more of that intent machine-observable, through three mechanisms:
+
+1. **One authoritative representation.** Shared decisions live in variables, styles, or components rather than in independently mutable copies. This removes partially updated states in which some copies change and others do not.
+2. **Explicit dependencies.** Consumers stay linked to the authoritative source. The plugin can detect consumers and refuse deletion of an in-use variable; it cannot infer that a copied literal was intended to be a consumer.
+3. **Fewer valid-but-wrong choices.** Obsolete and accidental near-duplicates no longer remain legitimate targets. Distinct names make name verification more discriminating, but the stronger gain comes from eliminating alternatives that would pass every structural check while still being the wrong choice.
+
+Real-world precedents support each mechanism. In parametric-CAD experiments, explicit and resilient dependency structures made affected features observable through correct propagation or rebuild errors, while a dependency-free strategy sometimes produced silent geometry errors. Database dependency tracking likewise prevents invalid references and refuses destructive operations because relationships are declared. Figma's own component instances and variable aliases preserve source relationships directly. Studies of duplicated code find propagated bugs and incomplete fixes among independently maintained copies, and a hospital identifier intervention reduced wrong-patient orders after replacing nondistinct newborn names with more distinctive identifiers. These domains support the mechanisms rather than a quantified effect for this project; the magnitude for an AI editing Figma has not yet been measured. ([Quotes, methods, limitations, and sources](EVIDENCE.md#cleaner-leads-to-safer).)
+
+Stated precisely: Cleaner leads to Safer when cleanup replaces duplicated or implicit decisions with authoritative objects and explicit relationships, or removes obsolete but still selectable alternatives. A smaller layer count, visual neatness, or meaningful-sounding names alone does not establish this connection.
+
+Two caveats keep the claim bounded:
+
+- **Canonical sources concentrate impact.** A wrong edit to a shared variable or component can affect more consumers than a wrong edit to one local copy. Centralization becomes safer when the dependencies are visible and the point of change is guarded; it is not safer by itself.
+- **Structure does not prove intent.** The AI can bind the wrong variable, choose the wrong but valid component, or make a semantically wrong edit to the correct target. [SAFETY.md](SAFETY.md) records this as residual risk R2.
 
 ## Faster
 

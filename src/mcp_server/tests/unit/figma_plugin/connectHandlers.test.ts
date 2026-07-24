@@ -44,11 +44,15 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
     });
 
     it("all error code branches use return, not throw", () => {
-        const errorCodes = ["SCOPE_DELETED", "SCOPE_INVALID", "DOCUMENT_LOAD_FAILED", "UNKNOWN_ERROR"];
-        for (const code of errorCodes) {
-            const pattern = new RegExp(`errorCode:\\s*["']${code}["']`);
-            expect(src).toMatch(pattern);
+        // Legacy connect-payload codes are quoted literals in this handler.
+        for (const code of ["SCOPE_DELETED", "SCOPE_INVALID", "DOCUMENT_LOAD_FAILED"]) {
+            expect(src).toMatch(new RegExp(`errorCode:\\s*["']${code}["']`));
         }
+        // UNKNOWN_ERROR must be the imported CONSTANT, not a re-hardcoded
+        // literal (P4-5 dedup, 2026-07-24): require the identifier form and
+        // reject a quoted literal, so the fix cannot silently regress.
+        expect(src, "connectHandlers must use the imported UNKNOWN_ERROR constant").toMatch(/errorCode:\s*UNKNOWN_ERROR\b/);
+        expect(src, "connectHandlers must not re-hardcode a quoted \"UNKNOWN_ERROR\"").not.toMatch(/errorCode:\s*["']UNKNOWN_ERROR["']/);
         // No throw statements with error codes
         expect(src).not.toMatch(/throw\s+new\s+Error\([^)]*SCOPE_DELETED/);
         expect(src).not.toMatch(/throw\s+new\s+Error\([^)]*SCOPE_INVALID/);
@@ -339,6 +343,35 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect(parsed.status).toBe("error");
         expect(parsed.errorCode).toBe("DOCUMENT_LOAD_FAILED");
         expect((resetChannel as any).mock.calls.length).toBe(1);
+    });
+
+    it("P4-4 follow-up: get_connect_payload's structured error forwards details as errorDetails", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve({
+                    errorCode: "SCOPE_INVALID",
+                    errorMessage: "bad state",
+                    details: { reportedScope: "node", scopeRootId: null },
+                })
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SCOPE_INVALID");
+        expect(parsed.errorDetails).toEqual({ reportedScope: "node", scopeRootId: null });
+    });
+
+    it("P4-4 follow-up: no details field on the payload means no errorDetails key at all", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve({ errorCode: "SCOPE_INVALID", errorMessage: "bad state" })
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect("errorDetails" in parsed).toBe(false);
     });
 
     it("UNKNOWN_ERROR from transport: message appended + resetChannel", async () => {

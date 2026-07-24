@@ -54,6 +54,7 @@ export function registerChannelTools(server: McpServer) {
                 channel: z.string().describe("Channel name"),
                 errorCode: z.string().optional().describe("Error code if status is error"),
                 errorMessage: z.string().optional().describe("Error message if status is error"),
+                errorDetails: z.any().optional().describe("Structured error context if status is error and the underlying failure carried any"),
                 allowEditNode: z.union([z.boolean(), z.string()]).optional().describe("false | 'page' | 'node'"),
                 allowEditVariable: z.boolean().optional().describe("Whether variable edits are allowed"),
                 allowEditStyle: z.boolean().optional().describe("Whether style edits are allowed"),
@@ -116,14 +117,18 @@ export function registerChannelTools(server: McpServer) {
                     return toolResult(joinFailure(channel, error));
                 }
 
-                // Handle structured plugin error
+                // Handle structured plugin error. `details` is forwarded when
+                // present (P4-4 follow-up, 2026-07-23) — this leg previously
+                // dropped it unconditionally, inconsistent with joinFailure()
+                // below, which already relays `errorDetails` on the other leg.
                 if (payload && payload.errorCode) {
                     resetChannel();
                     return toolResult({
                         status: "error",
                         channel,
                         errorCode: payload.errorCode,
-                        errorMessage: payload.errorMessage
+                        errorMessage: payload.errorMessage,
+                        ...(payload.details !== undefined ? { errorDetails: payload.details } : {}),
                     });
                 }
 
@@ -137,7 +142,7 @@ export function registerChannelTools(server: McpServer) {
                 return toolResult({
                     status: "error",
                     channel,
-                    errorCode: "UNKNOWN_ERROR",
+                    errorCode: UNKNOWN_ERROR,
                     errorMessage: `An unexpected error occurred while joining the channel: ${error.message || String(error)}.`
                 });
             }

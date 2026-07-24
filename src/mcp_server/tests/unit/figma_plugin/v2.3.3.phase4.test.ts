@@ -1,5 +1,8 @@
 import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { z } from "zod";
+import * as ts from "typescript";
+import * as fs from "fs";
+import * as path from "path";
 import { registerVariableTools } from "../../../tools/variable.js";
 import { registerStyleTools } from "../../../tools/style.js";
 import { withStrictInputSchemas } from "../../../tools/index.js";
@@ -55,6 +58,36 @@ describe("v2.3.3 Phase 4: Schema Rejection & Description-Marker Tests", () => {
         const styleFields = styleManageSchema.shape;
         expect(styleFields.currentStyleName.description).toContain("REQUIRED for UPDATE when styleId is supplied");
         expect(styleFields.name.description).toContain("REQUIRED for CREATE");
+    });
+
+    it("Q29: the D5 .superRefine() name-verification messages meet D9's content bar (read tool + pass-back)", () => {
+        // Q29 (resolved 2026-07-23, Option B): the schema-layer superRefine
+        // messages co-locate with their schema rather than sourcing from the
+        // plugin REFUSALS registry, but must still meet D9's CONTENT bar where
+        // a read tool supplies the correct value. This test makes that a
+        // guarantee, not just a doc claim, so it cannot silently regress.
+        const cases: Array<{ parse: any; readTool: string }> = [
+            {
+                parse: variableManageSchema.safeParse({ action: "UPDATE_VARIABLE", variableId: "v-1" }),
+                readTool: "variable_list",
+            },
+            {
+                parse: variableManageSchema.safeParse({ action: "CREATE_VARIABLE", collectionId: "c-1", name: "N", type: "STRING", scopes: ["ALL_SCOPES"] }),
+                readTool: "variable_list",
+            },
+            {
+                parse: styleManageSchema.safeParse({ type: "PAINT", styleId: "s-1" }),
+                readTool: "style_list",
+            },
+        ];
+        for (const { parse, readTool } of cases) {
+            expect(parse.success).toBe(false);
+            if (!parse.success) {
+                const msg = parse.error.message;
+                expect(msg).toContain(readTool);
+                expect(msg).toContain("pass it back verbatim");
+            }
+        }
     });
 
     it("variable_manage schema rejects invalid actions and missing conditional parameters", () => {
@@ -358,22 +391,172 @@ describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
         expect(RATIFIED_CODES).toContain(UNKNOWN_ERROR);
     });
 
-    it("every ratified operational code is registered in the plugin's central ERRORS table", () => {
-        for (const code of OPERATIONAL_CODES) {
-            expect(typeof ERRORS[code], `ERRORS.${code} missing`).toBe("string");
-            expect(ERRORS[code].length).toBeGreaterThan(0);
+    it("P4-5/Q27: every ratified code — operational and verification alike — is a REFUSALS factory, not an ERRORS string", () => {
+        // Q27 (resolved 2026-07-23) scopes ERRORS to the legacy, pre-v2.3.3
+        // surface only. Every code this release adds — including the ten
+        // Phase 9-11 operational placeholders — lives in REFUSALS.
+        const allRatifiedRefusalCodes: readonly string[] = [
+            ...OPERATIONAL_CODES, ...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES,
+        ];
+
+        // The registry keys are exactly the ratified codes — no more, no less.
+        expect(Object.keys(REFUSALS).sort()).toEqual([...allRatifiedRefusalCodes].sort());
+
+        // Typed iteration over the registry (no `as any`): every factory
+        // returns its own key as `code`. Extra operands are harmless for the
+        // zero-arg factories, so one call shape covers both arities.
+        type RefusalFactory = (...operands: string[]) => { code: string; message: string; details?: unknown };
+        for (const [key, factory] of Object.entries(REFUSALS) as Array<[string, RefusalFactory]>) {
+            const produced = factory("stored-operand", "received-operand");
+            expect(produced.code, `REFUSALS.${key} must return its own key as code`).toBe(key);
+            expect(produced.message.length).toBeGreaterThan(0);
+        }
+
+        // NO ratified code — operational, D5, or D6 — may exist in the legacy
+        // ERRORS table (a duplicate string entry would be a drift surface).
+        for (const code of allRatifiedRefusalCodes) {
+            expect(code in ERRORS, `ERRORS.${code} should not exist — ratified codes live in REFUSALS (Q27)`).toBe(false);
         }
     });
 
-    it("every ratified verification code has exactly one message factory producing its own code", () => {
-        expect(Object.keys(REFUSALS).sort()).toEqual([...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES].sort());
-        for (const code of [...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES]) {
-            const produced = (REFUSALS as any)[code].length > 0
-                ? (REFUSALS as any)[code]("stored-operand", "received-operand")
-                : (REFUSALS as any)[code]();
-            expect(produced.code).toBe(code);
-            expect(produced.message).toContain("Operation Denied:");
+    it("P4-5: operational + scopes refusal messages carry actionable recovery content, not just non-emptiness", () => {
+        // The operational codes are Phase 9-11 placeholders with no live throw
+        // site yet, so this is the only guard on their recovery quality until
+        // then. VARIABLE_SCOPES_MISSING is the one D5 code with no read tool, so
+        // the name-verification content-bar tests below don't cover it — it is
+        // included here. Each must tell the caller what to DO (an actionable
+        // verb), not merely restate the failure.
+        type RefusalFactory = () => { code: string; message: string };
+        const recoveryVerb = /\b(retry|reconnect|pass|read|list|ensure|open|start|ask|find|use|disconnect|specify|supply|update|resolve|report|verify|continue)\b/i;
+        for (const code of [...OPERATIONAL_CODES, "VARIABLE_SCOPES_MISSING"]) {
+            const factory = (REFUSALS as Record<string, RefusalFactory>)[code];
+            const { message } = factory();
+            expect(message.length, `${code} message too short to carry recovery`).toBeGreaterThanOrEqual(25);
+            expect(recoveryVerb.test(message), `${code} message names no recovery action`).toBe(true);
         }
+    });
+
+    it("P4-5: no ratified code appears as a string literal outside the REFUSALS registry (no inline coded throws)", () => {
+        // Source-use invariant via the TS AST: a ratified code as a string
+        // LITERAL should appear ONLY in the factory registry
+        // (figma_plugin/utils/errors.ts). An inline coded throw
+        // (`throw { code: "VARIABLE_NAME_MISSING", ... }`) would place the code
+        // string in a handler and fail here; a proper `REFUSALS.CODE()` call
+        // references the code as an identifier, not a string literal, so it is
+        // invisible to this scan. This is what makes "every live coded throw
+        // routes through REFUSALS" a CI-enforced invariant, not a claim.
+        const ratified = new Set<string>([
+            ...OPERATIONAL_CODES, ...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES,
+        ]);
+        const pluginDir = path.resolve(import.meta.dir, "../../../../../figma_plugin");
+        const registryFile = path.join("utils", "errors.ts");
+        const offenders: string[] = [];
+
+        const walk = (dir: string) => {
+            for (const entry of fs.readdirSync(dir)) {
+                const full = path.join(dir, entry);
+                const stat = fs.statSync(full);
+                if (stat.isDirectory()) { walk(full); continue; }
+                if (!entry.endsWith(".ts")) continue;
+                const rel = path.relative(pluginDir, full);
+                if (rel === registryFile) continue; // the one allowed home
+
+                const text = fs.readFileSync(full, "utf8");
+                const sf = ts.createSourceFile(full, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+                const visit = (node: ts.Node) => {
+                    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && ratified.has(node.text)) {
+                        const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+                        offenders.push(`${rel}:${line} -> "${node.text}"`);
+                    }
+                    ts.forEachChild(node, visit);
+                };
+                visit(sf);
+            }
+        };
+        walk(pluginDir);
+
+        expect(offenders, `ratified code string literals found outside REFUSALS:\n${offenders.join("\n")}`).toEqual([]);
+    });
+
+    it("P4-5: no plugin throw reconstructs or spreads a coded error object (must throw REFUSALS.CODE() directly)", () => {
+        // The string-literal scan above misses a factory-bypass that rebuilds
+        // the object without a literal code, e.g.
+        //   throw { code: REFUSALS.VARIABLE_NAME_MISSING().code, message: "..." }
+        //   throw { ...REFUSALS.VARIABLE_NAME_MISSING(), message: "..." }
+        // Both are object-literal throws. Coded errors must be thrown as the
+        // direct call `throw REFUSALS.CODE()` (a CallExpression); legacy uncoded
+        // throws are `throw new Error(...)`. So NO plugin throw may throw an
+        // object literal at all — that is the enforceable form of "every live
+        // coded throw routes through REFUSALS".
+        const pluginDir = path.resolve(import.meta.dir, "../../../../../figma_plugin");
+        const offenders: string[] = [];
+
+        const walk = (dir: string) => {
+            for (const entry of fs.readdirSync(dir)) {
+                const full = path.join(dir, entry);
+                const stat = fs.statSync(full);
+                if (stat.isDirectory()) { walk(full); continue; }
+                if (!entry.endsWith(".ts")) continue;
+                const rel = path.relative(pluginDir, full);
+                const text = fs.readFileSync(full, "utf8");
+                const sf = ts.createSourceFile(full, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+                const visit = (node: ts.Node) => {
+                    if (ts.isThrowStatement(node) && node.expression && ts.isObjectLiteralExpression(node.expression)) {
+                        const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+                        offenders.push(`${rel}:${line}`);
+                    }
+                    ts.forEachChild(node, visit);
+                };
+                visit(sf);
+            }
+        };
+        walk(pluginDir);
+
+        expect(offenders, `object-literal throws found (rebuild/spread-override bypass):\n${offenders.join("\n")}`).toEqual([]);
+    });
+
+    it("P4-5: the \"UNKNOWN_ERROR\" string literal appears only in its two approved definitions", () => {
+        // A reintroduced hardcoded `errorCode: "UNKNOWN_ERROR"` (the P4-5 fix
+        // that was undone by a lax connect-handler test) fails here. Allowed
+        // only as the two constant definitions plugin- and server-side.
+        const repoRoot = path.resolve(import.meta.dir, "../../../../..");
+        const approved = new Set([
+            path.join(repoRoot, "figma_plugin", "utils", "errors.ts"),
+            path.join(repoRoot, "src", "shared", "errorCodes.ts"),
+        ]);
+        const roots = [
+            path.join(repoRoot, "figma_plugin"),
+            path.join(repoRoot, "src"),
+        ];
+        const offenders: string[] = [];
+
+        const walk = (dir: string) => {
+            for (const entry of fs.readdirSync(dir)) {
+                const full = path.join(dir, entry);
+                const stat = fs.statSync(full);
+                if (stat.isDirectory()) {
+                    // Production source only — skip test dirs and build output.
+                    if (entry === "tests" || entry === "node_modules" || entry === "dist") continue;
+                    walk(full);
+                    continue;
+                }
+                if (!entry.endsWith(".ts")) continue;
+                if (approved.has(full)) continue;
+                const text = fs.readFileSync(full, "utf8");
+                const sf = ts.createSourceFile(full, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+                const visit = (node: ts.Node) => {
+                    if ((ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) && node.text === "UNKNOWN_ERROR") {
+                        const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+                        offenders.push(`${path.relative(repoRoot, full)}:${line}`);
+                    }
+                    ts.forEachChild(node, visit);
+                };
+                visit(sf);
+            }
+        };
+        for (const root of roots) walk(root);
+
+        expect(offenders, `"UNKNOWN_ERROR" literal found outside its two approved definitions:\n${offenders.join("\n")}`).toEqual([]);
     });
 
     it("mismatch factories carry operands, the read tool, and the verbatim instruction (D5 + D9 merged)", () => {

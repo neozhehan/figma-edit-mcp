@@ -3,8 +3,10 @@
  * amended by PRD Rev 27). One authoritative list, used by the MCP-server code
  * and cross-checked against the plugin's registries by the inventory test —
  * the plugin bundle keeps its own registry (`figma_plugin/utils/errors.ts`)
- * to avoid a runtime import across the bundle boundary, and the test proves
- * the two cannot drift (review finding P4-5, lite per the recorded scope).
+ * to avoid a runtime import across the bundle boundary; the two are kept from
+ * drifting by a parity test, not a shared import. This split — plus each
+ * side unifying on ONE message-factory pattern internally — is the recorded
+ * Q27 decision (Option B, resolved 2026-07-23), not an ad hoc scope-down.
  */
 
 /** The ratified legacy fallback: a failure not thrown as a coded object. */

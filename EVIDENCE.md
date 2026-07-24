@@ -419,7 +419,128 @@ Neither entry below measures a structured digital artifact; they carry no eviden
 
 ## Cleaner leads to Safer
 
-The philosophy argues this connection from the system's own design rather than from external studies: several protections compare what the AI claims against what the file actually contains, and those comparisons identify a wrong target more reliably when layers carry distinct, meaningful names. The mechanism is internal to the checks, so no external source is cited for it. The nearest external support is the identifier experiment under [Cleaner leads to Faster](#cleaner-leads-to-faster): meaningful names made mismatches easier to detect for the humans measured there, and the plugin's name-verification comparisons benefit from the same property by construction.
+This connection is not a claim that visual tidiness is inherently safe. It applies where Cleaner means that design intent is represented structurally:
+
+- a shared decision has one authoritative definition rather than several unlinked copies;
+- consumers are explicitly linked to that definition rather than merely happening to contain the same value; and
+- current alternatives are distinguishable, while obsolete or accidental near-duplicates have been removed.
+
+The claim is:
+
+> **Cleaner makes intent structural: authoritative representations remove divergent copies, explicit bindings expose dependencies to safeguards, and fewer near-duplicates remove valid-but-wrong choices.**
+
+The evidence below supports those mechanisms separately. No study measures their combined effect on an AI editing Figma, so it does not establish a universal or quantified Cleaner → Safer effect for this project.
+
+### Structured dependencies turned silent CAD corruption into visible failures
+
+**Supports:** the strongest part of the connection — when relationships are represented explicitly, machinery can expose the consequences of a change instead of letting an incorrect artifact appear valid.
+
+Camba, Contero, and Company compared three formal methods of structuring parametric CAD models using three industrial parts. Two methods (explicit reference and resilient) retained managed dependencies between features; the horizontal method deliberately removed most direct parent-child dependencies.
+
+The first experiment assigned 92 engineering students across four model conditions. Two further experiments each involved 32 senior engineering students modifying all three formal models. Requested alterations caused downstream features to fail. In the explicit-reference and resilient models, the design tree returned rebuild errors that pointed users toward the affected features. In the horizontal models, no dependency error was possible because the relevant direct dependencies were absent; the resulting geometry nevertheless contained missing ribs, unavailable features, and interfering surfaces. The authors warn that in that condition "the model can be overlooked and passed as correct when in fact, significant problems can occur." In the two later experiments, the resilient strategy also produced the best alteration times, while the horizontal strategy performed worst.
+
+**Sources:**
+
+- [Camba, Contero & Company, "Parametric CAD Modeling: An Analysis of Strategies for Design Reusability" (Computer-Aided Design, 2016, preprint PDF)](https://riunet.upv.es/bitstream/10251/82267/3/CAD%202016%20preprint%20M%20Contero.pdf)
+- [DOI: 10.1016/j.cad.2016.01.003](https://doi.org/10.1016/j.cad.2016.01.003)
+
+**Caveats:** mechanical CAD is an adjacent domain, not interface design. The participants were students rather than AI agents, each methodology bundled several structural choices, and the two within-subject experiments presented the three strategies in the same fixed order. Dependencies are not automatically beneficial: the paper's own framing notes that improperly defined feature dependencies can make a model unstable, so that even minor alterations force a rebuild. The result supports accurate, intentional dependency structures rather than maximizing dependencies.
+
+**Relevance:** a Figma variable binding, variable alias, or component-instance relationship makes a dependency inspectable. A copied literal or detached component may look identical but does not preserve that relationship. `variable_delete` can enumerate and protect bound consumers; it cannot infer that a layer containing an equal raw value was intended to be a consumer.
+
+### Figma and the design-token ecosystem preserve source relationships
+
+**Supports:** that the proposed structural mechanisms exist in the relevant design domain.
+
+Figma's component instances stay linked to their main component: "any change to a Component is immediately reflected in its instances," except where a local override preserves a different value. Figma variable aliases similarly link a variable to a source variable; Figma explains that with an alias, "if that color needs updating, you would only need to update the source instead of manually updating every instance of the color." Variable scopes can also "limit which properties the variable can be applied to," reducing inapplicable choices.
+
+The Design Tokens Community Group format makes the relationship explicit at the interchange level. Tools "MUST validate reference targets," "MUST detect and throw an error on circular references," and "SHOULD preserve references"; and in a design tool, changes to the value of a referenced token "SHOULD be reflected wherever those aliases are being used."
+
+**Sources:**
+
+- [Figma, "Components in Figma"](https://www.figma.com/blog/components-in-figma/)
+- [Figma Help, "Create and manage variables and collections"](https://help.figma.com/hc/en-us/articles/15145852043927-Create-and-manage-variables-and-collections)
+- [Design Tokens Community Group, "Design Tokens Format Module 2025.10"](https://www.w3.org/community/reports/design-tokens/CG-FINAL-format-20251028/)
+
+**Caveats:** these sources document product behavior and format requirements; they do not measure error rates. A source of truth guarantees consistency with the source, not correctness of the source. Overrides and detached instances can prevent uniform propagation, and a wrong central edit can propagate farther than a wrong local edit.
+
+**Relevance:** these sources establish direct transfer of the mechanism to design artifacts. They do not establish its magnitude for this MCP server.
+
+### Declared relationships permit integrity enforcement
+
+**Supports:** the general principle that machinery can protect a relationship only when the system represents and tracks it.
+
+PostgreSQL foreign keys make relationships between records explicit — what the documentation calls "maintaining the *referential integrity* of your data" — and the database then rejects an insert whose referenced target does not exist. PostgreSQL's dependency tracker likewise refuses to drop an object while another tracked object still depends on it.
+
+The documentation also draws the representational line precisely. When a function body is stored as an unparsed string literal, PostgreSQL tracks the function's argument and result types "but *not* dependencies that could only be known by examining the function body," and so "will not drop the function if the table is dropped." When the equivalent body is written in parsed SQL-standard form, "the function's dependency on the `my_colors` table will be known and enforced by `DROP`." The same human intent is enforceable or invisible depending only on whether the artifact exposes the relationship structurally.
+
+**Sources:**
+
+- [PostgreSQL documentation, "Foreign Keys"](https://www.postgresql.org/docs/current/tutorial-fk.html)
+- [PostgreSQL documentation, "Dependency Tracking"](https://www.postgresql.org/docs/current/ddl-depend.html)
+
+**Caveats:** this is documented system behavior rather than an experiment, and a relational database is not a design file. Declaring and maintaining dependencies also has modeling costs.
+
+**Relevance:** the parallel is representational, not procedural — a safeguard protects only the relationships the artifact records in inspectable form. The delete-time protection this makes possible for in-use Figma variables is covered under [Safer leads to Faster](#safer-leads-to-faster); the point here is the one that precedes it, that the relationship must be structurally present before any check can act on it.
+
+### Duplicated representations create propagated bugs and missed updates, but not universally
+
+**Supports:** the authoritative-source mechanism: independently mutable copies mean one correction must be repeated correctly at every copy.
+
+Mondal and colleagues analyzed thousands of commits across seven software systems. Overall, 18.42% of clone fragments that underwent bug fixes were associated with the study's bug-propagation patterns, and near-miss clones were more frequently involved than identical clones.
+
+Poehlmann and Juergens analyzed version histories from six industrial and open-source systems. They identified likely incomplete bug fixes in every system: a correction was applied to one cloned fragment while one or more related fragments retained the suspected defect.
+
+**Sources:**
+
+- [Mondal et al., "An Empirical Study on Bug Propagation Through Code Cloning" (Journal of Systems and Software, 2019)](https://www.sciencedirect.com/science/article/pii/S0164121219301815)
+- [DOI: 10.1016/j.jss.2019.110407](https://doi.org/10.1016/j.jss.2019.110407)
+- [Poehlmann & Juergens, "Revealing Missing Bug-Fixes in Code Clones in Large-Scale Code Bases" (2013)](https://eceasst.org/index.php/eceasst/article/view/2074)
+
+**Counterevidence:** duplication does not make every artifact meaningfully less safe. A release-level study reported that only 1.02% to 4.00% of clone genealogies introduced defects in its subject systems, and other studies find that developers often update known clones consistently. [Bettenburg et al., "An Empirical Study on Inconsistent Changes to Code Clones at the Release Level"](https://doi.org/10.1016/j.scico.2010.11.010)
+
+**Caveats:** source-code clones are not Figma tokens or copied layers. The studies use different clone definitions and infer propagation or incomplete fixes from repository histories. The 18.42% denominator is clone fragments that underwent bug fixes, not all clones. Copies can legitimately diverge, while forcing unrelated objects through one shared source can introduce harmful coupling.
+
+**Relevance:** the evidence establishes the failure mode, not its frequency in design files. When several Figma objects truly express one decision, a shared variable, style, or component means the correction is made once instead of separately at each copy. It does not follow that superficially similar objects should always be consolidated.
+
+### Distinct identifiers reduced wrong-target electronic orders
+
+**Supports:** the claim that reducing indistinguishable alternatives can eliminate valid-but-wrong selections that ordinary validity checks do not catch.
+
+Many neonatal intensive-care units assigned temporary names such as `Babyboy [surname]` and `Babygirl [surname]`, producing multiple patients with similar identifiers. Adelman and colleagues ran a two-year before-and-after study in which one health system replaced those generic names with identifiers incorporating the mother's first name, such as `Wendysgirl`.
+
+Retract-and-reorder events — an order placed on one patient, retracted within minutes, then reordered on another by the same clinician — fell by 36.3% after the change. After accounting for clustered orders, the estimated odds ratio was 0.64 with a 95% confidence interval of 0.42 to 0.97. The authors concluded that nondistinct naming was associated with greater wrong-patient risk and that the more distinct convention mitigated it.
+
+**Sources:**
+
+- [Adelman et al., "Use of Temporary Names for Newborns and Associated Risks" (Pediatrics, 2015)](https://pubmed.ncbi.nlm.nih.gov/26169429/)
+- [DOI: 10.1542/peds.2015-0007](https://doi.org/10.1542/peds.2015-0007)
+
+**Caveats:** this was a single-health-system before-and-after study rather than a randomized concurrent comparison. Retract-and-reorder events are a proxy for wrong-patient orders, not a count of completed harmful treatments. The users were human clinicians selecting patients, not an AI selecting Figma nodes. The effect size cannot be transferred to this project.
+
+**Relevance:** this evidence supports distinctiveness rather than meaningful naming in the abstract. For `figma-edit-mcp`, a name supplies independent identity evidence only to the extent that it differentiates the intended node from plausible alternatives.
+
+### Fewer visible choices alone did not reduce wrong-patient orders
+
+**Supports:** an important boundary — raw option count is not the mechanism.
+
+A randomized clinical trial of 3,356 clinicians compared an electronic health record configured to allow only one patient record open at a time with one allowing up to four. Wrong-patient order rates did not differ significantly between the two groups (odds ratio 1.03; 95% confidence interval 0.90 to 1.20).
+
+**Source:** [Adelman et al., "Effect of Restriction of the Number of Concurrently Open Records in an Electronic Health Record on Wrong-Patient Order Errors" (JAMA, 2019)](https://jamanetwork.com/journals/jama/fullarticle/2733207)
+
+**Caveats:** the intervention changed the number of concurrently open records, not the distinguishability of names or the existence of obsolete choices. Most clinicians in the unrestricted group kept only one record open anyway, which limited the trial's power to detect a difference. It is a healthcare interface study, not a Figma or LLM study.
+
+**Relevance:** Cleaner → Safer should not be phrased as "fewer objects are safer." The supported mechanism is the removal of semantically redundant or obsolete alternatives and improved discrimination among the legitimate alternatives that remain.
+
+### What the evidence supports
+
+Taken together, the evidence supports a bounded Cleaner → Safer connection:
+
+1. **Explicit relationships make some consequences detectable.** If the file records that one object depends on another, machinery can calculate impact and refuse or report some unsafe changes.
+2. **Authoritative definitions remove partial-update states.** Where several consumers genuinely express one decision, replacing unlinked copies with a shared source removes the ordinary possibility that only some copies receive a correction.
+3. **Distinct current alternatives reduce wrong selection.** Removing obsolete and indistinguishable choices eliminates some mechanically valid but semantically wrong actions.
+
+The evidence does not support the broader claims that tidy-looking files are automatically safer, that every duplicate is dangerous, that more dependencies are always better, or that centralization alone improves safety. Canonical sources also concentrate risk, so the connection is strongest when authoritative definitions, explicit consumers, and write-time safeguards are used together.
 
 ---
 

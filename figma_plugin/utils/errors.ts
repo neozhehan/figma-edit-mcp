@@ -1,11 +1,28 @@
+// The ratified legacy fallback (Q16). Exported and named once so every
+// reference within the plugin bundle is the same identifier, not a repeated
+// literal (any plugin handler that surfaces an `UNKNOWN_ERROR` errorCode
+// imports this rather than re-typing the string); the server-side mirror
+// lives in `src/shared/errorCodes.ts`, kept as a SEPARATE definition to avoid
+// a runtime import across the plugin-bundle boundary (Q27) — a parity test
+// (`v2.3.3.phase4.test.ts`) enforces the two agree.
+export const UNKNOWN_ERROR = "UNKNOWN_ERROR";
+
 /**
- * Canonical guard/denial error messages.
+ * Canonical guard/denial error messages — the LEGACY, pre-v2.3.3 surface.
  *
  * Single source for every message that more than one layer can emit — the
  * dispatcher (src/main.ts) and handler-level prevalidation (e.g.
  * componentHandlers.ts validateCreateComponentSetPlan) must import from here
  * rather than repeating the literals, so each denial ships with exactly one
  * wording (v2.3.2 rule: no superseded error variants).
+ *
+ * Scope (open-questions Q27, resolved 2026-07-23): this table holds ONLY
+ * messages thrown as plain strings that predate v2.3.3's D9 structured-error
+ * convention — they are outside Q16's "adds or edits" rule and travel as the
+ * ratified `UNKNOWN_ERROR` fallback (converted to coded factories only as
+ * each is touched, per the v2.3.4 burn-down). Every code this release adds —
+ * D5/D6 verification refusals and the Phase 9–11 operational codes — lives in
+ * the `REFUSALS` factory registry below, not here. Do not add new entries.
  */
 export const ERRORS: any = {
     // Editable Scope Errors
@@ -28,24 +45,16 @@ export const ERRORS: any = {
     MISSING_TARGET_NODE_IDS: "Missing targetNodeIds parameter",
     MISSING_SOURCE_INSTANCE_ID: "Missing sourceInstanceId parameter",
     INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array",
-
-    // New Refusal and Operational Error Codes (v2.3.3)
-    PLUGIN_PEER_UNAVAILABLE: "Operation Denied: Figma Plugin is not running or available. Please open the Figma document, start the figma-edit-mcp plugin, and reconnect.",
-    PLUGIN_PEER_AMBIGUOUS: "Operation Denied: Multiple plugin peers are connected to this channel. Ensure the figma-edit-mcp plugin is open in exactly one Figma tab/document.",
-    CHANNEL_IN_USE: "Operation Denied: This channel is already in use by another MCP session. Please use a different channel name or disconnect the other session.",
-    VERSION_MISMATCH: "Operation Denied: Version mismatch between MCP server and Figma plugin. Please ensure both are updated to the same version.",
-    // Page codes are operational failures, not safety refusals — no "Operation
-    // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
-    PAGE_LOAD_FAILED: "Failed to load the Figma page — it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load.",
-    PAGE_NOT_FOUND: "Page not found: the specified page ID does not exist in this document. List pages with page_info and pass a page ID back verbatim.",
-    TARGET_NOT_PAGE: "Target node is not a PAGE. List pages with page_info and pass a page ID, not a node ID.",
-    PAGE_LOAD_TIMEOUT: "Page load timed out. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user.",
-    DOCUMENT_SCAN_INCOMPLETE: "Operation Denied: Document scan incomplete because one or more pages could not be loaded — a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first.",
-    CONNECTOR_TEMPLATE_REQUIRED: "Operation Denied: No valid connector template was found in the document. Find a connector with page_info/node_info (pasting one from FigJam if the file has none) and pass its ID and exact current name.",
 };
 
 /**
- * Design-system verification refusals (v2.3.3 D5, code inventory per Q16).
+ * The v2.3.3 coded-refusal registry (Q16; scope corrected by Q27, 2026-07-23):
+ * every code this release adds or edits — design-system verification (D5),
+ * parent verification (D6), and the ten Phase 9–11 operational placeholders —
+ * lives here as a message factory, not as a plain string in `ERRORS`. "Every
+ * coded refusal originates from the central registry of message factories"
+ * (Q16) means exactly this table; `ERRORS` above is the separate, closed,
+ * legacy-only surface Q27 scopes it to.
  *
  * Message factories, not strings: handlers pass operands in and never compose
  * refusal text locally, so each code has exactly one authored message carrying
@@ -54,6 +63,51 @@ export const ERRORS: any = {
  * object as-is — the dispatcher forwards `{code, message, details?}` untouched.
  */
 export const REFUSALS = {
+    // Phase 9–11 operational codes. No live throw site yet — each call site
+    // migrates from `ERRORS`-string prototyping to `REFUSALS.CODE()` as its
+    // phase lands, per the same precedent that moved the D6 parent codes.
+    PLUGIN_PEER_UNAVAILABLE: () => ({
+        code: "PLUGIN_PEER_UNAVAILABLE",
+        message: "Operation Denied: Figma Plugin is not running or available. Please open the Figma document, start the figma-edit-mcp plugin, and reconnect.",
+    }),
+    PLUGIN_PEER_AMBIGUOUS: () => ({
+        code: "PLUGIN_PEER_AMBIGUOUS",
+        message: "Operation Denied: Multiple plugin peers are connected to this channel. Ensure the figma-edit-mcp plugin is open in exactly one Figma tab/document.",
+    }),
+    CHANNEL_IN_USE: () => ({
+        code: "CHANNEL_IN_USE",
+        message: "Operation Denied: This channel is already in use by another MCP session. Please use a different channel name or disconnect the other session.",
+    }),
+    VERSION_MISMATCH: () => ({
+        code: "VERSION_MISMATCH",
+        message: "Operation Denied: Version mismatch between MCP server and Figma plugin. Please ensure both are updated to the same version.",
+    }),
+    // Page codes are operational failures, not safety refusals — no "Operation
+    // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
+    PAGE_LOAD_FAILED: () => ({
+        code: "PAGE_LOAD_FAILED",
+        message: "Failed to load the Figma page — it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load.",
+    }),
+    PAGE_NOT_FOUND: () => ({
+        code: "PAGE_NOT_FOUND",
+        message: "Page not found: the specified page ID does not exist in this document. List pages with page_info and pass a page ID back verbatim.",
+    }),
+    TARGET_NOT_PAGE: () => ({
+        code: "TARGET_NOT_PAGE",
+        message: "Target node is not a PAGE. List pages with page_info and pass a page ID, not a node ID.",
+    }),
+    PAGE_LOAD_TIMEOUT: () => ({
+        code: "PAGE_LOAD_TIMEOUT",
+        message: "Page load timed out. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user.",
+    }),
+    DOCUMENT_SCAN_INCOMPLETE: () => ({
+        code: "DOCUMENT_SCAN_INCOMPLETE",
+        message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded — a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first.",
+    }),
+    CONNECTOR_TEMPLATE_REQUIRED: () => ({
+        code: "CONNECTOR_TEMPLATE_REQUIRED",
+        message: "Operation Denied: No valid connector template was found in the document. Find a connector with page_info/node_info (pasting one from FigJam if the file has none) and pass its ID and exact current name.",
+    }),
     VARIABLE_NAME_MISSING: () => ({
         code: "VARIABLE_NAME_MISSING",
         message: "Operation Denied: currentVariableName is missing. Read the variable's current exact name with variable_list and pass it back verbatim.",
@@ -157,5 +211,5 @@ export function getStructuredError(e: any): { code: string; message: string; det
         }
     }
 
-    return { code: "UNKNOWN_ERROR", message: describeError(e) };
+    return { code: UNKNOWN_ERROR, message: describeError(e) };
 }

@@ -212,12 +212,14 @@ export function connectToFigma(port: number = defaultPort) {
                     const request = pendingRequests.get(requestId)!;
                     clearTimeout(request.timeout);
                     
-                    // Pass through the socket's real code; FigmaError defaults
-                    // absent codes to UNKNOWN_ERROR (Q16 — no ad-hoc codes).
-                    const error = new FigmaError({
-                        code: json.code,
-                        message: json.message
-                    });
+                    // Pass through the whole message: FigmaError cherry-picks
+                    // code/message/details and defaults an absent code to
+                    // UNKNOWN_ERROR (Q16 — no ad-hoc codes). Passing `json`
+                    // itself (not a hand-picked {code, message} literal) is
+                    // what carries `details` through if the socket ever sends
+                    // one — matching the `new FigmaError(myResponse.error)`
+                    // pattern used below for ordinary command responses.
+                    const error = new FigmaError(json);
                     request.reject(error);
                     
                     pendingRequests.delete(requestId);
