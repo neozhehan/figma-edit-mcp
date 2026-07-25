@@ -558,5 +558,51 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 expect((TOOLS[tool] as any).safeParse(sc).success).toBe(true);
             });
         }
+
+        // R3 (closure audit): the round-trip above only proves the callback does
+        // not itself corrupt a compliant payload. The durable guard against a
+        // plugin handler REINTRODUCING drift is the encoded `results` row schema
+        // (nodeId + status required) — these negative cases red-proof it, so a
+        // legacy instance row or a status-less row turns this test red.
+        it("R3: the encoded results schema rejects a reintroduced legacy/drifted row", () => {
+            const legacy = {
+                success: true, status: "success",
+                requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                results: [{ instanceId: "i1", message: "ok" }], // pre-Q25 instance vocabulary
+            };
+            expect((TOOLS["instance_set_overrides"] as any).safeParse(legacy).success).toBe(false);
+
+            for (const tool of Object.keys(batchReturns)) {
+                const noStatus = {
+                    success: true, status: "success",
+                    requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                    results: [{ nodeId: "1:2" }], // no `status`
+                };
+                expect((TOOLS[tool] as any).safeParse(noStatus).success, `${tool} rejects a status-less row`).toBe(false);
+            }
+        });
+
+        // R3 (second recheck): D7 promises every failure/skip row carries an
+        // actionable reason — that is what makes a partial_success retryable.
+        // A non-success row without `error` must not validate.
+        it("R3: a failed/skipped row without an actionable `error` is rejected", () => {
+            for (const tool of Object.keys(batchReturns)) {
+                for (const status of ["failed", "skipped"]) {
+                    const noReason = {
+                        success: false, status: "failed",
+                        requestedCount: 1, succeededCount: 0, failedCount: 1, skippedCount: 0,
+                        results: [{ nodeId: "1:2", status }], // no `error`
+                    };
+                    expect((TOOLS[tool] as any).safeParse(noReason).success, `${tool} rejects a reasonless '${status}' row`).toBe(false);
+                }
+                // …while the same row WITH a reason validates.
+                const withReason = {
+                    success: false, status: "failed",
+                    requestedCount: 1, succeededCount: 0, failedCount: 1, skippedCount: 0,
+                    results: [{ nodeId: "1:2", status: "failed", error: "Node not found: 1:2" }],
+                };
+                expect((TOOLS[tool] as any).safeParse(withReason).success, `${tool} accepts a reasoned failure row`).toBe(true);
+            }
+        });
     });
 });

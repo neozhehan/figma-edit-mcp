@@ -1,13 +1,280 @@
 # Phase 5 & 6 Adversarial Critique
 
-**Date:** 2026-07-19  
-**Target:** current working tree  
-**Requirements reviewed:** [PRD D6/D7 and implementation plan](../prd.md), [task-list Phases 5–6](../task.md)  
-**Assessment:** **Phase 6 should be reopened. Phase 5 is substantially implemented but still has one valid-name edge-case defect.**
+**Original review:** 2026-07-19
 
-> **Resolution (2026-07-22).** All thirteen findings (C1–C13) were confirmed valid and are now fixed and verified; the suite is green at **741/741** (up from 726), `check:types:plugin`/`check:suppressions` pass, and the plugin bundle rebuilds idempotently. Highlights: **C1** — the text disclosure now reads the loop-scoped `report` inside the catch (the fix the isolated test never drove); **C2** — `setCharacters` reports *every* font mutation (fallback **and** mixed-font normalization) with a serializable before-font (`{family,style}` or `{mixed, segments}`), and Q24's premise is amended; **C3** — `sendProgressUpdate` swallows `postMessage` failures so progress can never fabricate a row or erase the envelope; **C4** — unresolved override nodes and unapplied requested fields are now failures (not silent success), and the failure row discloses the swap plus every applied field; **C5** — a target that changes on re-resolution fails the whole command instead of being silently dropped; **C6** — legacy count names removed from the early progress payloads; **C9** — parent omission is nullish, so a present empty name is compared (MISMATCH), not misclassified as MISSING; **C7/C8** — real registered-callback exact-output tests and a per-aggregator fault-path matrix (including a `deps.setCharacters` injection seam that drives the text fallback deterministically, since bun's `mock.module` cannot be un-mocked per-file); **C10** — the Layer-1 ledger now states that nested/at-any-depth strictness is a Phase 7 dependency; **C11/C12/C13** — wording and a missing recovery-content test. The findings below are retained as the historical record.
+**Closure recheck:** 2026-07-24
 
-This is a fresh review of the claimed post-remediation state. It does not assume that the earlier [Phase 5 & 6 review](Phase-5-%26-6-review.md) resolution note is correct. The current implementation passes the full automated suite, but several required safety properties fail under deterministic fault injection that the suite does not cover.
+**First remediation record:** 2026-07-25 — R1–R9 were marked closed; the later same-day functional recheck below supersedes that blanket status by reopening R2/R3 and adding R10.
+
+**Base target:** `0416059` (`v2.3.3-Plugin-Type-Check-Restoration-&-Safety-Contract-Gap-Closure`)
+
+**Latest recheck target:** the current 2026-07-25 working tree containing the R1–R9 remediation.
+
+**Requirements reviewed:** [PRD D6/D7 and implementation plan](../prd.md), [task-list Phases 5–6](../task.md)
+
+**Second-recheck remediation:** 2026-07-25 — R2, R3, and R10 addressed; see [2026-07-25 second-recheck remediation](#2026-07-25-second-recheck-remediation-r2r3r10) and [prd.md](../prd.md) Rev 43.
+
+**Current assessment (2026-07-25, after second-recheck remediation):** **No open functional gap remains in Phase 5 or Phase 6. R2 is fixed properly — the predicate set is now re-asserted synchronously with no `await` between the final check and `swapComponent()`, proven end-to-end by dispatcher tests that inject drift inside the previously-open awaited windows and assert zero swaps. R3's actionable-`error` requirement is enforced by the schema, and the residual top-level looseness the SDK forces is now stated honestly in Q26 instead of being overclaimed. R10 is resolved as an accepted diagnostic residual: the "one-round-trip restoring write" promise is withdrawn in D7 rather than left unmet. R1 remains an accepted best-effort residual and R5's recursive nested strictness remains explicitly deferred to Phase 7. The pre-remediation assessment that follows is retained as the record of what the second recheck found.**
+
+*Pre-remediation assessment (2026-07-25, second recheck):* Phase 5 has no remaining reproduced functional defect. Phase 6 still has three non-deferred functional/contract gaps: R2 is reopened because target revalidation is followed by awaited work that permits fresh drift before `swapComponent()`; R3 is reopened because the registered output boundary still accepts legacy-only and contract-invalid results; and new R10 records that Q9/Q24's promised one-round-trip restoring write cannot be composed through any exposed write tool. R1 remains an explicitly accepted best-effort residual, and R5's recursive nested strictness is explicitly deferred to Phase 7; neither is counted in this non-deferred open set. Test-only and documentation-only debt is retained in the historical findings but is not classified as an unimplemented functional gap here.
+
+> **Correction of the 2026-07-22 resolution note.** That note stated that all thirteen findings were fixed and verified at 741/741 tests. The 2026-07-24 closure audit re-ran the full suite at **766/766**, inspected the current callbacks and schemas, and drove the adverse paths directly. The green suite is real, but the blanket closure statement is not: two release-relevant runtime/contract defects still reproduce (R1/R2 below), the callback and path-matrix gates remain structurally incomplete (R3/R4), and several documentation or regression-test acceptance items remain unfinished. The old resolution claim is superseded by this recheck. *(The first 2026-07-25 remediation record later marked R1–R9 closed; the second recheck below supersedes that blanket closure for R2/R3 and adds R10.)*
+
+## 2026-07-25 second recheck — remaining non-deferred functional gaps
+
+This section deliberately includes only behavior or contract enforcement that Phase 5/6 marks delivered and that no later phase in [task.md](../task.md) explicitly owns. It therefore excludes R1's ratified best-effort residual, R5's Phase 7 recursive-strictness dependency, and remaining test/documentation-only debt.
+
+| Finding | Status (2026-07-25, post-remediation) | Why it was in scope |
+|---|---|---|
+| R2 — target TOCTOU | **Closed** — synchronous re-assert with no `await` before `swapComponent()`; end-to-end drift tests assert zero swaps ([Rev 43](../prd.md)) | Phase 6 claims pre-execution safety now; no later task phase owns another target-revalidation fix. The new gate is not the final operation before mutation. |
+| R3 — batch output boundary | **Closed** — `error` now required on non-success rows; Q26 corrected to state the actual (schema vs. test) enforcement level | Phase 6 checks the exact callback/envelope and Q25 row-contract tasks complete. The live registered boundary still accepts results that violate both. |
+| R10 — restoring-write reachability | **Closed by amendment** — the one-round-trip restore promise is withdrawn; before-values are recorded as diagnostic evidence, write surface deferred | Phase 6 checks Q9/Q24 disclosure complete, while the governing PRD promises a restoring write composable from the returned `before` value in one round trip. No later phase owns the missing write surface or a replacement zero-mutation guarantee. |
+
+### R2 reopened — the “final” target gate is followed by new TOCTOU windows
+
+The R2 remediation improves `getValidTargetInstances`: it now rechecks type, expected name, current scope membership, and lock state. It is not, however, immediately before execution. The dispatcher awaits the gate and then awaits `getSourceInstanceData` before entering the mutation handler ([main.ts:627–638](../../../figma_plugin/src/main.ts#L627)); source resolution itself awaits both `getNodeByIdAsync` and `getMainComponentAsync` ([componentHandlers.ts:533–568](../../../figma_plugin/handlers/componentHandlers.ts#L533)). Inside `setInstanceOverrides`, each target then awaits its own `getMainComponentAsync()` immediately before `swapComponent()` ([componentHandlers.ts:618–624](../../../figma_plugin/handlers/componentHandlers.ts#L618)). Either awaited interval permits the same target object to change after the new gate has passed.
+
+Two deterministic current-bundle probes exercised those intervals. One changed the target's name, lock, and parent during the second source lookup; another changed it inside the target's `getMainComponentAsync()`. Both still called `swapComponent()` and returned a successful row for the changed target. The source-lookup probe observed `targetLookups: 2`, `sourceLookups: 2`, `swaps: 1`, and top-level `success: true`. There is also a literal identity gap: `getValidTargetInstances` resolves the requested ID but never checks `targetNode.id === nodeId` ([componentHandlers.ts:486–522](../../../figma_plugin/handlers/componentHandlers.ts#L486); a direct wrong-ID resolver stub was accepted).
+
+The new five-case regression matrix calls `getValidTargetInstances` directly on objects that have already drifted ([v2.3.3.phase5-6.remediation.test.ts:595–650](../../../src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase5-6.remediation.test.ts#L595)). It does not execute the dispatcher, introduce drift after the gate, or assert that `swapComponent()` stayed at zero. Thus it proves the helper's predicate checks, not the claimed end-to-end no-mutation property.
+
+**Required remediation and acceptance:** resolve every fallible/awaited source and original-main-component dependency before the final target gate, explicitly require the resolved target's ID to equal the requested ID, and ensure no `await` occurs between the last predicate check and that target's first mutation. If the handler architecture requires later awaits, reassert the full original predicate set after the last such await and immediately before `swapComponent()`. Add end-to-end dispatcher tests that introduce same-object name/lock/scope/type/identity drift during source resolution and target `getMainComponentAsync()`, and assert a command error plus `swapComponent()` call count zero. For a multi-target batch, the test must prove every target that can be validated before the first mutation is validated before any swap.
+
+**Resolved 2026-07-25 — every acceptance item met ([prd.md](../prd.md) Rev 43).** The predicate set is extracted into a **synchronous** `checkTargetPredicates` (now including the identity check `node.id === requestedId`) that reads only resolved node state, so it can run in the same turn as the mutation it guards; both gates share the one definition. The dispatcher resolves source data **before** the target gate ([main.ts](../../../figma_plugin/src/main.ts)), and `setInstanceOverrides` hoists every target's `getMainComponentAsync()` await, re-asserts the whole batch after the hoist and before the first mutation, and re-asserts each target immediately before its own `swapComponent()` with **no intervening `await`** ([componentHandlers.ts](../../../figma_plugin/handlers/componentHandlers.ts)). Pre-mutation drift throws **outside** the P6-5 envelope catch so it is a Layer 2 refusal (structured error, no envelope, no mutation); drift found mid-loop after earlier targets mutated stays a failure row, preserving the D7 envelope (the C3 lesson). New end-to-end suite [v2.3.3.r2-toctou.test.ts](../../../src/mcp_server/tests/unit/figma_plugin/v2.3.3.r2-toctou.test.ts) drives the real dispatcher and injects same-object drift during source resolution, during the target's own main-component read, via an id-mismatch impostor, and on a later target during an earlier target's await — each asserting a command error and `swapComponent()` count **zero** — plus a no-drift baseline proving the gate does not over-reject.
+
+### R3 reopened — encoded rows do not make the registered output boundary exact
+
+The remediation replaces `z.array(z.any())` with `batchResultRow`, which usefully requires `nodeId` and `status`. The production registration wrapper still transforms every declared output field into an optional field and permits arbitrary top-level keys via `.catchall(z.any())` ([index.ts:44–59](../../../src/mcp_server/tools/index.ts#L44)). The row schema likewise makes `error` optional regardless of status and permits arbitrary additive keys ([_result.ts:44–54](../../../src/mcp_server/tools/_result.ts#L44)).
+
+Direct probes against the current registered schemas established that all four batch tools accept:
+
+- a legacy-only top-level payload such as `{nodesDeleted: 1}`, with no D7 envelope;
+- a row `{nodeId: "1:2", status: "failed"}` with no actionable `error`; and
+- a row that carries `nodeId`/`status` while also reintroducing legacy `instanceId`/`message` keys.
+
+The real registered `node_delete` callback also surfaced `{nodesDeleted: 1}` unchanged, and its registered schema accepted the result. Current handler paths tested in the suite emit conforming shapes; the functional gap is that the production protocol boundary still cannot enforce the checked Q25/Q26 contract or prevent future handler/transport drift.
+
+**Required remediation and acceptance:** keep the advertised schema compatible with the SDK's D9 error-envelope limitation, but add a separate strict execution-result validator at the registered callback boundary before `toolResult`. For a non-error batch result it must require the complete D7 envelope, enforce `success === (status === "success")`, enforce count/result algebra and one row per request, require `error` on every `failed`/`skipped` row, and reject every legacy count or legacy instance-row key even when new keys are also present. Use explicit per-tool allowlists for legitimate additive fields. Invoke all four real registered callbacks over real handler success/partial/failed/skipped outputs, then red-proof each validator with a legacy-only top level, a non-success row without `error`, an additive legacy row key, and inconsistent counts/status.
+
+**Resolved 2026-07-25 — partly by fix, partly by honest amendment ([prd.md](../prd.md) Rev 43).** The row-level half is fixed: `batchResultRow` now requires a non-empty actionable `error` on every `failed`/`skipped` row (Q25's "actionable per-item reason", previously optional regardless of status), red-proofed for all four tools in `outputSchema.test.ts`. The separate runtime exact-result validator is **deliberately not built**, and the claim it was meant to satisfy is corrected instead of left standing: Q26's "registered-callback tests assert the returned key set is exactly the envelope, so `looseOutput` cannot re-mask drift" is amended in place to state the real enforcement level — the advertised schema cannot be exact at the top level (the SDK validates `structuredContent` on `isError` results and cannot advertise a union, forcing optional fields plus `catchall`), so a legacy-only top-level payload still validates; **per-row** Q25 conformance is schema-enforced, **top-level** envelope exactness is test-enforced, and the residual (a future transport/handler emitting a legacy-only top level would pass the schema and be caught only by tests) is recorded as accepted with the validator explicitly deferred.
+
+### R10 — Q9/Q24 before-values cannot compose the promised restoring write
+
+D7 says the `before` data lets the caller compose a restoring write directly from the error in one round trip ([prd.md:166](../prd.md#L166)), and Q24 calls a mixed-font `{mixed: true, segments}` snapshot “genuinely restorable” ([prd.md:167](../prd.md#L167)). The disclosure is truthful, but the necessary writes are not exposed:
+
+- `text_set_style` accepts only one whole-node `{family, style}` `fontName` ([text.ts:47–101](../../../src/mcp_server/tools/text.ts#L47)), and its handler assigns `node.fontName` globally. No registered tool accepts segment start/end ranges, and no plugin write path calls `setRangeFontName`.
+- An instance failure returns the original `mainComponentId`, but `instance_set_overrides` requires a `sourceInstanceId` ([instance.ts:66–101](../../../src/mcp_server/tools/instance.ts#L66)). `instance_set_property` changes a component property—including an `INSTANCE_SWAP` property inside an instance—not the target instance's own main component. `create_instance(componentId)` creates a different node; it does not restore the existing target.
+
+Consequently these before-values are diagnostic evidence, not an executable one-round-trip recovery payload. This is not assigned to a later phase: Phase 6 marks the Q9/Q24 disclosure and its before-values complete ([task.md:111–123](../task.md#L111)), while Phase 7 defers annotation repair and recursive input strictness only ([task.md:127–143](../task.md#L127)).
+
+**Required remediation and acceptance:** choose and record one truthful contract. Either (A) prevent or automatically roll back these partial mutations—at minimum fail before mixed-font normalization when exact rollback is unavailable, and restore the original main component/applied override fields on later instance failure—or (B) expose name/scope/lock-verified write inputs that can apply the returned text segments and swap an existing target directly back to the returned main component. A deterministic round-trip test must feed the returned `before` data into the documented recovery and prove exact pre-state restoration of mixed-font ranges and the target instance; if no such recovery is implemented, amend the PRD/task to remove “genuinely restorable” and “one round trip” and classify the limitation explicitly as an accepted residual rather than completed functionality.
+
+**Resolved 2026-07-25 — option (amend), as offered by this finding ([prd.md](../prd.md) Rev 43).** Neither rollback nor new write surface is built; the overstated contract is withdrawn instead. D7's Q9 bullet no longer promises that "the restoring write can be composed directly from the error in one round trip" — it now states that the before-values are truthful **diagnostic evidence** of what changed, that no registered tool applies a per-segment font map or swaps an existing instance back to a main component by ID, and that composing a full restore may require a re-read and manual steps. Q24's "genuinely restorable" is corrected to a record/evidence claim. The missing write surface and automatic rollback are explicitly **deferred** as new write capability requiring their own name/scope/lock verification and safety review, and the Phase 6 disclosure task carries a matching scope note ([task.md](../task.md)) so the checked item is not read as promising one-call recovery.
+
+**Pre-remediation verification:** the focused Phase 5/6, parent, callback, and boundary set passed **180/180** tests; the full suite passed **787/787**. Plugin type, suppression, generated-file, and version checks passed, and a plugin rebuild was byte-identical to the current bundle. The deterministic R2/R3/R10 probes above show why those green checks establish regression health, not closure.
+
+## 2026-07-25 second-recheck remediation (R2/R3/R10)
+
+All three findings are addressed; decisions and rationale are in [prd.md](../prd.md) Rev 43, and each finding above carries a `Resolved 2026-07-25` line.
+
+| Finding | Disposition | Kind |
+|---|---|---|
+| R2 | Synchronous `checkTargetPredicates` (now including identity); source resolved before the gate; per-target main-component awaits hoisted; batch re-asserted after the hoist and before the first mutation; each target re-asserted with **no `await`** before its `swapComponent()`. Pre-mutation drift is a Layer 2 refusal (no envelope, no mutation); mid-loop drift stays a failure row so the envelope survives. | Fixed |
+| R3 | `error` now required (non-empty) on every `failed`/`skipped` row, red-proofed. Q26's overstated "cannot re-mask drift" corrected in place to the real split: per-row conformance is schema-enforced, top-level exactness is test-enforced, residual accepted, runtime validator deferred. | Fixed + amended |
+| R10 | The "restoring write … in one round trip" promise withdrawn from D7; before-values restated as truthful diagnostic evidence; Q24's "genuinely restorable" corrected to a record claim; write surface / rollback explicitly deferred; Phase 6 task carries a matching scope note. | Amended (as this finding offered) |
+
+**Post-remediation verification:** full suite **794 pass, 0 fail** (787 → 794: +6 end-to-end R2 TOCTOU cases, +1 R3 row red-proof). `check:types:plugin`, `check:suppressions`, `check:generated`, `check:versions` pass; the plugin bundle is rebuilt from source and carries the new gating.
+
+**What remains open, by explicit decision, not oversight:** R1's `{mixed: true}` capture-failure residual (accepted, Rev 41); R5's recursive nested strictness (deferred to Phase 7); R3's top-level schema looseness (SDK-forced, test-compensated, validator deferred); R10's missing restore write surface (deferred as new write capability).
+
+## 2026-07-24 closure matrix
+
+> **Historical snapshot.** The statuses in this table and the R1–R9 findings below describe the 2026-07-24 tree. The first 2026-07-25 remediation marked them closed, but the second recheck above is authoritative for current status: R2/R3 are reopened and R10 is new.
+
+| Finding | Current status | Verified disposition |
+|---|---|---|
+| C1 — fallback text disclosure | **Closed** | The handler keeps `report` in loop scope and reads it in the catch. A direct real fallback → character-assignment-failure probe returned `partialMutation`, `whatChanged`, and the original `{family, style}` font. |
+| C2 — mixed-font disclosure | **Open / partial** | Ordinary mixed normalization is now disclosed with styled segments, but snapshot-capture failure falls back to non-restorable `{mixed: true}` and mutation still proceeds (R1). The Phase 6 summary/checklist also remains fallback-only. |
+| C3 — progress can corrupt outcomes | **Closed** | `sendProgressUpdate` isolates `postMessage` failure. Text and delete fault tests preserve the single-row/count algebra and final envelope. |
+| C4 — silent override loss/disclosure | **Production fix verified; regression gap** | Missing target/source override nodes and unapplied fields fail; a direct early-field-success/later-field-failure probe disclosed both the component swap and applied field. The required regression for that last path is absent (R8). |
+| C5 — target re-resolution TOCTOU | **Open / P1** | Disappearance/type change now fails, but name, lock, and scope changes do not. A same-ID/type target changed after prevalidation was still mutated and reported successful (R2). |
+| C6 — legacy progress counts | **Partial** | The enumerated `totalNodes`/`totalReplacements` aliases are gone, but intermediate delete progress still emits the duplicate vocabulary `successCount`/`failureCount`; no progress-payload assertion protects Q26 (R9). |
+| C7 — callback/exact-output gate | **Partial** | Registered callbacks are now invoked in tests, but only with hand-authored compliant transport values. A real callback and its registered schema still accept and surface a legacy-only return; result rows remain untyped (R3). |
+| C8 — every-path test claim | **Open / partial** | Coverage improved materially, including text and progress paths, but the checked all-four/every-return-path claim still exceeds the matrix (R4). |
+| C9 — empty parent name | **Production fix verified; regression gap** | Both parent paths use nullish omission checks and exact comparison. Required empty-name exact-match/mismatch regressions are absent (R8). |
+| C10 — nested strictness ledger | **Open dependency / ledger contradiction** | The Phase 7 dependency is now documented, but nested unknown keys remain accepted and stripped while the Phase 6 Three-Layer Boundary stays checked complete (R5). |
+| C11 — retry skipped rows | **Partial** | All four tool descriptions correctly say to retry every non-success row. The PRD/task shorthand still says “failed items,” and no emitted-`tools/list` regression protects the corrected wording (R6). |
+| C12 — component-set parent wording | **Partial** | The schema now says “appendable parent container” and names `node_info`; the missing-`parentId` error does neither (R7). |
+| C13 — missing-parent recovery test | **Closed** | The factory test now covers `PARENT_NAME_MISSING`, `node_info`, and “pass it back verbatim.” |
+
+## New and reopened findings from the closure audit
+
+Severity follows the original convention retained in the historical review: P1 is release-blocking, P2 is an incomplete contract or material test seam, and P3 is wording or regression-protection debt.
+
+### R1 — [P1] Mixed-font snapshot failure permits mutation with a non-restorable `before`
+
+`captureFontSnapshot` correctly captures `{mixed: true, segments}` when `getStyledTextSegments()` succeeds, but it catches any segment-capture error and returns only `{mixed: true}` ([textUtils.ts:174–189](../../../figma_plugin/utils/textUtils.ts#L174)). `setCharacters` then continues, normalizes `fontName` to one concrete font, and can fail the later character assignment.
+
+A deterministic probe made `getStyledTextSegments()` throw while `getRangeFontName()` and font loading succeeded. The node's font changed, and the failure row truthfully set `partialMutation: true`, but its only before-value was:
+
+```json
+{
+  "fontName": {
+    "mixed": true
+  }
+}
+```
+
+That value cannot compose the restoring write promised by D7 and contradicts the corrected contract's required `{mixed: true, segments}` form ([prd.md:167](../prd.md#L167)). The same correction has not propagated to the fallback-only Phase 6 summaries/checklists ([prd.md:262](../prd.md#L262), [task.md:112–123](../task.md#L112), [task.md:264](../task.md#L264)).
+
+**Required remediation and acceptance:** if a restorable mixed snapshot cannot be captured, fail before assigning `fontName`; do not silently downgrade the before-state. Add a real mixed-normalization → character-failure regression plus a snapshot-read-failure regression that proves zero mutation. Update every Phase 6/Q24 summary to cover both fallback and mixed normalization.
+
+**Resolved 2026-07-25 (by decision — [prd.md](../prd.md) Rev 41).** Addressed as a Q24 amendment rather than the fail-closed remediation above: the degraded `{mixed: true}` snapshot is accepted as a documented best-effort residual, because `getStyledTextSegments` is stable on a live mixed-font `TextNode` and the degradation arises only under test stubs. No code change — the existing `captureFontSnapshot` fallback is now the ratified contract.
+
+### R2 — [P1] Instance target re-resolution does not revalidate name, lock, or scope
+
+The dispatcher initially checks target existence, scope, exact name, lock state, and `INSTANCE` type ([main.ts:579–615](../../../figma_plugin/src/main.ts#L579)). The second resolution checks only existence and type ([componentHandlers.ts:461–490](../../../figma_plugin/handlers/componentHandlers.ts#L461)).
+
+An end-to-end dispatcher probe returned the target as exact-name, unlocked, and in scope on the first lookup. On the second lookup, the same node object and ID remained type `INSTANCE` but was renamed, locked, and detached from the editable scope. `swapComponent()` still ran, and the command returned:
+
+```json
+{
+  "success": true,
+  "status": "success",
+  "results": [
+    {
+      "status": "success",
+      "nodeId": "t",
+      "instanceName": "Changed"
+    }
+  ]
+}
+```
+
+The existing C5 regression checks only a missing target ([v2.3.3.phase5-6.remediation.test.ts:401–409](../../../src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase5-6.remediation.test.ts#L401)). It does not protect the safety predicates that made the first target acceptable.
+
+**Required remediation and acceptance:** immediately before execution, revalidate every predicate used by initial prevalidation against the original request and current scope root: identity/ID, `INSTANCE` type, exact requested name, scope membership, and lock/locked-ancestor state. Any change fails the whole command before mutation. Add same-object TOCTOU cases for rename, lock, scope move, disappearance, and type change, each proving `swapComponent()` was not called.
+
+**~~Resolved 2026-07-25 (Rev 41)~~ — SUPERSEDED; see the [second recheck's R2](#r2-reopened--the-final-target-gate-is-followed-by-new-toctou-windows) and its Rev 43 resolution.** The Rev 41 pass extended `getValidTargetInstances` to re-assert `INSTANCE` type, exact requested name, scope-root membership, and lock/locked-ancestor, with a 5-case helper matrix. Two claims in that record were wrong: it did **not** check identity (`node.id === requestedId`, added only in Rev 43), and it was not "immediately before execution" — awaited work still followed the gate before `swapComponent()`. Rev 43 supplies the actual fix and the end-to-end proof.
+
+**Reopened 2026-07-25 (second recheck).** The predicate helper improved, but its gate is followed by awaited source/target setup before the first swap, and the tests do not exercise that dispatcher window. See [R2 reopened](#r2-reopened--the-final-target-gate-is-followed-by-new-toctou-windows).
+
+### R3 — [P2] The callback “exact-output” test remains disconnected from production handler drift
+
+The new callback test captures and invokes the registered callbacks, which is an improvement, but it sets the mocked transport to a hand-authored compliant object and then asserts that the callback returns that same object ([outputSchema.test.ts:507–559](../../../src/mcp_server/tests/unit/tools/outputSchema.test.ts#L507)). It cannot fail when a plugin handler reintroduces a legacy field because no production handler output reaches this assertion.
+
+The registered wrapper still makes every declared success field optional and accepts arbitrary extra keys ([index.ts:44–59](../../../src/mcp_server/tools/index.ts#L44)); all four `results` fields remain `z.array(z.any())` ([node.ts:182–190](../../../src/mcp_server/tools/node.ts#L182), [text.ts:27–35](../../../src/mcp_server/tools/text.ts#L27), [annotation.ts:54–62](../../../src/mcp_server/tools/annotation.ts#L54), [instance.ts:85–93](../../../src/mcp_server/tools/instance.ts#L85)).
+
+A direct real-callback probe supplied the transport result `{nodesDeleted: 1}`. The registered `node_delete` callback surfaced it unchanged, and the registered output schema accepted it. All four schemas also accepted arbitrary result rows. The checked claim that the test prevents `looseOutput` from re-masking drift ([task.md:122](../task.md#L122)) is therefore still unproven.
+
+**Required remediation and acceptance:** connect each production batch handler result to the registered callback test, or add a shared exact-success validator that runs on callback output before `toolResult`. Assert the exact allowed top-level key set for each real success/partial/failure return and encode/assert the per-row `nodeId`/`status`/`error` vocabulary. A deliberately reintroduced legacy count or legacy instance row must turn the test red.
+
+**~~Resolved 2026-07-25 (Rev 41)~~ — SUPERSEDED; see the [second recheck's R3](#r3-reopened--encoded-rows-do-not-make-the-registered-output-boundary-exact) and its Rev 43 resolution.** The Rev 41 pass encoded the Q25 row vocabulary via a shared `batchResultRow` (`nodeId`+`status` required, additive keys via `catchall`) in [_result.ts](../../../src/mcp_server/tools/_result.ts) and coupled real handler output to the registered schema. That was necessary but not sufficient: `error` remained optional on non-success rows, and the top-level boundary still accepted legacy-only payloads. Rev 43 requires `error` on `failed`/`skipped` rows and corrects the overstated Q26 enforcement claim rather than leaving it standing.
+
+**Reopened 2026-07-25 (second recheck).** The encoded row closes only the missing-`nodeId`/`status` case. The actual registered boundary still accepts a legacy-only top level, a non-success row without `error`, and additive legacy row keys. See [R3 reopened](#r3-reopened--encoded-rows-do-not-make-the-registered-output-boundary-exact).
+
+### R4 — [P2] The checked every-aggregator/every-return-path matrix is still incomplete
+
+The remediation suite now includes text, but its annotation property case remains success-only ([v2.3.3.phase5-6.remediation.test.ts:230–239](../../../src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase5-6.remediation.test.ts#L230)); no annotation all-failed case exists. The test titled “node-gone and not-TEXT” sends the missing node first, so the stop-on-first handler skips the frame and never executes the not-`TEXT` branch ([v2.3.3.phase5-6.remediation.test.ts:308–319](../../../src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase5-6.remediation.test.ts#L308)). The suite also lacks the C4 early-field-success/later-field-failure regression and the expanded C5 safety-predicate TOCTOU matrix.
+
+The injected C1 handler test reports a mutation through the seam but does not itself mutate the node, while the real fallback/mixed utility tests complete character assignment successfully. Current production behavior passes a direct combined probe, but the exact real mutation-then-failure coupling is not protected from regression.
+
+**Required remediation and acceptance:** replace the sampled invariant block with a table-driven matrix for all four aggregators covering success, partial, all-failed, skipped, setup failure, and applicable partial-mutation paths. Every case asserts count algebra, boolean/status equivalence, one ordered row per original input, row vocabulary, and disclosure presence/absence. Ensure every named branch actually executes.
+
+**Resolved 2026-07-25 ([prd.md](../prd.md) Rev 42).** The named gaps are closed: an annotation all-failed + skipped case (annotation was success-only), and the mislabeled "node-gone and not-`TEXT`" text test split so the not-`TEXT` node is the only item and its branch actually executes (the earlier version put a missing node first and skipped the frame). Combined with the C4 partial-field case (R8) and the C5 TOCTOU matrix (R2), all four aggregators now cover success/partial/all-failed/skipped and every named branch runs — done as targeted cases rather than a single table-driven block.
+
+### R5 — [P2, ledger/dependency] Phase 6 remains checked complete while its Layer-1 contract is incomplete
+
+The ledger now admits that at-any-depth strictness is deferred, but the Three-Layer Boundary line remains checked ([task.md:99–102](../task.md#L99)) and Phase 7 recursive strictness remains open ([task.md:127–143](../task.md#L127)). Direct `safeParse` probes against all four registered batch schemas accepted nested sentinel keys and silently stripped them, contrary to D7's Layer-1 rule ([prd.md:160](../prd.md#L160)).
+
+**Required remediation and acceptance:** leave the Phase 6 Three-Layer Boundary checkbox open—or mark Phase 6 explicitly “implemented pending Phase 7”—until recursive strictness lands. Phase 7 must prove rejection, not stripping, at every nested object depth for all four batch tools.
+
+**Resolved 2026-07-25 (by decision — [prd.md](../prd.md) Rev 41).** The Phase 6 Three-Layer-Boundary and Layer-1 ledger items keep `[x]` but now carry an explicit "implemented pending Phase 7 (nested strictness)" label ([task.md](../task.md)), so the checkmark is not read as the full D7 "unknown keys at any depth" contract. Recursive rejection remains Phase 7 work.
+
+### R6 — [P3] Retry wording is corrected at the tool surface but contradictory in the governing documents
+
+All four registered descriptions now correctly instruct the caller to retry “every non-success item (both failed and skipped)” ([node.ts:169](../../../src/mcp_server/tools/node.ts#L169), [text.ts:13](../../../src/mcp_server/tools/text.ts#L13), [annotation.ts:38](../../../src/mcp_server/tools/annotation.ts#L38), [instance.ts:71](../../../src/mcp_server/tools/instance.ts#L71)).
+
+The PRD still says “report the failed items” and “retry exactly the failed items” ([prd.md:158–163](../prd.md#L158)); the Phase 6 and Phase 12 task text retains the same shorthand ([task.md:109](../task.md#L109), [task.md:230](../task.md#L230)). No test inspects the emitted `tools/list` descriptions for the corrected recovery.
+
+**Required remediation and acceptance:** use “every non-success row (`failed` and `skipped`)" consistently in the PRD, task ledger, guides, and tool descriptions. Add an emitted-`tools/list` assertion covering all four batch tools.
+
+**Resolved 2026-07-25 ([prd.md](../prd.md) Rev 41).** The "report/retry exactly the failed items" shorthand is corrected to "every non-success row (`failed` and `skipped`)" across the PRD and task ledger (the emitted tool descriptions already said "every non-success item (both failed and skipped)"). An emitted-`tools/list` assertion in `mcpBoundary.test.ts` now covers all four batch descriptions.
+
+### R7 — [P3] Component-set missing-parent recovery remains less specific than its corrected schema
+
+The schema now correctly describes `parentId` as an “appendable parent container” and names `node_info` ([create.ts:250–251](../../../src/mcp_server/tools/create.ts#L250)). The missing-`parentId` handler error says only “parent container” and does not name `node_info` ([componentHandlers.ts:993–998](../../../figma_plugin/handlers/componentHandlers.ts#L993)).
+
+The original incorrect “parent frame” narrowing is gone, but the error itself still does not meet C12's requested recovery text, and the current description test checks only `parentNodeName`.
+
+**Required remediation and acceptance:** make the missing-`parentId` error say “appendable parent container,” direct the caller to `node_info`, and request both discovered values. Add a regression assertion on the actual error text.
+
+**Resolved 2026-07-25 ([prd.md](../prd.md) Rev 42).** The missing-`parentId` error in [componentHandlers.ts](../../../figma_plugin/handlers/componentHandlers.ts) now says "appendable parent container", names `node_info`, and asks for both the ID and the exact current name. A `phase2.test.ts` assertion pins the text (still contains "parentId is missing").
+
+### R8 — [P2/P3] Two production fixes are not protected by their required regressions
+
+The current production code fixes C4 and C9:
+
+- C4 rejects unresolved override nodes/unapplied fields and records applied fields ([componentHandlers.ts:597–705](../../../figma_plugin/handlers/componentHandlers.ts#L597)).
+- C9 uses nullish omission plus exact comparison in both parent paths ([main.ts:155–164](../../../figma_plugin/src/main.ts#L155), [componentHandlers.ts:999–1016](../../../figma_plugin/handlers/componentHandlers.ts#L999)).
+
+The requested guards are absent: no C4 early-field-success/later-field-failure test and no present-empty exact-match/mismatch cases for either parent path. These are not current production failures, but the “fixed and verified” claim is stronger than the durable evidence.
+
+**Required remediation and acceptance:** add both missing regression groups and red-proof each by temporarily reverting its protected behavior.
+
+**Resolved 2026-07-25 ([prd.md](../prd.md) Rev 42).** Both groups added: a C4 early-field-success/later-field-failure test proving the failure row discloses BOTH the main-component swap and the already-applied field (`before.appliedFields`), and C9 present-empty exact-match/mismatch cases for BOTH parent paths — ordinary creator via the `create_svg` dispatcher (`phase1.test.ts`) and component-set via the `create_component_set` dispatcher (`phase2.test.ts`). Each red-proofs the protected behavior (a present-empty `parentNodeName` is `PARENT_NAME_MISMATCH`, and an exactly empty-named parent is usable).
+
+### R9 — [P2] Delete progress still exposes a second count vocabulary
+
+The specifically enumerated `totalNodes` and `totalReplacements` fields are removed from the early delete/text payloads ([nodeModifiers.ts:125–164](../../../figma_plugin/handlers/nodeModifiers.ts#L125), [textHandlers.ts:54–64](../../../figma_plugin/handlers/textHandlers.ts#L54)). However, intermediate `node_delete` progress payloads still emit `successCount` and `failureCount` ([nodeModifiers.ts:175–190](../../../figma_plugin/handlers/nodeModifiers.ts#L175), [nodeModifiers.ts:245–262](../../../figma_plugin/handlers/nodeModifiers.ts#L245)).
+
+Those keys duplicate the envelope's `succeededCount`/`failedCount` values and therefore preserve the second count vocabulary Q26's general rule removes ([prd.md:165](../prd.md#L165), [task.md:97](../task.md#L97)). No test asserts the key set of each progress stage.
+
+**Required remediation and acceptance:** use the shared `succeededCount`/`failedCount` names in intermediate progress or omit the duplicate counts. Capture every delete/text progress emission in a regression test and assert that no legacy or alternate count vocabulary appears.
+
+**Resolved 2026-07-25 ([prd.md](../prd.md) Rev 41/42).** Intermediate `node_delete` progress payloads now use the shared `succeededCount`/`failedCount` names ([nodeModifiers.ts](../../../figma_plugin/handlers/nodeModifiers.ts)). A regression captures every delete progress emission and asserts no payload carries the legacy `successCount`/`failureCount` while the shared names do appear.
+
+## 2026-07-24 verification
+
+- `bun test src/mcp_server/tests`: **766 pass, 0 fail, 3586 assertions**.
+- Focused Phase 5/6, output-schema, parent, and recovery suites: **190 pass, 0 fail**.
+- `bun run check:types:plugin`: pass.
+- `bun run check:suppressions`: pass.
+- `bun run check:plugin`: pass; the generated plugin bundle is current.
+- Direct probes:
+  - confirmed C1 fallback disclosure, normal mixed-font disclosure, best-effort progress, and C4 applied-field disclosure;
+  - reproduced R1's non-restorable mixed snapshot;
+  - reproduced R2's same-ID/type name/lock/scope TOCTOU mutation;
+  - reproduced R3's legacy-only registered callback/schema acceptance;
+  - reproduced R5's nested-key acceptance and silent stripping.
+
+The green suite establishes broad regression health, not closure of the findings above. Phase 5 remains incomplete on R7/R8; Phase 6 remains release-blocked by R1/R2 and incomplete at the contract/test ledger until R3–R6 and R8/R9 are resolved. *(Historical 2026-07-24 assessment; the first remediation record below superseded it, and the second recheck at the top is authoritative now.)*
+
+## 2026-07-25 first remediation record (historical closure claim)
+
+This section records the state that first marked all nine reopened findings remediated. The second recheck at the top supersedes it as the current assessment by reopening R2/R3 and adding R10. The six first-remediation decisions and their rationale are recorded in [prd.md](../prd.md) Rev 41, and R4/R7/R8 in Rev 42.
+
+| Finding | Disposition |
+|---|---|
+| R1 | Q24 amended to legitimize the `{mixed:true}` capture-failure snapshot as a documented best-effort residual (no code change — the existing fallback is now the ratified contract). |
+| R2 | First remediation added a fuller predicate helper and a 5-case helper matrix; **reopened by the second recheck** because awaited work remains between the gate and mutation. |
+| R3 | First remediation encoded `nodeId`+`status`; **reopened by the second recheck** because the registered boundary still accepts legacy-only and otherwise contract-invalid results. |
+| R4 | Annotation all-failed + skipped case added; the mislabeled not-`TEXT` text test split so the branch actually executes. |
+| R5 | Phase 6 Three-Layer-Boundary / Layer-1 ledger items carry an explicit "implemented pending Phase 7 (nested strictness)" label. |
+| R6 | PRD/task "report/retry exactly the failed items" corrected to "every non-success row (`failed` and `skipped`)"; an emitted-`tools/list` assertion covers all four batch descriptions. |
+| R7 | The missing-`parentId` error names `node_info`, says "appendable parent container", and requests both values; a phase-2 assertion pins the text. |
+| R8 | C4 early-field-success/later-field-failure regression and C9 present-empty exact-match/mismatch regressions (both parent paths) added, each red-proofing the protected behavior. |
+| R9 | Intermediate `node_delete` progress payloads renamed to the shared `succeededCount`/`failedCount` envelope counts; a regression captures every delete progress emission and rejects the legacy vocabulary. |
+
+Verification after remediation: `bun test src/mcp_server/tests` **787 pass, 0 fail**; `check:types:plugin`, `check:suppressions`, `check:generated`, `check:versions` pass; the plugin bundle is regenerated from source.
+
+---
+
+## Historical review (2026-07-19)
+
+The remainder is the original critique and is retained as the historical record of C1–C13. Its line-specific implementation observations and coverage tables describe the 2026-07-19 tree; use the second-recheck R2/R3/R10 section at the top for current unresolved functional status.
+
+This was a fresh review of the then-claimed post-remediation state. It did not assume that the earlier [Phase 5 & 6 review](Phase-5-%26-6-review.md) resolution note was correct. The implementation passed the full automated suite, but several required safety properties failed under deterministic fault injection that the suite did not cover.
 
 ## Severity convention
 

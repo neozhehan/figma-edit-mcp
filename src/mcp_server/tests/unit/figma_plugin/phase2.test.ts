@@ -521,6 +521,41 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
         expect(combineAsVariantsCalled).toBe(false);
     });
 
+    it("C9: present-empty parentNodeName is a MISMATCH, not MISSING (empty is a value, not omission)", async () => {
+        const { comp1 } = setupEnvironment(); // parent is named "Parent Node"
+        const res = await sendCommand({
+            components: [
+                { nodeId: "comp-1", nodeName: "Button", propertyValues: ["Small"] },
+                { nodeId: "comp-2", nodeName: "Button", propertyValues: ["Large"] }
+            ],
+            properties: ["Size"],
+            parentId: "parent-id",
+            parentNodeName: ""
+        }, { injectParent: false });
+        expect(res.type).toBe("command-error");
+        // Red-proof of the truthiness bug: `if (!params.parentNodeName)` would
+        // classify "" as MISSING; the nullish check makes it a real MISMATCH.
+        expect(res.error.code).toBe("PARENT_NAME_MISMATCH");
+        expect(comp1.name).toBe("Button");
+        expect(combineAsVariantsCalled).toBe(false);
+    });
+
+    it("C9: an exactly empty-named parent is usable when parentNodeName is the same empty string", async () => {
+        const { parentNode } = setupEnvironment();
+        parentNode.name = ""; // a parent legitimately named ""
+        const res = await sendCommand({
+            components: [
+                { nodeId: "comp-1", nodeName: "Button", propertyValues: ["Small"] },
+                { nodeId: "comp-2", nodeName: "Button", propertyValues: ["Large"] }
+            ],
+            properties: ["Size"],
+            parentId: "parent-id",
+            parentNodeName: ""
+        }, { injectParent: false });
+        expect(res.type).toBe("command-result"); // empty-but-exact name matches → proceeds
+        expect(combineAsVariantsCalled).toBe(true);
+    });
+
     it("omitted parentId fails closed with a parentId-specific message (Q22/P5-1)", async () => {
         const { comp1, comp2 } = setupEnvironment();
         const res = await sendCommand({
@@ -534,6 +569,11 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
         }, { injectParent: false });
         expect(res.type).toBe("command-error");
         expect(res.error.message).toContain("parentId is missing");
+        // R7: the missing-parentId error matches its corrected schema — it names
+        // node_info and describes an "appendable parent container", not a bare
+        // "parent container".
+        expect(res.error.message).toContain("node_info");
+        expect(res.error.message).toContain("appendable parent container");
         expect(comp1.name).toBe("Button");
         expect(comp2.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);

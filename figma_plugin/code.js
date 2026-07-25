@@ -1625,8 +1625,10 @@
         {
           currentChunk: chunkIndex + 1,
           totalChunks: chunks.length,
-          successCount,
-          failureCount
+          // Q26/R9: progress uses the shared envelope count names — no second
+          // count vocabulary. Local vars stay `successCount`/`failureCount`.
+          succeededCount: successCount,
+          failedCount: failureCount
         }
       );
       const chunkPromises = chunk.map(async (nodeId) => {
@@ -1681,8 +1683,9 @@
         {
           currentChunk: chunkIndex + 1,
           totalChunks: chunks.length,
-          successCount,
-          failureCount,
+          // Q26/R9: shared envelope count names in progress, not a second vocabulary.
+          succeededCount: successCount,
+          failedCount: failureCount,
           chunkResults
         }
       );
@@ -2672,27 +2675,46 @@
       };
     }
   }
-  async function getValidTargetInstances(targetNodeIds) {
-    let targetInstances = [];
-    if (Array.isArray(targetNodeIds)) {
-      if (targetNodeIds.length === 0) {
-        return { success: false, message: "No instances provided" };
-      }
-      for (const targetNodeId of targetNodeIds) {
-        const targetNode = await figma.getNodeByIdAsync(targetNodeId);
-        if (!targetNode || targetNode.type !== "INSTANCE") {
-          return {
-            success: false,
-            message: `Target instance ${targetNodeId} is no longer available or is not an instance (it may have changed since validation). Re-read the instances with node_info and resend.`
-          };
-        }
-        targetInstances.push(targetNode);
-      }
-      if (targetInstances.length === 0) {
-        return { success: false, message: "No valid instances provided" };
-      }
-    } else {
+  function checkTargetPredicates(node, requestedId, expectedName, scopeRoot) {
+    if (!node) {
+      return `Target instance ${requestedId} is no longer available or is not an instance (it may have changed since validation). Re-read the instances with node_info and resend.`;
+    }
+    if (node.id !== requestedId) {
+      return `Target instance ${requestedId} resolved to a different node (${node.id}) since validation. Re-read it with node_info and resend.`;
+    }
+    if (node.type !== "INSTANCE") {
+      return `Target instance ${requestedId} is no longer available or is not an instance (it may have changed since validation). Re-read the instances with node_info and resend.`;
+    }
+    if (expectedName !== void 0 && node.name !== expectedName) {
+      return `Target instance ${requestedId} was renamed to "${node.name}" (expected "${expectedName}") since validation. Re-read it with node_info and resend.`;
+    }
+    if (scopeRoot && !(node.id === scopeRoot.id || isAncestorOf(scopeRoot, node))) {
+      return `Target instance ${requestedId} moved outside the editable scope since validation. Re-read it with node_info and resend.`;
+    }
+    try {
+      assertNotLocked(node);
+    } catch (lockErr) {
+      return `${lockErr.message} (locked since validation \u2014 re-read with node_info and resend.)`;
+    }
+    return null;
+  }
+  async function getValidTargetInstances(targetItems, scopeRoot) {
+    if (!Array.isArray(targetItems)) {
       return { success: false, message: "Invalid target node IDs provided" };
+    }
+    if (targetItems.length === 0) {
+      return { success: false, message: "No instances provided" };
+    }
+    const targetInstances = [];
+    for (const item of targetItems) {
+      const nodeId = typeof item === "string" ? item : item && item.nodeId;
+      const expectedName = typeof item === "string" ? void 0 : item && item.nodeName;
+      const targetNode = await figma.getNodeByIdAsync(nodeId);
+      const drift = checkTargetPredicates(targetNode, nodeId, expectedName, scopeRoot);
+      if (drift) {
+        return { success: false, message: drift };
+      }
+      targetInstances.push(targetNode);
     }
     return { success: true, message: "Valid target instances provided", targetInstances };
   }
@@ -2727,8 +2749,35 @@
       overrides: sourceInstance.overrides || []
     };
   }
-  async function setInstanceOverrides(targetInstances, sourceResult) {
-    var _a;
+  async function setInstanceOverrides(targetInstances, sourceResult, guard) {
+    var _a, _b;
+    const expectationFor = (idx) => {
+      const item = guard && guard.items ? guard.items[idx] : void 0;
+      if (!item) return null;
+      const requestedId = typeof item === "string" ? item : item.nodeId;
+      const expectedName = typeof item === "string" ? void 0 : item.nodeName;
+      return { requestedId, expectedName };
+    };
+    const assertNoDrift = () => {
+      if (!guard) return;
+      for (let i = 0; i < targetInstances.length; i++) {
+        const exp = expectationFor(i);
+        if (!exp) continue;
+        const drift = checkTargetPredicates(targetInstances[i], exp.requestedId, exp.expectedName, guard.scopeRoot);
+        if (drift) throw new Error(drift);
+      }
+    };
+    assertNoDrift();
+    const originalMainIds = [];
+    for (const targetInstance of targetInstances) {
+      try {
+        const originalMain = await targetInstance.getMainComponentAsync();
+        originalMainIds.push(originalMain ? originalMain.id : null);
+      } catch (e) {
+        originalMainIds.push(null);
+      }
+    }
+    assertNoDrift();
     try {
       const { sourceInstance, mainComponent, overrides } = sourceResult;
       console.log(`Processing ${targetInstances.length} instances with ${overrides.length} overrides`);
@@ -2740,7 +2789,8 @@
       let failureCount = 0;
       let skippedCount = 0;
       let hasFailed = false;
-      for (const targetInstance of targetInstances) {
+      for (let targetIdx = 0; targetIdx < targetInstances.length; targetIdx++) {
+        const targetInstance = targetInstances[targetIdx];
         if (hasFailed) {
           skippedCount++;
           results.push({
@@ -2757,10 +2807,13 @@
         let failureMsg = "";
         let swapped = false;
         const appliedFields = [];
-        let originalMainComponentId = null;
+        const originalMainComponentId = (_a = originalMainIds[targetIdx]) != null ? _a : null;
         try {
-          const originalMain = await targetInstance.getMainComponentAsync();
-          originalMainComponentId = originalMain ? originalMain.id : null;
+          const exp = expectationFor(targetIdx);
+          const lateDrift = guard && exp ? checkTargetPredicates(targetInstance, exp.requestedId, exp.expectedName, guard.scopeRoot) : null;
+          if (lateDrift) {
+            throw new Error(lateDrift);
+          }
           try {
             targetInstance.swapComponent(mainComponent);
             swapped = true;
@@ -2867,7 +2920,7 @@
         }
       }
       const envelope = batchEnvelope(targetInstances.length, successCount, failureCount, skippedCount);
-      const message = envelope.status === "success" ? `Applied ${totalAppliedCount} overrides to ${successCount} instances` : failureCount > 0 ? `Failed to apply overrides: ${(_a = results.find((r) => r.status === "failed")) == null ? void 0 : _a.error}` : "No overrides applied to any instance";
+      const message = envelope.status === "success" ? `Applied ${totalAppliedCount} overrides to ${successCount} instances` : failureCount > 0 ? `Failed to apply overrides: ${(_b = results.find((r) => r.status === "failed")) == null ? void 0 : _b.error}` : "No overrides applied to any instance";
       figma.notify(message);
       return {
         ...envelope,
@@ -3055,7 +3108,7 @@
       computedVariantNames.push(variantName);
     }
     if (parentId == null) {
-      throw new Error("create_component_set: parentId is missing. Supply the parent container's ID (and its exact current name as parentNodeName).");
+      throw new Error("create_component_set: parentId is missing. Read the target with node_info and supply the appendable parent container's ID as parentId and its exact current name as parentNodeName (both passed back verbatim from node_info).");
     }
     if (params.parentNodeName == null) {
       throw REFUSALS.PARENT_NAME_MISSING();
@@ -5818,7 +5871,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             throw new Error(`Source node is not an instance: ${sourceNode.id} (type: ${sourceNode.type})`);
           }
           assertNoDuplicateTargets(params.targetNodes);
-          const targetNodeIds = [];
           for (const item of params.targetNodes) {
             const node = await figma.getNodeByIdAsync(item.nodeId);
             if (!node) {
@@ -5834,19 +5886,22 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             if (node.type !== "INSTANCE") {
               throw new Error(`Target is not an instance node: ${node.id} (type: ${node.type})`);
             }
-            targetNodeIds.push(item.nodeId);
-          }
-          const targetNodesResult = await getValidTargetInstances(targetNodeIds);
-          if (!targetNodesResult.success) {
-            figma.notify(targetNodesResult.message);
-            throw new Error(targetNodesResult.message);
           }
           let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
           if (!sourceInstanceData.success) {
             figma.notify(sourceInstanceData.message || "Failed to resolve source instance");
             throw new Error(sourceInstanceData.message || "Failed to resolve source instance");
           }
-          return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
+          const targetNodesResult = await getValidTargetInstances(params.targetNodes, instScopeRoot);
+          if (!targetNodesResult.success) {
+            figma.notify(targetNodesResult.message);
+            throw new Error(targetNodesResult.message);
+          }
+          return await setInstanceOverrides(
+            targetNodesResult.targetInstances,
+            sourceInstanceData,
+            { items: params.targetNodes, scopeRoot: instScopeRoot }
+          );
         }
         throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
       case "instance_set_property":

@@ -271,6 +271,24 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             expect(createNodeFromSvgCalled).toBe(false);
         });
 
+        it("C9: present-empty parentNodeName is a MISMATCH, not MISSING (empty is a value, not omission)", async () => {
+            setupEnvironment(); // parent is named "Parent Node"
+            const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "", svg: "<svg></svg>" });
+            expect(res.type).toBe("command-error");
+            // Red-proof of the truthiness bug: `if (!expectedParentName)` would
+            // classify "" as MISSING; the nullish check makes it a real MISMATCH.
+            expect(res.error.code).toBe("PARENT_NAME_MISMATCH");
+            expect(createNodeFromSvgCalled).toBe(false);
+        });
+
+        it("C9: an exactly empty-named parent is usable when parentNodeName is the same empty string", async () => {
+            const { parentNode } = setupEnvironment();
+            parentNode.name = ""; // a parent legitimately named ""
+            const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "", svg: "<svg></svg>" });
+            expect(res.type).not.toBe("command-error"); // empty-but-exact name matches → proceeds
+            expect(createNodeFromSvgCalled).toBe(true);
+        });
+
         it("rejects under locked parent", async () => {
             const { parentNode } = setupEnvironment();
             parentNode.locked = true;

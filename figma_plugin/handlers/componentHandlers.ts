@@ -454,37 +454,95 @@ export async function getInstanceOverrides(instanceNode: any) {
 }
 
 /**
- * Validates and gets target instances
- * @param {string[]} targetNodeIds - Array of instance node IDs
+ * SYNCHRONOUS re-assertion of every instance-target safety predicate — identity,
+ * `INSTANCE` type, exact requested name, scope-root membership, and
+ * lock/locked-ancestor state (R2).
+ *
+ * Every predicate reads already-resolved node state (`id`, `type`, `name`,
+ * `locked`, `parent` ancestry), so this function contains **no `await`**. That is
+ * the point: it can run in the same synchronous turn as the mutation it guards,
+ * leaving no event-loop yield in which a shared document could drift. Callers
+ * that re-resolve by ID first (`getValidTargetInstances`) and callers that guard
+ * an already-resolved object immediately before `swapComponent()`
+ * (`setInstanceOverrides`) share this one definition, so the two gates can never
+ * check different predicate sets.
+ *
+ * @returns {string|null} an actionable drift message, or null when the target
+ *   still satisfies every predicate.
+ */
+export function checkTargetPredicates(node: any, requestedId: any, expectedName: any, scopeRoot?: any): string | null {
+    if (!node) {
+        return `Target instance ${requestedId} is no longer available or is not an instance (it may have changed since validation). Re-read the instances with node_info and resend.`;
+    }
+    // Identity: the resolver must have returned the node that was requested.
+    if (node.id !== requestedId) {
+        return `Target instance ${requestedId} resolved to a different node (${node.id}) since validation. Re-read it with node_info and resend.`;
+    }
+    if (node.type !== "INSTANCE") {
+        return `Target instance ${requestedId} is no longer available or is not an instance (it may have changed since validation). Re-read the instances with node_info and resend.`;
+    }
+    // Exact requested name — only when the caller passed the request item.
+    if (expectedName !== undefined && node.name !== expectedName) {
+        return `Target instance ${requestedId} was renamed to "${node.name}" (expected "${expectedName}") since validation. Re-read it with node_info and resend.`;
+    }
+    // Scope-root membership — only when the caller passed the scope root.
+    if (scopeRoot && !(node.id === scopeRoot.id || isAncestorOf(scopeRoot, node))) {
+        return `Target instance ${requestedId} moved outside the editable scope since validation. Re-read it with node_info and resend.`;
+    }
+    // Lock / locked-ancestor state. assertNotLocked throws the canonical denial;
+    // convert it into a drift message here.
+    try {
+        assertNotLocked(node);
+    } catch (lockErr: any) {
+        return `${lockErr.message} (locked since validation — re-read with node_info and resend.)`;
+    }
+    return null;
+}
+
+/**
+ * Re-resolves and re-validates every requested target instance — R2 (closure
+ * audit), which reopens C5.
+ *
+ * The dispatcher validated these targets moments earlier, but a shared document
+ * can change between prevalidation and the swap, so every predicate is
+ * re-asserted here against the original request and the current scope root. Any
+ * drift fails the WHOLE command before any mutation: a silent drop (the pre-C5
+ * behavior) would understate `requestedCount` and omit the changed target's row,
+ * and re-checking only existence+type (the C5 behavior) left name/lock/scope
+ * unprotected (R2).
+ *
+ * This gate re-resolves by ID and therefore must `await`. It is NOT sufficient on
+ * its own: awaited work still follows it before the first mutation. The
+ * no-yield guarantee comes from `setInstanceOverrides` re-running
+ * `checkTargetPredicates` synchronously immediately before each `swapComponent()`
+ * (R2 second recheck).
+ *
+ * @param {Array<{nodeId:string, nodeName?:string}>|string[]} targetItems - the
+ *   original request items; a bare ID string is accepted for narrow callers
+ *   that can only re-check existence+type (no name predicate).
+ * @param {BaseNode} [scopeRoot] - resolved scope-root node; when provided, each
+ *   target must still be the scope root or a descendant of it.
  * @returns {Promise<Object>} Validation result with target instances
  */
-export async function getValidTargetInstances(targetNodeIds: any) {
-    let targetInstances: any[] = [];
-
-    // Handle array of instances or single instance
-    if (Array.isArray(targetNodeIds)) {
-        if (targetNodeIds.length === 0) {
-            return { success: false, message: "No instances provided" };
-        }
-        for (const targetNodeId of targetNodeIds) {
-            const targetNode = await figma.getNodeByIdAsync(targetNodeId);
-            // C5: fail the whole command if any requested target is no longer a
-            // resolvable INSTANCE. The dispatcher validated every target moments
-            // earlier, so a mismatch here is a genuine TOCTOU change; silently
-            // dropping it would understate requestedCount and omit its row.
-            if (!targetNode || targetNode.type !== "INSTANCE") {
-                return {
-                    success: false,
-                    message: `Target instance ${targetNodeId} is no longer available or is not an instance (it may have changed since validation). Re-read the instances with node_info and resend.`,
-                };
-            }
-            targetInstances.push(targetNode);
-        }
-        if (targetInstances.length === 0) {
-            return { success: false, message: "No valid instances provided" };
-        }
-    } else {
+export async function getValidTargetInstances(targetItems: any, scopeRoot?: any) {
+    if (!Array.isArray(targetItems)) {
         return { success: false, message: "Invalid target node IDs provided" };
+    }
+    if (targetItems.length === 0) {
+        return { success: false, message: "No instances provided" };
+    }
+
+    const targetInstances: any[] = [];
+    for (const item of targetItems) {
+        const nodeId = typeof item === "string" ? item : (item && item.nodeId);
+        const expectedName = typeof item === "string" ? undefined : (item && item.nodeName);
+
+        const targetNode = await figma.getNodeByIdAsync(nodeId);
+        const drift = checkTargetPredicates(targetNode, nodeId, expectedName, scopeRoot);
+        if (drift) {
+            return { success: false, message: drift };
+        }
+        targetInstances.push(targetNode);
     }
 
     return { success: true, message: "Valid target instances provided", targetInstances };
@@ -538,9 +596,58 @@ export async function getSourceInstanceData(sourceInstanceId: any) {
  * Sets overrides to target component instances
  * @param {InstanceNode[]} targetInstances - Array of target instances
  * @param {Object} sourceResult - Source instance data
+ * @param {Object} [guard] - R2 TOCTOU guard: `{items, scopeRoot}`, the ORIGINAL
+ *   request items (positionally aligned with `targetInstances`) and the resolved
+ *   scope root. When supplied, every target's full predicate set is re-asserted
+ *   synchronously before the first mutation AND again immediately before each
+ *   `swapComponent()`. The production dispatcher always supplies it; direct
+ *   unit callers may omit it to exercise the mutation logic alone.
  * @returns {Promise<Object>} Result of the set operation
  */
-export async function setInstanceOverrides(targetInstances: any, sourceResult: any) {
+export async function setInstanceOverrides(targetInstances: any, sourceResult: any, guard?: { items?: any[]; scopeRoot?: any }) {
+    // R2 (second recheck): the expectation for target i, used by the batch-wide
+    // pre-mutation gates and the per-target gate inside the loop.
+    const expectationFor = (idx: number) => {
+        const item = guard && guard.items ? guard.items[idx] : undefined;
+        if (!item) return null;
+        const requestedId = typeof item === "string" ? item : item.nodeId;
+        const expectedName = typeof item === "string" ? undefined : item.nodeName;
+        return { requestedId, expectedName };
+    };
+    const assertNoDrift = () => {
+        if (!guard) return;
+        for (let i = 0; i < targetInstances.length; i++) {
+            const exp = expectationFor(i);
+            if (!exp) continue;
+            const drift = checkTargetPredicates(targetInstances[i], exp.requestedId, exp.expectedName, guard.scopeRoot);
+            if (drift) throw new Error(drift);
+        }
+    };
+
+    // R2 (second recheck) — BATCH-WIDE PRE-MUTATION GATE, deliberately OUTSIDE
+    // the P6-5 envelope catch below. Drift detected before any mutation is a
+    // Layer 2 refusal (structured command error, no envelope, NO mutation), not
+    // an all-failed execution envelope: nothing was ever attempted. Throwing
+    // past the catch is what makes that distinction visible to the dispatcher.
+    assertNoDrift();
+    // P6-1: the sandbox is dynamic-page, so the synchronous mainComponent getter
+    // throws — read it asynchronously. HOISTED here (R2) so the mutation loop
+    // below has no `await` between a target's final predicate check and its
+    // `swapComponent()`.
+    const originalMainIds: Array<string | null> = [];
+    for (const targetInstance of targetInstances) {
+        try {
+            const originalMain = await targetInstance.getMainComponentAsync();
+            originalMainIds.push(originalMain ? originalMain.id : null);
+        } catch {
+            originalMainIds.push(null);
+        }
+    }
+    // Those hoisted awaits are themselves yields, so re-assert the whole batch
+    // before the first mutation. After this point the loop is synchronous up to
+    // each swap.
+    assertNoDrift();
+
     try {
         const { sourceInstance, mainComponent, overrides } = sourceResult;
 
@@ -556,7 +663,8 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
         let skippedCount = 0;
         let hasFailed = false;
 
-        for (const targetInstance of targetInstances) {
+        for (let targetIdx = 0; targetIdx < targetInstances.length; targetIdx++) {
+            const targetInstance = targetInstances[targetIdx];
             if (hasFailed) {
                 skippedCount++;
                 // Q25: shared row vocabulary — nodeId identity, error reason.
@@ -575,14 +683,27 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
             let failureMsg = "";
             let swapped = false;
             const appliedFields: any[] = []; // C4: override fields actually written
-            // P6-1: the sandbox is dynamic-page, so the synchronous mainComponent
-            // getter throws — read it asynchronously before the swap so the Q24
-            // before-value is captured without breaking the batch.
-            let originalMainComponentId: string | null = null;
+            // P6-1/R2: captured by the hoisted pass above, so no await is needed
+            // here — the Q24 before-value is available without a yield.
+            const originalMainComponentId: string | null = originalMainIds[targetIdx] ?? null;
 
             try {
-                const originalMain = await targetInstance.getMainComponentAsync();
-                originalMainComponentId = originalMain ? originalMain.id : null;
+                // R2 (second recheck) — FINAL PER-TARGET GATE. Applying a
+                // previous target's overrides awaits (`getNodeByIdAsync`,
+                // `loadFontAsync`), so a later target can drift mid-loop. This
+                // check is SYNCHRONOUS and there is no `await` between it and
+                // `swapComponent()` below, so the target cannot change in
+                // between. Earlier targets may already have mutated, so this is
+                // a failure ROW (stop-on-first ⇒ the rest become `skipped`)
+                // rather than a throw: losing the D7 envelope after mutation is
+                // the C3 defect.
+                const exp = expectationFor(targetIdx);
+                const lateDrift = (guard && exp)
+                    ? checkTargetPredicates(targetInstance, exp.requestedId, exp.expectedName, guard.scopeRoot)
+                    : null;
+                if (lateDrift) {
+                    throw new Error(lateDrift);
+                }
                 // Swap component
                 try {
                     targetInstance.swapComponent(mainComponent);
@@ -994,7 +1115,7 @@ export async function validateCreateComponentSetPlan(params: any, scopeRoot: Bas
     // caller to the ID, not the name); a missing parentNodeName is the coded
     // MISSING refusal; a name that does not match is the coded MISMATCH refusal.
     if (parentId == null) {
-        throw new Error("create_component_set: parentId is missing. Supply the parent container's ID (and its exact current name as parentNodeName).");
+        throw new Error("create_component_set: parentId is missing. Read the target with node_info and supply the appendable parent container's ID as parentId and its exact current name as parentNodeName (both passed back verbatim from node_info).");
     }
     // C9: nullish omission, so a present empty parentNodeName is compared exactly
     // rather than misclassified as missing.

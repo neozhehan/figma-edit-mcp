@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput } from "./_result.js";
+import { toolResult, looseOutput, batchResults } from "./_result.js";
 
 export function registerAnnotationTools(server: McpServer) {
     // 1. List Annotations Tool
@@ -58,7 +58,7 @@ export function registerAnnotationTools(server: McpServer) {
                 succeededCount: z.number().describe("Number of succeeded annotations"),
                 failedCount: z.number().describe("Number of failed annotations"),
                 skippedCount: z.number().describe("Number of skipped annotations"),
-                results: z.array(z.any()).optional().describe("Detailed execution results"),
+                results: batchResults("Detailed execution results (one row per input, in input order)"),
             }),
             annotations: {
                 idempotentHint: true,

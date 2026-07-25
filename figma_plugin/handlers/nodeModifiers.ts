@@ -184,8 +184,10 @@ export async function deleteMultipleNodes(params: any) {
             {
                 currentChunk: chunkIndex + 1,
                 totalChunks: chunks.length,
-                successCount,
-                failureCount,
+                // Q26/R9: progress uses the shared envelope count names — no second
+                // count vocabulary. Local vars stay `successCount`/`failureCount`.
+                succeededCount: successCount,
+                failedCount: failureCount,
             }
         );
 
@@ -255,8 +257,9 @@ export async function deleteMultipleNodes(params: any) {
             {
                 currentChunk: chunkIndex + 1,
                 totalChunks: chunks.length,
-                successCount,
-                failureCount,
+                // Q26/R9: shared envelope count names in progress, not a second vocabulary.
+                succeededCount: successCount,
+                failedCount: failureCount,
                 chunkResults: chunkResults,
             }
         );

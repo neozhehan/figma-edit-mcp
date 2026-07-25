@@ -16,8 +16,9 @@ import { describe, it, expect, beforeEach, mock } from "bun:test";
 import { registerAllTools } from "../../../tools/index.js";
 
 const INPUTS: Record<string, any> = {};
+const OUTPUTS: Record<string, any> = {};
 const captureServer: any = {
-    registerTool: (name: string, config: any) => { INPUTS[name] = config?.inputSchema; },
+    registerTool: (name: string, config: any) => { INPUTS[name] = config?.inputSchema; OUTPUTS[name] = config?.outputSchema; },
     tool: () => {}, prompt: () => {}, registerPrompt: () => {},
     registerResource: () => {}, resource: () => {},
 };
@@ -238,6 +239,23 @@ describe("D7/ratification 4: success === (status === 'success') across aggregato
         expect(res.success).toBe(res.status === "success");
     });
 
+    it("holds for annotations across all-failed + skipped (R4: annotation was previously success-only)", async () => {
+        nodeMap.clear();
+        // No node registered → the first annotation fails "Node not found", the
+        // second is skipped by the stop-on-first handler.
+        const res = await setMultipleAnnotations({ annotations: [
+            { nodeId: "gone-1", nodeName: "A", labelMarkdown: "x" },
+            { nodeId: "gone-2", nodeName: "B", labelMarkdown: "y" },
+        ] });
+        expect(res.status).toBe("failed"); // zero succeeded
+        expect(res.success).toBe(false);
+        expect(res.success).toBe(res.status === "success"); // invariant holds
+        expect(res.results).toHaveLength(2);               // one ordered row per input
+        expect(res.results[0].status).toBe("failed");
+        expect(res.results[0].error).toContain("not found");
+        expect(res.results[1].status).toBe("skipped");
+    });
+
     it("holds for text across success / partial / all-failed (C8: text was previously absent)", async () => {
         installRemedFigma();
         nodeMap.clear();
@@ -305,15 +323,30 @@ describe("C1/C2: text partial-mutation disclosure on the real handler fault path
         expect(res.results[0].before).toBeUndefined();
     });
 
-    it("node-gone and not-TEXT clean failures carry no flag", async () => {
+    it("node-gone clean failure carries no flag", async () => {
         nodeMap.clear();
         (globalThis as any).figma.loadFontAsync = async () => {};
-        nodeMap.set("frame", { id: "frame", name: "F", type: "FRAME" });
         const res = await setMultipleTextContents({ text: [
             { nodeId: "missing", characters: "x" },
+        ] });
+        expect(res.results[0].status).toBe("failed");
+        expect(res.results[0].error).toContain("not found");
+        expect(res.results[0].partialMutation).toBeUndefined();
+        expect(res.results[0].before).toBeUndefined();
+    });
+
+    it("not-TEXT clean failure carries no flag — the not-TEXT branch actually executes (R4)", async () => {
+        nodeMap.clear();
+        (globalThis as any).figma.loadFontAsync = async () => {};
+        // R4: the not-TEXT node is the FIRST (only) item, so the stop-on-first
+        // handler runs its not-TEXT branch instead of skipping it — the earlier
+        // test put a missing node first and never reached this branch.
+        nodeMap.set("frame", { id: "frame", name: "F", type: "FRAME" });
+        const res = await setMultipleTextContents({ text: [
             { nodeId: "frame", characters: "y" },
         ] });
-        // First fails (not found), second is skipped after the first failure.
+        expect(res.results[0].status).toBe("failed");
+        expect(res.results[0].error).toContain("not a text node");
         expect(res.results[0].partialMutation).toBeUndefined();
         expect(res.results[0].before).toBeUndefined();
     });
@@ -351,6 +384,120 @@ describe("C3: progress delivery is best-effort and cannot corrupt the envelope",
         expect(removed).toBe(true);
         expect(res.status).toBe("success"); // envelope survives the progress failure
         expect(res.succeededCount).toBe(1);
+    });
+});
+
+// R3 (closure audit): the registered `results` schemas encode the Q25 row
+// vocabulary (nodeId + status required) instead of `z.array(z.any())`. This
+// couples the REAL plugin-handler output to the REGISTERED (wrapped) output
+// schema — the actual bytes the SDK validates on every call — so a handler that
+// drops the vocabulary is caught at the boundary, and it red-proofs Q26's claim
+// that looseOutput can no longer re-mask drift. OUTPUTS[tool] is the wrapped
+// schema (`.partial().catchall(z.any())` + `error`), exactly as registered.
+describe("R3: real batch handler output validates against the registered output schema", () => {
+    beforeEach(() => installRemedFigma());
+
+    const legacyByTool: Record<string, string[]> = {
+        node_delete: ["nodesDeleted", "nodesFailed", "totalNodes"],
+        text_set_content: ["replacementsApplied", "totalReplacements"],
+        annotation_set: ["annotationsApplied", "totalAnnotations"],
+        instance_set_overrides: ["totalCount"],
+    };
+
+    function assertConforms(tool: string, result: any) {
+        // Every row carries the Q25 vocabulary keys.
+        for (const row of result.results || []) {
+            expect(typeof row.nodeId, `${tool} row.nodeId`).toBe("string");
+            expect(["success", "failed", "skipped"], `${tool} row.status`).toContain(row.status);
+        }
+        // No legacy count vocabulary at the top level.
+        for (const gone of legacyByTool[tool]) {
+            expect(result[gone], `${tool} must not surface legacy ${gone}`).toBeUndefined();
+        }
+        // The REGISTERED wrapped schema accepts the real handler output.
+        expect(OUTPUTS[tool].safeParse(result).success, `${tool} output validates`).toBe(true);
+    }
+
+    it("node_delete real output conforms and validates", async () => {
+        nodeMap.clear();
+        nodeMap.set("d1", { id: "d1", name: "A", type: "FRAME", remove: () => {} });
+        assertConforms("node_delete", await deleteMultipleNodes({ nodeIds: ["d1"] }));
+    });
+
+    it("text_set_content real output conforms and validates", async () => {
+        nodeMap.clear();
+        let chars = "old";
+        nodeMap.set("t1", {
+            id: "t1", name: "t1", type: "TEXT", fontName: { family: "Inter", style: "Regular" },
+            get characters() { return chars; }, set characters(v: string) { chars = v; },
+        });
+        assertConforms("text_set_content", await setMultipleTextContents({ text: [{ nodeId: "t1", characters: "new" }] }));
+    });
+
+    it("instance_set_overrides real output conforms and validates", async () => {
+        const instance = {
+            id: "i1", name: "i1",
+            getMainComponentAsync: async () => ({ id: "orig" }),
+            swapComponent: () => {},
+        };
+        const source = { sourceInstance: { id: "s" }, mainComponent: { id: "new" }, overrides: [] };
+        assertConforms("instance_set_overrides", await setInstanceOverrides([instance], source));
+    });
+
+    it("annotation_set real output conforms and validates", async () => {
+        nodeMap.clear();
+        const node: any = { id: "a1", name: "A", type: "FRAME" };
+        Object.defineProperty(node, "annotations", { get: () => [], set: () => {}, configurable: true });
+        nodeMap.set("a1", node);
+        assertConforms("annotation_set", await setMultipleAnnotations({ annotations: [{ nodeId: "a1", nodeName: "A", labelMarkdown: "x" }] }));
+    });
+
+    it("the encoded schema REJECTS a reintroduced legacy instance row (nodeId/status dropped)", () => {
+        // A row keyed on the pre-Q25 instance vocabulary is now a validation
+        // failure at the boundary — the drift the audit found undetectable.
+        const legacyRow = {
+            success: true, status: "success", requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+            results: [{ instanceId: "i1", message: "ok" }],
+        };
+        expect(OUTPUTS["instance_set_overrides"].safeParse(legacyRow).success).toBe(false);
+    });
+
+    it("the encoded schema REJECTS a row missing status for every batch tool", () => {
+        for (const tool of ["node_delete", "text_set_content", "annotation_set", "instance_set_overrides"]) {
+            const drifted = {
+                success: true, status: "success", requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                results: [{ nodeId: "1:2" }], // no `status`
+            };
+            expect(OUTPUTS[tool].safeParse(drifted).success, `${tool} rejects a row missing status`).toBe(false);
+        }
+    });
+});
+
+describe("R9: delete progress payloads use only the shared count vocabulary", () => {
+    beforeEach(() => installRemedFigma());
+
+    it("no progress payload emits successCount/failureCount; the shared succeededCount/failedCount appear", async () => {
+        nodeMap.clear();
+        nodeMap.set("d1", { id: "d1", name: "A", type: "FRAME", remove: () => {} });
+        nodeMap.set("d2", { id: "d2", name: "B", type: "FRAME", remove: () => {} });
+
+        const captured: any[] = [];
+        (globalThis as any).figma.ui = { postMessage: (m: any) => captured.push(m) };
+
+        await deleteMultipleNodes({ nodeIds: ["d1", "d2"] });
+
+        const payloads = captured
+            .filter(m => m && m.type === "command_progress" && m.payload)
+            .map(m => m.payload);
+        expect(payloads.length).toBeGreaterThan(0);
+        // Red-proof of the rename: no progress payload carries the legacy
+        // second vocabulary…
+        for (const p of payloads) {
+            expect(Object.prototype.hasOwnProperty.call(p, "successCount"), "no legacy successCount").toBe(false);
+            expect(Object.prototype.hasOwnProperty.call(p, "failureCount"), "no legacy failureCount").toBe(false);
+        }
+        // …and the shared envelope count names do appear in the progress channel.
+        expect(payloads.some(p => "succeededCount" in p && "failedCount" in p)).toBe(true);
     });
 });
 
@@ -398,6 +545,43 @@ describe("C4/C5: instance override truthfulness and target TOCTOU", () => {
         expect(res.results[0].error).toContain("could not be applied");
     });
 
+    it("C4/R8: an earlier applied field + a later failing field disclose BOTH the swap and the applied field", async () => {
+        const target: any = {
+            id: "t1", name: "T1",
+            getMainComponentAsync: async () => ({ id: "orig" }),
+            swapComponent: () => {},
+        };
+        const source = {
+            sourceInstance: { id: "src" }, mainComponent: { id: "new" },
+            // field 1 ("characters") applies; field 2 ("bogusField") has no branch.
+            overrides: [{ id: "src/child", overriddenFields: ["characters", "bogusField"] }],
+        };
+        let chars = "old";
+        const overrideNode: any = {
+            id: "t1/child", type: "TEXT", fontName: { family: "Inter", style: "Regular" },
+            get characters() { return chars; }, set characters(v: string) { chars = v; },
+        };
+        const sourceChild = { id: "src/child", characters: "new-text" };
+        (globalThis as any).figma.getNodeByIdAsync = async (id: string) =>
+            id === "t1/child" ? overrideNode : (id === "src/child" ? sourceChild : null);
+        (globalThis as any).figma.loadFontAsync = async () => {};
+
+        const res = await setInstanceOverrides([target], source);
+        expect(res.success).toBe(false);
+        expect(res.results[0].error).toContain("could not be applied");
+        // The earlier field really mutated the node.
+        expect(chars).toBe("new-text");
+        // C4: the failure row discloses ALL known changes — the main-component
+        // swap AND the already-applied override field (red-proof of the
+        // appliedFields tracking: removing it drops the "field(s) applied" half).
+        expect(res.results[0].partialMutation).toBe(true);
+        expect(res.results[0].whatChanged).toContain("main component swapped");
+        expect(res.results[0].whatChanged).toContain("1 override field(s) applied");
+        expect(res.results[0].before.mainComponentId).toBe("orig");
+        expect(res.results[0].before.appliedFields).toHaveLength(1);
+        expect(res.results[0].before.appliedFields[0].field).toBe("characters");
+    });
+
     it("C5: a target that disappears on re-resolution fails the whole command", async () => {
         const { getValidTargetInstances } = await import("../../../../../figma_plugin/handlers/componentHandlers.js?remed");
         nodeMap.clear();
@@ -406,5 +590,63 @@ describe("C4/C5: instance override truthfulness and target TOCTOU", () => {
         const res = await getValidTargetInstances(["i1", "i2"]);
         expect(res.success).toBe(false);
         expect(res.message).toContain("i2");
+    });
+
+    // R2 (closure audit): the use-time re-resolution must re-assert the FULL
+    // prevalidation predicate set — not just existence+type (the C5 behavior).
+    // Each case is a same-object TOCTOU: the ID and type are unchanged, but one
+    // safety predicate drifted after prevalidation. getValidTargetInstances is
+    // the last gate before execution; a failure result makes the dispatcher throw
+    // before setInstanceOverrides/swapComponent runs, so no mutation occurs.
+    describe("R2: re-resolution re-asserts name/lock/scope (same-object TOCTOU)", () => {
+        const importGate = () => import("../../../../../figma_plugin/handlers/componentHandlers.js?remed");
+        const scopeRoot = { id: "scope", type: "PAGE" };
+
+        it("fails the whole command when the target was renamed since validation", async () => {
+            const { getValidTargetInstances } = await importGate();
+            nodeMap.clear();
+            // Same ID, still an INSTANCE and in scope/unlocked — only the name drifted.
+            nodeMap.set("t", { id: "t", name: "Changed", type: "INSTANCE", parent: scopeRoot });
+            const res = await getValidTargetInstances([{ nodeId: "t", nodeName: "Original" }], scopeRoot);
+            expect(res.success).toBe(false);
+            expect(res.message).toContain("renamed");
+        });
+
+        it("fails the whole command when the target was locked since validation", async () => {
+            const { getValidTargetInstances } = await importGate();
+            nodeMap.clear();
+            nodeMap.set("t", { id: "t", name: "T", type: "INSTANCE", parent: scopeRoot, locked: true });
+            const res = await getValidTargetInstances([{ nodeId: "t", nodeName: "T" }], scopeRoot);
+            expect(res.success).toBe(false);
+            expect(res.message.toLowerCase()).toContain("locked");
+        });
+
+        it("fails the whole command when the target moved outside scope since validation", async () => {
+            const { getValidTargetInstances } = await importGate();
+            nodeMap.clear();
+            const elsewhere = { id: "elsewhere", type: "PAGE" };
+            nodeMap.set("t", { id: "t", name: "T", type: "INSTANCE", parent: elsewhere });
+            const res = await getValidTargetInstances([{ nodeId: "t", nodeName: "T" }], scopeRoot);
+            expect(res.success).toBe(false);
+            expect(res.message).toContain("scope");
+        });
+
+        it("fails the whole command when the target became a non-INSTANCE since validation", async () => {
+            const { getValidTargetInstances } = await importGate();
+            nodeMap.clear();
+            nodeMap.set("t", { id: "t", name: "T", type: "FRAME", parent: scopeRoot });
+            const res = await getValidTargetInstances([{ nodeId: "t", nodeName: "T" }], scopeRoot);
+            expect(res.success).toBe(false);
+        });
+
+        it("passes when name, lock, scope, and type are all intact", async () => {
+            const { getValidTargetInstances } = await importGate();
+            nodeMap.clear();
+            const node = { id: "t", name: "T", type: "INSTANCE", parent: scopeRoot, locked: false };
+            nodeMap.set("t", node);
+            const res = await getValidTargetInstances([{ nodeId: "t", nodeName: "T" }], scopeRoot);
+            expect(res.success).toBe(true);
+            expect(res.targetInstances).toEqual([node]);
+        });
     });
 });

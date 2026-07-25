@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput } from "./_result.js";
+import { toolResult, looseOutput, batchResults } from "./_result.js";
 import { noDuplicateTargets } from "./_batch.js";
 
 export function registerTextTools(server: McpServer) {
@@ -31,7 +31,7 @@ export function registerTextTools(server: McpServer) {
                 succeededCount: z.number().describe("Number of succeeded text replacements"),
                 failedCount: z.number().describe("Number of failed text replacements"),
                 skippedCount: z.number().describe("Number of skipped text replacements"),
-                results: z.array(z.any()).optional().describe("Detailed results per node"),
+                results: batchResults(),
             }),
             annotations: {
                 idempotentHint: true,

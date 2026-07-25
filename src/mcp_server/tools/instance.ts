@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput } from "./_result.js";
+import { toolResult, looseOutput, batchResults } from "./_result.js";
 import { noDuplicateTargets } from "./_batch.js";
 
 export function registerInstanceTools(server: McpServer) {
@@ -89,7 +89,7 @@ export function registerInstanceTools(server: McpServer) {
                 succeededCount: z.number().describe("Number of succeeded targets"),
                 failedCount: z.number().describe("Number of failed targets"),
                 skippedCount: z.number().describe("Number of skipped targets"),
-                results: z.array(z.any()).optional().describe("Results per target node"),
+                results: batchResults("Results per target node (one row per input, in input order)"),
             }),
             annotations: {
                 idempotentHint: true,

@@ -595,7 +595,10 @@ async function handleCommand(command: any, params: any) {
                 }
 
                 assertNoDuplicateTargets(params.targetNodes);
-                const targetNodeIds: any[] = [];
+                // Validation-time pass: fail fast with specifically-coded errors.
+                // R2 re-asserts this same predicate set at use-time inside
+                // getValidTargetInstances (immediately before execution), so a
+                // shared-document change between here and the swap fails closed.
                 for (const item of params.targetNodes) {
                     const node = await figma.getNodeByIdAsync(item.nodeId);
                     if (!node) {
@@ -611,7 +614,6 @@ async function handleCommand(command: any, params: any) {
                     if (node.type !== "INSTANCE") {
                         throw new Error(`Target is not an instance node: ${node.id} (type: ${node.type})`);
                     }
-                    targetNodeIds.push(item.nodeId);
                 }
 
                 // P6-5: these are pre-execution refusals — throw so they surface
@@ -619,18 +621,33 @@ async function handleCommand(command: any, params: any) {
                 // payload that the three-layer contract cannot classify. Prose
                 // messages ride the UNKNOWN_ERROR fallback (legacy surface,
                 // v2.3.4 burn-down).
-                const targetNodesResult = await getValidTargetInstances(targetNodeIds);
-                if (!targetNodesResult.success) {
-                    figma.notify(targetNodesResult.message);
-                    throw new Error(targetNodesResult.message);
-                }
-
+                // R2 (second recheck): resolve every fallible/awaited dependency
+                // BEFORE the final target gate. Source resolution awaits
+                // getNodeByIdAsync/getMainComponentAsync, so running it after the
+                // gate reopened a drift window between validation and mutation.
                 let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
                 if (!sourceInstanceData.success) {
                     figma.notify(sourceInstanceData.message || "Failed to resolve source instance");
                     throw new Error(sourceInstanceData.message || "Failed to resolve source instance");
                 }
-                return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
+
+                // R2: re-assert the full predicate set (identity, INSTANCE type,
+                // exact name, scope membership, lock) against the original request
+                // and current scope root.
+                const targetNodesResult = await getValidTargetInstances(params.targetNodes, instScopeRoot);
+                if (!targetNodesResult.success) {
+                    figma.notify(targetNodesResult.message);
+                    throw new Error(targetNodesResult.message);
+                }
+
+                // The guard lets the handler re-assert the SAME predicate set
+                // synchronously immediately before each swapComponent(), closing
+                // the windows opened by its own awaits.
+                return await setInstanceOverrides(
+                    targetNodesResult.targetInstances,
+                    sourceInstanceData,
+                    { items: params.targetNodes, scopeRoot: instScopeRoot }
+                );
             }
             throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
 

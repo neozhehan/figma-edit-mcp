@@ -26,6 +26,58 @@ export function looseOutput<T extends z.ZodRawShape>(shape: T) {
 }
 
 /**
+ * Q25 shared per-item row vocabulary for the four batch aggregators
+ * (`node_delete`, `text_set_content`, `annotation_set`, `instance_set_overrides`).
+ * Every row carries `nodeId` (identity) and `status`; a non-success row carries an
+ * actionable `error`; the Q9/Q24 partial-mutation fields attach where applicable.
+ *
+ * `.catchall(z.any())` keeps each tool's additive fields (e.g. `nodeInfo`,
+ * `instanceName`, `appliedCount`, `originalText`) so encoding the contract
+ * vocabulary VALIDATES real handler rows rather than rejecting them. What it does
+ * reject — at the protocol boundary the SDK enforces on every call — is a drifted
+ * row that omits `nodeId`/`status`, or a legacy instance row keyed on
+ * `instanceId`/`message`. That is what makes Q26's claim that "registered-callback
+ * tests assert the returned key set … so `looseOutput` cannot re-mask drift"
+ * literally true (R3, 2026-07-24 closure audit): before this the field was
+ * `z.array(z.any())`, which accepted any row shape.
+ */
+export const batchResultRow = z
+    .object({
+        nodeId: z.string().describe("Identity of the target node (Q25 contract key)"),
+        status: z.enum(["success", "failed", "skipped"]).describe("Per-item outcome (Q25 contract key)"),
+        success: z.boolean().optional().describe("Legacy per-row boolean; mirrors status === 'success'"),
+        error: z.string().optional().describe("Actionable reason, REQUIRED on any non-success row (Q25 contract key)"),
+        partialMutation: z.boolean().optional().describe("Q9/Q24: set when the item mutated before it failed"),
+        whatChanged: z.string().optional().describe("Q9/Q24: plain-language statement of what changed"),
+        before: z.any().optional().describe("Q9/Q24: cheap before-values so a restoring write can be composed"),
+    })
+    .catchall(z.any())
+    // Q25/D7: "every failure/skip row carries an actionable per-item reason" is
+    // the property that makes a partial_success retryable. `error` cannot be
+    // declared unconditionally required (success rows omit it), so the
+    // conditional requirement is enforced here — a `failed`/`skipped` row with
+    // no reason is a contract violation, not a tolerable shape (R3).
+    .superRefine((row, ctx) => {
+        if (row.status === "failed" || row.status === "skipped") {
+            if (typeof row.error !== "string" || row.error.trim() === "") {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["error"],
+                    message: `A '${row.status}' row must carry an actionable 'error' reason (Q25 row vocabulary).`,
+                });
+            }
+        }
+    });
+
+/**
+ * The Q25 batch `results` array: one `batchResultRow` per input, in input order.
+ * Optional because an error-envelope (`isError`) result carries no `results`.
+ */
+export function batchResults(description = "Detailed results per node (one row per input, in input order)") {
+    return z.array(batchResultRow).optional().describe(description);
+}
+
+/**
  * The D9 structured-error envelope every tool can return in `structuredContent`
  * on `isError: true` results: `{error: {code, message, details?}}`. Advertised
  * as an optional field on every output schema (see `withStrictInputSchemas`) so
