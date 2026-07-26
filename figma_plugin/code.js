@@ -156,6 +156,13 @@
     const name = typeof rawName === "string" ? rawName.trim() : "";
     return name || fallback;
   }
+  function notifyBestEffort(message) {
+    try {
+      figma.notify(message);
+    } catch (error) {
+      console.warn(`Notification delivery failed (ignored): ${describeError(error)}`);
+    }
+  }
   function getStructuredError(e) {
     if (e && typeof e === "object") {
       if (typeof e.code === "string") {
@@ -2792,13 +2799,6 @@
       mainComponent,
       overrides: sourceInstance.overrides || []
     };
-  }
-  function notifyBestEffort(message) {
-    try {
-      figma.notify(message);
-    } catch (error) {
-      console.warn(`Notification delivery failed (ignored): ${describeError(error)}`);
-    }
   }
   async function setInstanceOverrides(targetInstances, sourceResult, guard) {
     var _a, _b, _c;
@@ -5665,7 +5665,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         updateSettings(msg);
         break;
       case "notify":
-        figma.notify(msg.message);
+        notifyBestEffort(msg.message);
         break;
       case "close-plugin":
         figma.closePlugin();
@@ -5695,13 +5695,13 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           state.allowEditNode = msg.scopeNodeType === "PAGE" ? "page" : "node";
           state.allowEditVariable = !!msg.allowEditVariable;
           state.allowEditStyle = !!msg.allowEditStyle;
-          figma.notify(`Scope locked to node: ${msg.scopeNodeId}`);
+          notifyBestEffort(`Scope locked to node: ${msg.scopeNodeId}`);
         } else {
           state.scopeRootId = null;
           state.allowEditNode = false;
           state.allowEditVariable = !!msg.allowEditVariable;
           state.allowEditStyle = !!msg.allowEditStyle;
-          figma.notify("Connected in Read-Only Mode for nodes");
+          notifyBestEffort("Connected in Read-Only Mode for nodes");
         }
         break;
       case "execute-command":
@@ -5952,12 +5952,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           }
           let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
           if (!sourceInstanceData.success) {
-            figma.notify(sourceInstanceData.message || "Failed to resolve source instance");
+            notifyBestEffort(sourceInstanceData.message || "Failed to resolve source instance");
             throw new Error(sourceInstanceData.message || "Failed to resolve source instance");
           }
           const targetNodesResult = await getValidTargetInstances(params.targetNodes, instScopeRoot);
           if (!targetNodesResult.success) {
-            figma.notify(targetNodesResult.message);
+            notifyBestEffort(targetNodesResult.message);
             throw new Error(targetNodesResult.message);
           }
           return await setInstanceOverrides(

@@ -214,6 +214,24 @@ export function describeError(e: any): string {
     return name || fallback;
 }
 
+/**
+ * Delivers a user-facing Figma notification as BEST-EFFORT telemetry.
+ *
+ * `figma.notify` is a UI call that can throw, and it is invoked from paths that
+ * run both before and after mutation. A delivery failure must never enter
+ * outcome accounting, change control flow, or erase the D7 envelope that reports
+ * a mutation that already happened — the same rule progress delivery follows
+ * (C3). Every notification site routes through here so no call site is
+ * load-bearing.
+ */
+export function notifyBestEffort(message: string): void {
+    try {
+        figma.notify(message);
+    } catch (error: any) {
+        console.warn(`Notification delivery failed (ignored): ${describeError(error)}`);
+    }
+}
+
 // Formats a thrown value into the structured `{code, message, details?}` shape.
 // The only classification is structural (Q16): a thrown coded object passes
 // through untouched; anything else is the ratified legacy fallback

@@ -292,6 +292,11 @@ describe("D7/ratification 4: success === (status === 'success') across aggregato
         expect(res.results[0].status).toBe("failed");
         expect(res.results[0].error).toContain("not found");
         expect(res.results[1].status).toBe("skipped");
+        // R3: a real `skipped` row must also carry a non-blank actionable reason
+        // and survive the registered output schema — the failure matrix below
+        // covers `failed` rows, this covers the `skipped` half.
+        expect(res.results[1].error.trim().length).toBeGreaterThan(0);
+        expect(OUTPUTS["annotation_set"].safeParse(res).success, "real skipped row validates").toBe(true);
     });
 
     it("holds for text across success / partial / all-failed (C8: text was previously absent)", async () => {
@@ -614,6 +619,40 @@ describe("R3: real batch handler output validates against the registered output 
             assertActionableFailure("instance_set_overrides", result, expectedText);
         });
     }
+});
+
+describe("C3: notification delivery is best-effort and cannot corrupt the envelope", () => {
+    beforeEach(() => installRemedFigma());
+
+    it("a throwing figma.notify after a successful swap does not erase the D7 envelope", async () => {
+        // notify is called AFTER the mutation loop, so an unguarded throw would
+        // reject the handler and lose the envelope reporting a real swap — the
+        // same defect class as C3's progress failure.
+        (globalThis as any).figma.notify = () => { throw new Error("notify surface gone"); };
+        let swapped = false;
+        const target = {
+            id: "n1", name: "N1",
+            getMainComponentAsync: async () => ({ id: "orig" }),
+            swapComponent: () => { swapped = true; },
+        };
+        const source = { sourceInstance: { id: "s" }, mainComponent: { id: "new" }, overrides: [] };
+
+        const res = await setInstanceOverrides([target], source);
+        expect(swapped).toBe(true);
+        expect(res.status).toBe("success");   // envelope survives the notify failure
+        expect(res.succeededCount).toBe(1);
+        expect(res.results).toHaveLength(1);
+    });
+
+    it("a throwing figma.notify on the setup-failure path still returns the envelope", async () => {
+        (globalThis as any).figma.notify = () => { throw new Error("notify surface gone"); };
+        // Malformed sourceResult → the P6-5 catch runs, which also notifies.
+        const target = { id: "n1", name: "N1", getMainComponentAsync: async () => ({ id: "orig" }), swapComponent: () => {} };
+        const res = await setInstanceOverrides([target], null as any);
+        expect(res.status).toBe("failed");
+        expect(res.results).toHaveLength(1);  // one row per input, never envelope-less
+        expect(res.results[0].error.trim().length).toBeGreaterThan(0);
+    });
 });
 
 describe("R9: delete progress payloads use only the shared count vocabulary", () => {

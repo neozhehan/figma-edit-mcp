@@ -7,7 +7,7 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { sanitizeForPostMessage } from '../utils/sanitize.js';
 import { findInstanceAncestor, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
-import { ERRORS, REFUSALS, formatScopeError as formatScopeErrorForRoot, getStructuredError } from '../utils/errors.js';
+import { ERRORS, REFUSALS, formatScopeError as formatScopeErrorForRoot, getStructuredError, notifyBestEffort } from '../utils/errors.js';
 
 // Import handlers
 import { getNodesInfo, getPagesInfo } from '../handlers/nodeReaders.js';
@@ -273,7 +273,7 @@ figma.ui.onmessage = async (msg: any) => {
             updateSettings(msg);
             break;
         case "notify":
-            figma.notify(msg.message);
+            notifyBestEffort(msg.message);
             break;
         case "close-plugin":
             figma.closePlugin();
@@ -303,13 +303,13 @@ figma.ui.onmessage = async (msg: any) => {
                 state.allowEditNode = msg.scopeNodeType === "PAGE" ? "page" : "node";
                 state.allowEditVariable = !!msg.allowEditVariable;
                 state.allowEditStyle = !!msg.allowEditStyle;
-                figma.notify(`Scope locked to node: ${msg.scopeNodeId}`);
+                notifyBestEffort(`Scope locked to node: ${msg.scopeNodeId}`);
             } else {
                 state.scopeRootId = null;
                 state.allowEditNode = false;
                 state.allowEditVariable = !!msg.allowEditVariable;
                 state.allowEditStyle = !!msg.allowEditStyle;
-                figma.notify("Connected in Read-Only Mode for nodes");
+                notifyBestEffort("Connected in Read-Only Mode for nodes");
             }
             break;
         case "execute-command":
@@ -627,7 +627,7 @@ async function handleCommand(command: any, params: any) {
                 // gate reopened a drift window between validation and mutation.
                 let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
                 if (!sourceInstanceData.success) {
-                    figma.notify(sourceInstanceData.message || "Failed to resolve source instance");
+                    notifyBestEffort(sourceInstanceData.message || "Failed to resolve source instance");
                     throw new Error(sourceInstanceData.message || "Failed to resolve source instance");
                 }
 
@@ -636,7 +636,7 @@ async function handleCommand(command: any, params: any) {
                 // and current scope root.
                 const targetNodesResult = await getValidTargetInstances(params.targetNodes, instScopeRoot);
                 if (!targetNodesResult.success) {
-                    figma.notify(targetNodesResult.message);
+                    notifyBestEffort(targetNodesResult.message);
                     throw new Error(targetNodesResult.message);
                 }
 

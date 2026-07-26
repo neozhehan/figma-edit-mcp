@@ -156,7 +156,7 @@ export async function getComponents(params: any) {
 }
 
 import { getContainingPageNode, isAncestorOf, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
-import { ERRORS, REFUSALS, describeError, formatScopeError } from '../utils/errors.js';
+import { ERRORS, REFUSALS, describeError, formatScopeError, notifyBestEffort } from '../utils/errors.js';
 import { batchEnvelope } from '../utils/batchResult.js';
 import { resolveAppendableParent } from './nodeCreators.js';
 
@@ -628,19 +628,6 @@ export async function getSourceInstanceData(sourceInstanceId: any) {
         mainComponent,
         overrides: sourceInstance.overrides || []
     };
-}
-
-/**
- * User notifications are best-effort telemetry. A delivery failure must never
- * enter instance-override outcome accounting after a mutation or erase the D7
- * envelope that reports that mutation.
- */
-function notifyBestEffort(message: string): void {
-    try {
-        figma.notify(message);
-    } catch (error: any) {
-        console.warn(`Notification delivery failed (ignored): ${describeError(error)}`);
-    }
 }
 
 /**
