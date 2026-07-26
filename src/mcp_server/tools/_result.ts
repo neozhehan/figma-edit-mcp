@@ -31,15 +31,15 @@ export function looseOutput<T extends z.ZodRawShape>(shape: T) {
  * Every row carries `nodeId` (identity) and `status`; a non-success row carries an
  * actionable `error`; the Q9/Q24 partial-mutation fields attach where applicable.
  *
- * `.catchall(z.any())` keeps each tool's additive fields (e.g. `nodeInfo`,
- * `instanceName`, `appliedCount`, `originalText`) so encoding the contract
- * vocabulary VALIDATES real handler rows rather than rejecting them. What it does
- * reject — at the protocol boundary the SDK enforces on every call — is a drifted
- * row that omits `nodeId`/`status`, or a legacy instance row keyed on
- * `instanceId`/`message`. That is what makes Q26's claim that "registered-callback
- * tests assert the returned key set … so `looseOutput` cannot re-mask drift"
- * literally true (R3, 2026-07-24 closure audit): before this the field was
- * `z.array(z.any())`, which accepted any row shape.
+ * `.catchall(z.any())` keeps each tool's legitimate additive fields (e.g.
+ * `nodeInfo`, `instanceName`, `appliedCount`, `originalText`) so encoding the
+ * contract vocabulary validates real handler rows rather than rejecting them.
+ * At the server boundary this schema rejects a row that omits `nodeId`/`status`
+ * (including a legacy `instanceId`/`message`-only row), and the refinement below
+ * rejects a non-success row without an actionable reason. It intentionally does
+ * not enforce an exact row or top-level key set: additive unknown keys remain
+ * accepted, and Rev 43 records top-level envelope exactness as test-enforced
+ * rather than advertised-schema-enforced.
  */
 export const batchResultRow = z
     .object({
@@ -49,7 +49,7 @@ export const batchResultRow = z
         error: z.string().optional().describe("Actionable reason, REQUIRED on any non-success row (Q25 contract key)"),
         partialMutation: z.boolean().optional().describe("Q9/Q24: set when the item mutated before it failed"),
         whatChanged: z.string().optional().describe("Q9/Q24: plain-language statement of what changed"),
-        before: z.any().optional().describe("Q9/Q24: cheap before-values so a restoring write can be composed"),
+        before: z.any().optional().describe("Q9/Q24: diagnostic evidence of the known pre-mutation state; not guaranteed to be a directly executable restoring-write input"),
     })
     .catchall(z.any())
     // Q25/D7: "every failure/skip row carries an actionable per-item reason" is

@@ -11,8 +11,10 @@ import { describe, it, expect, beforeEach } from "bun:test";
  *
  * These tests drive the REAL dispatcher and introduce same-object drift inside
  * those awaited windows — the exact intervals the helper-level matrix cannot
- * reach, because it calls the helper on objects that have already drifted. Each
- * asserts a command error AND `swapComponent()` call count zero.
+ * reach, because it calls the helper on objects that have already drifted.
+ * Safety-drift/capture failures assert a command error and zero swaps; the
+ * partial-mutation regression asserts that the captured main-component before
+ * value is the one observed immediately before the swap.
  */
 
 const nodeMap = new Map<string, any>();
@@ -60,7 +62,10 @@ function setupEnvironment(targetCount = 1) {
     nodeMap.clear();
     swapCount = 0;
 
-    const scopeRoot: any = { id: "scope-root", name: "Scope Root", type: "FRAME", parent: null, children: [] };
+    const scopeRoot: any = {
+        id: "scope-root", name: "Scope Root", type: "FRAME",
+        parent: null, children: [], removed: false,
+    };
 
     const sourceInstance: any = {
         id: "src", name: "Source", type: "INSTANCE", parent: scopeRoot,
@@ -74,6 +79,7 @@ function setupEnvironment(targetCount = 1) {
     for (let i = 1; i <= targetCount; i++) {
         const t: any = {
             id: `t${i}`, name: `T${i}`, type: "INSTANCE", parent: scopeRoot, locked: false,
+            removed: false,
             getMainComponentAsync: async () => ({ id: `main-orig-${i}` }),
             swapComponent: () => { swapCount++; },
         };
@@ -159,6 +165,68 @@ describe("R2 end-to-end: same-object drift inside awaited windows never reaches 
         expect(swapCount).toBe(0);
     });
 
+    it("a target removed during its awaited main-component read fails with zero swaps", async () => {
+        const { targets } = setupEnvironment(1);
+        const target = targets[0];
+        target.getMainComponentAsync = async () => {
+            target.removed = true;
+            return { id: "main-orig-1" };
+        };
+
+        const res = await sendCommand("instance_set_overrides", {
+            sourceInstanceId: "src",
+            targetNodes: requestFor(targets),
+        });
+        expect(res.type).toBe("command-error");
+        expect(res.error.message).toContain("removed since validation");
+        expect(swapCount).toBe(0);
+    });
+
+    it("a scope root removed during a target await fails with zero swaps", async () => {
+        const { scopeRoot, targets } = setupEnvironment(1);
+        targets[0].getMainComponentAsync = async () => {
+            scopeRoot.removed = true;
+            return { id: "main-orig-1" };
+        };
+
+        const res = await sendCommand("instance_set_overrides", {
+            sourceInstanceId: "src",
+            targetNodes: requestFor(targets),
+        });
+        expect(res.type).toBe("command-error");
+        expect(res.error.message).toContain("editable scope root");
+        expect(swapCount).toBe(0);
+    });
+
+    it("an original-main capture error fails before any swap", async () => {
+        const { targets } = setupEnvironment(1);
+        targets[0].getMainComponentAsync = async () => {
+            throw new Error("main-component read failed");
+        };
+
+        const res = await sendCommand("instance_set_overrides", {
+            sourceInstanceId: "src",
+            targetNodes: requestFor(targets),
+        });
+        expect(res.type).toBe("command-error");
+        expect(res.error.message).toContain("Failed to capture the original main component");
+        expect(res.error.message).toContain("main-component read failed");
+        expect(swapCount).toBe(0);
+    });
+
+    it("a null original-main capture fails before any swap", async () => {
+        const { targets } = setupEnvironment(1);
+        targets[0].getMainComponentAsync = async () => null;
+
+        const res = await sendCommand("instance_set_overrides", {
+            sourceInstanceId: "src",
+            targetNodes: requestFor(targets),
+        });
+        expect(res.type).toBe("command-error");
+        expect(res.error.message).toContain("no main component was returned");
+        expect(swapCount).toBe(0);
+    });
+
     it("identity drift (resolver returns a different node id) fails with zero swaps", async () => {
         const { targets, scopeRoot } = setupEnvironment(1);
         const request = requestFor(targets);
@@ -204,5 +272,90 @@ describe("R2 end-to-end: same-object drift inside awaited windows never reaches 
         });
         expect(res.type).toBe("command-error");
         expect(swapCount).toBe(0); // every validatable target is checked before ANY swap
+    });
+
+    it("multi-target: later-target drift during target 1's authoritative read blocks the first swap", async () => {
+        const { targets } = setupEnvironment(3);
+        let targetOneReads = 0;
+        targets[0].getMainComponentAsync = async () => {
+            targetOneReads++;
+            // Read 1 is the batch-wide preflight. Drift only during read 2, the
+            // authoritative use-time capture after that preflight passed.
+            if (targetOneReads === 2) {
+                targets[2].name = "Renamed during authoritative capture";
+            }
+            return { id: "main-orig-1" };
+        };
+
+        const res = await sendCommand("instance_set_overrides", {
+            sourceInstanceId: "src",
+            targetNodes: requestFor(targets),
+        });
+        expect(targetOneReads).toBe(2);
+        expect(res.type).toBe("command-error");
+        expect(swapCount).toBe(0);
+    });
+
+    it("multi-target: later-target removal after an earlier swap becomes a truthful failure row", async () => {
+        const { targets } = setupEnvironment(2);
+        let laterReads = 0;
+        targets[1].getMainComponentAsync = async () => {
+            laterReads++;
+            // Read 1 is batch preflight. Read 2 is the later target's
+            // authoritative capture, after target 1 has already swapped.
+            if (laterReads === 2) targets[1].removed = true;
+            return { id: "main-orig-2" };
+        };
+
+        const res = await sendCommand("instance_set_overrides", {
+            sourceInstanceId: "src",
+            targetNodes: requestFor(targets),
+        });
+
+        expect(res.type).toBe("command-result");
+        expect(swapCount).toBe(1);
+        expect(res.result.status).toBe("partial_success");
+        expect(res.result.results).toHaveLength(2);
+        expect(res.result.results[0].status).toBe("success");
+        expect(res.result.results[1].status).toBe("failed");
+        expect(res.result.results[1].error).toContain("removed since validation");
+    });
+
+    it("multi-target: a later target's await cannot stale an earlier target's before.mainComponentId", async () => {
+        const { sourceInstance, targets } = setupEnvironment(2);
+        const mainA = { id: "main-A" };
+        const mainB = { id: "main-B" };
+        let targetOneMain = mainA;
+        let beforeAtSwap: string | null = null;
+
+        sourceInstance.overrides = [{
+            id: "src/child",
+            overriddenFields: ["characters"],
+        }];
+        targets[0].getMainComponentAsync = async () => targetOneMain;
+        targets[0].swapComponent = (component: any) => {
+            beforeAtSwap = targetOneMain.id;
+            targetOneMain = component;
+            swapCount++;
+        };
+        // During the batch-wide preflight, this later target's await changes the
+        // earlier target after its first read. The per-target authoritative read
+        // must observe main-B immediately before the swap.
+        targets[1].getMainComponentAsync = async () => {
+            targetOneMain = mainB;
+            return { id: "main-orig-2" };
+        };
+
+        const res = await sendCommand("instance_set_overrides", {
+            sourceInstanceId: "src",
+            targetNodes: requestFor(targets),
+        });
+
+        expect(res.type).toBe("command-result");
+        expect(swapCount).toBe(1);
+        expect(beforeAtSwap).toBe("main-B");
+        expect(res.result.results[0].status).toBe("failed");
+        expect(res.result.results[0].partialMutation).toBe(true);
+        expect(res.result.results[0].before).toEqual({ mainComponentId: "main-B" });
     });
 });

@@ -152,9 +152,10 @@ export const REFUSALS = {
  * Wraps an unexpected mid-update failure with the Q18 partial-mutation
  * disclosure. The field names are shared with the D7 batch failure rows:
  * `partialMutation: true`, a plain-language `whatChanged` statement, and
- * cheap `before` values so the restoring write composes directly from the
- * error. Callers invoke this ONLY when at least one mutation already applied —
- * a clean failure never carries the flag.
+ * cheap `before` values as diagnostic evidence of the known pre-mutation state.
+ * The evidence is not guaranteed to be a directly executable restore payload.
+ * Callers invoke this ONLY when at least one mutation already applied — a clean
+ * failure never carries the flag.
  */
 export function withPartialDisclosure(e: any, whatChanged: string, before: Record<string, any>) {
     const base = getStructuredError(e);
@@ -172,20 +173,45 @@ export function formatScopeError(errorMessage: any, scopeRootId: string | null) 
 
 // Helper: Extract a human-readable string message from any thrown value.
 export function describeError(e: any): string {
-    if (e == null) return "Error executing command";
-    if (typeof e === "string") return e;
-    if (typeof e.message === "string" && e.message.length > 0) {
-        return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
+    const fallback = "Error executing command";
+    if (e == null) return fallback;
+    if (typeof e === "string") {
+        const message = e.trim();
+        return message || fallback;
     }
-    if (typeof e.toString === "function") {
-        const s = e.toString();
-        if (s && s !== "[object Object]") return s;
+    let rawMessage: unknown;
+    let rawName: unknown;
+    try {
+        rawMessage = e.message;
+        rawName = e.name;
+    } catch {
+        // A thrown Proxy may itself reject property access. Fall through to
+        // other renderers without allowing error reporting to throw again.
+    }
+    if (typeof rawMessage === "string") {
+        const message = rawMessage.trim();
+        if (!message) return fallback;
+        const name = typeof rawName === "string" ? rawName.trim() : "";
+        return name && name !== "Error" ? `${name}: ${message}` : message;
+    }
+    try {
+        if (typeof e.toString === "function") {
+            const rendered = e.toString();
+            if (typeof rendered === "string") {
+                const message = rendered.trim();
+                if (message && message !== "[object Object]") return message;
+            }
+        }
+    } catch {
+        // A custom toString is not trusted input. JSON/name/fallback below
+        // still guarantees a non-blank diagnostic.
     }
     try {
         const json = JSON.stringify(e);
         if (json && json !== "{}") return json;
     } catch { /* not serializable */ }
-    return e.name || "Error executing command";
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    return name || fallback;
 }
 
 // Formats a thrown value into the structured `{code, message, details?}` shape.

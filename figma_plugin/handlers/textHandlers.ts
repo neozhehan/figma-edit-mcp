@@ -8,6 +8,7 @@ import { delay } from '../utils/helpers.js';
 import { setCharacters } from '../utils/textUtils.js';
 import { collectNodesToProcess } from '../utils/nodeUtils.js';
 import { batchEnvelope } from '../utils/batchResult.js';
+import { describeError } from '../utils/errors.js';
 
 
 
@@ -158,7 +159,8 @@ export async function setMultipleTextContents(params: any, deps: { setCharacters
             await new Promise(r => setTimeout(r, 0));
 
         } catch (error: any) {
-            console.error(`Error replacing text in node ${replacement.nodeId}: ${error.message}`);
+            const errorMessage = describeError(error);
+            console.error(`Error replacing text in node ${replacement.nodeId}: ${errorMessage}`);
             hasFailed = true;
             failureCount++;
             // Q24 (as corrected for C1/C2): disclose partial mutation whenever
@@ -171,7 +173,7 @@ export async function setMultipleTextContents(params: any, deps: { setCharacters
                 success: false,
                 status: "failed",
                 nodeId: replacement.nodeId,
-                error: `Error applying replacement: ${error.message}`,
+                error: `Error applying replacement: ${errorMessage}`,
             };
             if (report.fontMutated) {
                 row.partialMutation = true;

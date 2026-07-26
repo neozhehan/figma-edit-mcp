@@ -8,17 +8,82 @@
 
 **Base target:** `0416059` (`v2.3.3-Plugin-Type-Check-Restoration-&-Safety-Contract-Gap-Closure`)
 
-**Latest recheck target:** the current 2026-07-25 working tree containing the R1–R9 remediation.
+**Latest recheck target:** the current 2026-07-25 working tree containing the fourth-recheck R14–R15 remediation.
 
 **Requirements reviewed:** [PRD D6/D7 and implementation plan](../prd.md), [task-list Phases 5–6](../task.md)
 
 **Second-recheck remediation:** 2026-07-25 — R2, R3, and R10 addressed; see [2026-07-25 second-recheck remediation](#2026-07-25-second-recheck-remediation-r2r3r10) and [prd.md](../prd.md) Rev 43.
 
-**Current assessment (2026-07-25, after second-recheck remediation):** **No open functional gap remains in Phase 5 or Phase 6. R2 is fixed properly — the predicate set is now re-asserted synchronously with no `await` between the final check and `swapComponent()`, proven end-to-end by dispatcher tests that inject drift inside the previously-open awaited windows and assert zero swaps. R3's actionable-`error` requirement is enforced by the schema, and the residual top-level looseness the SDK forces is now stated honestly in Q26 instead of being overclaimed. R10 is resolved as an accepted diagnostic residual: the "one-round-trip restoring write" promise is withdrawn in D7 rather than left unmet. R1 remains an accepted best-effort residual and R5's recursive nested strictness remains explicitly deferred to Phase 7. The pre-remediation assessment that follows is retained as the record of what the second recheck found.**
+**Third-recheck remediation:** 2026-07-25 — R11, R12, and R13 fixed; see [2026-07-25 third recheck and remediation](#2026-07-25-third-recheck-and-remediation-r11r12r13) and [prd.md](../prd.md) Rev 44.
+
+**Fourth-recheck remediation:** 2026-07-25 — R14 and R15 fixed; see [2026-07-25 fourth recheck and remediation](#2026-07-25-fourth-recheck-and-remediation-r14r15) and [prd.md](../prd.md) Rev 45.
+
+**Current assessment (2026-07-25, after fourth-recheck remediation):** **No reproduced, non-deferred functional defect remains in Phase 5 or Phase 6.** Phase 5 remains clean. Phase 6 rejects same-object removed targets/scope roots before swapping (R11), captures a mandatory authoritative `mainComponentId` without stale/null evidence (R12), produces a nonblank actionable failure row for arbitrary thrown values across all four aggregators (R13), and treats both user notifications and progress delivery—including hostile delivery-error diagnostics—as best-effort so telemetry cannot erase or corrupt a post-mutation D7 envelope (R14/R15). The live `before` schema description matches Rev 43's diagnostic-evidence contract. Explicitly accepted or later-owned limitations remain unchanged: R1's test-stub-only mixed-font capture degradation, R3's permissive top-level output schema/runtime-validator deferral, R5's Phase 7 recursive strictness, and R10's missing restore write surface.
+
+*Superseded assessment after the third remediation:* its no-gap statement was disproved by post-swap notification failure and hostile progress-error probes. The fourth-recheck section is authoritative.
+
+*Superseded assessment after the second remediation:* the earlier statement that no functional gap remained was disproved by deterministic removed-target, stale/null main-component capture, and degenerate-throw probes. It is retained only through the historical Rev 43 sections below.
 
 *Pre-remediation assessment (2026-07-25, second recheck):* Phase 5 has no remaining reproduced functional defect. Phase 6 still has three non-deferred functional/contract gaps: R2 is reopened because target revalidation is followed by awaited work that permits fresh drift before `swapComponent()`; R3 is reopened because the registered output boundary still accepts legacy-only and contract-invalid results; and new R10 records that Q9/Q24's promised one-round-trip restoring write cannot be composed through any exposed write tool. R1 remains an explicitly accepted best-effort residual, and R5's recursive nested strictness is explicitly deferred to Phase 7; neither is counted in this non-deferred open set. Test-only and documentation-only debt is retained in the historical findings but is not classified as an unimplemented functional gap here.
 
 > **Correction of the 2026-07-22 resolution note.** That note stated that all thirteen findings were fixed and verified at 741/741 tests. The 2026-07-24 closure audit re-ran the full suite at **766/766**, inspected the current callbacks and schemas, and drove the adverse paths directly. The green suite is real, but the blanket closure statement is not: two release-relevant runtime/contract defects still reproduce (R1/R2 below), the callback and path-matrix gates remain structurally incomplete (R3/R4), and several documentation or regression-test acceptance items remain unfinished. The old resolution claim is superseded by this recheck. *(The first 2026-07-25 remediation record later marked R1–R9 closed; the second recheck below supersedes that blanket closure for R2/R3 and adds R10.)*
+
+## 2026-07-25 third recheck and remediation (R11/R12/R13)
+
+The Rev 43 implementation and its 794 passing tests were re-audited as claims. Three new deterministic adverse paths reproduced against both source and the rebuilt bundle. All three were Phase 6 behavior already promised by D7/Q9/Q25, and no later phase owned them.
+
+| Finding | Reproduced defect | Remediation and durable acceptance |
+|---|---|---|
+| R11 — same-object removal after resolution | A valid target used as the editable scope root set `removed = true` during its awaited main-component read; the final predicate omitted Figma's `removed` flag, called `swapComponent()`, and returned success. | `checkTargetPredicates` rejects `removed === true` for the target and scope root. Dispatcher tests remove each inside the awaited window and assert a command error plus zero swaps. |
+| R12 — stale or fabricated instance before-value | Main-component IDs were captured serially for the whole batch. A later target's await changed target 1 from `main-A` to `main-B`, yet a later failure reported `before.mainComponentId: "main-A"`. A thrown capture was swallowed as `null`, after which the swap still ran. | Batch preflight requires every main component to be readable. Target 0 is captured authoritatively and followed by a whole-batch synchronous recheck before the first swap; later targets are captured immediately before their final synchronous gate/swap. Thrown, null, or invalid captures fail before that target swaps. Regressions prove zero swaps and exact `main-B` evidence. |
+| R13 — handler failures violate the Q25 row schema | `node_delete` and `annotation_set` copied `error.message`; empty `Error`s or non-`Error` throws yielded blank/undefined row reasons. The new schema then rejected the accepted execution's result, replacing its D7 envelope with an output-validation error. The same assumption existed in text/instance catches. | All four aggregators use the shared hardened `describeError()`. It is nonblank for empty/whitespace errors, strings, `null`/`undefined`, null-prototype objects, and hostile renderers. Real-handler results for empty `Error`, raw string, and `null` validate against every registered batch schema. |
+
+### R11 — removed references are not equivalent to live nodes
+
+Figma's pinned `BaseNode` contract retains stored node objects after removal and exposes `removed` for exactly this check. Rev 43 treated object truthiness plus ID/type/name/scope/lock as the complete predicate set. That was incomplete when the target itself was the editable scope root: ID equality satisfied scope membership even after removal, so no existing predicate failed.
+
+**Resolved:** the synchronous use-time predicate now checks target and scope-root removal before identity/scope/lock evaluation. Because the check runs after each relevant await and immediately before mutation, the removed reference cannot reach `swapComponent()`.
+
+### R12 — hoisting async reads closed one TOCTOU window but made evidence stale
+
+The Rev 43 hoist correctly enabled a whole-batch gate after all awaited reads, but incorrectly reused those early IDs as Q9 before-values. Predicate stability does not imply main-component stability: changing an instance's main component leaves its ID, type, name, ancestry, and lock state intact. Catching a failed read and substituting `null` additionally converted "unknown" into purported evidence.
+
+**Resolved:** preflight and authoritative capture now have separate jobs. Preflight proves all targets are readable before any mutation; use-time capture supplies the evidence. The first authoritative capture is followed by a whole-batch recheck so drift it triggers cannot allow even target 1 to swap. Later captures are followed by the target's final synchronous gate. No capture failure is represented as a before-value.
+
+### R13 — schema enforcement exposed unsafe exception formatting
+
+Requiring a non-empty `error` was correct, but it made the production handlers' `error.message` assumption observable at the protocol boundary. JavaScript permits throwing any value, and failure reporting must not throw again or create an invalid row. The existing shared `describeError()` was the correct mechanism but also needed hardening for blank strings/messages and hostile renderers.
+
+**Resolved:** every Phase 6 batch catch now uses `describeError()`, and the helper guarantees a trimmed, nonblank diagnostic fallback without trusting `message`, `name`, or `toString`. The regression matrix validates real handler returns through the registered row schemas.
+
+### Contract and scope reconciliation
+
+- The emitted `results[].before` description now says **diagnostic pre-mutation evidence**, not that a restoring write is guaranteed; an official-SDK `tools/list` assertion pins that wording.
+- R3's exact top-level runtime validator and R10's new restore write surface remain accepted Rev 43 residuals. This remediation does not mislabel them as implemented or expand the write surface without its required safety design.
+- R5 remains concretely owned by Phase 7. R1 remains the explicitly accepted test-stub-only degradation.
+
+## 2026-07-25 fourth recheck and remediation (R14/R15)
+
+The post-Rev-44 tree was independently re-audited for external calls that could still erase an accepted result after mutation. Two deterministic telemetry paths reproduced. Both violate D7's accepted-execution envelope and the already-established C3 rule; no later phase owns them.
+
+| Finding | Reproduced defect | Remediation and durable acceptance |
+|---|---|---|
+| R14 — notification failure erases the instance envelope | `setInstanceOverrides` called `figma.notify(message)` after a successful swap inside its result `try`. A throwing notification entered the recovery catch, whose second unguarded notification threw again. The target was swapped, but the handler rejected with no D7 envelope. | Both notification sites route through a best-effort helper that catches arbitrary thrown values without entering outcome accounting. A regression throws after the swap and proves one swap, one success row, coherent 1/0/0 counts, and a returned success envelope. |
+| R15 — hostile progress error escapes its catch | `sendProgressUpdate` caught delivery failure but interpolated `err.message` in the catch. A thrown Proxy whose property access throws escaped while being logged. Delete then rejected after removal; text fabricated a second failure row after recording success. | Progress diagnostics use the hardened total `describeError()`. Text/delete regressions now throw the hostile Proxy and prove that mutation truth, counts, row cardinality, and the final envelope survive. |
+
+### R14 — user notification is telemetry, not mutation control flow
+
+The instance aggregator had isolated override-operation failures but still placed `figma.notify()` between outcome derivation and returning the envelope. Its catch also notified, so a closed/unavailable notification surface could fail twice after mutation and leave the caller unable to distinguish success from unknown outcome.
+
+**Resolved:** `notifyBestEffort()` contains delivery and diagnostic failure. Notification success or failure cannot change row construction, counts, status, or whether the handler resolves.
+
+### R15 — a catch is not total if formatting its error can throw
+
+C3 correctly made `postMessage` best-effort, but its catch trusted `.message`. JavaScript permits a Proxy to throw from property access, so the reporting path could rethrow the very transport failure it intended to isolate.
+
+**Resolved:** progress delivery uses the same null-safe, hostile-renderer-safe `describeError()` path as R13. The adverse tests cover both relevant post-mutation consumers: sequential text accounting and chunked deletion. The unused server-side `setInstanceOverridesResult` declaration found in the same pass is also aligned to the live D7/Q25/Q26 envelope and row vocabulary; this removes type/contract drift even though it had no runtime consumer.
+
+**Final post-remediation verification (2026-07-25):** the targeted contract matrix passes **218/218** tests (1,146 assertions) across the R2/R11/R12 dispatcher probes, Phase 5–6 remediation suite, registered output-schema/callback boundary, and Phase 1–2 safety regressions. The full server suite passes **825/825** tests (3,886 assertions) across 45 files, including the local WebSocket transport tests. The server build, plugin type check, suppression check, generated-file check, version check, and `git diff --check` all pass. The committed plugin artifact was rebuilt twice from the final source and produced the same SHA-256 both times: `88d48c587e7c3309c6009a6326e76076d33de0f7268856b3ba95142e316da06f`; direct bundle inspection confirms both Rev 45 telemetry guards are present and the unsafe `err && err.message` formatter is absent.
 
 ## 2026-07-25 second recheck — remaining non-deferred functional gaps
 
@@ -89,7 +154,7 @@ All three findings are addressed; decisions and rationale are in [prd.md](../prd
 
 ## 2026-07-24 closure matrix
 
-> **Historical snapshot.** The statuses in this table and the R1–R9 findings below describe the 2026-07-24 tree. The first 2026-07-25 remediation marked them closed, but the second recheck above is authoritative for current status: R2/R3 are reopened and R10 is new.
+> **Historical snapshot.** The statuses in this table and the R1–R9 findings below describe the 2026-07-24 tree. Successive same-day rechecks superseded them; use the fourth-recheck assessment at the top for current status.
 
 | Finding | Current status | Verified disposition |
 |---|---|---|
@@ -248,11 +313,11 @@ Those keys duplicate the envelope's `succeededCount`/`failedCount` values and th
   - reproduced R3's legacy-only registered callback/schema acceptance;
   - reproduced R5's nested-key acceptance and silent stripping.
 
-The green suite establishes broad regression health, not closure of the findings above. Phase 5 remains incomplete on R7/R8; Phase 6 remains release-blocked by R1/R2 and incomplete at the contract/test ledger until R3–R6 and R8/R9 are resolved. *(Historical 2026-07-24 assessment; the first remediation record below superseded it, and the second recheck at the top is authoritative now.)*
+The green suite establishes broad regression health, not closure of the findings above. Phase 5 remains incomplete on R7/R8; Phase 6 remains release-blocked by R1/R2 and incomplete at the contract/test ledger until R3–R6 and R8/R9 are resolved. *(Historical 2026-07-24 assessment; the successive remediation/recheck sections above supersede it, and the fourth-recheck assessment at the top is authoritative now.)*
 
 ## 2026-07-25 first remediation record (historical closure claim)
 
-This section records the state that first marked all nine reopened findings remediated. The second recheck at the top supersedes it as the current assessment by reopening R2/R3 and adding R10. The six first-remediation decisions and their rationale are recorded in [prd.md](../prd.md) Rev 41, and R4/R7/R8 in Rev 42.
+This section records the state that first marked all nine reopened findings remediated. Successive rechecks at the top supersede it as the current assessment. The six first-remediation decisions and their rationale are recorded in [prd.md](../prd.md) Rev 41, and R4/R7/R8 in Rev 42.
 
 | Finding | Disposition |
 |---|---|
@@ -272,7 +337,7 @@ Verification after remediation: `bun test src/mcp_server/tests` **787 pass, 0 fa
 
 ## Historical review (2026-07-19)
 
-The remainder is the original critique and is retained as the historical record of C1–C13. Its line-specific implementation observations and coverage tables describe the 2026-07-19 tree; use the second-recheck R2/R3/R10 section at the top for current unresolved functional status.
+The remainder is the original critique and is retained as the historical record of C1–C13. Its line-specific implementation observations and coverage tables describe the 2026-07-19 tree; use the fourth-recheck assessment at the top for current functional status.
 
 This was a fresh review of the then-claimed post-remediation state. It did not assume that the earlier [Phase 5 & 6 review](Phase-5-%26-6-review.md) resolution note was correct. The implementation passed the full automated suite, but several required safety properties failed under deterministic fault injection that the suite did not cover.
 

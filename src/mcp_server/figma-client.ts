@@ -67,14 +67,26 @@ export interface getInstanceOverridesResult {
 
 export interface setInstanceOverridesResult {
     success: boolean;
+    status: 'success' | 'partial_success' | 'failed';
     message: string;
-    totalCount?: number;
-    results?: Array<{
+    requestedCount: number;
+    succeededCount: number;
+    failedCount: number;
+    skippedCount: number;
+    totalAppliedCount: number;
+    results: Array<{
         success: boolean;
-        instanceId: string;
-        instanceName: string;
+        status: 'success' | 'failed' | 'skipped';
+        nodeId: string;
+        instanceName?: string;
         appliedCount?: number;
-        message?: string;
+        error?: string;
+        partialMutation?: boolean;
+        whatChanged?: string;
+        before?: {
+            mainComponentId?: string;
+            appliedFields?: Array<{ nodeId: string; field: string; before?: unknown }>;
+        };
     }>;
 }
 

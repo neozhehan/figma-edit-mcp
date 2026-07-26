@@ -5,6 +5,7 @@
 
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { batchEnvelope } from '../utils/batchResult.js';
+import { describeError } from '../utils/errors.js';
 
 /**
  * Gets annotations from nodes
@@ -183,7 +184,7 @@ async function setAnnotation(params: any) {
         };
     } catch (error: any) {
         console.error("Error in setAnnotation:", error);
-        return { success: false, error: error.message };
+        return { success: false, error: describeError(error) };
     }
 }
 
@@ -277,7 +278,7 @@ export async function setMultipleAnnotations(params: any) {
                 success: false,
                 status: "failed",
                 nodeId: annotation.nodeId,
-                error: error.message,
+                error: describeError(error),
             });
             console.error(`✗ Annotation ${i + 1} failed with error:`, error);
         }

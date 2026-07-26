@@ -504,11 +504,11 @@ describe("Phase 4: outputSchema Validation Tests", () => {
         });
     });
 
-    // C7 (ratification 1): invoke the REAL registered callback over the mocked
-    // transport and assert its `structuredContent` — the actual bytes a client
-    // receives — carries the envelope and no legacy count field, and validates
-    // against the declared schema. This closes the gap the critique found: the
-    // representative-payload tests never exercised a callback.
+    // C7 (ratification 1): invoke the real registered callback over a controlled
+    // mocked transport and assert its `structuredContent` preserves a compliant
+    // envelope with no legacy count field. This exercises callback pass-through;
+    // it does not make the intentionally loose advertised schema an exact runtime
+    // validator (Rev 43).
     describe("C7: registered batch callbacks surface envelope-only output", () => {
         const batchReturns: Record<string, any> = {
             node_delete: {
@@ -541,7 +541,7 @@ describe("Phase 4: outputSchema Validation Tests", () => {
         };
 
         for (const [tool, handlerReturn] of Object.entries(batchReturns)) {
-            it(`${tool} callback returns the exact envelope with no legacy count`, async () => {
+            it(`${tool} callback preserves a compliant envelope with no legacy count`, async () => {
                 nextTransportResult = handlerReturn;
                 const res: any = await HANDLERS[tool]({}, {} as any);
                 const sc = res.structuredContent;
@@ -554,16 +554,16 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 for (const gone of legacyByTool[tool]) {
                     expect(sc[gone], `${tool} must not surface legacy ${gone}`).toBeUndefined();
                 }
-                // The declared schema validates the real callback output.
+                // The declared schema validates the registered callback output.
                 expect((TOOLS[tool] as any).safeParse(sc).success).toBe(true);
             });
         }
 
         // R3 (closure audit): the round-trip above only proves the callback does
-        // not itself corrupt a compliant payload. The durable guard against a
-        // plugin handler REINTRODUCING drift is the encoded `results` row schema
-        // (nodeId + status required) — these negative cases red-proof it, so a
-        // legacy instance row or a status-less row turns this test red.
+        // not itself corrupt a compliant payload. The encoded row schema enforces
+        // the required Q25 vocabulary (nodeId + status); it is deliberately not an
+        // exact allowlist or a top-level envelope validator. These negative cases
+        // red-proof omission of the required keys.
         it("R3: the encoded results schema rejects a reintroduced legacy/drifted row", () => {
             const legacy = {
                 success: true, status: "success",

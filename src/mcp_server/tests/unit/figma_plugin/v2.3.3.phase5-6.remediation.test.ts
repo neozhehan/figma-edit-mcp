@@ -81,6 +81,8 @@ describe("P5-4: parent-name fields carry the D5 description form", () => {
 // ---------------------------------------------------------------------------
 const realTextUtils: any = await import("../../../../../figma_plugin/utils/textUtils.js?realimpl");
 const setCharacters = realTextUtils.setCharacters;
+const errorUtils: any = await import("../../../../../figma_plugin/utils/errors.js?phase6-actionable-errors");
+const describeError = errorUtils.describeError;
 
 // The text handler's module-level `setCharacters` is globally replaced by bun's
 // `mock.module` in other test files and cannot be un-mocked per-file, so the
@@ -90,6 +92,29 @@ const setCharacters = realTextUtils.setCharacters;
 // via a ?realimpl import that bypasses the mock. `mock` is imported so the file
 // remains valid even though the injection seam replaces the re-mock machinery.
 void mock;
+
+describe("Q25: describeError always returns a non-blank reason", () => {
+    const cases: Array<[string, unknown, string]> = [
+        ["empty string", "", "Error executing command"],
+        ["whitespace string", " \t ", "Error executing command"],
+        ["empty Error.message", new Error(""), "Error executing command"],
+        ["whitespace Error.message", new Error(" \t "), "Error executing command"],
+        ["raw string", "raw batch failure", "raw batch failure"],
+        ["null", null, "Error executing command"],
+        ["undefined", undefined, "Error executing command"],
+        ["null-prototype object", Object.create(null), "Error executing command"],
+        ["throwing toString", { toString: () => { throw new Error("renderer failed"); } }, "Error executing command"],
+        ["non-string toString", { toString: () => null }, "Error executing command"],
+    ];
+
+    for (const [label, thrown, expected] of cases) {
+        it(`normalizes ${label}`, () => {
+            const message = describeError(thrown);
+            expect(message).toBe(expected);
+            expect(message.trim().length).toBeGreaterThan(0);
+        });
+    }
+});
 
 function fontNode(fontName: any, opts: { charThrows?: boolean } = {}) {
     let chars = "old";
@@ -128,7 +153,7 @@ describe("Q24: setCharacters reports fontMutated + beforeFont only when the font
         const report: any = {};
         await setCharacters(node, "new", undefined, report);
         expect(report.fontMutated).toBe(true);
-        // before-font is a genuinely restorable segment snapshot, not null.
+        // before-font is a complete diagnostic snapshot of the segment map, not null.
         expect(report.beforeFont.mixed).toBe(true);
         expect(report.beforeFont.segments).toEqual([{ start: 0, end: 3, fontName: { family: "First", style: "Regular" } }]);
     });
@@ -158,7 +183,7 @@ function installRemedFigma() {
     };
 }
 installRemedFigma();
-const { setInstanceOverrides } = await import("../../../../../figma_plugin/handlers/componentHandlers.js?remed");
+const { setInstanceOverrides, checkTargetPredicates } = await import("../../../../../figma_plugin/handlers/componentHandlers.js?remed");
 const { deleteMultipleNodes } = await import("../../../../../figma_plugin/handlers/nodeModifiers.js?remed");
 const { setMultipleAnnotations } = await import("../../../../../figma_plugin/handlers/annotationHandlers.js?remed");
 const { setMultipleTextContents } = await import("../../../../../figma_plugin/handlers/textHandlers.js?remed");
@@ -178,6 +203,19 @@ const cleanFailingSetChars = async (_n: any, _c: any, _o: any, report: any) => {
     if (report) report.beforeFont = { family: "Inter", style: "Regular" };
     return false;
 };
+
+describe("Q25: instance predicate diagnostics tolerate non-Error throws", () => {
+    it("turns a null lock-read failure into a non-blank drift reason", () => {
+        const target: any = { id: "i-lock", name: "I", type: "INSTANCE", parent: null };
+        Object.defineProperty(target, "locked", {
+            get: () => { throw null; },
+        });
+
+        const reason = checkTargetPredicates(target, target.id, target.name);
+        expect(reason).toContain("Error executing command");
+        expect(reason?.trim().length).toBeGreaterThan(0);
+    });
+});
 
 describe("D7/ratification 4: success === (status === 'success') across aggregators", () => {
     // Part B reassigns globalThis.figma per test; restore this block's figma.
@@ -355,10 +393,14 @@ describe("C1/C2: text partial-mutation disclosure on the real handler fault path
 describe("C3: progress delivery is best-effort and cannot corrupt the envelope", () => {
     beforeEach(() => installRemedFigma());
 
-    it("a postMessage failure after a text success does not fabricate a second row", async () => {
+    const hostileProgressError = () => new Proxy({}, {
+        get: () => { throw new Error("hostile progress error getter"); },
+    });
+
+    it("a hostile postMessage failure after a text success does not fabricate a second row", async () => {
         nodeMap.clear();
         (globalThis as any).figma.loadFontAsync = async () => {};
-        (globalThis as any).figma.ui = { postMessage: () => { throw new Error("ui gone"); } };
+        (globalThis as any).figma.ui = { postMessage: () => { throw hostileProgressError(); } };
         let chars = "old";
         nodeMap.set("t1", {
             id: "t1", name: "A", type: "TEXT", fontName: { family: "Inter", style: "Regular" },
@@ -374,9 +416,9 @@ describe("C3: progress delivery is best-effort and cannot corrupt the envelope",
         expect(res.results).toHaveLength(1); // exactly one row per input
     });
 
-    it("a postMessage failure during delete still returns the D7 envelope", async () => {
+    it("a hostile postMessage failure during delete still returns the D7 envelope", async () => {
         nodeMap.clear();
-        (globalThis as any).figma.ui = { postMessage: () => { throw new Error("ui gone"); } };
+        (globalThis as any).figma.ui = { postMessage: () => { throw hostileProgressError(); } };
         let removed = false;
         nodeMap.set("d1", { id: "d1", name: "A", type: "FRAME", remove: () => { removed = true; } });
 
@@ -385,15 +427,41 @@ describe("C3: progress delivery is best-effort and cannot corrupt the envelope",
         expect(res.status).toBe("success"); // envelope survives the progress failure
         expect(res.succeededCount).toBe(1);
     });
+
+    it("a notify failure after an instance swap cannot erase the D7 envelope", async () => {
+        let swaps = 0;
+        (globalThis as any).figma.notify = () => { throw new Error("notify failed"); };
+        const target = {
+            id: "i-notify", name: "I",
+            getMainComponentAsync: async () => ({ id: "main-before" }),
+            swapComponent: () => { swaps++; },
+        };
+        const source = {
+            sourceInstance: { id: "src" },
+            mainComponent: { id: "main-after" },
+            overrides: [],
+        };
+
+        const res = await setInstanceOverrides([target], source);
+
+        expect(swaps).toBe(1);
+        expect(res.status).toBe("success");
+        expect(res.success).toBe(true);
+        expect(res.requestedCount).toBe(1);
+        expect(res.succeededCount).toBe(1);
+        expect(res.failedCount).toBe(0);
+        expect(res.skippedCount).toBe(0);
+        expect(res.results).toHaveLength(1);
+        expect(res.results[0].status).toBe("success");
+    });
 });
 
-// R3 (closure audit): the registered `results` schemas encode the Q25 row
-// vocabulary (nodeId + status required) instead of `z.array(z.any())`. This
-// couples the REAL plugin-handler output to the REGISTERED (wrapped) output
-// schema — the actual bytes the SDK validates on every call — so a handler that
-// drops the vocabulary is caught at the boundary, and it red-proofs Q26's claim
-// that looseOutput can no longer re-mask drift. OUTPUTS[tool] is the wrapped
-// schema (`.partial().catchall(z.any())` + `error`), exactly as registered.
+// R3 (closure audit): the registered `results` schemas encode the required Q25
+// row vocabulary (nodeId + status) instead of `z.array(z.any())`. This couples
+// real plugin-handler rows to the registered schema so omission of those keys is
+// caught at the server boundary. Per Rev 43, the wrapped schema remains loose:
+// top-level envelope exactness and absence of legacy counts are asserted against
+// current handler output here, not enforced as an exact schema allowlist.
 describe("R3: real batch handler output validates against the registered output schema", () => {
     beforeEach(() => installRemedFigma());
 
@@ -471,6 +539,81 @@ describe("R3: real batch handler output validates against the registered output 
             expect(OUTPUTS[tool].safeParse(drifted).success, `${tool} rejects a row missing status`).toBe(false);
         }
     });
+
+    // Q25 requires every failed/skipped row to retain a non-empty actionable
+    // reason. JavaScript permits throwing any value, and Figma API failures are
+    // outside our control, so batch catches must not assume `error.message`.
+    const thrownCases: Array<[string, () => unknown, string]> = [
+        ["empty Error", () => new Error(""), "Error"],
+        ["raw string", () => "raw batch failure", "raw batch failure"],
+        ["null", () => null, "Error executing command"],
+    ];
+
+    function assertActionableFailure(tool: string, result: any, expectedText: string) {
+        expect(result.status).toBe("failed");
+        expect(result.results).toHaveLength(1);
+        const error = result.results[0].error;
+        expect(typeof error).toBe("string");
+        expect(error.trim().length).toBeGreaterThan(0);
+        expect(error).toContain(expectedText);
+        assertConforms(tool, result);
+    }
+
+    for (const [label, makeThrown, expectedText] of thrownCases) {
+        it(`node_delete normalizes ${label} into a schema-valid actionable row`, async () => {
+            nodeMap.clear();
+            nodeMap.set("d-throw", {
+                id: "d-throw", name: "D", type: "FRAME",
+                remove: () => { throw makeThrown(); },
+            });
+            const result = await deleteMultipleNodes({ nodeIds: ["d-throw"] });
+            assertActionableFailure("node_delete", result, expectedText);
+        });
+
+        it(`annotation_set normalizes ${label} into a schema-valid actionable row`, async () => {
+            nodeMap.clear();
+            const node: any = { id: "a-throw", name: "A", type: "FRAME" };
+            Object.defineProperty(node, "annotations", {
+                get: () => [],
+                set: () => { throw makeThrown(); },
+                configurable: true,
+            });
+            nodeMap.set(node.id, node);
+            const result = await setMultipleAnnotations({
+                annotations: [{ nodeId: node.id, nodeName: node.name, labelMarkdown: "x" }],
+            });
+            assertActionableFailure("annotation_set", result, expectedText);
+        });
+
+        it(`text_set_content normalizes ${label} into a schema-valid actionable row`, async () => {
+            nodeMap.clear();
+            nodeMap.set("t-throw", {
+                id: "t-throw", name: "T", type: "TEXT",
+                fontName: { family: "Inter", style: "Regular" },
+                characters: "old",
+            });
+            const result = await setMultipleTextContents(
+                { text: [{ nodeId: "t-throw", characters: "new" }] },
+                { setCharacters: (async () => { throw makeThrown(); }) as any }
+            );
+            assertActionableFailure("text_set_content", result, expectedText);
+        });
+
+        it(`instance_set_overrides normalizes ${label} into a schema-valid actionable row`, async () => {
+            const target = {
+                id: "i-throw", name: "I",
+                getMainComponentAsync: async () => ({ id: "orig" }),
+                swapComponent: () => { throw makeThrown(); },
+            };
+            const source = {
+                sourceInstance: { id: "s" },
+                mainComponent: { id: "new" },
+                overrides: [],
+            };
+            const result = await setInstanceOverrides([target], source);
+            assertActionableFailure("instance_set_overrides", result, expectedText);
+        });
+    }
 });
 
 describe("R9: delete progress payloads use only the shared count vocabulary", () => {

@@ -1,5 +1,181 @@
 "use strict";
 (() => {
+  // figma_plugin/utils/errors.ts
+  var UNKNOWN_ERROR = "UNKNOWN_ERROR";
+  var ERRORS = {
+    // Editable Scope Errors
+    READ_ONLY_MODE: "Operation Denied: Figma Plugin in Read-Only Mode. Verify if user intends for changes to be made. If so, advise user to disconnect plugin, paste a link to the page/layer to be edited into Link to Selection field, then reconnect plugin.",
+    OUTSIDE_SCOPE: "Operation Denied: Node outside editable scope. Verify if user intends for changes to be made to this particular node. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
+    PARENT_OUTSIDE_SCOPE: "Operation Denied: Parent outside editable scope. Verify if user intends for changes to be made to the parent node. If so, advise user to disconnect plugin, paste a link to the parent page/layer into Link to Selection field, then reconnect plugin.",
+    CLONING_SOURCE_NODE_OUTSIDE_SCOPE: "Operation Denied: Node to be cloned is outside editable scope. Verify if user intends for this node to be cloned. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
+    SCOPE_DELETED: "Operation Denied: The specific Node set as the Editable Scope no longer exists/cannot be found. Advise user to disconnect the plugin and Select a new Editable Scope.",
+    VARIABLE_EDITS_DISABLED: "Operation Denied: Variable editing is disabled. Ask the user to tick 'Allow AI Agent to modify Variables' in the Figma plugin and reconnect.",
+    STYLE_EDITS_DISABLED: "Operation Denied: Style editing is disabled. Ask the user to tick 'Allow AI Agent to modify Styles' in the Figma plugin and reconnect.",
+    // Node ID Errors
+    NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
+    // PARENT_NAME_MISSING / PARENT_NAME_MISMATCH moved to the REFUSALS factory
+    // registry below (Q22, Rev 31 — distinct-cause coded pair). The merged
+    // string that was here is superseded.
+    // Parameter Errors
+    MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
+    MISSING_TARGET_NODE_IDS: "Missing targetNodeIds parameter",
+    MISSING_SOURCE_INSTANCE_ID: "Missing sourceInstanceId parameter",
+    INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array"
+  };
+  var REFUSALS = {
+    // Phase 9–11 operational codes. No live throw site yet — each call site
+    // migrates from `ERRORS`-string prototyping to `REFUSALS.CODE()` as its
+    // phase lands, per the same precedent that moved the D6 parent codes.
+    PLUGIN_PEER_UNAVAILABLE: () => ({
+      code: "PLUGIN_PEER_UNAVAILABLE",
+      message: "Operation Denied: Figma Plugin is not running or available. Please open the Figma document, start the figma-edit-mcp plugin, and reconnect."
+    }),
+    PLUGIN_PEER_AMBIGUOUS: () => ({
+      code: "PLUGIN_PEER_AMBIGUOUS",
+      message: "Operation Denied: Multiple plugin peers are connected to this channel. Ensure the figma-edit-mcp plugin is open in exactly one Figma tab/document."
+    }),
+    CHANNEL_IN_USE: () => ({
+      code: "CHANNEL_IN_USE",
+      message: "Operation Denied: This channel is already in use by another MCP session. Please use a different channel name or disconnect the other session."
+    }),
+    VERSION_MISMATCH: () => ({
+      code: "VERSION_MISMATCH",
+      message: "Operation Denied: Version mismatch between MCP server and Figma plugin. Please ensure both are updated to the same version."
+    }),
+    // Page codes are operational failures, not safety refusals — no "Operation
+    // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
+    PAGE_LOAD_FAILED: () => ({
+      code: "PAGE_LOAD_FAILED",
+      message: "Failed to load the Figma page \u2014 it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load."
+    }),
+    PAGE_NOT_FOUND: () => ({
+      code: "PAGE_NOT_FOUND",
+      message: "Page not found: the specified page ID does not exist in this document. List pages with page_info and pass a page ID back verbatim."
+    }),
+    TARGET_NOT_PAGE: () => ({
+      code: "TARGET_NOT_PAGE",
+      message: "Target node is not a PAGE. List pages with page_info and pass a page ID, not a node ID."
+    }),
+    PAGE_LOAD_TIMEOUT: () => ({
+      code: "PAGE_LOAD_TIMEOUT",
+      message: "Page load timed out. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user."
+    }),
+    DOCUMENT_SCAN_INCOMPLETE: () => ({
+      code: "DOCUMENT_SCAN_INCOMPLETE",
+      message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded \u2014 a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first."
+    }),
+    CONNECTOR_TEMPLATE_REQUIRED: () => ({
+      code: "CONNECTOR_TEMPLATE_REQUIRED",
+      message: "Operation Denied: No valid connector template was found in the document. Find a connector with page_info/node_info (pasting one from FigJam if the file has none) and pass its ID and exact current name."
+    }),
+    VARIABLE_NAME_MISSING: () => ({
+      code: "VARIABLE_NAME_MISSING",
+      message: "Operation Denied: currentVariableName is missing. Read the variable's current exact name with variable_list and pass it back verbatim."
+    }),
+    VARIABLE_NAME_MISMATCH: (storedName, received) => ({
+      code: "VARIABLE_NAME_MISMATCH",
+      message: `Operation Denied: currentVariableName does not match the variable's stored name \u2014 stored name "${storedName}", received currentVariableName "${received}". Read the current name with variable_list and pass it back verbatim.`
+    }),
+    COLLECTION_NAME_MISSING: () => ({
+      code: "COLLECTION_NAME_MISSING",
+      message: "Operation Denied: collectionName is missing. Read the collection's current exact name with variable_list and pass it back verbatim."
+    }),
+    COLLECTION_NAME_MISMATCH: (storedName, received) => ({
+      code: "COLLECTION_NAME_MISMATCH",
+      message: `Operation Denied: collectionName does not match the resolved collection's stored name \u2014 stored name "${storedName}", received collectionName "${received}". Read the current name with variable_list and pass it back verbatim.`
+    }),
+    STYLE_NAME_MISSING: () => ({
+      code: "STYLE_NAME_MISSING",
+      message: "Operation Denied: currentStyleName is missing. Read the style's current exact name with style_list and pass it back verbatim."
+    }),
+    STYLE_NAME_MISMATCH: (storedName, received) => ({
+      code: "STYLE_NAME_MISMATCH",
+      message: `Operation Denied: currentStyleName does not match the resolved style's stored name \u2014 stored name "${storedName}", received currentStyleName "${received}". Read the current name with style_list and pass it back verbatim.`
+    }),
+    VARIABLE_SCOPES_MISSING: () => ({
+      code: "VARIABLE_SCOPES_MISSING",
+      message: "Operation Denied: scopes is missing for CREATE_VARIABLE. Pass the allowed scopes explicitly \u2014 supply an empty array to deliberately set none; omission is rejected."
+    }),
+    // D6 parent verification (Q22, Rev 31) — distinct causes, so an agent that
+    // omits the name is not steered into swapping a correct parentId.
+    PARENT_NAME_MISSING: () => ({
+      code: "PARENT_NAME_MISSING",
+      message: "Operation Denied: parentNodeName is missing. Read the parent node's current exact name with node_info and pass it back verbatim."
+    }),
+    PARENT_NAME_MISMATCH: (storedName, received) => ({
+      code: "PARENT_NAME_MISMATCH",
+      message: `Operation Denied: parentNodeName does not match the parent's stored name \u2014 stored name "${storedName}", received parentNodeName "${received}". Read the parent's current name with node_info and pass it back verbatim.`
+    })
+  };
+  function withPartialDisclosure(e, whatChanged, before) {
+    const base = getStructuredError(e);
+    return {
+      code: base.code,
+      message: `${base.message} Partial mutation: ${whatChanged}`,
+      details: { ...base.details || {}, partialMutation: true, whatChanged, before }
+    };
+  }
+  function formatScopeError(errorMessage, scopeRootId) {
+    return `${errorMessage} (Current Editable Scope Node ID: ${scopeRootId || "None"})`;
+  }
+  function describeError(e) {
+    const fallback = "Error executing command";
+    if (e == null) return fallback;
+    if (typeof e === "string") {
+      const message = e.trim();
+      return message || fallback;
+    }
+    let rawMessage;
+    let rawName;
+    try {
+      rawMessage = e.message;
+      rawName = e.name;
+    } catch (e2) {
+    }
+    if (typeof rawMessage === "string") {
+      const message = rawMessage.trim();
+      if (!message) return fallback;
+      const name2 = typeof rawName === "string" ? rawName.trim() : "";
+      return name2 && name2 !== "Error" ? `${name2}: ${message}` : message;
+    }
+    try {
+      if (typeof e.toString === "function") {
+        const rendered = e.toString();
+        if (typeof rendered === "string") {
+          const message = rendered.trim();
+          if (message && message !== "[object Object]") return message;
+        }
+      }
+    } catch (e2) {
+    }
+    try {
+      const json = JSON.stringify(e);
+      if (json && json !== "{}") return json;
+    } catch (e2) {
+    }
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    return name || fallback;
+  }
+  function getStructuredError(e) {
+    if (e && typeof e === "object") {
+      if (typeof e.code === "string") {
+        return {
+          code: e.code,
+          message: e.message || "Error executing command",
+          details: e.details
+        };
+      }
+      if (e.error && typeof e.error.code === "string") {
+        return {
+          code: e.error.code,
+          message: e.error.message || "Error executing command",
+          details: e.error.details
+        };
+      }
+    }
+    return { code: UNKNOWN_ERROR, message: describeError(e) };
+  }
+
   // figma_plugin/utils/progressUtils.ts
   function generateCommandId() {
     return "cmd_" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -28,7 +204,7 @@
       figma.ui.postMessage(update);
       await new Promise((r) => setTimeout(r, 0));
     } catch (err) {
-      console.warn(`Progress update delivery failed (ignored): ${err && err.message}`);
+      console.warn(`Progress update delivery failed (ignored): ${describeError(err)}`);
     }
     console.log(`Progress update: ${status} - ${progress}% - ${message}`);
     return update;
@@ -330,161 +506,6 @@
       current = current.parent;
     }
     return false;
-  }
-
-  // figma_plugin/utils/errors.ts
-  var UNKNOWN_ERROR = "UNKNOWN_ERROR";
-  var ERRORS = {
-    // Editable Scope Errors
-    READ_ONLY_MODE: "Operation Denied: Figma Plugin in Read-Only Mode. Verify if user intends for changes to be made. If so, advise user to disconnect plugin, paste a link to the page/layer to be edited into Link to Selection field, then reconnect plugin.",
-    OUTSIDE_SCOPE: "Operation Denied: Node outside editable scope. Verify if user intends for changes to be made to this particular node. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
-    PARENT_OUTSIDE_SCOPE: "Operation Denied: Parent outside editable scope. Verify if user intends for changes to be made to the parent node. If so, advise user to disconnect plugin, paste a link to the parent page/layer into Link to Selection field, then reconnect plugin.",
-    CLONING_SOURCE_NODE_OUTSIDE_SCOPE: "Operation Denied: Node to be cloned is outside editable scope. Verify if user intends for this node to be cloned. If so, advise user to disconnect plugin, paste a link to this page/layer into Link to Selection field, then reconnect plugin.",
-    SCOPE_DELETED: "Operation Denied: The specific Node set as the Editable Scope no longer exists/cannot be found. Advise user to disconnect the plugin and Select a new Editable Scope.",
-    VARIABLE_EDITS_DISABLED: "Operation Denied: Variable editing is disabled. Ask the user to tick 'Allow AI Agent to modify Variables' in the Figma plugin and reconnect.",
-    STYLE_EDITS_DISABLED: "Operation Denied: Style editing is disabled. Ask the user to tick 'Allow AI Agent to modify Styles' in the Figma plugin and reconnect.",
-    // Node ID Errors
-    NAME_MISMATCH: "Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.",
-    // PARENT_NAME_MISSING / PARENT_NAME_MISMATCH moved to the REFUSALS factory
-    // registry below (Q22, Rev 31 — distinct-cause coded pair). The merged
-    // string that was here is superseded.
-    // Parameter Errors
-    MISSING_NODE_IDS: "Missing or Invalid nodeIds parameter",
-    MISSING_TARGET_NODE_IDS: "Missing targetNodeIds parameter",
-    MISSING_SOURCE_INSTANCE_ID: "Missing sourceInstanceId parameter",
-    INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array"
-  };
-  var REFUSALS = {
-    // Phase 9–11 operational codes. No live throw site yet — each call site
-    // migrates from `ERRORS`-string prototyping to `REFUSALS.CODE()` as its
-    // phase lands, per the same precedent that moved the D6 parent codes.
-    PLUGIN_PEER_UNAVAILABLE: () => ({
-      code: "PLUGIN_PEER_UNAVAILABLE",
-      message: "Operation Denied: Figma Plugin is not running or available. Please open the Figma document, start the figma-edit-mcp plugin, and reconnect."
-    }),
-    PLUGIN_PEER_AMBIGUOUS: () => ({
-      code: "PLUGIN_PEER_AMBIGUOUS",
-      message: "Operation Denied: Multiple plugin peers are connected to this channel. Ensure the figma-edit-mcp plugin is open in exactly one Figma tab/document."
-    }),
-    CHANNEL_IN_USE: () => ({
-      code: "CHANNEL_IN_USE",
-      message: "Operation Denied: This channel is already in use by another MCP session. Please use a different channel name or disconnect the other session."
-    }),
-    VERSION_MISMATCH: () => ({
-      code: "VERSION_MISMATCH",
-      message: "Operation Denied: Version mismatch between MCP server and Figma plugin. Please ensure both are updated to the same version."
-    }),
-    // Page codes are operational failures, not safety refusals — no "Operation
-    // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
-    PAGE_LOAD_FAILED: () => ({
-      code: "PAGE_LOAD_FAILED",
-      message: "Failed to load the Figma page \u2014 it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load."
-    }),
-    PAGE_NOT_FOUND: () => ({
-      code: "PAGE_NOT_FOUND",
-      message: "Page not found: the specified page ID does not exist in this document. List pages with page_info and pass a page ID back verbatim."
-    }),
-    TARGET_NOT_PAGE: () => ({
-      code: "TARGET_NOT_PAGE",
-      message: "Target node is not a PAGE. List pages with page_info and pass a page ID, not a node ID."
-    }),
-    PAGE_LOAD_TIMEOUT: () => ({
-      code: "PAGE_LOAD_TIMEOUT",
-      message: "Page load timed out. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user."
-    }),
-    DOCUMENT_SCAN_INCOMPLETE: () => ({
-      code: "DOCUMENT_SCAN_INCOMPLETE",
-      message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded \u2014 a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first."
-    }),
-    CONNECTOR_TEMPLATE_REQUIRED: () => ({
-      code: "CONNECTOR_TEMPLATE_REQUIRED",
-      message: "Operation Denied: No valid connector template was found in the document. Find a connector with page_info/node_info (pasting one from FigJam if the file has none) and pass its ID and exact current name."
-    }),
-    VARIABLE_NAME_MISSING: () => ({
-      code: "VARIABLE_NAME_MISSING",
-      message: "Operation Denied: currentVariableName is missing. Read the variable's current exact name with variable_list and pass it back verbatim."
-    }),
-    VARIABLE_NAME_MISMATCH: (storedName, received) => ({
-      code: "VARIABLE_NAME_MISMATCH",
-      message: `Operation Denied: currentVariableName does not match the variable's stored name \u2014 stored name "${storedName}", received currentVariableName "${received}". Read the current name with variable_list and pass it back verbatim.`
-    }),
-    COLLECTION_NAME_MISSING: () => ({
-      code: "COLLECTION_NAME_MISSING",
-      message: "Operation Denied: collectionName is missing. Read the collection's current exact name with variable_list and pass it back verbatim."
-    }),
-    COLLECTION_NAME_MISMATCH: (storedName, received) => ({
-      code: "COLLECTION_NAME_MISMATCH",
-      message: `Operation Denied: collectionName does not match the resolved collection's stored name \u2014 stored name "${storedName}", received collectionName "${received}". Read the current name with variable_list and pass it back verbatim.`
-    }),
-    STYLE_NAME_MISSING: () => ({
-      code: "STYLE_NAME_MISSING",
-      message: "Operation Denied: currentStyleName is missing. Read the style's current exact name with style_list and pass it back verbatim."
-    }),
-    STYLE_NAME_MISMATCH: (storedName, received) => ({
-      code: "STYLE_NAME_MISMATCH",
-      message: `Operation Denied: currentStyleName does not match the resolved style's stored name \u2014 stored name "${storedName}", received currentStyleName "${received}". Read the current name with style_list and pass it back verbatim.`
-    }),
-    VARIABLE_SCOPES_MISSING: () => ({
-      code: "VARIABLE_SCOPES_MISSING",
-      message: "Operation Denied: scopes is missing for CREATE_VARIABLE. Pass the allowed scopes explicitly \u2014 supply an empty array to deliberately set none; omission is rejected."
-    }),
-    // D6 parent verification (Q22, Rev 31) — distinct causes, so an agent that
-    // omits the name is not steered into swapping a correct parentId.
-    PARENT_NAME_MISSING: () => ({
-      code: "PARENT_NAME_MISSING",
-      message: "Operation Denied: parentNodeName is missing. Read the parent node's current exact name with node_info and pass it back verbatim."
-    }),
-    PARENT_NAME_MISMATCH: (storedName, received) => ({
-      code: "PARENT_NAME_MISMATCH",
-      message: `Operation Denied: parentNodeName does not match the parent's stored name \u2014 stored name "${storedName}", received parentNodeName "${received}". Read the parent's current name with node_info and pass it back verbatim.`
-    })
-  };
-  function withPartialDisclosure(e, whatChanged, before) {
-    const base = getStructuredError(e);
-    return {
-      code: base.code,
-      message: `${base.message} Partial mutation: ${whatChanged}`,
-      details: { ...base.details || {}, partialMutation: true, whatChanged, before }
-    };
-  }
-  function formatScopeError(errorMessage, scopeRootId) {
-    return `${errorMessage} (Current Editable Scope Node ID: ${scopeRootId || "None"})`;
-  }
-  function describeError(e) {
-    if (e == null) return "Error executing command";
-    if (typeof e === "string") return e;
-    if (typeof e.message === "string" && e.message.length > 0) {
-      return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
-    }
-    if (typeof e.toString === "function") {
-      const s = e.toString();
-      if (s && s !== "[object Object]") return s;
-    }
-    try {
-      const json = JSON.stringify(e);
-      if (json && json !== "{}") return json;
-    } catch (e2) {
-    }
-    return e.name || "Error executing command";
-  }
-  function getStructuredError(e) {
-    if (e && typeof e === "object") {
-      if (typeof e.code === "string") {
-        return {
-          code: e.code,
-          message: e.message || "Error executing command",
-          details: e.details
-        };
-      }
-      if (e.error && typeof e.error.code === "string") {
-        return {
-          code: e.error.code,
-          message: e.error.message || "Error executing command",
-          details: e.error.details
-        };
-      }
-    }
-    return { code: UNKNOWN_ERROR, message: describeError(e) };
   }
 
   // figma_plugin/handlers/nodeReaders.ts
@@ -1655,11 +1676,12 @@
             nodeInfo
           };
         } catch (error) {
-          console.error(`Error deleting node ${nodeId}: ${error.message}`);
+          const errorMessage = describeError(error);
+          console.error(`Error deleting node ${nodeId}: ${errorMessage}`);
           return {
             success: false,
             nodeId,
-            error: error.message
+            error: errorMessage
           };
         }
       });
@@ -2679,6 +2701,12 @@
     if (!node) {
       return `Target instance ${requestedId} is no longer available or is not an instance (it may have changed since validation). Re-read the instances with node_info and resend.`;
     }
+    if (node.removed === true) {
+      return `Target instance ${requestedId} was removed since validation. Re-read the instances with node_info and resend.`;
+    }
+    if (scopeRoot && scopeRoot.removed === true) {
+      return `The editable scope root ${scopeRoot.id} was removed since validation. Reconnect with a valid editable scope, then re-read the instances with node_info and resend.`;
+    }
     if (node.id !== requestedId) {
       return `Target instance ${requestedId} resolved to a different node (${node.id}) since validation. Re-read it with node_info and resend.`;
     }
@@ -2694,9 +2722,25 @@
     try {
       assertNotLocked(node);
     } catch (lockErr) {
-      return `${lockErr.message} (locked since validation \u2014 re-read with node_info and resend.)`;
+      return `${describeError(lockErr)} (locked since validation \u2014 re-read with node_info and resend.)`;
     }
     return null;
+  }
+  async function captureOriginalMainComponentId(targetInstance, requestedId) {
+    let originalMain;
+    try {
+      originalMain = await targetInstance.getMainComponentAsync();
+    } catch (error) {
+      throw new Error(
+        `Failed to capture the original main component for target instance ${requestedId}: ${describeError(error)}. No swap was attempted. Re-read the instance with node_info and resend.`
+      );
+    }
+    if (!originalMain || typeof originalMain.id !== "string" || originalMain.id.length === 0) {
+      throw new Error(
+        `Failed to capture the original main component for target instance ${requestedId}: no main component was returned. No swap was attempted. Re-read the instance with node_info and resend.`
+      );
+    }
+    return originalMain.id;
   }
   async function getValidTargetInstances(targetItems, scopeRoot) {
     if (!Array.isArray(targetItems)) {
@@ -2749,8 +2793,15 @@
       overrides: sourceInstance.overrides || []
     };
   }
+  function notifyBestEffort(message) {
+    try {
+      figma.notify(message);
+    } catch (error) {
+      console.warn(`Notification delivery failed (ignored): ${describeError(error)}`);
+    }
+  }
   async function setInstanceOverrides(targetInstances, sourceResult, guard) {
-    var _a, _b;
+    var _a, _b, _c;
     const expectationFor = (idx) => {
       const item = guard && guard.items ? guard.items[idx] : void 0;
       if (!item) return null;
@@ -2768,16 +2819,23 @@
       }
     };
     assertNoDrift();
-    const originalMainIds = [];
-    for (const targetInstance of targetInstances) {
-      try {
-        const originalMain = await targetInstance.getMainComponentAsync();
-        originalMainIds.push(originalMain ? originalMain.id : null);
-      } catch (e) {
-        originalMainIds.push(null);
-      }
+    for (let targetIdx = 0; targetIdx < targetInstances.length; targetIdx++) {
+      const exp = expectationFor(targetIdx);
+      await captureOriginalMainComponentId(
+        targetInstances[targetIdx],
+        exp ? exp.requestedId : (_a = targetInstances[targetIdx]) == null ? void 0 : _a.id
+      );
     }
     assertNoDrift();
+    let firstTargetOriginalMainComponentId = null;
+    if (targetInstances.length > 0) {
+      const firstExp = expectationFor(0);
+      firstTargetOriginalMainComponentId = await captureOriginalMainComponentId(
+        targetInstances[0],
+        firstExp ? firstExp.requestedId : (_b = targetInstances[0]) == null ? void 0 : _b.id
+      );
+      assertNoDrift();
+    }
     try {
       const { sourceInstance, mainComponent, overrides } = sourceResult;
       console.log(`Processing ${targetInstances.length} instances with ${overrides.length} overrides`);
@@ -2807,9 +2865,13 @@
         let failureMsg = "";
         let swapped = false;
         const appliedFields = [];
-        const originalMainComponentId = (_a = originalMainIds[targetIdx]) != null ? _a : null;
+        let originalMainComponentId = null;
         try {
           const exp = expectationFor(targetIdx);
+          originalMainComponentId = targetIdx === 0 ? firstTargetOriginalMainComponentId : await captureOriginalMainComponentId(
+            targetInstance,
+            exp ? exp.requestedId : targetInstance == null ? void 0 : targetInstance.id
+          );
           const lateDrift = guard && exp ? checkTargetPredicates(targetInstance, exp.requestedId, exp.expectedName, guard.scopeRoot) : null;
           if (lateDrift) {
             throw new Error(lateDrift);
@@ -2820,7 +2882,7 @@
             console.log(`Swapped component for instance "${targetInstance.name}"`);
           } catch (error) {
             hasFailure = true;
-            failureMsg = `Swap component error: ${error.message}`;
+            failureMsg = `Swap component error: ${describeError(error)}`;
           }
           if (!hasFailure) {
             for (const override of overrides) {
@@ -2865,7 +2927,7 @@
                   }
                 } catch (fieldError) {
                   hasFailure = true;
-                  failureMsg = `Field ${field} error: ${fieldError.message}`;
+                  failureMsg = `Field ${field} error: ${describeError(fieldError)}`;
                   break;
                 }
                 if (!fieldApplied) {
@@ -2883,7 +2945,7 @@
           }
         } catch (instanceError) {
           hasFailure = true;
-          failureMsg = instanceError.message;
+          failureMsg = describeError(instanceError);
         }
         if (hasFailure) {
           hasFailed = true;
@@ -2920,8 +2982,8 @@
         }
       }
       const envelope = batchEnvelope(targetInstances.length, successCount, failureCount, skippedCount);
-      const message = envelope.status === "success" ? `Applied ${totalAppliedCount} overrides to ${successCount} instances` : failureCount > 0 ? `Failed to apply overrides: ${(_b = results.find((r) => r.status === "failed")) == null ? void 0 : _b.error}` : "No overrides applied to any instance";
-      figma.notify(message);
+      const message = envelope.status === "success" ? `Applied ${totalAppliedCount} overrides to ${successCount} instances` : failureCount > 0 ? `Failed to apply overrides: ${(_c = results.find((r) => r.status === "failed")) == null ? void 0 : _c.error}` : "No overrides applied to any instance";
+      notifyBestEffort(message);
       return {
         ...envelope,
         totalAppliedCount,
@@ -2930,8 +2992,8 @@
       };
     } catch (error) {
       console.error("Error in setInstanceOverrides:", error);
-      const message = `Error: ${error.message}`;
-      figma.notify(message);
+      const message = `Error: ${describeError(error)}`;
+      notifyBestEffort(message);
       const targets = Array.isArray(targetInstances) ? targetInstances : [];
       const rows = targets.map((t) => ({
         success: false,
@@ -3926,14 +3988,15 @@
         );
         await new Promise((r) => setTimeout(r, 0));
       } catch (error) {
-        console.error(`Error replacing text in node ${replacement.nodeId}: ${error.message}`);
+        const errorMessage = describeError(error);
+        console.error(`Error replacing text in node ${replacement.nodeId}: ${errorMessage}`);
         hasFailed = true;
         failureCount++;
         const row = {
           success: false,
           status: "failed",
           nodeId: replacement.nodeId,
-          error: `Error applying replacement: ${error.message}`
+          error: `Error applying replacement: ${errorMessage}`
         };
         if (report.fontMutated) {
           row.partialMutation = true;
@@ -4173,7 +4236,7 @@
       };
     } catch (error) {
       console.error("Error in setAnnotation:", error);
-      return { success: false, error: error.message };
+      return { success: false, error: describeError(error) };
     }
   }
   async function setMultipleAnnotations(params) {
@@ -4249,7 +4312,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           success: false,
           status: "failed",
           nodeId: annotation.nodeId,
-          error: error.message
+          error: describeError(error)
         });
         console.error(`\u2717 Annotation ${i + 1} failed with error:`, error);
       }

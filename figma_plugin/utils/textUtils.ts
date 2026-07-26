@@ -168,8 +168,9 @@ export const setCharacters = async (node: any, characters: any, options?: any, r
 /**
  * Serializable snapshot of a text node's font BEFORE mutation (Q24). A single
  * font is returned as `{family, style}`; a mixed-font node captures its styled
- * segments so the disclosure is genuinely restorable (falling back to
- * `{mixed: true}` if the segment API is unavailable, e.g. in unit mocks).
+ * segments as truthful diagnostic evidence of the pre-mutation map (falling
+ * back to `{mixed: true}` if the segment API is unavailable, e.g. in unit
+ * mocks). No registered tool currently writes that segment map back.
  */
 function captureFontSnapshot(node: any): any {
     const fn = node.fontName;

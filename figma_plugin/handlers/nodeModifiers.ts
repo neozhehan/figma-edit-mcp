@@ -7,6 +7,7 @@ import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js
 import { delay } from '../utils/helpers.js';
 import { getContainingPageNode, isAncestorOf } from '../utils/nodeUtils.js';
 import { batchEnvelope } from '../utils/batchResult.js';
+import { describeError } from '../utils/errors.js';
 
 /**
  * Moves and/or resizes a node (sets absolute coordinates and dimensions)
@@ -222,11 +223,12 @@ export async function deleteMultipleNodes(params: any) {
                     nodeInfo: nodeInfo,
                 };
             } catch (error: any) {
-                console.error(`Error deleting node ${nodeId}: ${error.message}`);
+                const errorMessage = describeError(error);
+                console.error(`Error deleting node ${nodeId}: ${errorMessage}`);
                 return {
                     success: false,
                     nodeId: nodeId,
-                    error: error.message,
+                    error: errorMessage,
                 };
             }
         });

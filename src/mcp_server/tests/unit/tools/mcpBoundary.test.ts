@@ -126,6 +126,7 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
 
     it("output schemas are still advertised in tools/list (fields documented; error field present)", () => {
         const styleManage = toolsList.tools.find((t: any) => t.name === "style_manage");
+        const nodeDelete = toolsList.tools.find((t: any) => t.name === "node_delete");
         expect(styleManage.outputSchema).toBeDefined();
         // Success fields remain documented (types advertised, requiredness relaxed)…
         expect(styleManage.outputSchema.properties.id).toBeDefined();
@@ -133,6 +134,14 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
         // …and the common error envelope is advertised alongside them.
         expect(styleManage.outputSchema.properties.error).toBeDefined();
         expect(styleManage.outputSchema.required ?? []).toEqual([]);
+
+        // R10/Rev 43: clients see the corrected disclosure contract. `before`
+        // records diagnostic evidence; it does not promise a directly executable
+        // one-call restore.
+        const beforeDescription =
+            nodeDelete.outputSchema.properties.results.items.properties.before.description;
+        expect(beforeDescription).toContain("diagnostic evidence");
+        expect(beforeDescription).not.toContain("so a restoring write can be composed");
     });
 
     it("Q21: the dual-description contract holds in the emitted tools/list", () => {

@@ -1,6 +1,7 @@
 /**
  * Progress update utilities for Figma plugin
  */
+import { describeError } from './errors.js';
 
 /**
  * Generates a unique command ID for tracking operations
@@ -70,7 +71,9 @@ export async function sendProgressUpdate(
         figma.ui.postMessage(update);
         await new Promise(r => setTimeout(r, 0));
     } catch (err: any) {
-        console.warn(`Progress update delivery failed (ignored): ${err && err.message}`);
+        // The transport may throw any JavaScript value, including a Proxy whose
+        // property access throws. Error reporting must remain best-effort too.
+        console.warn(`Progress update delivery failed (ignored): ${describeError(err)}`);
     }
     console.log(`Progress update: ${status} - ${progress}% - ${message}`);
 

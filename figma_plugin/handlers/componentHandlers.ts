@@ -156,7 +156,7 @@ export async function getComponents(params: any) {
 }
 
 import { getContainingPageNode, isAncestorOf, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
-import { ERRORS, REFUSALS, formatScopeError } from '../utils/errors.js';
+import { ERRORS, REFUSALS, describeError, formatScopeError } from '../utils/errors.js';
 import { batchEnvelope } from '../utils/batchResult.js';
 import { resolveAppendableParent } from './nodeCreators.js';
 
@@ -474,6 +474,15 @@ export function checkTargetPredicates(node: any, requestedId: any, expectedName:
     if (!node) {
         return `Target instance ${requestedId} is no longer available or is not an instance (it may have changed since validation). Re-read the instances with node_info and resend.`;
     }
+    // Figma keeps stored node references after collaborative deletion and exposes
+    // `removed` specifically so long-lived plugins can fail closed. A truthy
+    // object is therefore not proof that the target still exists.
+    if (node.removed === true) {
+        return `Target instance ${requestedId} was removed since validation. Re-read the instances with node_info and resend.`;
+    }
+    if (scopeRoot && scopeRoot.removed === true) {
+        return `The editable scope root ${scopeRoot.id} was removed since validation. Reconnect with a valid editable scope, then re-read the instances with node_info and resend.`;
+    }
     // Identity: the resolver must have returned the node that was requested.
     if (node.id !== requestedId) {
         return `Target instance ${requestedId} resolved to a different node (${node.id}) since validation. Re-read it with node_info and resend.`;
@@ -494,9 +503,38 @@ export function checkTargetPredicates(node: any, requestedId: any, expectedName:
     try {
         assertNotLocked(node);
     } catch (lockErr: any) {
-        return `${lockErr.message} (locked since validation — re-read with node_info and resend.)`;
+        return `${describeError(lockErr)} (locked since validation — re-read with node_info and resend.)`;
     }
     return null;
+}
+
+/**
+ * Captures the target's current main-component ID or fails before the swap.
+ *
+ * The value is mandatory partial-mutation evidence: swallowing a failed read as
+ * `null` would make a later failure row claim a before-state that was never
+ * observed. Call this immediately before the synchronous final target gate so
+ * no other target's awaited read can stale the captured value.
+ */
+async function captureOriginalMainComponentId(targetInstance: any, requestedId: any): Promise<string> {
+    let originalMain: any;
+    try {
+        originalMain = await targetInstance.getMainComponentAsync();
+    } catch (error: any) {
+        throw new Error(
+            `Failed to capture the original main component for target instance ${requestedId}: ${describeError(error)}. ` +
+            "No swap was attempted. Re-read the instance with node_info and resend."
+        );
+    }
+
+    if (!originalMain || typeof originalMain.id !== "string" || originalMain.id.length === 0) {
+        throw new Error(
+            `Failed to capture the original main component for target instance ${requestedId}: no main component was returned. ` +
+            "No swap was attempted. Re-read the instance with node_info and resend."
+        );
+    }
+
+    return originalMain.id;
 }
 
 /**
@@ -593,6 +631,19 @@ export async function getSourceInstanceData(sourceInstanceId: any) {
 }
 
 /**
+ * User notifications are best-effort telemetry. A delivery failure must never
+ * enter instance-override outcome accounting after a mutation or erase the D7
+ * envelope that reports that mutation.
+ */
+function notifyBestEffort(message: string): void {
+    try {
+        figma.notify(message);
+    } catch (error: any) {
+        console.warn(`Notification delivery failed (ignored): ${describeError(error)}`);
+    }
+}
+
+/**
  * Sets overrides to target component instances
  * @param {InstanceNode[]} targetInstances - Array of target instances
  * @param {Object} sourceResult - Source instance data
@@ -630,23 +681,34 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
     // an all-failed execution envelope: nothing was ever attempted. Throwing
     // past the catch is what makes that distinction visible to the dispatcher.
     assertNoDrift();
-    // P6-1: the sandbox is dynamic-page, so the synchronous mainComponent getter
-    // throws — read it asynchronously. HOISTED here (R2) so the mutation loop
-    // below has no `await` between a target's final predicate check and its
-    // `swapComponent()`.
-    const originalMainIds: Array<string | null> = [];
-    for (const targetInstance of targetInstances) {
-        try {
-            const originalMain = await targetInstance.getMainComponentAsync();
-            originalMainIds.push(originalMain ? originalMain.id : null);
-        } catch {
-            originalMainIds.push(null);
-        }
+    // P6-1/Q9: batch-wide preflight proves every target's original main
+    // component is readable before the first mutation. The authoritative
+    // before-value is captured again per target immediately before its final
+    // synchronous gate; otherwise a later target's awaited preflight read could
+    // stale an earlier target's saved ID.
+    for (let targetIdx = 0; targetIdx < targetInstances.length; targetIdx++) {
+        const exp = expectationFor(targetIdx);
+        await captureOriginalMainComponentId(
+            targetInstances[targetIdx],
+            exp ? exp.requestedId : targetInstances[targetIdx]?.id
+        );
     }
-    // Those hoisted awaits are themselves yields, so re-assert the whole batch
-    // before the first mutation. After this point the loop is synchronous up to
-    // each swap.
+    // Those preflight awaits are themselves yields, so re-assert the whole batch
+    // before the first mutation.
     assertNoDrift();
+    // Capture target 0's authoritative before-value outside the execution catch.
+    // Its await can drift any target after the preflight assertion, so re-check
+    // the WHOLE batch once more before entering the mutation loop. There is no
+    // await between this assertion and target 0's final gate/swap.
+    let firstTargetOriginalMainComponentId: string | null = null;
+    if (targetInstances.length > 0) {
+        const firstExp = expectationFor(0);
+        firstTargetOriginalMainComponentId = await captureOriginalMainComponentId(
+            targetInstances[0],
+            firstExp ? firstExp.requestedId : targetInstances[0]?.id
+        );
+        assertNoDrift();
+    }
 
     try {
         const { sourceInstance, mainComponent, overrides } = sourceResult;
@@ -683,21 +745,30 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
             let failureMsg = "";
             let swapped = false;
             const appliedFields: any[] = []; // C4: override fields actually written
-            // P6-1/R2: captured by the hoisted pass above, so no await is needed
-            // here — the Q24 before-value is available without a yield.
-            const originalMainComponentId: string | null = originalMainIds[targetIdx] ?? null;
+            let originalMainComponentId: string | null = null;
 
             try {
+                const exp = expectationFor(targetIdx);
+                // Q9: capture the authoritative before-value at use time. Target
+                // 0 was captured and the whole batch rechecked immediately before
+                // entering this loop. Later targets are captured here, after any
+                // earlier target's awaited override writes. In both cases the
+                // capture is before the final synchronous target gate.
+                originalMainComponentId = targetIdx === 0
+                    ? firstTargetOriginalMainComponentId
+                    : await captureOriginalMainComponentId(
+                        targetInstance,
+                        exp ? exp.requestedId : targetInstance?.id
+                    );
                 // R2 (second recheck) — FINAL PER-TARGET GATE. Applying a
                 // previous target's overrides awaits (`getNodeByIdAsync`,
-                // `loadFontAsync`), so a later target can drift mid-loop. This
-                // check is SYNCHRONOUS and there is no `await` between it and
-                // `swapComponent()` below, so the target cannot change in
-                // between. Earlier targets may already have mutated, so this is
-                // a failure ROW (stop-on-first ⇒ the rest become `skipped`)
-                // rather than a throw: losing the D7 envelope after mutation is
-                // the C3 defect.
-                const exp = expectationFor(targetIdx);
+                // `loadFontAsync`), and the main-component capture above also
+                // awaits, so a target can drift mid-loop. This check is
+                // SYNCHRONOUS and there is no `await` between it and
+                // `swapComponent()` below. Earlier targets may already have
+                // mutated, so this is a failure ROW (stop-on-first ⇒ the rest
+                // become `skipped`) rather than a throw: losing the D7 envelope
+                // after mutation is the C3 defect.
                 const lateDrift = (guard && exp)
                     ? checkTargetPredicates(targetInstance, exp.requestedId, exp.expectedName, guard.scopeRoot)
                     : null;
@@ -711,7 +782,7 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
                     console.log(`Swapped component for instance "${targetInstance.name}"`);
                 } catch (error: any) {
                     hasFailure = true;
-                    failureMsg = `Swap component error: ${error.message}`;
+                    failureMsg = `Swap component error: ${describeError(error)}`;
                 }
 
                 if (!hasFailure) {
@@ -777,7 +848,7 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
                                 }
                             } catch (fieldError: any) {
                                 hasFailure = true;
-                                failureMsg = `Field ${field} error: ${fieldError.message}`;
+                                failureMsg = `Field ${field} error: ${describeError(fieldError)}`;
                                 break;
                             }
 
@@ -797,7 +868,7 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
                 }
             } catch (instanceError: any) {
                 hasFailure = true;
-                failureMsg = instanceError.message;
+                failureMsg = describeError(instanceError);
             }
 
             if (hasFailure) {
@@ -843,7 +914,7 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
             ? `Applied ${totalAppliedCount} overrides to ${successCount} instances`
             : (failureCount > 0 ? `Failed to apply overrides: ${results.find(r => r.status === "failed")?.error}` : "No overrides applied to any instance");
 
-        figma.notify(message);
+        notifyBestEffort(message);
 
         // Q26: only the shared envelope counts; `totalAppliedCount` is a genuine
         // override-property count (not an item count), kept as one field — the
@@ -859,8 +930,8 @@ export async function setInstanceOverrides(targetInstances: any, sourceResult: a
         // P6-5: an unexpected setup failure still returns the full envelope with
         // one row per input, never an envelope-less shape.
         console.error("Error in setInstanceOverrides:", error);
-        const message = `Error: ${error.message}`;
-        figma.notify(message);
+        const message = `Error: ${describeError(error)}`;
+        notifyBestEffort(message);
         const targets: any[] = Array.isArray(targetInstances) ? targetInstances : [];
         const rows = targets.map((t: any) => ({
             success: false,
@@ -1455,4 +1526,3 @@ export async function deleteComponentProperty(params: any) {
         throw new Error(`Error deleting component property: ${error.message}`);
     }
 }
-
