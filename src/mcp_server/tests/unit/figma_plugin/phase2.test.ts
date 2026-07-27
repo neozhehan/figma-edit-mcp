@@ -690,7 +690,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
         expect(combineAsVariantsCalled).toBe(false);
     });
 
-    it("happy path renames variants, calls combineAsVariants, renames the component set, reparents when requested, and returns the expected COMPONENT_SET result", async () => {
+    it("happy path renames variants, combines directly in the verified parent, renames the set, and returns the expected result", async () => {
         const { comp1, comp2, parentNode } = setupEnvironment();
         const res = await sendCommand({
             components: [
@@ -708,7 +708,8 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
         expect(comp1.name).toBe("Size=Small");
         expect(comp2.name).toBe("Size=Large");
         expect(combineAsVariantsCalled).toBe(true);
-        expect(appendChildCalledOnParent).toBe(true);
+        expect(combineAsVariantsArgs[1]).toBe(parentNode);
+        expect(appendChildCalledOnParent).toBe(false);
     });
 
     it("simulated combineAsVariants throw restores original component names", async () => {
@@ -728,11 +729,10 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
         expect(combineAsVariantsCalled).toBe(true);
     });
 
-    it("residual post-combine reparent failure surfaces as an error without restoring variant names (D5)", async () => {
+    it("D11 eliminates the post-combine reparent step", async () => {
         const { comp1, comp2, parentNode } = setupEnvironment();
-        // Passes the "appendChild" in parent precheck, then fails at placement —
-        // simulates the R1 TOCTOU residual. The set exists, so names must NOT
-        // be rolled back and the set stays at the combine location.
+        // A failing appendChild must be irrelevant: combineAsVariants receives
+        // the verified parent directly and no second placement operation runs.
         parentNode.appendChild = () => {
             throw new Error("Mock TOCTOU appendChild error");
         };
@@ -746,10 +746,10 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentId: "parent-id",
             parentNodeName: "Parent Node"
         });
-        expect(res.type).toBe("command-error");
-        expect(res.error.message).toContain("Mock TOCTOU appendChild error");
+        expect(res.type).toBe("command-result");
         expect(combineAsVariantsCalled).toBe(true);
-        expect(comp1.name).toBe("Size=Small"); // variant names retained
+        expect(combineAsVariantsArgs[1]).toBe(parentNode);
+        expect(comp1.name).toBe("Size=Small");
         expect(comp2.name).toBe("Size=Large");
     });
 

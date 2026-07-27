@@ -50,6 +50,19 @@ export const PARENT_VERIFICATION_CODES = [
 ] as const;
 
 /**
+ * D10 annotation-category verification code (Phase 7; Q30, Rev 46). The
+ * category check is a verification refusal this release ADDS, so D9's "adds or
+ * edits" rule codes it — the same precedent that added VARIABLE_SCOPES_MISSING
+ * (Rev 27) and the D6 parent pair (Rev 31). Q23's uncoded-prose exception does
+ * not transfer: a duplicate target is detectable from the payload alone and so
+ * is rejected at Layer 1, whereas a category ID can only be checked against the
+ * document, making this a genuine coded execution refusal.
+ */
+export const ANNOTATION_VERIFICATION_CODES = [
+    "ANNOTATION_CATEGORY_NOT_FOUND",
+] as const;
+
+/**
  * Pre-existing join-flow codes — NOT new v2.3.3 inventory. Origin-assigned
  * since Q20 (figma-client codes them where the failure is created; channel.ts
  * passes them through and keys recovery guidance on them, never on prose).
@@ -61,10 +74,11 @@ export const JOIN_CODES = [
     "PLUGIN_DISCONNECTED",
 ] as const;
 
-/** The full ratified v2.3.3 inventory: nineteen codes plus the fallback. */
+/** The full ratified v2.3.3 inventory: twenty codes plus the fallback (Rev 46). */
 export const RATIFIED_CODES = [
     ...OPERATIONAL_CODES,
     ...VERIFICATION_CODES,
     ...PARENT_VERIFICATION_CODES,
+    ...ANNOTATION_VERIFICATION_CODES,
     UNKNOWN_ERROR,
 ] as const;

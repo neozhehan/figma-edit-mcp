@@ -5,7 +5,35 @@
 
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { batchEnvelope } from '../utils/batchResult.js';
-import { describeError } from '../utils/errors.js';
+import { describeError, REFUSALS } from '../utils/errors.js';
+
+/**
+ * Q32 (Rev 46): the D7/Q9 partial-mutation vocabulary reaches the annotation
+ * aggregator. An append that commits and then throws is a mutate-then-fail row,
+ * and the shared field names (`partialMutation`, `whatChanged`, `before`) are
+ * how the model learns one convention across batch rows and single-object tools
+ * (Q18). Q10's before/after counts remain the retry-identity mechanism; this
+ * labels the state those counts describe so a `failed` row is not blind-retried.
+ */
+interface AnnotationAttempt {
+    success: boolean;
+    nodeId?: string;
+    error?: string;
+    beforeCount: number;
+    afterCount: number;
+    partialMutation?: boolean;
+    whatChanged?: string;
+    before?: { annotationCount: number };
+}
+
+function annotationDisclosure(beforeCount: number, afterCount: number) {
+    if (afterCount === beforeCount) return {};
+    return {
+        partialMutation: true,
+        whatChanged: `the annotation was appended before the failure occurred — the node's annotation count went from ${beforeCount} to ${afterCount}.`,
+        before: { annotationCount: beforeCount },
+    };
+}
 
 /**
  * Gets annotations from nodes
@@ -89,13 +117,17 @@ export async function getAnnotations(params: any) {
                 throw new Error(`Node type ${node.type} does not support annotations`);
             }
 
-            // Collect annotations from this node and all its descendants
-            const mergedAnnotations: any[] = [];
+            // Use the same grouped ownership shape as page mode. Flattening
+            // individual annotations loses which descendant owns each one and
+            // makes list-before-retry ambiguous.
+            const annotatedNodes: any[] = [];
             const collect = async (n: any) => {
                 if ("annotations" in n && n.annotations && n.annotations.length > 0) {
-                    for (const a of n.annotations) {
-                        mergedAnnotations.push({ nodeId: n.id, annotation: a });
-                    }
+                    annotatedNodes.push({
+                        nodeId: n.id,
+                        name: n.name,
+                        annotations: n.annotations,
+                    });
                 }
                 if ("children" in n) {
                     for (const child of n.children) {
@@ -106,9 +138,7 @@ export async function getAnnotations(params: any) {
             await collect(node);
 
             const result: any = {
-                nodeId: node.id,
-                name: node.name,
-                annotations: mergedAnnotations,
+                annotatedNodes,
             };
 
             if (includeCategories) {
@@ -134,33 +164,48 @@ export async function getAnnotations(params: any) {
  * @param {Array} params.properties - Optional additional properties
  * @returns {Promise<Object>} Result of the annotation operation
  */
-async function setAnnotation(params: any) {
+async function setAnnotation(params: any, report: { beforeCount?: number } = {}): Promise<AnnotationAttempt> {
     const { nodeId, labelMarkdown, categoryId, properties } = params || {};
+    let node: any = null;
+    let beforeCount = 0;
+    let afterCount = 0;
 
     if (!nodeId) {
-        return { success: false, error: "Missing nodeId parameter" };
+        return { success: false, error: "Missing nodeId parameter", beforeCount, afterCount };
     }
 
-    if (!labelMarkdown) {
-        return { success: false, error: "Missing labelMarkdown parameter" };
+    if (typeof labelMarkdown !== "string" || labelMarkdown.trim().length === 0) {
+        return { success: false, error: "Missing or blank labelMarkdown parameter", beforeCount, afterCount };
     }
 
     try {
-        const node = await figma.getNodeByIdAsync(nodeId);
+        node = await figma.getNodeByIdAsync(nodeId);
         if (!node) {
-            return { success: false, error: `Node not found: ${nodeId}` };
+            return { success: false, error: `Node not found: ${nodeId}`, beforeCount, afterCount };
         }
 
         if (!("annotations" in node)) {
-            return { success: false, error: `Node type ${node.type} does not support annotations` };
+            return {
+                success: false,
+                error: `Node type ${node.type} does not support annotations`,
+                beforeCount,
+                afterCount,
+            };
         }
 
-        // Create the annotation object
+        const existingAnnotations = node.annotations || [];
+        beforeCount = existingAnnotations.length;
+        afterCount = beforeCount;
+        // Q32/R12: publish the pre-mutation count to the caller's loop scope the
+        // moment it is known, so a throw that escapes this function still has a
+        // truthful before-value instead of one read back after the failure.
+        report.beforeCount = beforeCount;
+
+        // Match the pinned Figma Annotation shape directly. `label` is a plain
+        // optional string in the API; the legacy nested MARKDOWN label object
+        // was never a supported annotation payload.
         const annotationObj: any = {
-            label: {
-                type: "MARKDOWN",
-                content: labelMarkdown,
-            },
+            labelMarkdown,
         };
 
         // Add category if provided
@@ -174,17 +219,70 @@ async function setAnnotation(params: any) {
         }
 
         // Add the annotation to the node
-        const existingAnnotations = node.annotations || [];
         node.annotations = [...existingAnnotations, annotationObj];
+        afterCount = node.annotations.length;
 
         return {
             success: true,
             nodeId: nodeId,
-            annotationCount: node.annotations.length,
+            beforeCount,
+            afterCount,
         };
     } catch (error: any) {
         console.error("Error in setAnnotation:", error);
-        return { success: false, error: describeError(error) };
+        // A setter can theoretically commit and then throw. Read the synchronous
+        // property again so the row reports the observable post-attempt count.
+        try {
+            if (node && "annotations" in node && node.annotations) {
+                afterCount = node.annotations.length;
+            }
+        } catch {
+            // Keep the last count observed before the failing read/write.
+        }
+        return {
+            success: false,
+            error: describeError(error),
+            beforeCount,
+            afterCount,
+            ...annotationDisclosure(beforeCount, afterCount),
+        };
+    }
+}
+
+async function readAnnotationCount(nodeId: string): Promise<number> {
+    try {
+        const node: any = await figma.getNodeByIdAsync(nodeId);
+        if (node && "annotations" in node && node.annotations) {
+            return node.annotations.length;
+        }
+    } catch {
+        // This is evidence for an unattempted row, not a new execution outcome.
+    }
+    return 0;
+}
+
+/**
+ * Validate every supplied category before the first annotation append.
+ *
+ * A later invalid category must not be discovered after an earlier row has
+ * already mutated. Duplicate category IDs are resolved once, but every supplied
+ * ID is compared with the category returned by Figma.
+ */
+async function verifyAnnotationCategories(annotations: any[]): Promise<void> {
+    const verified = new Set<string>();
+    for (const annotation of annotations) {
+        if (annotation.categoryId === undefined || verified.has(annotation.categoryId)) {
+            continue;
+        }
+
+        const category = await figma.annotations.getAnnotationCategoryByIdAsync(annotation.categoryId);
+        if (!category || category.id !== annotation.categoryId) {
+            // Q30 (Rev 46): a coded refusal from the central registry, not a
+            // handler-local prose throw — this is a verification refusal the
+            // release adds, so D9's "adds or edits" rule applies.
+            throw REFUSALS.ANNOTATION_CATEGORY_NOT_FOUND(String(annotation.categoryId));
+        }
+        verified.add(annotation.categoryId);
     }
 }
 
@@ -201,14 +299,25 @@ export async function setMultipleAnnotations(params: any) {
 
     const { nodeId, annotations } = params;
 
-    if (!annotations || annotations.length === 0) {
-        console.error("Validation failed: No annotations provided");
-        return { success: false, error: "No annotations provided" };
+    if (!annotations || !Array.isArray(annotations) || annotations.length === 0) {
+        // D7 Layer 2, not Layer 3: an empty batch was never accepted for
+        // execution, so it must THROW (a structured refusal with no envelope)
+        // rather than return an envelope-less `{success:false, error:"…"}`
+        // payload — that shape carries no `status`/counts/rows for the
+        // three-layer contract to classify, and its top-level string `error`
+        // collides with the D9 error envelope the output schema advertises, so
+        // the SDK client rejects the result outright. `deleteMultipleNodes` is
+        // the reference shape (P6-5). The schema's `.min(1)` means a conforming
+        // client never reaches this; it is the AS1 defense-in-depth path.
+        throw new Error("Missing or invalid annotations parameter: annotation_set requires at least one annotation entry.");
     }
 
     console.log(
         `Processing ${annotations.length} annotations for node ${nodeId}`
     );
+
+    // D10 category validation is batch-wide and happens before any append.
+    await verifyAnnotationCategories(annotations);
 
     const results: any[] = [];
     let successCount = 0;
@@ -220,12 +329,15 @@ export async function setMultipleAnnotations(params: any) {
     for (let i = 0; i < annotations.length; i++) {
         const annotation = annotations[i];
         if (hasFailed) {
+            const annotationCount = await readAnnotationCount(annotation.nodeId);
             skippedCount++;
             results.push({
                 success: false,
                 status: "skipped",
                 nodeId: annotation.nodeId || "unknown",
                 error: "Skipped due to previous failure in batch",
+                beforeCount: annotationCount,
+                afterCount: annotationCount,
             });
             continue;
         }
@@ -235,6 +347,9 @@ export async function setMultipleAnnotations(params: any) {
             JSON.stringify(annotation, null, 2)
         );
 
+        // Loop-scoped so the catch below can read the pre-mutation count even
+        // when setAnnotation throws past its own handler (the C1 pattern).
+        const report: { beforeCount?: number } = {};
         try {
             console.log("Calling setAnnotation with params:", {
                 nodeId: annotation.nodeId,
@@ -248,7 +363,7 @@ export async function setMultipleAnnotations(params: any) {
                 labelMarkdown: annotation.labelMarkdown,
                 categoryId: annotation.categoryId,
                 properties: annotation.properties,
-            });
+            }, report);
 
             console.log("setAnnotation result:", JSON.stringify(result, null, 2));
 
@@ -257,7 +372,9 @@ export async function setMultipleAnnotations(params: any) {
                 results.push({
                     success: true,
                     status: "success",
-                    nodeId: annotation.nodeId
+                    nodeId: annotation.nodeId,
+                    beforeCount: result.beforeCount,
+                    afterCount: result.afterCount,
                 });
                 console.log(`✓ Annotation ${i + 1} applied successfully`);
             } else {
@@ -266,19 +383,33 @@ export async function setMultipleAnnotations(params: any) {
                 results.push({
                     success: false,
                     status: "failed",
-                    nodeId: annotation.nodeId,
+                    // Q25 identity is a required row key; an item that never
+                    // supplied one still gets a schema-valid, honest placeholder
+                    // (the same guard `text_set_content` applies).
+                    nodeId: annotation.nodeId || "unknown",
                     error: result.error,
+                    beforeCount: result.beforeCount,
+                    afterCount: result.afterCount,
+                    ...annotationDisclosure(result.beforeCount, result.afterCount),
                 });
                 console.error(`✗ Annotation ${i + 1} failed:`, result.error);
             }
         } catch (error: any) {
+            const observedCount = await readAnnotationCount(annotation.nodeId);
+            // R12: the before-value is the count captured BEFORE the attempt,
+            // never one read back after the failure — a post-hoc read would make
+            // before equal after and hide a mutation that did happen.
+            const beforeCount = report.beforeCount ?? observedCount;
             hasFailed = true;
             failureCount++;
             results.push({
                 success: false,
                 status: "failed",
-                nodeId: annotation.nodeId,
+                nodeId: annotation.nodeId || "unknown",
                 error: describeError(error),
+                beforeCount,
+                afterCount: observedCount,
+                ...annotationDisclosure(beforeCount, observedCount),
             });
             console.error(`✗ Annotation ${i + 1} failed with error:`, error);
         }

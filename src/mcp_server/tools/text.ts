@@ -16,7 +16,7 @@ export function registerTextTools(server: McpServer) {
                     .array(
                         z.object({
                             nodeId: z.string().describe("ID of the text node"),
-                            nodeName: z.string().describe("Expected name of the node (verification)"),
+                            nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                             characters: z.string().describe("New text content"),
                         })
                     )
@@ -52,7 +52,7 @@ export function registerTextTools(server: McpServer) {
             description: "Set any combination of typography properties (font, size, weight, spacing, decoration, …) on a text node.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the text node to modify"),
-                nodeName: z.string().describe("Name of the node to verify against"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 fontSize: z.number().optional().describe("Font size"),
                 fontName: z
                     .object({

@@ -6,7 +6,7 @@ import * as path from "path";
 import { registerVariableTools } from "../../../tools/variable.js";
 import { registerStyleTools } from "../../../tools/style.js";
 import { withStrictInputSchemas } from "../../../tools/index.js";
-import { OPERATIONAL_CODES, VERIFICATION_CODES, PARENT_VERIFICATION_CODES, RATIFIED_CODES, UNKNOWN_ERROR } from "../../../../shared/errorCodes.js";
+import { OPERATIONAL_CODES, VERIFICATION_CODES, PARENT_VERIFICATION_CODES, ANNOTATION_VERIFICATION_CODES, RATIFIED_CODES, UNKNOWN_ERROR } from "../../../../shared/errorCodes.js";
 import { ERRORS, REFUSALS, getStructuredError } from "../../../../../figma_plugin/utils/errors.js";
 
 // Loaded under a cache-busting query key so this file always gets the REAL
@@ -385,8 +385,9 @@ describe("v2.3.3 Phase 4: Dispatcher emits structured errors (real main.ts)", ()
 // =============================================================================
 
 describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
-    it("the ratified inventory is exact: nineteen codes plus the fallback, no duplicates", () => {
-        expect(RATIFIED_CODES.length).toBe(20);
+    it("the ratified inventory is exact: twenty codes plus the fallback, no duplicates", () => {
+        // Rev 46 (Q30): ANNOTATION_CATEGORY_NOT_FOUND joins the inventory.
+        expect(RATIFIED_CODES.length).toBe(21);
         expect(new Set(RATIFIED_CODES).size).toBe(RATIFIED_CODES.length);
         expect(RATIFIED_CODES).toContain(UNKNOWN_ERROR);
     });
@@ -397,6 +398,7 @@ describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
         // Phase 9-11 operational placeholders — lives in REFUSALS.
         const allRatifiedRefusalCodes: readonly string[] = [
             ...OPERATIONAL_CODES, ...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES,
+            ...ANNOTATION_VERIFICATION_CODES,
         ];
 
         // The registry keys are exactly the ratified codes — no more, no less.
@@ -447,6 +449,7 @@ describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
         // routes through REFUSALS" a CI-enforced invariant, not a claim.
         const ratified = new Set<string>([
             ...OPERATIONAL_CODES, ...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES,
+            ...ANNOTATION_VERIFICATION_CODES,
         ]);
         const pluginDir = path.resolve(import.meta.dir, "../../../../../figma_plugin");
         const registryFile = path.join("utils", "errors.ts");

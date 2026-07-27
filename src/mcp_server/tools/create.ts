@@ -18,7 +18,7 @@ export function registerCreateTools(server: McpServer) {
                 height: z.number().describe("Height of the shape"),
                 name: z.string().optional().describe("Optional name for the shape"),
                 parentId: z.string().describe("Parent node ID to append the shape to"),
-                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
                 useAbsolutePosition: z.boolean().optional().describe("If true and parent is an auto-layout frame, forces absolute positioning to prevent layout shifts."),
                 fillColor: z.object({
                     r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -43,6 +43,7 @@ export function registerCreateTools(server: McpServer) {
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created shape"),
                 name: z.string().describe("Name of the created shape"),
+                parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -67,7 +68,7 @@ export function registerCreateTools(server: McpServer) {
                 height: z.number().describe("Height of the frame"),
                 name: z.string().optional().describe("Optional name for the frame"),
                 parentId: z.string().describe("Parent node ID to append the frame to"),
-                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
                 fillColor: z.object({
                     r: z.number().min(0).max(1).describe("Red component (0-1)"),
                     g: z.number().min(0).max(1).describe("Green component (0-1)"),
@@ -96,6 +97,7 @@ export function registerCreateTools(server: McpServer) {
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created frame"),
                 name: z.string().describe("Name of the created frame"),
+                parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -131,11 +133,12 @@ export function registerCreateTools(server: McpServer) {
                 }).optional().describe("Font color in RGBA format"),
                 name: z.string().optional().describe("Semantic layer name for the text node"),
                 parentId: z.string().describe("Parent node ID to append the text to"),
-                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created text node"),
                 name: z.string().describe("Name of the created text node"),
+                parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -163,13 +166,14 @@ export function registerCreateTools(server: McpServer) {
                 svg: z.string().describe("The SVG XML string"),
                 name: z.string().optional().describe("Name for the new node"),
                 parentId: z.string().describe("Parent ID to append to"),
-                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
                 x: z.number().optional().describe("X position"),
                 y: z.number().optional().describe("Y position"),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created node"),
                 name: z.string().describe("Name of the created node"),
+                parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -189,11 +193,12 @@ export function registerCreateTools(server: McpServer) {
             description: "Convert an existing frame into a main component.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the frame to convert to a component"),
-                nodeName: z.string().describe("Name of the node to verify against"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component"),
                 name: z.string().describe("Name of the created component"),
+                parentId: z.string().optional().describe("ID of the parent the component was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -217,11 +222,12 @@ export function registerCreateTools(server: McpServer) {
                 x: z.number().describe("X position"),
                 y: z.number().describe("Y position"),
                 parentId: z.string().describe("Parent node ID to append the instance to"),
-                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component instance"),
                 name: z.string().describe("Name of the component instance"),
+                parentId: z.string().optional().describe("ID of the parent the instance was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -242,17 +248,18 @@ export function registerCreateTools(server: McpServer) {
             inputSchema: z.object({
                 components: z.array(z.object({
                     nodeId: z.string().describe("ID of the component"),
-                    nodeName: z.string().describe("Current name (for verification)"),
+                    nodeName: z.string().describe("The component's current exact name, passed back verbatim from `node_info`."),
                     propertyValues: z.array(z.string()).describe("Values corresponding to properties array")
                 })).describe("Array of component objects"),
                 properties: z.array(z.string()).describe("Array of property names (e.g. ['Size', 'State'])"),
                 componentSetName: z.string().optional().describe("Name for the component set"),
                 parentId: z.string().describe("ID of the appendable parent container (frame, group, page, section, etc.) to place the set in; discover it with node_info"),
-                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from node_info."),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component set"),
                 name: z.string().describe("Name of the component set"),
+                parentId: z.string().optional().describe("ID of the parent the set was placed into — confirm containment without a follow-up read"),
                 type: z.string().optional().describe("Node type (COMPONENT_SET)"),
                 childCount: z.number().optional().describe("Number of variants in the set"),
                 warning: z.string().optional().describe("Warning message if some properties could not be read"),
@@ -283,9 +290,9 @@ export function registerCreateTools(server: McpServer) {
                     .array(
                         z.object({
                             startNodeId: z.string().describe("ID of the starting node"),
-                            startNodeName: z.string().describe("Name of the starting node"),
+                            startNodeName: z.string().describe("The start node's current exact name, passed back verbatim from `node_info`."),
                             endNodeId: z.string().describe("ID of the ending node"),
-                            endNodeName: z.string().describe("Name of the ending node"),
+                            endNodeName: z.string().describe("The end node's current exact name, passed back verbatim from `node_info`."),
                             text: z.string().optional().describe("Optional text to display on the connector"),
                         })
                     )

@@ -48,7 +48,7 @@ export function registerComponentTools(server: McpServer) {
             description: "Add or edit a component-property definition (BOOLEAN/TEXT/INSTANCE_SWAP) on a main component or variant set. Deleting is `component_delete_property`.",
             inputSchema: z.object({
                 nodeId: z.string().describe("ID of the COMPONENT or COMPONENT_SET"),
-                nodeName: z.string().describe("Name of the node for verification"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 action: z.enum(["ADD", "EDIT"]).describe("Action to perform"),
                 propertyName: z.string().describe("The human-readable name of the property to affect"),
                 newPropertyName: z.string().optional().describe("For the EDIT action, to rename the property"),
@@ -94,7 +94,7 @@ export function registerComponentTools(server: McpServer) {
             description: "Remove a component-property definition from a main component or variant set; propagates to every instance.",
             inputSchema: z.object({
                 nodeId: z.string().describe("ID of the COMPONENT or COMPONENT_SET"),
-                nodeName: z.string().describe("Name of the node for verification"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 propertyName: z.string().describe("The human-readable name of the property to delete"),
             }),
             outputSchema: looseOutput({

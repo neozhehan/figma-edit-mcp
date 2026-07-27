@@ -183,6 +183,45 @@ describe("Phase 4: Atomicity & Pre-Validation in dispatch", () => {
         expect(res.error.message).toContain("does not support annotations");
     });
 
+    it("pre-validates names: annotation_set refuses a mismatched nodeName with zero mutation", async () => {
+        // G2 applies to every batch item. Phase 7 reauthored this tool's item
+        // schema, so the name gate is asserted at the layer that enforces it —
+        // the dispatcher — not only through the handler tests that bypass it.
+        const root = attachParents({
+            id: "scope-root", name: "Scope", type: "FRAME",
+            children: [
+                { id: "100:1", name: "A", type: "TEXT", annotations: [] },
+                { id: "100:2", name: "B", type: "TEXT", annotations: [] }
+            ]
+        });
+        installFigma([root]);
+
+        const msg = {
+            type: "execute-command",
+            command: "annotation_set",
+            id: "cmd-3b",
+            params: {
+                annotations: [
+                    { nodeId: "100:1", nodeName: "A", labelMarkdown: "would apply first" },
+                    { nodeId: "100:2", nodeName: "StaleName", labelMarkdown: "mismatched" }
+                ]
+            }
+        };
+
+        const resultPromise = new Promise<any>((resolve) => {
+            gatePendingPromises.set(msg.id, resolve);
+        });
+
+        await gateOnMessage!(msg);
+        const res = await resultPromise;
+
+        expect(res.type).toBe("command-error");
+        expect(res.error.message).toContain("nodeName does not match");
+        // Prevalidation is batch-wide: the first, valid item must not have run.
+        expect((root.children![0] as any).annotations).toEqual([]);
+        expect((root.children![1] as any).annotations).toEqual([]);
+    });
+
     it("pre-validates types: instance_set_overrides rejects non-INSTANCE targets/source", async () => {
         const root = attachParents({
             id: "scope-root", name: "Scope", type: "FRAME",
@@ -337,10 +376,16 @@ describe("Phase 4: Stop on first failure in batch handlers", () => {
         expect(result.results).toHaveLength(3);
         expect(result.results[0].success).toBe(true);
         expect(result.results[0].status).toBe("success");
+        expect(result.results[0].beforeCount).toBe(0);
+        expect(result.results[0].afterCount).toBe(1);
         expect(result.results[1].success).toBe(false);
         expect(result.results[1].status).toBe("failed");
+        expect(result.results[1].beforeCount).toBe(0);
+        expect(result.results[1].afterCount).toBe(0);
         expect(result.results[2].success).toBe(false);
         expect(result.results[2].status).toBe("skipped");
+        expect(result.results[2].beforeCount).toBe(0);
+        expect(result.results[2].afterCount).toBe(0);
     });
 
     it("deleteMultipleNodes is resilient and does not stop on failure", async () => {

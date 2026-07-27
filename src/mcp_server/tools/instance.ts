@@ -13,7 +13,7 @@ export function registerInstanceTools(server: McpServer) {
             description: "Set one property on an instance — boolean toggle, text override, instance swap, or variant selection.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the instance node"),
-                nodeName: z.string().describe("Name of the instance node for verification"),
+                nodeName: z.string().describe("The instance's current exact name, passed back verbatim from `node_info`."),
                 propertyName: z.string().describe("The human-readable name of the component property to change"),
                 value: z.union([z.string(), z.boolean()]).describe("The new value for the property. For INSTANCE_SWAP properties, this must be a component key (the stable library identifier)."),
             }),
@@ -75,7 +75,7 @@ export function registerInstanceTools(server: McpServer) {
                     .array(
                         z.object({
                             nodeId: z.string().describe("The ID of the target instance"),
-                            nodeName: z.string().describe("Name of the node to modify"),
+                            nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                         })
                     )
                     .min(1)

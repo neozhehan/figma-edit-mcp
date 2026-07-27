@@ -231,3 +231,28 @@ export function isAncestorOf(maybeAncestor: any, node: any): boolean {
     }
     return false;
 }
+
+/**
+ * Removes a created-but-uncommitted node during D11 cleanup, best-effort.
+ *
+ * Cleanup runs on the failure path, so a throwing `remove()` would REPLACE the
+ * error that actually caused the failure — the caller would be told the cleanup
+ * complaint instead of the real cause. Removal failure is therefore reported to
+ * the console and swallowed, the same rule notification and progress delivery
+ * follow (C3/R14/R15): recovery machinery may not become a second failure.
+ *
+ * Returns true when the node is known to be gone, so a caller that must decide
+ * whether the document was left changed (Q32) can branch on the real outcome.
+ */
+export function removeUncommitted(node: any, context: string): boolean {
+    if (!node) return true;
+    if ((node as any).removed === true) return true;
+    if (typeof node.remove !== "function") return false;
+    try {
+        node.remove();
+        return true;
+    } catch (cleanupError: any) {
+        console.error(`${context}: failed to remove the uncommitted node during cleanup`, cleanupError);
+        return false;
+    }
+}

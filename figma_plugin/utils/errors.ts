@@ -146,6 +146,13 @@ export const REFUSALS = {
         code: "PARENT_NAME_MISMATCH",
         message: `Operation Denied: parentNodeName does not match the parent's stored name — stored name "${storedName}", received parentNodeName "${received}". Read the parent's current name with node_info and pass it back verbatim.`,
     }),
+    // D10 annotation-category verification (Q30, Rev 46). A category ID can only
+    // be checked against the document, so — unlike a duplicate target (Q23) —
+    // this is a coded execution refusal, not a Layer 1 payload rejection.
+    ANNOTATION_CATEGORY_NOT_FOUND: (received: string) => ({
+        code: "ANNOTATION_CATEGORY_NOT_FOUND",
+        message: `Operation Denied: categoryId does not resolve to an annotation category in this document — received categoryId "${received}". List the file's categories with annotation_list (includeCategories: true) and pass a returned category ID back verbatim, or omit categoryId entirely.`,
+    }),
 };
 
 /**

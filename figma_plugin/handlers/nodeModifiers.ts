@@ -514,8 +514,18 @@ export async function flattenNode(params: any) {
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
 
+    const parent = node.parent;
+    if (!parent || !("children" in parent) || !("insertChild" in parent)) {
+        throw new Error(`node_flatten: '${node.name}' has no valid parent container.`);
+    }
+    const index = parent.children.indexOf(node as SceneNode);
+    if (index < 0) {
+        throw new Error(`node_flatten: '${node.name}' is no longer a child of its resolved parent.`);
+    }
+
     // Note: flatten() is destructive and replaces the node
-    const flattened = figma.flatten([node]);
+    // D11: passing parent + index gives true zero-transient placement.
+    const flattened = figma.flatten([node as SceneNode], parent, index);
 
     return { id: flattened.id, name: flattened.name, type: flattened.type };
 }

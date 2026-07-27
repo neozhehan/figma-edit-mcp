@@ -105,6 +105,13 @@
     PARENT_NAME_MISMATCH: (storedName, received) => ({
       code: "PARENT_NAME_MISMATCH",
       message: `Operation Denied: parentNodeName does not match the parent's stored name \u2014 stored name "${storedName}", received parentNodeName "${received}". Read the parent's current name with node_info and pass it back verbatim.`
+    }),
+    // D10 annotation-category verification (Q30, Rev 46). A category ID can only
+    // be checked against the document, so — unlike a duplicate target (Q23) —
+    // this is a coded execution refusal, not a Layer 1 payload rejection.
+    ANNOTATION_CATEGORY_NOT_FOUND: (received) => ({
+      code: "ANNOTATION_CATEGORY_NOT_FOUND",
+      message: `Operation Denied: categoryId does not resolve to an annotation category in this document \u2014 received categoryId "${received}". List the file's categories with annotation_list (includeCategories: true) and pass a returned category ID back verbatim, or omit categoryId entirely.`
     })
   };
   function withPartialDisclosure(e, whatChanged, before) {
@@ -513,6 +520,18 @@
       current = current.parent;
     }
     return false;
+  }
+  function removeUncommitted(node, context) {
+    if (!node) return true;
+    if (node.removed === true) return true;
+    if (typeof node.remove !== "function") return false;
+    try {
+      node.remove();
+      return true;
+    } catch (cleanupError) {
+      console.error(`${context}: failed to remove the uncommitted node during cleanup`, cleanupError);
+      return false;
+    }
   }
 
   // figma_plugin/handlers/nodeReaders.ts
@@ -1196,46 +1215,43 @@
       throw new Error(`innerRadius is only supported for shape type STAR, got ${type}`);
     }
     const parent = await resolveAppendableParent(parentId, "create_shape");
-    let node;
+    if ((upperType === "POLYGON" || upperType === "STAR") && pointCount < 3) {
+      throw new Error(`${upperType === "POLYGON" ? "Polygons" : "Stars"} require pointCount >= 3`);
+    }
+    let createNode;
     switch (upperType) {
       case "RECTANGLE":
-        node = figma.createRectangle();
+        createNode = () => figma.createRectangle();
         break;
       case "ELLIPSE":
-        node = figma.createEllipse();
-        if (arcData) {
-          node.arcData = {
-            startingAngle: (_a = arcData.startingAngle) != null ? _a : 0,
-            endingAngle: (_b = arcData.endingAngle) != null ? _b : Math.PI * 2,
-            innerRadius: (_c = arcData.innerRadius) != null ? _c : 0
-          };
-        }
+        createNode = () => figma.createEllipse();
         break;
       case "POLYGON":
-        node = figma.createPolygon();
-        if (pointCount !== void 0) {
-          if (pointCount < 3) {
-            throw new Error("Polygons require pointCount >= 3");
-          }
-          node.pointCount = pointCount;
-        }
+        createNode = () => figma.createPolygon();
         break;
       case "STAR":
-        node = figma.createStar();
-        if (pointCount !== void 0) {
-          if (pointCount < 3) {
-            throw new Error("Stars require pointCount >= 3");
-          }
-          node.pointCount = pointCount;
-        }
-        if (innerRadius !== void 0) {
-          node.innerRadius = innerRadius;
-        }
+        createNode = () => figma.createStar();
         break;
       default:
         throw new Error(`Unsupported shape type: ${type}`);
     }
+    let committed = false;
+    const node = createNode();
     try {
+      parent.appendChild(node);
+      if (upperType === "ELLIPSE" && arcData) {
+        node.arcData = {
+          startingAngle: (_a = arcData.startingAngle) != null ? _a : 0,
+          endingAngle: (_b = arcData.endingAngle) != null ? _b : Math.PI * 2,
+          innerRadius: (_c = arcData.innerRadius) != null ? _c : 0
+        };
+      }
+      if ((upperType === "POLYGON" || upperType === "STAR") && pointCount !== void 0) {
+        node.pointCount = pointCount;
+      }
+      if (upperType === "STAR" && innerRadius !== void 0) {
+        node.innerRadius = innerRadius;
+      }
       node.x = x;
       node.y = y;
       node.resize(width, height);
@@ -1266,7 +1282,6 @@
           opacity: typeof strokeColor.a === "number" ? strokeColor.a : 1
         }];
       }
-      parent.appendChild(node);
       if (useAbsolutePosition && parentId) {
         if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
           node.layoutPositioning = "ABSOLUTE";
@@ -1274,7 +1289,7 @@
           node.y = y;
         }
       }
-      return {
+      const result = {
         id: node.id,
         name: node.name,
         type: node.type,
@@ -1284,11 +1299,10 @@
         height: node.height,
         parentId: node.parent ? node.parent.id : void 0
       };
-    } catch (error) {
-      if (node && typeof node.remove === "function" && node.removed !== true) {
-        node.remove();
-      }
-      throw error;
+      committed = true;
+      return result;
+    } finally {
+      if (!committed) removeUncommitted(node, "create_shape");
     }
   }
   async function createFrame(params) {
@@ -1315,8 +1329,10 @@
       itemSpacing = 0
     } = params || {};
     const parentNode = await resolveAppendableParent(parentId, "create_frame");
+    let committed = false;
     const frame = figma.createFrame();
     try {
+      parentNode.appendChild(frame);
       frame.x = x;
       frame.y = y;
       frame.resize(width, height);
@@ -1361,8 +1377,7 @@
       if (strokeWeight !== void 0) {
         frame.strokeWeight = strokeWeight;
       }
-      parentNode.appendChild(frame);
-      return {
+      const result = {
         id: frame.id,
         name: frame.name,
         x: frame.x,
@@ -1376,11 +1391,10 @@
         layoutWrap: frame.layoutWrap,
         parentId: frame.parent ? frame.parent.id : void 0
       };
-    } catch (error) {
-      if (frame && typeof frame.remove === "function" && frame.removed !== true) {
-        frame.remove();
-      }
-      throw error;
+      committed = true;
+      return result;
+    } finally {
+      if (!committed) removeUncommitted(frame, "create_frame");
     }
   }
   function getFontStyle(weight) {
@@ -1420,8 +1434,10 @@
       parentId
     } = params || {};
     const parentNode = await resolveAppendableParent(parentId, "create_text");
+    let committed = false;
     const textNode = figma.createText();
     try {
+      parentNode.appendChild(textNode);
       textNode.x = x;
       textNode.y = y;
       textNode.name = name || text;
@@ -1446,8 +1462,7 @@
         opacity: typeof fontColor.a === "number" ? fontColor.a : 1
       };
       textNode.fills = [paintStyle];
-      parentNode.appendChild(textNode);
-      return {
+      const result = {
         id: textNode.id,
         name: textNode.name,
         x: textNode.x,
@@ -1462,11 +1477,10 @@
         fills: textNode.fills,
         parentId: textNode.parent ? textNode.parent.id : void 0
       };
-    } catch (error) {
-      if (textNode && typeof textNode.remove === "function" && textNode.removed !== true) {
-        textNode.remove();
-      }
-      throw error;
+      committed = true;
+      return result;
+    } finally {
+      if (!committed) removeUncommitted(textNode, "create_text");
     }
   }
   async function cloneNode(params) {
@@ -1478,30 +1492,36 @@
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
     }
+    const parent = node.parent;
+    if (!parent) {
+      throw new Error(`node_clone: '${node.name}' has no parent and cannot be cloned.`);
+    }
+    if (!("appendChild" in parent)) {
+      throw new Error(`node_clone: parent '${parent.name}' (type ${parent.type}) cannot accept cloned children.`);
+    }
+    let committed = false;
     const clone = node.clone();
     try {
+      parent.appendChild(clone);
       if (x !== void 0 && y !== void 0) {
         clone.x = x;
         clone.y = y;
       }
-      if (node.parent) {
-        node.parent.appendChild(clone);
-      } else {
-        throw new Error(`node_clone: '${node.name}' has no parent and cannot be cloned.`);
-      }
-      return {
+      const result = {
         id: clone.id,
         name: clone.name,
         x: "x" in clone ? clone.x : void 0,
         y: "y" in clone ? clone.y : void 0,
         width: "width" in clone ? clone.width : void 0,
-        height: "height" in clone ? clone.height : void 0
+        height: "height" in clone ? clone.height : void 0,
+        // D11: report where the node actually landed, so the caller can
+        // confirm containment from the response instead of re-reading.
+        parentId: clone.parent ? clone.parent.id : void 0
       };
-    } catch (error) {
-      if (clone && typeof clone.remove === "function" && clone.removed !== true) {
-        clone.remove();
-      }
-      throw error;
+      committed = true;
+      return result;
+    } finally {
+      if (!committed) removeUncommitted(clone, "node_clone");
     }
   }
 
@@ -1882,7 +1902,15 @@
     const { nodeId } = params;
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
-    const flattened = figma.flatten([node]);
+    const parent = node.parent;
+    if (!parent || !("children" in parent) || !("insertChild" in parent)) {
+      throw new Error(`node_flatten: '${node.name}' has no valid parent container.`);
+    }
+    const index = parent.children.indexOf(node);
+    if (index < 0) {
+      throw new Error(`node_flatten: '${node.name}' is no longer a child of its resolved parent.`);
+    }
+    const flattened = figma.flatten([node], parent, index);
     return { id: flattened.id, name: flattened.name, type: flattened.type };
   }
   async function insertChild(params) {
@@ -2211,33 +2239,41 @@
       bottomLeftRadius: "bottomLeftRadius" in node ? node.bottomLeftRadius : void 0
     };
   }
+  var KNOWN_EFFECT_TYPES = [
+    "DROP_SHADOW",
+    "INNER_SHADOW",
+    "LAYER_BLUR",
+    "BACKGROUND_BLUR",
+    "NOISE",
+    "TEXTURE",
+    "GLASS"
+  ];
   function normalizeEffects(effects) {
     return effects.map((effect) => {
       if (!effect.type) {
-        throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
+        throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR, NOISE, TEXTURE, GLASS)");
       }
-      const baseEffect = {
-        type: effect.type,
+      if (!KNOWN_EFFECT_TYPES.includes(effect.type)) {
+        return effect;
+      }
+      const normalized = Object.assign({}, effect, {
         visible: effect.visible !== void 0 ? effect.visible : true
-      };
+      });
       if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
-        const shadow = Object.assign({}, baseEffect, {
-          color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
-          offset: effect.offset || { x: 0, y: 4 },
-          radius: effect.radius !== void 0 ? effect.radius : 4,
-          spread: effect.spread !== void 0 ? effect.spread : 0,
-          blendMode: effect.blendMode || "NORMAL"
-        });
+        normalized.color = effect.color || { r: 0, g: 0, b: 0, a: 0.25 };
+        normalized.offset = effect.offset || { x: 0, y: 4 };
+        normalized.radius = effect.radius !== void 0 ? effect.radius : 4;
+        normalized.spread = effect.spread !== void 0 ? effect.spread : 0;
+        normalized.blendMode = effect.blendMode || "NORMAL";
         if (effect.type === "DROP_SHADOW") {
-          shadow.showShadowBehindNode = effect.showShadowBehindNode !== void 0 ? effect.showShadowBehindNode : false;
+          normalized.showShadowBehindNode = effect.showShadowBehindNode !== void 0 ? effect.showShadowBehindNode : false;
+        } else {
+          delete normalized.showShadowBehindNode;
         }
-        return shadow;
       } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
-        return Object.assign({}, baseEffect, {
-          radius: effect.radius !== void 0 ? effect.radius : 4
-        });
+        normalized.radius = effect.radius !== void 0 ? effect.radius : 4;
       }
-      return effect;
+      return normalized;
     });
   }
   async function setEffects(params) {
@@ -2550,7 +2586,6 @@
   var IMPORT_TIMEOUT_MS = 15e3;
   async function createComponentInstance(params) {
     const { componentId, x = 0, y = 0, parentId, componentKey } = params || {};
-    const parentNode = await resolveAppendableParent(parentId, "create_instance");
     if (!componentId && !componentKey) {
       throw new Error("create_instance: missing componentId or componentKey parameter.");
     }
@@ -2585,26 +2620,29 @@
         clearTimeout(timeoutId);
       }
     }
+    const parentNode = await resolveAppendableParent(parentId, "create_instance");
+    let committed = false;
     const instance = component.createInstance();
     try {
       parentNode.appendChild(instance);
       instance.x = x;
       instance.y = y;
-      return {
+      const result = {
         id: instance.id,
         name: instance.name,
         x: instance.x,
         y: instance.y,
         width: instance.width,
         height: instance.height,
-        // @ts-expect-error TS2339: Property 'componentId' does not exist on type 'InstanceNode'.
-        componentId: instance.componentId
+        componentId: component.id,
+        // D11: report where the node actually landed, so the caller can
+        // confirm containment from the response instead of re-reading.
+        parentId: instance.parent ? instance.parent.id : void 0
       };
-    } catch (error) {
-      if (instance && typeof instance.remove === "function" && instance.removed !== true) {
-        instance.remove();
-      }
-      throw error;
+      committed = true;
+      return result;
+    } finally {
+      if (!committed) removeUncommitted(instance, "create_instance");
     }
   }
   async function exportNodeAsImage(params) {
@@ -3029,12 +3067,20 @@
     if (!("appendChild" in parentNode)) {
       throw new Error(`create_component: parent '${parentNode.name}' (type ${parentNode.type}) cannot contain children.`);
     }
+    if (!("insertChild" in parentNode)) {
+      throw new Error(`create_component: parent '${parentNode.name}' (type ${parentNode.type}) cannot preserve the source frame's child index.`);
+    }
+    const index = parentNode.children.indexOf(node);
+    if (index < 0) {
+      throw new Error(`create_component: source frame '${node.name}' is no longer a child of its resolved parent.`);
+    }
+    const childrenToMove = [...node.children];
+    let committed = false;
     const component = figma.createComponent();
     try {
+      parentNode.insertChild(index, component);
       component.name = node.name;
       component.resize(node.width, node.height);
-      const index = parentNode.children.indexOf(node);
-      parentNode.insertChild(index, component);
       component.x = node.x;
       component.y = node.y;
       component.fills = node.fills;
@@ -3069,21 +3115,51 @@
         component.paddingBottom = node.paddingBottom;
         component.itemSpacing = node.itemSpacing;
       }
-      const childrenToMove = [...node.children];
       for (const child of childrenToMove) {
         component.appendChild(child);
       }
-      node.remove();
-      return {
+      const result = {
         id: component.id,
         name: component.name,
-        type: "COMPONENT"
+        type: "COMPONENT",
+        // D11: report where the node actually landed, so the caller can
+        // confirm containment from the response instead of re-reading.
+        parentId: component.parent ? component.parent.id : void 0
       };
+      node.remove();
+      committed = true;
+      return result;
     } catch (error) {
-      if (component && typeof component.remove === "function" && component.removed !== true) {
+      const sourceFrameRemoved = node.removed === true;
+      let restoredAllChildren = !sourceFrameRemoved;
+      for (let childIndex = 0; childIndex < childrenToMove.length; childIndex++) {
+        const child = childrenToMove[childIndex];
+        if (child.parent === component && restoredAllChildren) {
+          try {
+            node.insertChild(childIndex, child);
+          } catch (restoreError) {
+            restoredAllChildren = false;
+            console.error("create_component: failed to restore a moved child after conversion failure", restoreError);
+          }
+        }
+      }
+      if (restoredAllChildren && typeof component.remove === "function" && component.removed !== true) {
         component.remove();
       }
-      throw error;
+      if (restoredAllChildren && component.removed === true) {
+        throw error;
+      }
+      throw withPartialDisclosure(
+        error,
+        sourceFrameRemoved ? `the source frame '${node.name}' was already removed and component '${component.name}' (${component.id}) survives in its place, holding its children.` : `component '${component.name}' (${component.id}) survives and still holds ${childrenToMove.filter((child) => child.parent === component).length} of the source frame's children, which could not be restored.`,
+        {
+          sourceFrameId: node.id,
+          sourceFrameName: node.name,
+          sourceFrameRemoved,
+          survivingComponentId: component.id,
+          movedChildIds: childrenToMove.map((child) => child.id)
+        }
+      );
     }
   }
   async function validateCreateComponentSetPlan(params, scopeRoot) {
@@ -3205,19 +3281,17 @@
         propertyValues: components[idx].propertyValues
       })),
       properties,
-      containingPage: firstContainingPage,
       parent: resolvedParent,
       componentSetName
     };
   }
   async function createComponentSet(plan) {
-    var _a;
     let componentSet;
     try {
       for (const c of plan.components) {
         c.node.name = c.variantName;
       }
-      componentSet = figma.combineAsVariants(plan.components.map((c) => c.node), plan.containingPage);
+      componentSet = figma.combineAsVariants(plan.components.map((c) => c.node), plan.parent);
     } catch (error) {
       for (const c of plan.components) {
         if (c.node && c.node.removed !== true) {
@@ -3227,10 +3301,20 @@
       throw error;
     }
     if (plan.componentSetName) {
-      componentSet.name = plan.componentSetName;
-    }
-    if (plan.parent && plan.parent.id !== ((_a = componentSet.parent) == null ? void 0 : _a.id)) {
-      plan.parent.appendChild(componentSet);
+      try {
+        componentSet.name = plan.componentSetName;
+      } catch (error) {
+        throw withPartialDisclosure(
+          error,
+          `component set '${componentSet.name}' (${componentSet.id}) was already created from the listed components and their names were changed to variant names; only the set's own rename failed.`,
+          {
+            componentSetId: componentSet.id,
+            componentSetName: componentSet.name,
+            variantNames: plan.components.map((c) => c.variantName),
+            originalComponentNames: plan.components.map((c) => c.originalName)
+          }
+        );
+      }
     }
     let variantGroupProperties = void 0;
     let warning = void 0;
@@ -3243,6 +3327,9 @@
       id: componentSet.id,
       name: componentSet.name,
       type: "COMPONENT_SET",
+      // D11: report where the set actually landed, so the caller can confirm
+      // containment from the response instead of re-reading.
+      parentId: componentSet.parent ? componentSet.parent.id : void 0,
       childCount: componentSet.children.length,
       variantProperties: variantGroupProperties,
       warning
@@ -4112,6 +4199,14 @@
   }
 
   // figma_plugin/handlers/annotationHandlers.ts
+  function annotationDisclosure(beforeCount, afterCount) {
+    if (afterCount === beforeCount) return {};
+    return {
+      partialMutation: true,
+      whatChanged: `the annotation was appended before the failure occurred \u2014 the node's annotation count went from ${beforeCount} to ${afterCount}.`,
+      before: { annotationCount: beforeCount }
+    };
+  }
   async function getAnnotations(params) {
     try {
       const { nodeId, pageId, includeCategories = true } = params || {};
@@ -4170,12 +4265,14 @@
         if (!("annotations" in node)) {
           throw new Error(`Node type ${node.type} does not support annotations`);
         }
-        const mergedAnnotations = [];
+        const annotatedNodes = [];
         const collect = async (n) => {
           if ("annotations" in n && n.annotations && n.annotations.length > 0) {
-            for (const a of n.annotations) {
-              mergedAnnotations.push({ nodeId: n.id, annotation: a });
-            }
+            annotatedNodes.push({
+              nodeId: n.id,
+              name: n.name,
+              annotations: n.annotations
+            });
           }
           if ("children" in n) {
             for (const child of n.children) {
@@ -4185,9 +4282,7 @@
         };
         await collect(node);
         const result = {
-          nodeId: node.id,
-          name: node.name,
-          annotations: mergedAnnotations
+          annotatedNodes
         };
         if (includeCategories) {
           result.categories = Object.values(categoriesMap);
@@ -4199,27 +4294,36 @@
       throw error;
     }
   }
-  async function setAnnotation(params) {
+  async function setAnnotation(params, report = {}) {
     const { nodeId, labelMarkdown, categoryId, properties } = params || {};
+    let node = null;
+    let beforeCount = 0;
+    let afterCount = 0;
     if (!nodeId) {
-      return { success: false, error: "Missing nodeId parameter" };
+      return { success: false, error: "Missing nodeId parameter", beforeCount, afterCount };
     }
-    if (!labelMarkdown) {
-      return { success: false, error: "Missing labelMarkdown parameter" };
+    if (typeof labelMarkdown !== "string" || labelMarkdown.trim().length === 0) {
+      return { success: false, error: "Missing or blank labelMarkdown parameter", beforeCount, afterCount };
     }
     try {
-      const node = await figma.getNodeByIdAsync(nodeId);
+      node = await figma.getNodeByIdAsync(nodeId);
       if (!node) {
-        return { success: false, error: `Node not found: ${nodeId}` };
+        return { success: false, error: `Node not found: ${nodeId}`, beforeCount, afterCount };
       }
       if (!("annotations" in node)) {
-        return { success: false, error: `Node type ${node.type} does not support annotations` };
+        return {
+          success: false,
+          error: `Node type ${node.type} does not support annotations`,
+          beforeCount,
+          afterCount
+        };
       }
+      const existingAnnotations = node.annotations || [];
+      beforeCount = existingAnnotations.length;
+      afterCount = beforeCount;
+      report.beforeCount = beforeCount;
       const annotationObj = {
-        label: {
-          type: "MARKDOWN",
-          content: labelMarkdown
-        }
+        labelMarkdown
       };
       if (categoryId) {
         annotationObj.categoryId = categoryId;
@@ -4227,29 +4331,66 @@
       if (properties && Array.isArray(properties)) {
         annotationObj.properties = properties;
       }
-      const existingAnnotations = node.annotations || [];
       node.annotations = [...existingAnnotations, annotationObj];
+      afterCount = node.annotations.length;
       return {
         success: true,
         nodeId,
-        annotationCount: node.annotations.length
+        beforeCount,
+        afterCount
       };
     } catch (error) {
       console.error("Error in setAnnotation:", error);
-      return { success: false, error: describeError(error) };
+      try {
+        if (node && "annotations" in node && node.annotations) {
+          afterCount = node.annotations.length;
+        }
+      } catch (e) {
+      }
+      return {
+        success: false,
+        error: describeError(error),
+        beforeCount,
+        afterCount,
+        ...annotationDisclosure(beforeCount, afterCount)
+      };
+    }
+  }
+  async function readAnnotationCount(nodeId) {
+    try {
+      const node = await figma.getNodeByIdAsync(nodeId);
+      if (node && "annotations" in node && node.annotations) {
+        return node.annotations.length;
+      }
+    } catch (e) {
+    }
+    return 0;
+  }
+  async function verifyAnnotationCategories(annotations) {
+    const verified = /* @__PURE__ */ new Set();
+    for (const annotation of annotations) {
+      if (annotation.categoryId === void 0 || verified.has(annotation.categoryId)) {
+        continue;
+      }
+      const category = await figma.annotations.getAnnotationCategoryByIdAsync(annotation.categoryId);
+      if (!category || category.id !== annotation.categoryId) {
+        throw REFUSALS.ANNOTATION_CATEGORY_NOT_FOUND(String(annotation.categoryId));
+      }
+      verified.add(annotation.categoryId);
     }
   }
   async function setMultipleAnnotations(params) {
+    var _a;
     console.log("=== setMultipleAnnotations Debug Start ===");
     console.log("Input params:", JSON.stringify(params, null, 2));
     const { nodeId, annotations } = params;
-    if (!annotations || annotations.length === 0) {
-      console.error("Validation failed: No annotations provided");
-      return { success: false, error: "No annotations provided" };
+    if (!annotations || !Array.isArray(annotations) || annotations.length === 0) {
+      throw new Error("Missing or invalid annotations parameter: annotation_set requires at least one annotation entry.");
     }
     console.log(
       `Processing ${annotations.length} annotations for node ${nodeId}`
     );
+    await verifyAnnotationCategories(annotations);
     const results = [];
     let successCount = 0;
     let failureCount = 0;
@@ -4258,12 +4399,15 @@
     for (let i = 0; i < annotations.length; i++) {
       const annotation = annotations[i];
       if (hasFailed) {
+        const annotationCount = await readAnnotationCount(annotation.nodeId);
         skippedCount++;
         results.push({
           success: false,
           status: "skipped",
           nodeId: annotation.nodeId || "unknown",
-          error: "Skipped due to previous failure in batch"
+          error: "Skipped due to previous failure in batch",
+          beforeCount: annotationCount,
+          afterCount: annotationCount
         });
         continue;
       }
@@ -4272,6 +4416,7 @@
 Processing annotation ${i + 1}/${annotations.length}:`,
         JSON.stringify(annotation, null, 2)
       );
+      const report = {};
       try {
         console.log("Calling setAnnotation with params:", {
           nodeId: annotation.nodeId,
@@ -4284,14 +4429,16 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           labelMarkdown: annotation.labelMarkdown,
           categoryId: annotation.categoryId,
           properties: annotation.properties
-        });
+        }, report);
         console.log("setAnnotation result:", JSON.stringify(result, null, 2));
         if (result.success) {
           successCount++;
           results.push({
             success: true,
             status: "success",
-            nodeId: annotation.nodeId
+            nodeId: annotation.nodeId,
+            beforeCount: result.beforeCount,
+            afterCount: result.afterCount
           });
           console.log(`\u2713 Annotation ${i + 1} applied successfully`);
         } else {
@@ -4300,19 +4447,30 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           results.push({
             success: false,
             status: "failed",
-            nodeId: annotation.nodeId,
-            error: result.error
+            // Q25 identity is a required row key; an item that never
+            // supplied one still gets a schema-valid, honest placeholder
+            // (the same guard `text_set_content` applies).
+            nodeId: annotation.nodeId || "unknown",
+            error: result.error,
+            beforeCount: result.beforeCount,
+            afterCount: result.afterCount,
+            ...annotationDisclosure(result.beforeCount, result.afterCount)
           });
           console.error(`\u2717 Annotation ${i + 1} failed:`, result.error);
         }
       } catch (error) {
+        const observedCount = await readAnnotationCount(annotation.nodeId);
+        const beforeCount = (_a = report.beforeCount) != null ? _a : observedCount;
         hasFailed = true;
         failureCount++;
         results.push({
           success: false,
           status: "failed",
-          nodeId: annotation.nodeId,
-          error: describeError(error)
+          nodeId: annotation.nodeId || "unknown",
+          error: describeError(error),
+          beforeCount,
+          afterCount: observedCount,
+          ...annotationDisclosure(beforeCount, observedCount)
         });
         console.error(`\u2717 Annotation ${i + 1} failed with error:`, error);
       }
@@ -5412,24 +5570,27 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       throw new Error("Missing required parameter: svg string.");
     }
     const parentNode = await resolveAppendableParent(parentId, "create_svg");
+    let committed = false;
     const node = figma.createNodeFromSvg(svg);
     try {
+      parentNode.appendChild(node);
       if (name) {
         node.name = name;
       }
-      parentNode.appendChild(node);
       node.x = x;
       node.y = y;
-      return {
+      const result = {
         id: node.id,
         name: node.name,
-        type: node.type
+        type: node.type,
+        // D11: report where the node actually landed, so the caller can
+        // confirm containment from the response instead of re-reading.
+        parentId: node.parent ? node.parent.id : void 0
       };
-    } catch (error) {
-      if (node && typeof node.remove === "function" && node.removed !== true) {
-        node.remove();
-      }
-      throw error;
+      committed = true;
+      return result;
+    } finally {
+      if (!committed) removeUncommitted(node, "create_svg");
     }
   }
 

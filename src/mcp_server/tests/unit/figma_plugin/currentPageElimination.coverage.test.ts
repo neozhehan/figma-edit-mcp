@@ -2,7 +2,7 @@ import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { existsSync, readFileSync } from "fs";
 
 // Phase 6 coverage for the §1 `figma.currentPage` elimination items that lacked
-// unit tests: node_clone parentless, createComponentSet page resolution,
+// unit tests: node_clone parentless, createComponentSet parent resolution,
 // getInstanceOverrides no-id, getSelection removal, and creation-tool parent
 // rejection (missing + unresolved) across all five creators.
 
@@ -46,8 +46,8 @@ describe("node_clone (cloneNode): no figma.currentPage fallback", () => {
     });
 });
 
-describe("createComponentSet: combines on the first component's containing page", () => {
-    it("passes the containing page (not currentPage) to combineAsVariants", async () => {
+describe("createComponentSet: combines directly in the verified parent", () => {
+    it("passes the verified parent (not currentPage) to combineAsVariants", async () => {
         const page: any = { id: "page-1", name: "page-1", type: "PAGE", appendChild: () => {} };
         const c1: any = { id: "c1", name: "c1", type: "COMPONENT", parent: page };
         const c2: any = { id: "c2", name: "c2", type: "COMPONENT", parent: page };

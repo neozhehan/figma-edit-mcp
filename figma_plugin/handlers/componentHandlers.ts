@@ -155,8 +155,8 @@ export async function getComponents(params: any) {
     };
 }
 
-import { getContainingPageNode, isAncestorOf, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
-import { ERRORS, REFUSALS, describeError, formatScopeError, notifyBestEffort } from '../utils/errors.js';
+import { getContainingPageNode, isAncestorOf, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent, removeUncommitted } from '../utils/nodeUtils.js';
+import { ERRORS, REFUSALS, describeError, formatScopeError, notifyBestEffort, withPartialDisclosure } from '../utils/errors.js';
 import { batchEnvelope } from '../utils/batchResult.js';
 import { resolveAppendableParent } from './nodeCreators.js';
 
@@ -247,8 +247,6 @@ export function setImportTimeoutMs(ms: number) {
 export async function createComponentInstance(params: any) {
     const { componentId, x = 0, y = 0, parentId, componentKey } = params || {};
 
-    const parentNode = await resolveAppendableParent(parentId, "create_instance");
-
     if (!componentId && !componentKey) {
         throw new Error("create_instance: missing componentId or componentKey parameter.");
     }
@@ -289,28 +287,40 @@ export async function createComponentInstance(params: any) {
         }
     }
 
+    // Q33 (Rev 46): resolve the destination AFTER every other await, so no
+    // event-loop yield separates the verified parent from the append that
+    // contains the new node. Resolving it first left the whole
+    // `importComponentByKeyAsync` window (bounded by IMPORT_TIMEOUT_MS, 15s)
+    // between the parent read and the placement — the widest such window in the
+    // creators — during which the verified parent could be reparented out of
+    // scope and the instance would land in an unverified destination.
+    const parentNode = await resolveAppendableParent(parentId, "create_instance");
+
+    let committed = false;
     const instance = component.createInstance();
     try {
+        // D11: createInstance uses an implicit parent; contain it before writes.
         parentNode.appendChild(instance);
 
         instance.x = x;
         instance.y = y;
 
-        return {
+        const result = {
             id: instance.id,
             name: instance.name,
             x: instance.x,
             y: instance.y,
             width: instance.width,
             height: instance.height,
-            // @ts-expect-error TS2339: Property 'componentId' does not exist on type 'InstanceNode'.
-            componentId: instance.componentId,
+            componentId: component.id,
+            // D11: report where the node actually landed, so the caller can
+            // confirm containment from the response instead of re-reading.
+            parentId: instance.parent ? instance.parent.id : undefined,
         };
-    } catch (error) {
-        if (instance && typeof instance.remove === "function" && (instance as any).removed !== true) {
-            instance.remove();
-        }
-        throw error;
+        committed = true;
+        return result;
+    } finally {
+        if (!committed) removeUncommitted(instance, "create_instance");
     }
 }
 
@@ -968,19 +978,29 @@ export async function createComponent(params: any) {
     if (!("appendChild" in (parentNode as BaseNode))) {
         throw new Error(`create_component: parent '${parentNode.name}' (type ${parentNode.type}) cannot contain children.`);
     }
+    if (!("insertChild" in (parentNode as BaseNode))) {
+        throw new Error(`create_component: parent '${parentNode.name}' (type ${parentNode.type}) cannot preserve the source frame's child index.`);
+    }
 
+    const index = parentNode.children.indexOf(node);
+    if (index < 0) {
+        throw new Error(`create_component: source frame '${node.name}' is no longer a child of its resolved parent.`);
+    }
+
+    const childrenToMove = [...node.children];
+    let committed = false;
     const component = figma.createComponent(); // This creates a new empty component
     try {
+        // D11: createComponent uses an implicit parent. Preserve the frame's
+        // exact sibling position before any fallible property assignment.
+        parentNode.insertChild(index, component);
+
         // Copy basic properties
         component.name = node.name;
         // Resize first
         component.resize(node.width, node.height);
 
-        // Position and Hierarchy
-        // We need to keep the component in the same hierarchy
-        // Insert component into parent at the index of the node
-        const index = parentNode.children.indexOf(node);
-        parentNode.insertChild(index, component);
+        // Position
         component.x = node.x;
         component.y = node.y;
 
@@ -1023,26 +1043,71 @@ export async function createComponent(params: any) {
             component.itemSpacing = node.itemSpacing;
         }
 
-        // Move children
-        // Clone the list of children to iterate over, as appendChild modifies the live children list
-        const childrenToMove = [...node.children];
+        // Move children. The original order was captured before creation so a
+        // failed conversion can restore any children already moved.
         for (const child of childrenToMove) {
             component.appendChild(child);
         }
 
-        // Remove original frame
-        node.remove();
-
-        return {
+        const result = {
             id: component.id,
             name: component.name,
-            type: "COMPONENT"
+            type: "COMPONENT",
+            // D11: report where the node actually landed, so the caller can
+            // confirm containment from the response instead of re-reading.
+            parentId: component.parent ? component.parent.id : undefined,
         };
+
+        // Remove original frame
+        node.remove();
+        committed = true;
+        return result;
     } catch (error: any) {
-        if (component && typeof component.remove === "function" && (component as any).removed !== true) {
+        // Reached only on a failed, uncommitted attempt: the success path sets
+        // `committed` and returns, so there is nothing to undo there.
+        const sourceFrameRemoved = (node as any).removed === true;
+        let restoredAllChildren = !sourceFrameRemoved;
+        for (let childIndex = 0; childIndex < childrenToMove.length; childIndex++) {
+            const child = childrenToMove[childIndex];
+            if (child.parent === component && restoredAllChildren) {
+                try {
+                    node.insertChild(childIndex, child);
+                } catch (restoreError) {
+                    restoredAllChildren = false;
+                    console.error("create_component: failed to restore a moved child after conversion failure", restoreError);
+                }
+            }
+        }
+        // Never delete the newly created container while it still owns
+        // pre-existing user nodes; leave it contained if restoration fails.
+        if (restoredAllChildren && typeof component.remove === "function" && (component as any).removed !== true) {
             component.remove();
         }
-        throw error;
+        if (restoredAllChildren && (component as any).removed === true) {
+            // Cleanup fully succeeded: nothing durable changed, so this is a
+            // clean failure and must NOT carry the partial-mutation flag.
+            throw error;
+        }
+
+        // Q32 (Rev 46): cleanup could not return the document to its prior
+        // state — the new component survives, holding user nodes and/or having
+        // outlived the source frame. That is a partial mutation, and D7/Q18's
+        // rule is that it is disclosed explicitly, never reported as a clean
+        // failure. The before-values are diagnostic evidence (R10): they say
+        // what changed so it can be reported and judged, not a restore payload.
+        throw withPartialDisclosure(
+            error,
+            sourceFrameRemoved
+                ? `the source frame '${node.name}' was already removed and component '${component.name}' (${component.id}) survives in its place, holding its children.`
+                : `component '${component.name}' (${component.id}) survives and still holds ${childrenToMove.filter((child: any) => child.parent === component).length} of the source frame's children, which could not be restored.`,
+            {
+                sourceFrameId: node.id,
+                sourceFrameName: node.name,
+                sourceFrameRemoved,
+                survivingComponentId: component.id,
+                movedChildIds: childrenToMove.map((child: any) => child.id),
+            }
+        );
     }
 }
 
@@ -1063,8 +1128,11 @@ export interface ComponentSetPlan {
         propertyValues: string[];
     }[];
     properties: string[];
-    containingPage: any;
-    parent?: any;
+    // No `containingPage`: D11 made `combineAsVariants` take the verified parent
+    // directly, so the containing page stopped being part of the plan. The
+    // same-page CHECK still runs during validation (Figma cannot combine
+    // components across pages) — it just no longer produces a plan field.
+    parent: any;
     componentSetName?: string;
 }
 
@@ -1218,7 +1286,6 @@ export async function validateCreateComponentSetPlan(params: any, scopeRoot: Bas
             propertyValues: components[idx].propertyValues
         })),
         properties,
-        containingPage: firstContainingPage,
         parent: resolvedParent,
         componentSetName
     };
@@ -1230,7 +1297,9 @@ export async function createComponentSet(plan: ComponentSetPlan) {
         for (const c of plan.components) {
             c.node.name = c.variantName;
         }
-        componentSet = figma.combineAsVariants(plan.components.map(c => c.node), plan.containingPage);
+        // D11: combineAsVariants accepts the destination directly, so the set
+        // never exists at an implicit page-level location.
+        componentSet = figma.combineAsVariants(plan.components.map(c => c.node), plan.parent);
     } catch (error: any) {
         // A rename or combineAsVariants threw before a component set exists —
         // restore every original name (skipping removed nodes so restoration
@@ -1245,15 +1314,27 @@ export async function createComponentSet(plan: ComponentSetPlan) {
         throw error;
     }
 
-    // Post-combine steps: placement was fully prevalidated, so only R1 TOCTOU
-    // residuals can fail here; they surface as ordinary errors with the set
-    // left at the combineAsVariants location.
+    // Post-combine steps can still fail, but direct-parent construction keeps
+    // the component set inside the verified destination throughout. Renaming
+    // members back after the combine would corrupt the set's variant naming, so
+    // there is no rollback here (D5's no-transaction posture) — which makes
+    // disclosure mandatory: Q32 (Rev 46) requires a mutate-then-fail to be
+    // reported as partial, never as a clean failure.
     if (plan.componentSetName) {
-        componentSet.name = plan.componentSetName;
-    }
-
-    if (plan.parent && plan.parent.id !== componentSet.parent?.id) {
-        plan.parent.appendChild(componentSet);
+        try {
+            componentSet.name = plan.componentSetName;
+        } catch (error: any) {
+            throw withPartialDisclosure(
+                error,
+                `component set '${componentSet.name}' (${componentSet.id}) was already created from the listed components and their names were changed to variant names; only the set's own rename failed.`,
+                {
+                    componentSetId: componentSet.id,
+                    componentSetName: componentSet.name,
+                    variantNames: plan.components.map((c) => c.variantName),
+                    originalComponentNames: plan.components.map((c) => c.originalName),
+                }
+            );
+        }
     }
 
     // variantGroupProperties can throw after fully successful mutation; never
@@ -1270,6 +1351,9 @@ export async function createComponentSet(plan: ComponentSetPlan) {
         id: componentSet.id,
         name: componentSet.name,
         type: "COMPONENT_SET",
+        // D11: report where the set actually landed, so the caller can confirm
+        // containment from the response instead of re-reading.
+        parentId: componentSet.parent ? componentSet.parent.id : undefined,
         childCount: componentSet.children.length,
         variantProperties: variantGroupProperties,
         warning

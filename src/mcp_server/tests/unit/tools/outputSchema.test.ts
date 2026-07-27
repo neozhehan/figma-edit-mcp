@@ -448,7 +448,7 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 deleted: ["v1"]
             },
             annotation_list: {
-                annotations: [],
+                annotatedNodes: [],
                 categories: []
             },
             annotation_set: {
@@ -524,7 +524,13 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             annotation_set: {
                 success: true, status: "success",
                 requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
-                results: [{ success: true, status: "success", nodeId: "1:2" }],
+                results: [{
+                    success: true,
+                    status: "success",
+                    nodeId: "1:2",
+                    beforeCount: 0,
+                    afterCount: 1,
+                }],
             },
             instance_set_overrides: {
                 success: true, status: "success",
@@ -576,7 +582,10 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 const noStatus = {
                     success: true, status: "success",
                     requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
-                    results: [{ nodeId: "1:2" }], // no `status`
+                    results: [{
+                        nodeId: "1:2",
+                        ...(tool === "annotation_set" ? { beforeCount: 0, afterCount: 1 } : {}),
+                    }], // no `status`
                 };
                 expect((TOOLS[tool] as any).safeParse(noStatus).success, `${tool} rejects a status-less row`).toBe(false);
             }
@@ -591,7 +600,11 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                     const noReason = {
                         success: false, status: "failed",
                         requestedCount: 1, succeededCount: 0, failedCount: 1, skippedCount: 0,
-                        results: [{ nodeId: "1:2", status }], // no `error`
+                        results: [{
+                            nodeId: "1:2",
+                            status,
+                            ...(tool === "annotation_set" ? { beforeCount: 0, afterCount: 0 } : {}),
+                        }], // no `error`
                     };
                     expect((TOOLS[tool] as any).safeParse(noReason).success, `${tool} rejects a reasonless '${status}' row`).toBe(false);
                 }
@@ -599,7 +612,12 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 const withReason = {
                     success: false, status: "failed",
                     requestedCount: 1, succeededCount: 0, failedCount: 1, skippedCount: 0,
-                    results: [{ nodeId: "1:2", status: "failed", error: "Node not found: 1:2" }],
+                    results: [{
+                        nodeId: "1:2",
+                        status: "failed",
+                        error: "Node not found: 1:2",
+                        ...(tool === "annotation_set" ? { beforeCount: 0, afterCount: 0 } : {}),
+                    }],
                 };
                 expect((TOOLS[tool] as any).safeParse(withReason).success, `${tool} accepts a reasoned failure row`).toBe(true);
             }

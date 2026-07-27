@@ -165,12 +165,25 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
     });
 
     it("R6: every batch tool description teaches retrying every non-success row in the emitted tools/list", () => {
-        for (const name of ["node_delete", "text_set_content", "annotation_set", "instance_set_overrides"]) {
+        for (const name of ["node_delete", "text_set_content", "instance_set_overrides"]) {
             const tool = toolsList.tools.find((t: any) => t.name === name);
             expect(tool, `${name} present in tools/list`).toBeDefined();
             // R6: the corrected recovery wording, asserted on the ADVERTISED
             // description — not the "failed items" shorthand.
             expect(tool.description, `${name} teaches non-success retry`).toContain("retry every non-success item (both failed and skipped)");
         }
+
+        // Q31 (Rev 46): `annotation_set` is the one carve-out. Append is not
+        // idempotent, so an unguarded "retry every non-success item" would tell
+        // the model to duplicate an annotation a `failed` row had already
+        // appended. Its description must still address every non-success row,
+        // but gate the retry on reading the node's current annotations first.
+        const annotationSet = toolsList.tools.find((t: any) => t.name === "annotation_set");
+        expect(annotationSet, "annotation_set present in tools/list").toBeDefined();
+        expect(annotationSet.description).toContain("failed and skipped items");
+        expect(annotationSet.description).toContain("NOT idempotent");
+        expect(annotationSet.description).toContain("may already have appended");
+        expect(annotationSet.description).toContain("before retrying any non-success item");
+        expect(annotationSet.description).toContain("annotation_list");
     });
 });

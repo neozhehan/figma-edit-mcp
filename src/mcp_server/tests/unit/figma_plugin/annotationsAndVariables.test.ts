@@ -39,15 +39,45 @@ describe("getAnnotations Handler", () => {
     it("returns annotations for a valid pageId", async () => {
         const mockPage = {
             id: "page-1",
+            name: "Page",
             type: "PAGE",
-            annotations: [{ label: { type: "MARKDOWN", content: "Page note" } }],
+            annotations: [{ labelMarkdown: "Page note" }],
             children: []
         };
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockPage);
         const result = await getAnnotations({ pageId: "page-1", includeCategories: false });
         expect(result.annotatedNodes).toEqual([
-            { nodeId: "page-1", name: undefined, annotations: [{ label: { type: "MARKDOWN", content: "Page note" } }] }
+            { nodeId: "page-1", name: "Page", annotations: [{ labelMarkdown: "Page note" }] }
         ]);
+    });
+
+    it("returns the same grouped ownership shape for a node and its descendants", async () => {
+        const child = {
+            id: "child-1",
+            name: "Child",
+            type: "RECTANGLE",
+            annotations: [{ labelMarkdown: "Child note" }],
+        };
+        const root = {
+            id: "frame-1",
+            name: "Frame",
+            type: "FRAME",
+            annotations: [{ labelMarkdown: "Root note" }],
+            children: [child],
+        };
+        (globalThis as any).figma.getNodeByIdAsync = mock(async (id: string) =>
+            id === root.id ? root : id === child.id ? child : null
+        );
+
+        const result = await getAnnotations({ nodeId: root.id, includeCategories: false });
+
+        expect(result).toEqual({
+            annotatedNodes: [
+                { nodeId: root.id, name: root.name, annotations: root.annotations },
+                { nodeId: child.id, name: child.name, annotations: child.annotations },
+            ],
+        });
+        expect(result.annotations).toBeUndefined();
     });
 });
 

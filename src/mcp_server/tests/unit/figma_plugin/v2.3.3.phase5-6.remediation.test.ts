@@ -57,21 +57,72 @@ describe("Q23/Q7: batch input schemas reject [] and duplicates at the boundary",
     });
 
     it("annotation_set allows a repeated node (batches may legitimately repeat)", () => {
-        // Current (pre-Phase-7) annotation item shape requires categoryId.
         const res = INPUTS["annotation_set"].safeParse({
-            annotations: [{ nodeId: "1:2", nodeName: "A", categoryId: "c" }, { nodeId: "1:2", nodeName: "A", categoryId: "c" }],
+            annotations: [
+                { nodeId: "1:2", nodeName: "A", labelMarkdown: "First note" },
+                { nodeId: "1:2", nodeName: "A", labelMarkdown: "Second note" },
+            ],
         });
         expect(res.success).toBe(true);
     });
 });
 
 describe("P5-4: parent-name fields carry the D5 description form", () => {
+    // Asserts the CONTRACT, not the markup: the description must say the name is
+    // the current exact one, name `node_info` as the read tool, and say it is
+    // passed back verbatim. The original assertion pinned an un-backticked
+    // literal, which made the tool-name formatting part of the contract and
+    // broke when the field descriptions were unified on the backticked form used
+    // everywhere else (`style_list`, `variable_list`).
+    const D5_FORM = /current exact name, passed back verbatim from `?node_info`?/;
     for (const tool of ["create_shape", "create_frame", "create_text", "create_svg", "create_instance", "create_component_set"]) {
-        it(`${tool}.parentNodeName says 'passed back verbatim from node_info'`, () => {
+        it(`${tool}.parentNodeName carries the current-exact-name + read-tool + verbatim form`, () => {
             const desc = INPUTS[tool].shape.parentNodeName.description as string;
-            expect(desc).toContain("passed back verbatim from node_info");
+            expect(desc).toMatch(D5_FORM);
         });
     }
+});
+
+describe("One name-verification description form across every tool", () => {
+    // G2 applies to every write, so the field that carries it should read the
+    // same everywhere. Before this sweep there were nine phrasings across 35
+    // fields, only one of which named the read tool or said "verbatim" — the
+    // guides state the rule but load on demand, while descriptions are always in
+    // context, so a drifting phrasing is a first-call-correctness leak.
+    const VERIFICATION_FIELD = /^(nodeName|parentNodeName|childNodeName|startNodeName|endNodeName|styleName)$/;
+    const CONFORMING = /^The .+'s current exact name, passed back verbatim from `(node_info|style_list)`\.$/;
+
+    const collect = (schema: any, path: string[] = []): Array<[string, string]> => {
+        const found: Array<[string, string]> = [];
+        const visit = (node: any, at: string[]) => {
+            if (!node?._def) return;
+            const def = node._def;
+            if (def.type === "object") {
+                for (const [key, child] of Object.entries<any>(def.shape ?? {})) {
+                    if (VERIFICATION_FIELD.test(key)) found.push([[...at, key].join("."), child.description ?? ""]);
+                    visit(child, [...at, key]);
+                }
+                return;
+            }
+            for (const inner of [def.innerType, def.element, def.in, def.out]) if (inner) visit(inner, at);
+            for (const option of def.options ?? []) visit(option, at);
+        };
+        visit(schema, path);
+        return found;
+    };
+
+    it("every name-verification field names the read tool and says 'verbatim'", () => {
+        const offenders: string[] = [];
+        let checked = 0;
+        for (const [tool, schema] of Object.entries<any>(INPUTS)) {
+            for (const [path, description] of collect(schema, [tool])) {
+                checked++;
+                if (!CONFORMING.test(description)) offenders.push(`${path}: ${JSON.stringify(description)}`);
+            }
+        }
+        expect(checked).toBeGreaterThan(25);
+        expect(offenders, `name-verification fields off the shared form:\n${offenders.join("\n")}`).toEqual([]);
+    });
 });
 
 // ---------------------------------------------------------------------------
@@ -539,7 +590,10 @@ describe("R3: real batch handler output validates against the registered output 
         for (const tool of ["node_delete", "text_set_content", "annotation_set", "instance_set_overrides"]) {
             const drifted = {
                 success: true, status: "success", requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
-                results: [{ nodeId: "1:2" }], // no `status`
+                results: [{
+                    nodeId: "1:2",
+                    ...(tool === "annotation_set" ? { beforeCount: 0, afterCount: 1 } : {}),
+                }], // no `status`
             };
             expect(OUTPUTS[tool].safeParse(drifted).success, `${tool} rejects a row missing status`).toBe(false);
         }

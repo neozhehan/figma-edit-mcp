@@ -1,15 +1,20 @@
-# v2.3.4 PRD: Legacy Error-Code Conversion (UNKNOWN_ERROR Burn-Down)
+# v2.3.4 PRD: Legacy Error-Code Conversion (UNKNOWN_ERROR Burn-Down) & Figma Typings Bump
 
-This document is the product / implementation spec for the **v2.3.4** release of `figma-edit-mcp`. It follows v2.3.3 (Plugin Type-Check Restoration & Safety-Contract Gap Closure) and has one track: convert the plugin's legacy, uncoded failure surface to the structured error contract that v2.3.3 established, so that `UNKNOWN_ERROR` stops being the code for most of what the plugin can throw.
+This document is the product / implementation spec for the **v2.3.4** release of `figma-edit-mcp`. It follows v2.3.3 (Plugin Type-Check Restoration & Safety-Contract Gap Closure) and has two tracks:
 
-> **Origin.** The v2.3.3 Q16 resolution (2026-07-18, Option A — recorded in the [v2.3.3 PRD](../v2.3.3/prd.md) D9 code-inventory note, Rev 23) deliberately scoped error codes to messages that release added or edited. Everything older surfaces with the ratified legacy fallback `UNKNOWN_ERROR`: the message text travels intact, but no machine classification and no playbook entry exist. Q16's record names this release as the deferred conversion work and makes `UNKNOWN_ERROR` its burn-down metric.
+1. **Legacy error-code conversion.** Convert the plugin's legacy, uncoded failure surface to the structured error contract that v2.3.3 established, so that `UNKNOWN_ERROR` stops being the code for most of what the plugin can throw.
+2. **Figma typings bump (`@figma/plugin-typings` 1.125.0 → 1.131.0).** Close the v2.3.3 Q35 residual: the pinned typings are behind the live Figma runtime, so the `SHADER` effect variant the runtime accepts is unreachable through `style_manage`. The bump also regenerates the typings-derived node-field inventory, which is why it is a release of its own rather than a late v2.3.3 edit.
+
+> **Origin (Track 1).** The v2.3.3 Q16 resolution (2026-07-18, Option A — recorded in the [v2.3.3 PRD](../v2.3.3/prd.md) D9 code-inventory note, Rev 23) deliberately scoped error codes to messages that release added or edited. Everything older surfaces with the ratified legacy fallback `UNKNOWN_ERROR`: the message text travels intact, but no machine classification and no playbook entry exist. Q16's record names this release as the deferred conversion work and makes `UNKNOWN_ERROR` its burn-down metric.
+>
+> **Origin (Track 2).** The v2.3.3 Q35 resolution (2026-07-25, recorded in that PRD's D8 addendum and Rev 47) enumerated Figma's `Effect` union per variant, replacing a catchall that had been accepting unknown keys and silently discarding them. Enumeration is pinned to `@figma/plugin-typings` by a parity test, which makes the pinned version the contract — and live probing on 2026-07-26 (channel `zgkx`) showed the runtime is ahead of it: Figma's own validator lists a `SHADER` effect that `1.125.0` does not declare. v2.3.3 recorded that as an accepted residual with the typings bump as the named lever, and deferred the bump here because it drags in a regenerated node-field inventory that deserves its own review.
 
 ---
 
 ## Release identity
 
 > [!IMPORTANT]
-> **This is v2.3.4.** It grants no new editing powers, adds no new tools, and changes no gate, permission, or scope behavior. It changes two things about failures only: the *shape* of thrown values (coded objects from the central registry instead of `Error` strings) and, where a message fails the D9 acceptance check, the *text* of the message. The conditions under which errors are thrown do not change — that is this release's equivalent of v2.3.3's "no runtime behavior change" rule for Track 1, and the same stop-and-escalate discipline applies: if a conversion appears to require moving, adding, or removing a throw, stop and escalate rather than silently changing a live-verified control flow.
+> **This is v2.3.4.** It adds no new tools and changes no gate, permission, or scope behavior. Track 2 restores one capability the v2.3.3 enumeration made unreachable (`SHADER` effects) and may widen the set of node properties `node_info` can read, both as a consequence of the typings bump — neither is a new *power*, and both are called out in the CHANGELOG. Track 1 changes two things about failures only: the *shape* of thrown values (coded objects from the central registry instead of `Error` strings) and, where a message fails the D9 acceptance check, the *text* of the message. The conditions under which errors are thrown do not change — that is this release's equivalent of v2.3.3's "no runtime behavior change" rule for Track 1, and the same stop-and-escalate discipline applies: if a conversion appears to require moving, adding, or removing a throw, stop and escalate rather than silently changing a live-verified control flow.
 >
 > **It depends on v2.3.3 being merged first.** The central registry of message factories, the structured `{error: {code, message, details?}}` transport, the error playbook, and the `check:types:plugin`/`check:suppressions` gates are all v2.3.3 deliverables this release builds on. Two v2.3.3 phases (8 — containment, 11 — connector repair) rewrite the same handler files this release converts; starting before they land would produce conflicting edits to `componentHandlers.ts` and `connectorHandlers.ts`.
 >
@@ -49,6 +54,20 @@ Per-file inventory of the 332 (2026-07-18):
 | `utils/exportUtils.ts` | 1 |
 | `handlers/vectorHandlers.ts` | 1 |
 
+### Track 2 — the pinned typings are behind the runtime
+
+`package.json` pins `@figma/plugin-typings@1.125.0`; the current published version is `1.131.0`. Measured 2026-07-26:
+
+- **`ShaderEffect` was added to the `Effect` union in 1.131.0** and is absent from 1.125.0. Its shape is `{type: 'SHADER', visible: boolean, id: string, properties?: {[defId: string]: ShaderPropertyValue}}`.
+- **The live runtime already accepts it.** A `style_manage` validation failure on channel `zgkx` enumerated Figma's accepted effect variants and included `SHADER` with a required `id` — so the runtime is a superset of the pinned contract.
+- **Every other `Effect` variant is unchanged across the six versions**, except one additive field: `noiseSizeVector?: Vector` on `NoiseEffectBase` and `TextureEffect`.
+- **The plugin source type-checks cleanly against 1.131.0** — `tsc --noEmit -p figma_plugin/tsconfig.json` reports **0 errors** (measured by swapping the declaration file into `node_modules` and restoring it). The bump has no blast radius on the type gate.
+- **The v2.3.3 parity test fails under 1.131.0**, exactly as designed: it detects the eighth union member and demands the schema catch up. The lever is demonstrated, not assumed.
+
+Consequence today: an agent cannot write a `SHADER` effect through `style_manage`, and — more realistically — cannot round-trip a style whose effects already contain one. Before Q35 the catchall would have forwarded it; enumeration traded that forward compatibility for first-call correctness, which is the intended trade, but it leaves this gap until the pin moves.
+
+**Why this is a release of its own rather than a v2.3.3 patch.** `figma_plugin/utils/nodeFields.generated.ts` is auto-generated from these typings (`gen:node-fields`, run inside `build:all`, enforced by `check:generated`). Bumping regenerates `NODE_DATA_FIELDS`, which changes **which node properties `node_info` can read** — additive in all likelihood, but a live behaviour surface, and a diff that deserves review on its own merits rather than riding along inside a release whose scope guard (v2.3.3 D4) forbids unrelated refactors.
+
 ---
 
 ## Decisions
@@ -72,6 +91,12 @@ Per-file inventory of the 332 (2026-07-18):
 > **D6 — No control-flow change; ratcheted enforcement.** Same conditions throw at the same points; only the thrown value changes. Each phase's rebuild diff is reviewed with that rule: any emitted-JS change that is not a throw-site conversion is escalated. A new `check:legacy-throws` script (the `check:suppressions` pattern) counts `throw new Error(` under `figma_plugin/**/*.ts` against a committed baseline that may only decrease — starting at 332 and ratcheting to 0 as phases land — so the uncoded surface cannot regrow between phases or after release.
 
 > [!NOTE]
+> **D8 (Track 2) — Bump the pin, let the parity test drive the schema, review the generated diff separately.** Move `@figma/plugin-typings` from `1.125.0` to `1.131.0` and let v2.3.3's Q35 parity test dictate the schema work: it fails on the bump until `SHADER` joins `EFFECT_TYPES` and the discriminated union, which is precisely the mechanism Q35 shipped it for. Three parts, in order.
+> - **The bump and its fallout.** Update `package.json` + `package-lock.json`, re-run `gen:node-fields`, and review the regenerated `nodeFields.generated.ts` diff **as its own reviewable unit** — it changes what `node_info` can read, so any field that appears or disappears is justified in the commit message rather than absorbed. `check:types:plugin` is expected to stay at zero errors (measured); if it does not, the new errors are triaged with the v2.3.3 D2 discipline — fix at the source, no suppression — and any that would require a behaviour change stop and escalate.
+> - **The `SHADER` variant.** Add `{type: 'SHADER', id: string, visible?: boolean, properties?: record}` to the union, `id` required (Figma requires it and it is not defaultable), `visible` optional per the handler-defaults rule the other variants follow. Add `noiseSizeVector?: Vector` to the `NOISE` and `TEXTURE` variants. `properties` values are `ShaderPropertyValue`, a polymorphic shape whose members include variable bindings — declare it as an open record rather than enumerating it, and record that as a *fourth* entry in the D8 catchall inventory (v2.3.3 Q34's closed list) with the membership rule satisfied: the handler forwards it untouched.
+> - **The forward-compatibility question, answered once.** This release does **not** add a general escape hatch for unknown effect types. The alternative considered — a fallback variant that matches any `type` outside the pinned set — was rejected in v2.3.3's Q35 analysis and is rejected again here: to avoid reopening the accept-and-discard hole it would have to exclude the known variants by refinement, which makes every ordinary validation error a two-branch union error, degrading the one-round-trip recovery the enumeration was built to deliver. The pin *is* the forward-compatibility mechanism, and the parity test is what stops it going stale silently. **Standing rule for future variants: bump the typings, let the parity test fail, add the variant.**
+
+> [!NOTE]
 > **D7 — One error convention at the MCP boundary.** The UI relay's local dispatch failures are wrapped as coded objects (`UI_RELAY_FAILURE`, original message in `details`) so a UI-side failure is distinguishable from a plugin-authored one. `describeError` survives only as the message-extraction step inside the `UNKNOWN_ERROR` fallback. `channel.ts`'s in-band `status: "error"` envelope is the subject of Q1 (below) — the goal is one convention, but the migration is breaking for callers that read the in-band fields, so it is decided explicitly rather than absorbed silently.
 
 ---
@@ -88,10 +113,13 @@ Per-file inventory of the 332 (2026-07-18):
 6. Resolution and implementation of Q1 (the `channel.ts` envelope).
 7. Agent-guide updates (`error-playbook.md` primarily; `constraints.md`/`workflows.md` only where they quote message text), mirrored to the `figma-edit://guide/*` resources.
 8. Version bump `2.3.3 → 2.3.4` on every enforced surface; CHANGELOG entry listing every message whose text changed, with before/after examples.
+9. **(Track 2)** `@figma/plugin-typings` `1.125.0 → 1.131.0`; regenerated `nodeFields.generated.ts` reviewed as its own unit; the `SHADER` effect variant and `noiseSizeVector` added to `style_manage`'s effect union; the `SHADER` `properties` record recorded as a fourth entry in the D8 catchall inventory; CHANGELOG notes the restored `SHADER` support and any `node_info` field-set change.
 
 **Explicit non-goals**
 
 - **No change to when errors are thrown.** No new validations, no reordering of checks, no added or removed throws. Validate-before-mutate scope is v2.3.3 Q17's territory; anything it leaves open stays open here.
+- **(Track 2) No general escape hatch for unknown effect types**, and no re-loosening of any Q35 variant — see D8's third bullet. The pin plus the parity test is the mechanism.
+- **(Track 2) No broader dependency sweep.** Only `@figma/plugin-typings` moves; other dependencies stay pinned. If the regenerated node-field diff turns out to be large or non-additive, Track 2 splits into its own release rather than growing this one.
 - No retry, rollback, or transaction logic; no change to batch envelopes (v2.3.3 D7 owns those).
 - No new tools, permissions, or scope-model changes; no success-shape changes.
 - No server-wide (MCP-side) error redesign beyond Q1's decided outcome and the boundary wrapper v2.3.3 shipped.
@@ -110,6 +138,10 @@ Per-file inventory of the 332 (2026-07-18):
 ---
 
 ## Implementation plan (phased)
+
+Phases 1–10 are **Track 1** and run in order. **Track 2 is one phase, labelled `T2`** rather than given a number in that sequence, because it has no ordering dependency in either direction — a decimal like "8.5" would imply both a position and a parent phase it does not have, and in this repo a decimal phase already means something else (v2.3.2 used "Phase 8.5" for unplanned post-verification fixes).
+
+**Phase T2 — Typings bump (Track 2, D8).** Independent of every Track 1 phase; land it as its own commit whenever convenient, before or after any of them. Keeping it out of the numbered sequence is deliberate: it is the one phase that regenerates a file, and mixing that diff into an error-conversion commit would defeat the per-domain review D6 depends on. Bump the pin, re-run `gen:node-fields`, review the `nodeFields.generated.ts` diff as its own unit, confirm `check:types:plugin` stays at zero, watch the Q35 parity test go red, then add the `SHADER` variant and `noiseSizeVector` until it is green again. Tests: `SHADER` is constructible and round-trips through `normalizeEffects` untouched; a `SHADER` missing `id` is rejected; the catchall-inventory test asserts exactly four entries.
 
 **Phase 1 — Taxonomy, registry, gates (D1/D2/D4/D6).** Produce the taxonomy artifact (code list, naming rules, class → `details` shapes) and review it. Extend the registry; add `check:error-codes` (bidirectional code ↔ playbook parity) and `check:legacy-throws` (ratchet, baseline 332) to CI beside the existing gates. Prove both red/green.
 
@@ -130,7 +162,8 @@ Per-file inventory of the 332 (2026-07-18):
 - **No control-flow drift:** per-phase rebuild diffs show throw-site conversions only (D6); anything else is escalated, not merged.
 - **Code-based tests:** the migrated assertions identify errors by `code`; D9 acceptance tests pin recovery content per message; a grep-level check confirms no remaining `toThrow("…")` prose assertions against plugin errors.
 - **Fallback semantics:** a deliberately uncoded throw injected in a test still surfaces as `UNKNOWN_ERROR` with its message intact — the fallback contract survives the conversion.
-- **Live:** the Phase 10 smoke probes pass; `UNKNOWN_ERROR` does not appear in any probe.
+- **Typings bump (Track 2):** `check:types:plugin` stays at 0 errors; `check:generated` passes after `gen:node-fields`; the Q35 parity test is red on the bump alone and green once `SHADER` is added — proving the lever fired rather than being bypassed; the regenerated `nodeFields.generated.ts` diff is reviewed and its field additions/removals are named in the commit message.
+- **Live:** the Phase 10 smoke probes pass; `UNKNOWN_ERROR` does not appear in any probe. Track 2 adds one probe: a `style_manage` EFFECT style carrying a `SHADER` effect (id taken from an existing shader in the test document) is accepted and reads back with its `id` intact — recorded as blocked if the document has no shader to source an id from, per the Gap 9 fixture precedent.
 - **Rollout:** merge after v2.3.3; tag only after CI (including both new gates) passes.
 
 ---
@@ -146,6 +179,9 @@ Per-file inventory of the 332 (2026-07-18):
 | Test migration (102 assertions) introduces coverage gaps | Low–Med | Migrated per-domain alongside the sites they test; the injected-uncoded-throw test pins the fallback; D9 acceptance tests keep message content covered where it matters |
 | Conflicts with late v2.3.3 phases in the same files | Med | Hard dependency: start only after v2.3.3 merges; `componentHandlers`/`connectorHandlers` convert after rebasing on Phases 8/11 |
 | Playbook bloats past usefulness | Low | One entry per code, not per site (D4); the taxonomy caps the count at a few dozen |
+| **(T2)** The typings bump surfaces new `tsc` errors in plugin source | Low | Measured at 0 errors against 1.131.0 before scheduling (Provenance); if it regresses, v2.3.3 D2 discipline applies — fix at source, no suppression, escalate anything needing a behaviour change |
+| **(T2)** Regenerated `nodeFields.generated.ts` changes `node_info` output | Med | Reviewed as its own unit with additions/removals named in the commit message; a removal (a field the newer typings drop) is treated as breaking and called out in the CHANGELOG; Track 2 splits into its own release if the diff is non-additive |
+| **(T2)** Bumping six minor versions pulls in unrelated API drift | Low–Med | Only the declaration file changes — no runtime dependency; the plugin ships via esbuild and does not import the package at runtime; the type gate is the detector and measured clean |
 
 ---
 
@@ -160,9 +196,17 @@ Per-file inventory of the 332 (2026-07-18):
 | Server-side legacy envelope | `src/mcp_server/tools/channel.ts` (2026-07-18) | Join failures reported in-band as successful results with `status: "error"` + `errorCode` — predates the D9 boundary |
 | UI-relay flattening | `figma_plugin/ui.html` dispatch catch (2026-07-18) | UI-local failures forwarded as `error.message \|\| "Error executing command"` — uncoded, indistinguishable from plugin-authored failures |
 | Deferral decision | v2.3.3 open-questions Q16 (resolved 2026-07-18, Option A); PRD Rev 23 | Legacy surface stays on the ratified `UNKNOWN_ERROR` fallback; conversion deferred to this release with `UNKNOWN_ERROR` as the burn-down metric |
+| **(T2)** Pinned vs. published typings | `package.json` + `npm view @figma/plugin-typings` (2026-07-26) | Pinned `1.125.0`; published latest `1.131.0` |
+| **(T2)** `ShaderEffect` origin | `plugin-api-standalone.d.ts` at 1.125.0 vs 1.131.0 (2026-07-26) | Absent at 1.125.0; present at 1.131.0 as `{type:'SHADER', visible, id, properties?}` and added to the `Effect` union |
+| **(T2)** Runtime is ahead of the pin | `style_manage` runtime validation error, live channel `zgkx` (2026-07-26) | Figma's own validator enumerates `SHADER` with a required `id` among accepted effect variants — the runtime accepts what the pinned contract cannot express |
+| **(T2)** Effect-variant delta 1.125 → 1.131 | per-interface diff of the two declaration files (2026-07-26) | Only additive change to existing variants: `noiseSizeVector?: Vector` on `NoiseEffectBase` and `TextureEffect`; all other variants byte-identical |
+| **(T2)** Type-gate impact of the bump | `tsc --noEmit -p figma_plugin/tsconfig.json` against a swapped-in 1.131.0 declaration file, then restored (2026-07-26) | **0 errors** — the plugin source compiles cleanly six minor versions forward |
+| **(T2)** The Q35 lever fires | v2.3.3 `v2.3.3.phase7.test.ts` parity test under the swapped-in 1.131.0 typings (2026-07-26) | Test goes red on the eighth union member and demands the schema update — the pinning mechanism works as designed |
+| **(T2)** Generated-file coupling | `package.json` (`gen:node-fields` inside `build:all`, `check:generated`) + `nodeFields.generated.ts` header (2026-07-26) | `NODE_DATA_FIELDS` is auto-generated from the typings, so the bump regenerates what `node_info` can read — the reason Track 2 is a separate release rather than a v2.3.3 patch |
 
 ---
 
 ## Revision history
 
+- **Rev 2, 2026-07-26** — added **Track 2: the `@figma/plugin-typings` bump (1.125.0 → 1.131.0)**, accepted from the v2.3.3 Q35 residual. Records the measured facts (pinned vs. published version; `ShaderEffect` added in 1.131.0 and absent from 1.125.0; the live runtime already accepting `SHADER`; `noiseSizeVector` as the only other Effect-variant delta; **0 `tsc` errors** against the newer typings; the Q35 parity test correctly going red on the bump), the reason for deferral out of v2.3.3 (the typings-generated `nodeFields.generated.ts` changes what `node_info` can read, and that diff deserves its own review), decision **D8**, scope item 9, non-goals for the escape hatch and dependency sweep, **Phase T2** (labelled outside the numbered Track 1 sequence — it has no ordering dependency, and a decimal phase already means unplanned post-verification work in this repo), three risk rows, six provenance rows, and the testing additions. The release title and identity block now describe two tracks. Standing rule recorded in D8: future Figma variants are adopted by bumping the pin and letting the parity test fail — not by loosening the schema.
 - **Rev 1, 2026-07-18** — initial PRD, created on the v2.3.3 Q16 resolution (Option A). Records the measured legacy surface (332 inline sites, 51 central-table-backed, 102 prose assertions, the `channel.ts` envelope, the UI-relay flattening), decisions D1–D7 (cause-level taxonomy, registry-only origination, D9 message quality, playbook parity gate, code-based tests, no-control-flow-change with a ratchet gate, boundary unification), one open question (Q1 — `channel.ts` convergence, recommendation Option A), and the ten-phase plan gated on v2.3.3 merging first.
