@@ -14,8 +14,16 @@ import {
   isSocketCliEntry,
   type FigmaSocketServer,
 } from "../../socket.js";
-import { CHANNEL_REFUSALS } from "../../shared/channelProtocol.js";
+import {
+  CHANNEL_REFUSALS,
+  CLIENT_REFUSALS,
+  normalizeChannelVersion,
+} from "../../shared/channelProtocol.js";
 import { SERVER_VERSION } from "../../shared/version.js";
+import {
+  CLIENT_OPERATIONAL_CODES,
+  SOCKET_OPERATIONAL_CODES,
+} from "../../shared/errorCodes.js";
 import { REFUSALS as PLUGIN_REFUSALS } from "../../../figma_plugin/utils/errors.js";
 
 type Predicate = (message: any) => boolean;
@@ -110,37 +118,107 @@ class WirePeer {
   }
 }
 
-describe("Phase 9 D13: socket/plugin refusal parity", () => {
-  it("keeps the four D13 code/message pairs identical across the server and plugin registries", () => {
-    const pairs = [
-      [
-        CHANNEL_REFUSALS.PLUGIN_PEER_UNAVAILABLE("parity"),
-        PLUGIN_REFUSALS.PLUGIN_PEER_UNAVAILABLE(),
-      ],
-      [
-        CHANNEL_REFUSALS.PLUGIN_PEER_AMBIGUOUS("parity"),
-        PLUGIN_REFUSALS.PLUGIN_PEER_AMBIGUOUS(),
-      ],
-      [
-        CHANNEL_REFUSALS.CHANNEL_IN_USE("parity"),
-        PLUGIN_REFUSALS.CHANNEL_IN_USE(),
-      ],
-      [
-        CHANNEL_REFUSALS.VERSION_MISMATCH(
-          "parity",
-          "server-version",
-          "plugin-version",
-        ),
-        PLUGIN_REFUSALS.VERSION_MISMATCH(),
-      ],
-    ];
+describe("Phase 9 D13: socket refusal registry ownership", () => {
+  // Change 5 (P9-F3) replaces the old plugin/server parity assertion. Parity
+  // was guarding a mirror with no consumer: the plugin has no throw site for a
+  // channel-admission refusal, so those four factories were dead strings in
+  // `code.js`. The invariant that matters is OWNERSHIP — the socket registry
+  // defines exactly these four, and the plugin registry defines none of them.
+  it("defines exactly the four socket-origin D13 refusals, each returning its own code", () => {
+    expect(Object.keys(CHANNEL_REFUSALS).sort()).toEqual(
+      [...SOCKET_OPERATIONAL_CODES, "PLUGIN_DISCONNECTED"].sort(),
+    );
 
-    for (const [serverRefusal, pluginRefusal] of pairs) {
-      expect({
-        code: serverRefusal.code,
-        message: serverRefusal.message,
-      }).toEqual(pluginRefusal);
+    const produced = [
+      CHANNEL_REFUSALS.PLUGIN_PEER_UNAVAILABLE("ch"),
+      CHANNEL_REFUSALS.PLUGIN_PEER_AMBIGUOUS("ch"),
+      CHANNEL_REFUSALS.CHANNEL_IN_USE("ch"),
+      CHANNEL_REFUSALS.VERSION_MISMATCH("ch", "1.0.0", "2.0.0"),
+    ];
+    expect(produced.map((refusal) => refusal.code)).toEqual([
+      ...SOCKET_OPERATIONAL_CODES,
+    ]);
+  });
+
+  it("P9-F3: no socket- or client-origin code regains a dead plugin-side mirror", () => {
+    for (const code of [...SOCKET_OPERATIONAL_CODES, ...CLIENT_OPERATIONAL_CODES]) {
+      expect(
+        code in PLUGIN_REFUSALS,
+        `${code} is raised outside the Figma sandbox; the plugin bundle must not ship a factory it can never throw`,
+      ).toBe(false);
     }
+  });
+
+  it("Rev 57: CLIENT_REFUSALS owns exactly the client-origin codes", () => {
+    expect(Object.keys(CLIENT_REFUSALS).sort()).toEqual(
+      [...CLIENT_OPERATIONAL_CODES].sort(),
+    );
+    // Client-origin codes must not also live in the socket registry — the
+    // Change 5 rule is one home per code, chosen by where it is thrown.
+    for (const code of CLIENT_OPERATIONAL_CODES) {
+      expect(code in CHANNEL_REFUSALS).toBe(false);
+    }
+  });
+
+  it("Rev 57: CHANNEL_NOT_BOUND carries a specific recovery in both shapes", () => {
+    const generic = CLIENT_REFUSALS.CHANNEL_NOT_BOUND();
+    expect(generic.code).toBe("CHANNEL_NOT_BOUND");
+    expect(generic.message).toContain("Call channel_join");
+    expect(generic.message).not.toContain("undefined");
+    // No fabricated details when there is nothing to report (the P9-F5 rule).
+    expect(generic.details).toBeUndefined();
+
+    const released = CLIENT_REFUSALS.CHANNEL_NOT_BOUND("prev");
+    expect(released.code).toBe("CHANNEL_NOT_BOUND");
+    expect(released.message).toContain("released the previously joined channel 'prev'");
+    expect(released.message).toContain("Call channel_join with 'prev'");
+    expect(released.details).toEqual({ releasedChannel: "prev" });
+
+    // D9 reserves the "Operation Denied:" prefix for policy/verification
+    // refusals; a missing precondition is operational, like PLUGIN_DISCONNECTED.
+    expect(generic.message.startsWith("Operation Denied:")).toBe(false);
+    expect(released.message.startsWith("Operation Denied:")).toBe(false);
+  });
+
+  it("holds the socket refusals to D9's recovery-content bar", () => {
+    // The equivalent bar for plugin-thrown codes lives in the Phase 4 suite;
+    // this is where the four socket-origin codes are covered after the split.
+    const recoveryVerb =
+      /\b(retry|reconnect|pass|read|list|ensure|open|start|use|disconnect|update|resolve|reopen)\b/i;
+    for (const refusal of [
+      CHANNEL_REFUSALS.PLUGIN_PEER_UNAVAILABLE("ch"),
+      CHANNEL_REFUSALS.PLUGIN_PEER_AMBIGUOUS("ch"),
+      CHANNEL_REFUSALS.CHANNEL_IN_USE("ch"),
+      CHANNEL_REFUSALS.VERSION_MISMATCH("ch", "1.0.0", "2.0.0"),
+      CHANNEL_REFUSALS.PLUGIN_DISCONNECTED("ch", "peer-1"),
+    ]) {
+      expect(refusal.message.length).toBeGreaterThanOrEqual(25);
+      expect(
+        recoveryVerb.test(refusal.message),
+        `${refusal.code} names no recovery action`,
+      ).toBe(true);
+    }
+  });
+
+  it("P9-F5: the ambiguous refusal reports no fabricated peer count", () => {
+    // It was the literal `2` regardless of how many peers existed. The
+    // unavailable refusal keeps its count because zero is genuinely observed.
+    expect(CHANNEL_REFUSALS.PLUGIN_PEER_AMBIGUOUS("ch").details).toEqual({
+      channel: "ch",
+    });
+    expect(CHANNEL_REFUSALS.PLUGIN_PEER_UNAVAILABLE("ch").details).toEqual({
+      channel: "ch",
+      peerCount: 0,
+    });
+  });
+
+  it("P9-F6: version normalization is shared by the known-check and the comparison", () => {
+    expect(normalizeChannelVersion(" 2.3.3 ")).toBe("2.3.3");
+    expect(normalizeChannelVersion("2.3.3")).toBe("2.3.3");
+    expect(normalizeChannelVersion("   ")).toBe("unknown");
+    expect(normalizeChannelVersion(undefined)).toBe("unknown");
+    // The defect: a padded self-report was "known" yet unequal to its twin.
+    expect(normalizeChannelVersion(" 2.3.3")).toBe(normalizeChannelVersion("2.3.3"));
   });
 
   it("recognizes an npm-style symlinked socket bin as direct execution", () => {
@@ -313,6 +391,128 @@ describe("Phase 9 D13: peer-bound socket protocol", () => {
     );
     expect(inUse.type).toBe("join_error");
     expect(inUse.code).toBe("CHANNEL_IN_USE");
+
+    // P9-T1: this test's title claimed non-admission but only ever asserted the
+    // returned codes, so a regression that admitted a refused peer while still
+    // replying with the right code would have passed. Prove it behaviourally:
+    // neither refused peer may participate in the bound pair's traffic.
+    await joinPlugin(plugin, "bound-channel", SERVER_VERSION, "rebind-noop");
+    firstMcp.send({
+      id: "admission-probe",
+      type: "message",
+      channel: "bound-channel",
+      message: {
+        id: "admission-probe",
+        command: "page_info",
+        params: { commandId: "admission-probe" },
+      },
+    });
+
+    // The refused PLUGIN must not receive the dispatch...
+    await expect(
+      secondPlugin.next((m) => m.message?.id === "admission-probe", 400),
+    ).rejects.toThrow();
+    // ...and the bound plugin must.
+    const dispatched = await plugin.next(
+      (m) => m.type === "broadcast" && m.message?.id === "admission-probe",
+    );
+    expect(dispatched.message.command).toBe("page_info");
+
+    // The refused MCP must not receive the bound plugin's reply.
+    plugin.send({
+      id: "admission-probe",
+      type: "message",
+      channel: "bound-channel",
+      message: { id: "admission-probe", result: { ok: true } },
+    });
+    await expect(
+      secondMcp.next((m) => m.message?.id === "admission-probe", 400),
+    ).rejects.toThrow();
+    const delivered = await firstMcp.next(
+      (m) => m.message?.id === "admission-probe",
+    );
+    expect(delivered.message.result).toEqual({ ok: true });
+  });
+
+  it("P9-F4: reclaims routes idle past the bound without evicting an active one", async () => {
+    let clock = 1_000_000;
+    const idleServer = createFigmaSocketServer({
+      logger: { log() {}, error() {} },
+      peerIdFactory: () => `idle-peer-${++peerSequence}`,
+      now: () => clock,
+      routeIdleTimeoutMs: 10_000,
+    });
+    await new Promise<void>((resolve, reject) => {
+      idleServer.httpServer.once("error", reject);
+      idleServer.httpServer.listen(0, "127.0.0.1", () => resolve());
+    });
+    const { port } = idleServer.httpServer.address() as AddressInfo;
+    const url = `ws://127.0.0.1:${port}`;
+    const localPeers: WirePeer[] = [];
+    const open = async () => {
+      const socket = new WebSocket(url);
+      const peer = new WirePeer(socket);
+      localPeers.push(peer);
+      await new Promise<void>((resolve, reject) => {
+        socket.once("open", () => resolve());
+        socket.once("error", reject);
+      });
+      await peer.next((m) => typeof m.peerId === "string");
+      return peer;
+    };
+
+    try {
+      const plugin = await open();
+      const mcp = await open();
+      plugin.send({ id: "p", type: "join", channel: "idle", clientType: "plugin", pluginVersion: SERVER_VERSION });
+      await plugin.next((m) => m.message?.result);
+      mcp.send({ id: "m", type: "join", channel: "idle", clientType: "mcp", serverVersion: SERVER_VERSION });
+      await mcp.next((m) => m.message?.result);
+
+      const dispatch = async (id: string) => {
+        mcp.send({
+          id, type: "message", channel: "idle",
+          message: { id, command: "page_info", params: { commandId: id } },
+        });
+        await plugin.next((m) => m.type === "broadcast" && m.message?.id === id);
+      };
+
+      // "abandoned" never gets a terminal frame. "active" keeps reporting
+      // progress, so its route must survive the same elapsed time.
+      await dispatch("abandoned");
+      await dispatch("active");
+
+      clock += 8_000;
+      plugin.send({
+        id: "active", type: "progress_update", channel: "idle",
+        message: { id: "active", type: "progress_update", data: { progress: 50 } },
+      });
+      await mcp.next((m) => m.type === "progress_update" && m.id === "active");
+
+      // Cross the bound for "abandoned" (16s idle) but not for "active" (8s).
+      clock += 8_000;
+      await dispatch("sweeper");
+
+      // The reclaimed route can no longer deliver: its reply is now unroutable.
+      plugin.send({
+        id: "abandoned", type: "message", channel: "idle",
+        message: { id: "abandoned", result: { late: true } },
+      });
+      await expect(
+        mcp.next((m) => m.message?.result?.late === true, 400),
+      ).rejects.toThrow();
+
+      // The refreshed route is untouched and still delivers.
+      plugin.send({
+        id: "active", type: "message", channel: "idle",
+        message: { id: "active", result: { survived: true } },
+      });
+      const survived = await mcp.next((m) => m.message?.result?.survived === true);
+      expect(survived.message.result).toEqual({ survived: true });
+    } finally {
+      await Promise.all(localPeers.map((peer) => peer.close()));
+      await idleServer.close();
+    }
   });
 
   it("refuses a known version mismatch without reserving the MCP slot, then permits a matching rejoin", async () => {

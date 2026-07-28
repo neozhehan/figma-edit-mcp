@@ -4,6 +4,7 @@ import { normalizeNodeId, normalizeNodeIds } from "./utils.js";
 import { logger } from "./logger.js";
 import { UNKNOWN_ERROR } from "../shared/errorCodes.js";
 import { SERVER_VERSION } from "../shared/version.js";
+import { CLIENT_REFUSALS } from "../shared/channelProtocol.js";
 import type {
     ChannelJoinResult as ProtocolChannelJoinResult,
     ChannelLeaveResult,
@@ -169,7 +170,12 @@ let defaultPort: number = 3055;
 let nextBindingGeneration = 0;
 
 type ChannelBindingState =
-    | { status: "unbound" }
+    // `releasedChannel` records a working binding this client gave up in order
+    // to attempt a join that then failed (Change 5, P9-F2). A connection owns
+    // at most one socket reservation, so the leave must happen first — but the
+    // caller must be told which channel that cost them, or a mistyped channel
+    // code silently destroys a live connection with no way back in one step.
+    | { status: "unbound"; releasedChannel?: string }
     | {
         status: "bound";
         channel: string;
@@ -514,12 +520,32 @@ export async function joinChannel(channelName: string): Promise<JoinChannelResul
     }
 
     let socketAdmittedJoin = false;
+    // Non-empty only when this attempt gave up a live binding to make room.
+    let releasedChannel: string | undefined;
     try {
         // A connection owns at most one channel reservation. Detach the old
         // pair before attempting a switch or rejoin; a failed new join therefore
         // cannot silently leave later tools targeting the previous plugin.
         if (bindingState.status !== "unbound") {
-            await resetChannel();
+            const previousChannel = bindingState.channel;
+            try {
+                await resetChannel();
+            } catch (leaveError: any) {
+                // P9-F7: this is NOT a join-acknowledgement timeout. Tag the
+                // phase so recovery guidance can name the real cause instead of
+                // telling the caller the plugin was slow to accept a join it
+                // never saw.
+                throw new FigmaError({
+                    code: "CHANNEL_JOIN_FAILED",
+                    message: `Could not leave the current channel '${previousChannel}', so the join to '${channelName}' was not attempted: ${leaveError?.message ?? String(leaveError)}`,
+                    details: {
+                        phase: "leave-previous-channel",
+                        previousChannel,
+                        requestedChannel: channelName,
+                    },
+                });
+            }
+            if (previousChannel !== channelName) releasedChannel = previousChannel;
         }
 
         const result = await sendCommandToFigma("join", { channel: channelName });
@@ -564,17 +590,38 @@ export async function joinChannel(channelName: string): Promise<JoinChannelResul
             }
         }
         logger.error(`Failed to join channel: ${error instanceof Error ? error.message : String(error)}`);
+
+        // P9-F2: the failed attempt already cost the caller a live binding.
+        // Record it so later commands can say so, and attach it to the error so
+        // the join result names the channel that must be rejoined.
+        if (releasedChannel) {
+            bindingState = { status: "unbound", releasedChannel };
+        }
+
         // Q20: code the join flow's locally-generated failures at origin. An
         // already-coded error (socket CHANNEL_NOT_FOUND, close-handler
         // PLUGIN_DISCONNECTED) passes through untouched; an uncoded local
         // failure — e.g. the request timeout — becomes CHANNEL_JOIN_FAILED.
         // The check is structural (absence of a code), never message prose.
         if (error !== null && typeof error === "object" && typeof (error as any).code === "string") {
+            if (releasedChannel) {
+                // Preserve code and message verbatim (Q20) and add the released
+                // channel alongside whatever details the origin supplied.
+                throw new FigmaError({
+                    code: (error as any).code,
+                    message: (error as any).message,
+                    details: {
+                        ...((error as any).details ?? {}),
+                        releasedChannel,
+                    },
+                });
+            }
             throw error;
         }
         throw new FigmaError({
             code: "CHANNEL_JOIN_FAILED",
             message: error instanceof Error ? error.message : String(error),
+            ...(releasedChannel ? { details: { releasedChannel } } : {}),
         });
     }
 }
@@ -597,7 +644,15 @@ export function sendCommandToFigma(
             if (bindingState.status === "invalidated") {
                 reject(bindingState.error);
             } else {
-                reject(new Error("Must join a channel before sending commands"));
+                // Rev 57: coded CHANNEL_NOT_BOUND rather than a bare Error on
+                // the UNKNOWN_ERROR fallback. P9-F2 made this a new reachable
+                // state — a failed join can now release a working binding — so
+                // D9's "adds or edits" rule applies and the code earns its own
+                // playbook entry. The factory carries the released channel when
+                // there is one, so recovery stays one round trip either way.
+                reject(new FigmaError(
+                    CLIENT_REFUSALS.CHANNEL_NOT_BOUND(bindingState.releasedChannel),
+                ));
             }
             return;
         }

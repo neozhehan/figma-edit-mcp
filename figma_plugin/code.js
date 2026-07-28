@@ -23,27 +23,14 @@
     INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array"
   };
   var REFUSALS = {
-    // Phase 9's four D13 codes now have live socket-origin sites in the separate
-    // server-side canonical channel registry (`src/shared/channelProtocol.ts`);
-    // these plugin factories are the bundle-side mirror kept in exact parity by
-    // the Phase 9 socket tests. Phase 10–11 operational entries remain
-    // placeholders until those phases land.
-    PLUGIN_PEER_UNAVAILABLE: () => ({
-      code: "PLUGIN_PEER_UNAVAILABLE",
-      message: "Operation Denied: Figma Plugin is not running or available. Please open the Figma document, start the figma-edit-mcp plugin, and reconnect."
-    }),
-    PLUGIN_PEER_AMBIGUOUS: () => ({
-      code: "PLUGIN_PEER_AMBIGUOUS",
-      message: "Operation Denied: Multiple plugin peers are connected to this channel. Ensure the figma-edit-mcp plugin is open in exactly one Figma tab/document."
-    }),
-    CHANNEL_IN_USE: () => ({
-      code: "CHANNEL_IN_USE",
-      message: "Operation Denied: This channel is already in use by another MCP session. Please use a different channel name or disconnect the other session."
-    }),
-    VERSION_MISMATCH: () => ({
-      code: "VERSION_MISMATCH",
-      message: "Operation Denied: Version mismatch between MCP server and Figma plugin. Please ensure both are updated to the same version."
-    }),
+    // Phase 9's four D13 codes are NOT here by design (Change 5, P9-F3). They
+    // are channel-admission refusals decided by the socket bridge before any
+    // frame reaches Figma, so the plugin has no throw site for them and a
+    // bundle-side copy would be dead weight in `code.js`. They live only in
+    // `src/shared/channelProtocol.ts`; a regression asserts their absence here.
+    // Phase 10–11 operational entries below remain placeholders until those
+    // phases land, but those ARE plugin-thrown and so belong in this registry.
+    //
     // Page codes are operational failures, not safety refusals — no "Operation
     // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
     PAGE_LOAD_FAILED: () => ({

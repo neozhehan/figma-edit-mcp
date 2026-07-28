@@ -6,7 +6,7 @@ import * as path from "path";
 import { registerVariableTools } from "../../../tools/variable.js";
 import { registerStyleTools } from "../../../tools/style.js";
 import { withStrictInputSchemas } from "../../../tools/index.js";
-import { OPERATIONAL_CODES, VERIFICATION_CODES, PARENT_VERIFICATION_CODES, ANNOTATION_VERIFICATION_CODES, RATIFIED_CODES, UNKNOWN_ERROR } from "../../../../shared/errorCodes.js";
+import { OPERATIONAL_CODES, SOCKET_OPERATIONAL_CODES, CLIENT_OPERATIONAL_CODES, PLUGIN_OPERATIONAL_CODES, VERIFICATION_CODES, PARENT_VERIFICATION_CODES, ANNOTATION_VERIFICATION_CODES, RATIFIED_CODES, UNKNOWN_ERROR } from "../../../../shared/errorCodes.js";
 import { ERRORS, REFUSALS, getStructuredError } from "../../../../../figma_plugin/utils/errors.js";
 
 // Loaded under a cache-busting query key so this file always gets the REAL
@@ -419,24 +419,38 @@ describe("v2.3.3 Phase 4: Dispatcher emits structured errors (real main.ts)", ()
 // =============================================================================
 
 describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
-    it("the ratified inventory is exact: twenty codes plus the fallback, no duplicates", () => {
+    it("the ratified inventory is exact: twenty-one codes plus the fallback, no duplicates", () => {
         // Rev 46 (Q30): ANNOTATION_CATEGORY_NOT_FOUND joins the inventory.
-        expect(RATIFIED_CODES.length).toBe(21);
+        // Rev 57: CHANNEL_NOT_BOUND joins it on the same "adds or edits" rule,
+        // because P9-F2 made "no binding" a state a failed join can create.
+        expect(RATIFIED_CODES.length).toBe(22);
         expect(new Set(RATIFIED_CODES).size).toBe(RATIFIED_CODES.length);
         expect(RATIFIED_CODES).toContain(UNKNOWN_ERROR);
     });
 
-    it("P4-5/Q27: every ratified code — operational and verification alike — is a REFUSALS factory, not an ERRORS string", () => {
+    it("P4-5/Q27: every plugin-thrown ratified code is a REFUSALS factory, not an ERRORS string", () => {
         // Q27 (resolved 2026-07-23) scopes ERRORS to the legacy, pre-v2.3.3
-        // surface only. Every code this release adds — including the ten
-        // Phase 9-11 operational placeholders — lives in REFUSALS.
-        const allRatifiedRefusalCodes: readonly string[] = [
-            ...OPERATIONAL_CODES, ...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES,
+        // surface only. Every code this release adds lives in a factory
+        // registry — but Change 5 (P9-F3) sites each factory where the code can
+        // actually be THROWN. The four D13 channel-admission codes are decided
+        // by the socket bridge, so they live in channelProtocol.ts and are
+        // asserted absent here; the plugin registry holds exactly the rest.
+        const pluginThrownCodes: readonly string[] = [
+            ...PLUGIN_OPERATIONAL_CODES, ...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES,
             ...ANNOTATION_VERIFICATION_CODES,
         ];
 
-        // The registry keys are exactly the ratified codes — no more, no less.
-        expect(Object.keys(REFUSALS).sort()).toEqual([...allRatifiedRefusalCodes].sort());
+        // The registry keys are exactly the plugin-thrown codes — no more, no less.
+        expect(Object.keys(REFUSALS).sort()).toEqual([...pluginThrownCodes].sort());
+
+        // P9-F3: a socket- or client-origin code must never gain a dead plugin
+        // mirror. Both are decided outside the Figma sandbox entirely.
+        for (const code of [...SOCKET_OPERATIONAL_CODES, ...CLIENT_OPERATIONAL_CODES]) {
+            expect(
+                code in REFUSALS,
+                `REFUSALS.${code} must not exist — ${code} is raised outside the plugin, which can never throw it (P9-F3)`,
+            ).toBe(false);
+        }
 
         // Typed iteration over the registry (no `as any`): every factory
         // returns its own key as `code`. Extra operands are harmless for the
@@ -448,23 +462,27 @@ describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
             expect(produced.message.length).toBeGreaterThan(0);
         }
 
-        // NO ratified code — operational, D5, or D6 — may exist in the legacy
-        // ERRORS table (a duplicate string entry would be a drift surface).
-        for (const code of allRatifiedRefusalCodes) {
-            expect(code in ERRORS, `ERRORS.${code} should not exist — ratified codes live in REFUSALS (Q27)`).toBe(false);
+        // NO ratified code — operational (either origin), D5, or D6 — may exist
+        // in the legacy ERRORS table (a duplicate string entry would be a drift
+        // surface). The socket-origin four are included: they must be absent
+        // from BOTH plugin-side registries, not merely moved between them.
+        for (const code of [...OPERATIONAL_CODES, ...VERIFICATION_CODES, ...PARENT_VERIFICATION_CODES, ...ANNOTATION_VERIFICATION_CODES]) {
+            expect(code in ERRORS, `ERRORS.${code} should not exist — ratified codes live in a factory registry (Q27)`).toBe(false);
         }
     });
 
     it("P4-5: operational + scopes refusal messages carry actionable recovery content, not just non-emptiness", () => {
-        // The operational codes are Phase 9-11 placeholders with no live throw
+        // The Phase 10-11 operational codes are placeholders with no live throw
         // site yet, so this is the only guard on their recovery quality until
         // then. VARIABLE_SCOPES_MISSING is the one D5 code with no read tool, so
         // the name-verification content-bar tests below don't cover it — it is
         // included here. Each must tell the caller what to DO (an actionable
-        // verb), not merely restate the failure.
+        // verb), not merely restate the failure. The four socket-origin D13
+        // codes are held to the same bar in socketPeerBinding.test.ts, against
+        // the registry that actually defines them (Change 5, P9-F3).
         type RefusalFactory = () => { code: string; message: string };
         const recoveryVerb = /\b(retry|reconnect|pass|read|list|ensure|open|start|ask|find|use|disconnect|specify|supply|update|resolve|report|verify|continue)\b/i;
-        for (const code of [...OPERATIONAL_CODES, "VARIABLE_SCOPES_MISSING"]) {
+        for (const code of [...PLUGIN_OPERATIONAL_CODES, "VARIABLE_SCOPES_MISSING"]) {
             const factory = (REFUSALS as Record<string, RefusalFactory>)[code];
             const { message } = factory();
             expect(message.length, `${code} message too short to carry recovery`).toBeGreaterThanOrEqual(25);

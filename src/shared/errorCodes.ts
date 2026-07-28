@@ -12,18 +12,59 @@
 /** The ratified legacy fallback: a failure not thrown as a coded object. */
 export const UNKNOWN_ERROR = "UNKNOWN_ERROR";
 
-/** Operational codes registered for Phases 9–11 (task-list header). */
-export const OPERATIONAL_CODES = [
+/**
+ * D13 operational codes whose ONLY origin is the socket bridge (Phase 9).
+ *
+ * These are refusals about channel admission, so they are decided before any
+ * frame reaches Figma and the plugin can never throw one. Their factories live
+ * in `channelProtocol.ts` and are deliberately absent from the plugin registry
+ * (Change 5, P9-F3): Q27 splits the registries because the plugin bundle cannot
+ * import `src/shared` at runtime, which is a reason to duplicate codes the
+ * PLUGIN throws — not a reason to ship a mirror of a code it never throws.
+ */
+export const SOCKET_OPERATIONAL_CODES = [
     "PLUGIN_PEER_UNAVAILABLE",
     "PLUGIN_PEER_AMBIGUOUS",
     "CHANNEL_IN_USE",
     "VERSION_MISMATCH",
+] as const;
+
+/**
+ * Operational codes raised by the MCP client itself, before any frame is put
+ * on the wire (Change 5 follow-up, Rev 57).
+ *
+ * `CHANNEL_NOT_BOUND` is the state a tool call hits when this session holds no
+ * channel binding. It joins the coded regime on D9's "adds or edits" rule —
+ * the same precedent that coded `VARIABLE_SCOPES_MISSING` (Rev 27), the D6
+ * parent pair (Rev 31), and `ANNOTATION_CATEGORY_NOT_FOUND` (Rev 46) — because
+ * P9-F2 made it a NEW reachable state: before Phase 9 a failed join could not
+ * release a working binding, so "no binding" only ever meant "never joined".
+ * Leaving it on the `UNKNOWN_ERROR` fallback would have denied it the playbook
+ * entry D9 requires for a state an agent must recover from.
+ */
+export const CLIENT_OPERATIONAL_CODES = [
+    "CHANNEL_NOT_BOUND",
+] as const;
+
+/** Operational codes thrown by the plugin itself (Phases 10–11). */
+export const PLUGIN_OPERATIONAL_CODES = [
     "PAGE_LOAD_FAILED",
     "PAGE_NOT_FOUND",
     "TARGET_NOT_PAGE",
     "PAGE_LOAD_TIMEOUT",
     "DOCUMENT_SCAN_INCOMPLETE",
     "CONNECTOR_TEMPLATE_REQUIRED",
+] as const;
+
+/**
+ * The operational codes of the ratified contract (Q16), grouped by origin.
+ * The Change 5 split did not change membership; the Rev 57 addition of
+ * `CHANNEL_NOT_BOUND` does, taking the inventory from ten to eleven.
+ */
+export const OPERATIONAL_CODES = [
+    ...SOCKET_OPERATIONAL_CODES,
+    ...CLIENT_OPERATIONAL_CODES,
+    ...PLUGIN_OPERATIONAL_CODES,
 ] as const;
 
 /** D5 verification refusal codes (Phase 4; seven, per Rev 27). */
@@ -74,7 +115,7 @@ export const JOIN_CODES = [
     "PLUGIN_DISCONNECTED",
 ] as const;
 
-/** The full ratified v2.3.3 inventory: twenty codes plus the fallback (Rev 46). */
+/** The full ratified v2.3.3 inventory: twenty-one codes plus the fallback (Rev 57). */
 export const RATIFIED_CODES = [
     ...OPERATIONAL_CODES,
     ...VERIFICATION_CODES,

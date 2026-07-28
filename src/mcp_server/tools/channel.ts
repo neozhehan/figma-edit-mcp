@@ -10,9 +10,15 @@ import { UNKNOWN_ERROR } from "../../shared/errorCodes.js";
 // message prose. The two locally-generated failures are coded at origin in
 // figma-client (CHANNEL_JOIN_FAILED on join timeout, PLUGIN_DISCONNECTED on
 // connection close). The in-band envelope shape is unchanged (v2.3.4 PRD Q1).
-const JOIN_RECOVERY: Record<string, (channel: string) => string> = {
+// Guidance receives the originating error so a code with more than one cause
+// can name the right one (Change 5, P9-F7): a failure to LEAVE the previous
+// channel used to be reported as a join-acknowledgement timeout.
+const JOIN_RECOVERY: Record<string, (channel: string, error: any) => string> = {
     CHANNEL_NOT_FOUND: (ch) => `Channel '${ch}' was not found. Verify the channel name and that the Figma plugin is running and connected.`,
-    CHANNEL_JOIN_FAILED: (ch) => `Failed to join channel '${ch}'. The Figma plugin did not acknowledge the join within the expected time. Try reconnecting the plugin.`,
+    CHANNEL_JOIN_FAILED: (ch, error) =>
+        error?.details?.phase === "leave-previous-channel"
+            ? `${error.message} The previous channel is still held by this session; retry channel_join once the plugin responds.`
+            : `Failed to join channel '${ch}'. The Figma plugin did not acknowledge the join within the expected time. Try reconnecting the plugin.`,
     PLUGIN_DISCONNECTED: () => "The Figma plugin disconnected before the editable scope could be read. Reopen the plugin and try again.",
 };
 
@@ -23,11 +29,23 @@ function joinFailure(channel: string, error: any) {
     const guidance = JOIN_RECOVERY[errorCode];
     // Codes without local guidance keep their originating message verbatim —
     // a D9 message already embeds its own recovery.
-    const errorMessage = guidance
-        ? guidance(channel)
+    const baseMessage = guidance
+        ? guidance(channel, error)
         : errorCode !== UNKNOWN_ERROR
             ? (error.message || String(error))
             : `An unexpected error occurred while joining the channel: ${error?.message || String(error)}.`;
+
+    // P9-F2: a failed join can only be attempted after releasing whatever
+    // channel this session already held. Saying so in the always-visible
+    // message — not only in errorDetails — is what keeps recovery to one round
+    // trip when the cause was a mistyped channel code.
+    const released = (error !== null && typeof error === "object")
+        ? error.details?.releasedChannel
+        : undefined;
+    const errorMessage = typeof released === "string" && released.length > 0
+        ? `${baseMessage} This attempt also disconnected the previously joined channel '${released}'; call channel_join with '${released}' to restore it.`
+        : baseMessage;
+
     return {
         status: "error",
         channel,

@@ -10,9 +10,20 @@ import {
   CHANNEL_REFUSALS,
   isKnownChannelVersion,
   joinErrorFrame,
+  normalizeChannelVersion,
   type ChannelClientType,
   type RelayFrame,
 } from "./shared/channelProtocol.js";
+
+/**
+ * A dispatched route is reclaimed once it has been idle this long (Change 5,
+ * P9-F4). The bound is on INACTIVITY, not age: a long command that keeps
+ * emitting progress refreshes its route, so pruning can never evict work that
+ * is still running. It exists so a command that never receives a terminal
+ * frame — a client-side timeout, or a plugin that stops answering — cannot
+ * leak its route for the life of the binding.
+ */
+const ROUTE_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 interface SocketLogger {
   log(...args: unknown[]): void;
@@ -32,6 +43,8 @@ interface PendingRoute {
   requestId: string;
   pluginPeerId: string;
   mcpPeerId: string;
+  /** Refreshed by progress forwarding; drives idle reclamation (P9-F4). */
+  lastActivityAt: number;
 }
 
 interface ChannelState {
@@ -45,6 +58,10 @@ interface ChannelState {
 export interface FigmaSocketServerOptions {
   logger?: SocketLogger;
   peerIdFactory?: () => string;
+  /** Injectable clock so route-reclamation tests need no wall-clock wait. */
+  now?: () => number;
+  /** Override the idle bound; tests use a short one. */
+  routeIdleTimeoutMs?: number;
 }
 
 export interface FigmaSocketServer {
@@ -67,8 +84,22 @@ export function createFigmaSocketServer(
 ): FigmaSocketServer {
   const logger = options.logger ?? console;
   const peerIdFactory = options.peerIdFactory ?? randomUUID;
+  const now = options.now ?? Date.now;
+  const routeIdleTimeoutMs = options.routeIdleTimeoutMs ?? ROUTE_IDLE_TIMEOUT_MS;
   const channels = new Map<string, ChannelState>();
   const peers = new Map<WebSocket, ConnectedPeer>();
+
+  /**
+   * Reclaim routes whose request produced no terminal frame and no progress
+   * within the idle bound (P9-F4). Called on dispatch, so the map is bounded
+   * by the number of genuinely active requests rather than by session length.
+   */
+  const pruneIdleRoutes = (channel: ChannelState) => {
+    const cutoff = now() - routeIdleTimeoutMs;
+    for (const [requestId, route] of channel.pending) {
+      if (route.lastActivityAt <= cutoff) channel.pending.delete(requestId);
+    }
+  };
 
   const httpServer = createServer((req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -258,10 +289,9 @@ export function createFigmaSocketServer(
       return;
     }
 
-    const pluginVersion =
-      typeof data.pluginVersion === "string" && data.pluginVersion.length > 0
-        ? data.pluginVersion
-        : "unknown";
+    // Normalized on ingest so the stored value is the one both the
+    // known-version test and the equality test see (P9-F6).
+    const pluginVersion = normalizeChannelVersion(data.pluginVersion);
     const existing = channels.get(channelName);
 
     if (existing?.plugin && existing.plugin !== peer) {
@@ -280,7 +310,7 @@ export function createFigmaSocketServer(
         peer,
         data.id,
         channelName,
-        existing.plugin.pluginVersion ?? "unknown",
+        normalizeChannelVersion(existing.plugin.pluginVersion),
       );
       return;
     }
@@ -351,11 +381,8 @@ export function createFigmaSocketServer(
       return;
     }
 
-    const serverVersion =
-      typeof data.serverVersion === "string" && data.serverVersion.length > 0
-        ? data.serverVersion
-        : "unknown";
-    const pluginVersion = channel.plugin.pluginVersion ?? "unknown";
+    const serverVersion = normalizeChannelVersion(data.serverVersion);
+    const pluginVersion = normalizeChannelVersion(channel.plugin.pluginVersion);
 
     if (
       isKnownChannelVersion(serverVersion) &&
@@ -462,10 +489,12 @@ export function createFigmaSocketServer(
       return;
     }
 
+    pruneIdleRoutes(channel);
     channel.pending.set(requestId, {
       requestId,
       pluginPeerId: channel.plugin.peerId,
       mcpPeerId: peer.peerId,
+      lastActivityAt: now(),
     });
 
     send(channel.plugin, {
@@ -508,6 +537,9 @@ export function createFigmaSocketServer(
       data.type === "progress_update" ||
       data.message.type === "progress_update";
     if (isProgress) {
+      // Progress is liveness evidence: refresh the route so a long-running
+      // command that keeps reporting is never reclaimed under it (P9-F4).
+      route.lastActivityAt = now();
       send(channel.mcp, {
         id: requestId,
         type: "progress_update",

@@ -202,6 +202,29 @@ function createUiHarness(script: string) {
         error: () => {},
         warn: () => {},
     };
+
+    // Controllable timers: the UI's scope-ready bound (P9-F9) is only testable
+    // if the harness can fire a pending timer on demand instead of waiting.
+    const timers = new Map<number, { callback: () => void; delay: number }>();
+    let nextTimerId = 0;
+    const fakeSetTimeout = (callback: () => void, delay: number) => {
+        const id = ++nextTimerId;
+        timers.set(id, { callback, delay });
+        return id;
+    };
+    const fakeClearTimeout = (id: number) => {
+        timers.delete(id);
+    };
+    const runPendingTimers = () => {
+        const scheduled = [...timers.entries()];
+        for (const [id, timer] of scheduled) {
+            if (!timers.has(id)) continue;
+            timers.delete(id);
+            timer.callback();
+        }
+        return scheduled.length;
+    };
+
     const execute = new Function(
         "document",
         "window",
@@ -218,8 +241,8 @@ function createUiHarness(script: string) {
         parentStub,
         MockWebSocket,
         quietConsole,
-        () => 1,
-        () => {},
+        fakeSetTimeout,
+        fakeClearTimeout,
     ) as { state: any };
 
     return {
@@ -228,6 +251,8 @@ function createUiHarness(script: string) {
         runtime,
         sockets,
         windowStub,
+        timers,
+        runPendingTimers,
     };
 }
 
@@ -319,5 +344,87 @@ describe("Phase 9 Q11: executable plugin UI handshake", () => {
         expect(harness.runtime.state.socket).toBeNull();
         expect(status?.innerHTML).toContain("Join failed (PLUGIN_PEER_AMBIGUOUS)");
         expect(status?.innerHTML).toContain("Two plugin peers are waiting");
+    });
+
+    it("P9-F9: abandons an unacknowledged scope request and states the retry", () => {
+        // Without a bound, a lost `scope-ready` left the UI at "Connecting..."
+        // forever with no recovery text and no socket.
+        const harness = createUiHarness(inlineScript);
+        const request = clickAndReadScopeRequest(harness);
+        expect(harness.runtime.state.pendingScopeRequest).not.toBeNull();
+
+        expect(harness.runPendingTimers()).toBeGreaterThan(0);
+
+        expect(harness.sockets).toHaveLength(0);
+        expect(harness.runtime.state.pendingScopeRequest).toBeNull();
+        const status = harness.elements.get("connection-status");
+        expect(status?.innerHTML).toContain("did not confirm the editable scope in time");
+        expect(status?.innerHTML).toContain("No connection was opened");
+        expect(status?.innerHTML).toContain("Click Connect to try again");
+
+        // A late acknowledgement for the abandoned request stays inert.
+        deliverScopeReady(harness, request.requestId);
+        expect(harness.sockets).toHaveLength(0);
+    });
+
+    it("P9-F9: a served acknowledgement cancels the bound so it cannot fire later", () => {
+        const harness = createUiHarness(inlineScript);
+        const request = clickAndReadScopeRequest(harness);
+        deliverScopeReady(harness, request.requestId);
+        expect(harness.sockets).toHaveLength(1);
+
+        // The scope-ready timer must have been cleared on consumption; firing
+        // whatever remains must not tear down the established connection.
+        harness.runPendingTimers();
+        const status = harness.elements.get("connection-status");
+        expect(status?.innerHTML ?? "").not.toContain("did not confirm the editable scope");
+        expect(harness.sockets).toHaveLength(1);
+    });
+
+    it("P9-F9: a second Connect click supersedes the first request's bound", () => {
+        const harness = createUiHarness(inlineScript);
+        clickAndReadScopeRequest(harness);
+        const firstId = harness.runtime.state.pendingScopeRequest.requestId;
+
+        harness.elements.get("btn-connect")!.click();
+        const secondId = harness.runtime.state.pendingScopeRequest.requestId;
+        expect(secondId).not.toBe(firstId);
+
+        // The superseded request's timer was cleared, so firing the remaining
+        // timer abandons only the current request — and the stale ID is inert.
+        harness.runPendingTimers();
+        deliverScopeReady(harness, firstId);
+        expect(harness.sockets).toHaveLength(0);
+    });
+});
+
+describe("Phase 9 P9-F10: plugin UI socket response handling", () => {
+    it("resolves a pending UI request by its own id", () => {
+        // `state.pendingRequests.delete(id)` referenced an undeclared binding
+        // where `data.id` was meant. Reachable only through the unused
+        // sendCommand helper, so latent — but it sits in the response path.
+        const harness = createUiHarness(inlineScript);
+        const request = clickAndReadScopeRequest(harness);
+        deliverScopeReady(harness, request.requestId);
+        const socket = harness.sockets[0];
+        socket.onopen?.();
+
+        const state = harness.runtime.state;
+        state.connected = true;
+        let resolved: unknown;
+        state.pendingRequests.set("req-1", {
+            resolve: (value: unknown) => { resolved = value; },
+            reject: () => { throw new Error("must not reject"); },
+        });
+
+        expect(() => socket.onmessage?.({
+            data: JSON.stringify({
+                type: "broadcast",
+                message: { id: "req-1", result: { ok: true } },
+            }),
+        })).not.toThrow();
+
+        expect(resolved).toEqual({ ok: true });
+        expect(state.pendingRequests.has("req-1")).toBe(false);
     });
 });

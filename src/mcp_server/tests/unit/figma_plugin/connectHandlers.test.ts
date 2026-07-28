@@ -612,4 +612,58 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
         );
         expect(leg2Calls.length).toBe(0);
     });
+
+    it("P9-F2: the join failure message names the channel the attempt disconnected", async () => {
+        // The released channel must reach the ALWAYS-visible errorMessage, not
+        // only errorDetails: an agent that mistyped a channel code has to be
+        // able to restore the working one from the message alone.
+        (joinChannel as any).mockRejectedValue(Object.assign(
+            new Error("Operation Denied: Figma Plugin is not running or available."),
+            {
+                code: "PLUGIN_PEER_UNAVAILABLE",
+                details: { channel: "typo", peerCount: 0, releasedChannel: "good" },
+            },
+        ));
+
+        const r = await registeredTools["join_channel"]({ channel: "typo" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("PLUGIN_PEER_UNAVAILABLE");
+        expect(parsed.errorMessage).toContain("Figma Plugin is not running");
+        expect(parsed.errorMessage).toContain("disconnected the previously joined channel 'good'");
+        expect(parsed.errorMessage).toContain("call channel_join with 'good'");
+        expect(parsed.errorDetails.releasedChannel).toBe("good");
+    });
+
+    it("P9-F7: a leave-phase failure is not described as a join-acknowledgement timeout", async () => {
+        (joinChannel as any).mockRejectedValue(Object.assign(
+            new Error("Could not leave the current channel 'held', so the join to 'next' was not attempted: timed out"),
+            {
+                code: "CHANNEL_JOIN_FAILED",
+                details: {
+                    phase: "leave-previous-channel",
+                    previousChannel: "held",
+                    requestedChannel: "next",
+                },
+            },
+        ));
+
+        const r = await registeredTools["join_channel"]({ channel: "next" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        expect(parsed.errorMessage).toContain("Could not leave the current channel 'held'");
+        expect(parsed.errorMessage).not.toContain("did not acknowledge the join");
+    });
+
+    it("P9-F7: an ordinary join timeout keeps its original acknowledgement guidance", async () => {
+        (joinChannel as any).mockRejectedValue(Object.assign(
+            new Error("Request timed out after 30000ms"),
+            { code: "CHANNEL_JOIN_FAILED" },
+        ));
+
+        const r = await registeredTools["join_channel"]({ channel: "slow" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        expect(parsed.errorMessage).toContain("did not acknowledge the join within the expected time");
+    });
 });

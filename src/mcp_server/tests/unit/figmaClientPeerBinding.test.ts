@@ -105,7 +105,7 @@ describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
 
         const sentCount = socket.sent.length;
         await expect(client.sendCommandToFigma("page_info")).rejects.toThrow(
-            "Must join a channel",
+            "No channel is bound to this session",
         );
         expect(socket.sent.length).toBe(sentCount);
     });
@@ -199,7 +199,7 @@ describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
 
         const frameCount = socket.sent.length;
         await expect(client.sendCommandToFigma("page_info")).rejects.toThrow(
-            "Must join a channel",
+            "No channel is bound to this session",
         );
         expect(socket.sent.length).toBe(frameCount);
     });
@@ -219,7 +219,7 @@ describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
 
         const sentCount = socket.sent.length;
         await expect(client.sendCommandToFigma("page_info")).rejects.toThrow(
-            "Must join a channel",
+            "No channel is bound to this session",
         );
         expect(socket.sent.length).toBe(sentCount);
     });
@@ -261,7 +261,7 @@ describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
             pluginVersion: "0.0.0",
         });
         await expect(client.sendCommandToFigma("page_info")).rejects.toThrow(
-            "Must join a channel",
+            "No channel is bound to this session",
         );
 
         const matchingPromise = client.joinChannel("versioned");
@@ -275,5 +275,133 @@ describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
             serverVersion: SERVER_VERSION,
             pluginVersion: SERVER_VERSION,
         });
+    });
+
+    it("P9-F2: a failed join names the working channel it had to release", async () => {
+        // A connection owns one reservation, so switching channels must leave
+        // first. When the new join then fails — the common case being a
+        // mistyped channel code — the caller has silently lost a live
+        // connection. Both the join error and every later command must say so.
+        const client = await importFreshClient("released-channel");
+        const { socket } = await establishBinding(client, "good");
+
+        const joinPromise = client.joinChannel("typo");
+        const leaveFrame = socket.lastFrame();
+        expect(leaveFrame.type).toBe("leave");
+        socket.acknowledge(leaveFrame, { left: true, channel: "good" });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const joinFrame = socket.lastFrame();
+        expect(joinFrame.type).toBe("join");
+        socket.emitFrame({
+            type: "join_error",
+            id: joinFrame.id,
+            code: "PLUGIN_PEER_UNAVAILABLE",
+            message: "Operation Denied: Figma Plugin is not running or available.",
+            details: { channel: "typo", peerCount: 0 },
+        });
+
+        let joinError: any;
+        try {
+            await joinPromise;
+        } catch (error) {
+            joinError = error;
+        }
+        // Q20 is preserved: the originating code and message pass through.
+        expect(joinError.code).toBe("PLUGIN_PEER_UNAVAILABLE");
+        expect(joinError.message).toContain("Figma Plugin is not running");
+        // ...with the released channel added alongside the origin's details.
+        expect(joinError.details).toEqual({
+            channel: "typo",
+            peerCount: 0,
+            releasedChannel: "good",
+        });
+
+        // Rev 57: the blocked command is a coded CHANNEL_NOT_BOUND carrying the
+        // released channel in both its message and its structured details.
+        let blocked: any;
+        try {
+            await client.sendCommandToFigma("page_info");
+        } catch (error) {
+            blocked = error;
+        }
+        expect(blocked.code).toBe("CHANNEL_NOT_BOUND");
+        expect(blocked.message).toContain("released the previously joined channel 'good'");
+        expect(blocked.message).toContain("Call channel_join with 'good'");
+        expect(blocked.details).toEqual({ releasedChannel: "good" });
+    });
+
+    it("P9-F2: a rejoin of the same channel reports no released channel", async () => {
+        // Rejoining the channel you already hold costs nothing, so the
+        // disclosure must not fire — it would name a channel that is also the
+        // one being requested and read as a spurious loss.
+        const client = await importFreshClient("same-channel-rejoin");
+        const { socket } = await establishBinding(client, "same");
+
+        const joinPromise = client.joinChannel("same");
+        const leaveFrame = socket.lastFrame();
+        socket.acknowledge(leaveFrame, { left: true, channel: "same" });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const joinFrame = socket.lastFrame();
+        socket.emitFrame({
+            type: "join_error",
+            id: joinFrame.id,
+            code: "PLUGIN_PEER_UNAVAILABLE",
+            message: "Operation Denied: Figma Plugin is not running or available.",
+        });
+
+        let joinError: any;
+        try {
+            await joinPromise;
+        } catch (error) {
+            joinError = error;
+        }
+        expect(joinError.code).toBe("PLUGIN_PEER_UNAVAILABLE");
+        expect(joinError.details?.releasedChannel).toBeUndefined();
+
+        // Still coded, but with the generic recovery: there is no specific
+        // channel to name, so the message points at the plugin's status bar.
+        let blocked: any;
+        try {
+            await client.sendCommandToFigma("page_info");
+        } catch (error) {
+            blocked = error;
+        }
+        expect(blocked.code).toBe("CHANNEL_NOT_BOUND");
+        expect(blocked.message).toContain("Call channel_join with the channel code");
+        expect(blocked.details).toBeUndefined();
+    });
+
+    it("P9-F7: a failure to leave the previous channel is not reported as a join timeout", async () => {
+        const client = await importFreshClient("leave-phase");
+        const { socket } = await establishBinding(client, "held");
+
+        const joinPromise = client.joinChannel("next");
+        const leaveFrame = socket.lastFrame();
+        expect(leaveFrame.type).toBe("leave");
+        // A malformed acknowledgement fails the leave, so the join is never
+        // attempted — the old code still reported a join-acknowledgement timeout.
+        socket.acknowledge(leaveFrame, { left: false });
+
+        let leaveError: any;
+        try {
+            await joinPromise;
+        } catch (error) {
+            leaveError = error;
+        }
+        expect(leaveError.code).toBe("CHANNEL_JOIN_FAILED");
+        expect(leaveError.message).toContain("Could not leave the current channel 'held'");
+        expect(leaveError.details).toEqual({
+            phase: "leave-previous-channel",
+            previousChannel: "held",
+            requestedChannel: "next",
+        });
+        // No join frame was ever emitted after the failed leave.
+        expect(socket.lastFrame().type).toBe("leave");
     });
 });
