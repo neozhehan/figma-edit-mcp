@@ -14,8 +14,9 @@ const {
     INTENTIONAL_INPUT_CATCHALL_PATHS,
     recursivelyStrictInputSchema,
 } = await import("../../../tools/index.js");
+const { sendCommandToFigma } = await import("../../../figma-client.js");
 const { ANNOTATION_PROPERTY_TYPES } = await import("../../../tools/annotation.js");
-const { EFFECT_TYPES } = await import("../../../tools/style.js");
+const { BLEND_MODES, EFFECT_TYPES } = await import("../../../tools/style.js");
 const { normalizeEffects } = await import("../../../../../figma_plugin/handlers/stylingHandlers.js");
 const { normalizeObjectSchema, safeParseAsync } = await import(
     "@modelcontextprotocol/sdk/server/zod-compat.js"
@@ -55,6 +56,15 @@ const mockServer: any = {
     resource: () => {},
 };
 registerAllTools(mockServer);
+
+// Independent oracle for D8's closed exemption inventory. Do not derive this
+// from INTENTIONAL_INPUT_CATCHALL_PATHS: production and emitted schemas must
+// both match these two ratified literals, so adding a production exemption
+// cannot update the test's expectation automatically.
+const RATIFIED_INPUT_CATCHALL_PATHS = [
+    "style_manage.properties.paints[]",
+    "style_manage.properties.layoutGrids[]",
+] as const;
 
 function formatPath(toolName: string, path: readonly string[]): string {
     let formatted = toolName;
@@ -241,6 +251,8 @@ describe("Phase 7 D10: annotation schema and registered contract", () => {
                 status: "success",
                 beforeCount: 0,
                 afterCount: 1,
+                beforeCountVerified: true,
+                afterCountVerified: true,
             }],
         }).success).toBe(true);
         expect(output.safeParse({
@@ -251,6 +263,9 @@ describe("Phase 7 D10: annotation schema and registered contract", () => {
         const rowShape = output.shape.results.unwrap().element.shape;
         expect(rowShape.beforeCount).toBeDefined();
         expect(rowShape.afterCount).toBeDefined();
+        expect(rowShape.beforeCountVerified).toBeDefined();
+        expect(rowShape.afterCountVerified).toBeDefined();
+        expect(rowShape.outcomeUnknown).toBeDefined();
     });
 
     it("Q30: the category refusal is a ratified, inventoried code", () => {
@@ -294,7 +309,7 @@ describe("Phase 7 D8: recursive strictness", () => {
     );
 
     it("injects an unknown key into every non-catchall object schema and rejects it", () => {
-        const allowed = new Set<string>(INTENTIONAL_INPUT_CATCHALL_PATHS);
+        const allowed = new Set<string>(RATIFIED_INPUT_CATCHALL_PATHS);
         expect(allObjectSchemas.length).toBeGreaterThan(70);
 
         for (const { path, schema } of allObjectSchemas) {
@@ -313,7 +328,7 @@ describe("Phase 7 D8: recursive strictness", () => {
         }
     });
 
-    it("has exactly the three enumerated catchalls and accepts their polymorphic fields", () => {
+    it("has exactly the two independently pinned catchalls and accepts their polymorphic fields", () => {
         const actualCatchalls = allObjectSchemas
             .filter(({ schema }) =>
                 schema._def.catchall && schema._def.catchall._def?.type !== "never"
@@ -321,7 +336,9 @@ describe("Phase 7 D8: recursive strictness", () => {
             .map(({ path }) => path)
             .sort();
 
-        expect(actualCatchalls).toEqual([...INTENTIONAL_INPUT_CATCHALL_PATHS].sort());
+        expect([...INTENTIONAL_INPUT_CATCHALL_PATHS].sort())
+            .toEqual([...RATIFIED_INPUT_CATCHALL_PATHS].sort());
+        expect(actualCatchalls).toEqual([...RATIFIED_INPUT_CATCHALL_PATHS].sort());
 
         const style = TOOLS.style_manage.inputSchema;
         expect(style.safeParse({
@@ -416,6 +433,23 @@ describe("Phase 7 D8: recursive strictness", () => {
         expect([...EFFECT_TYPES].sort()).toEqual([...pinned].sort());
     });
 
+    it("Q35: the effect BlendMode inventory matches the pinned union exactly", () => {
+        const typingsPath = resolve(
+            import.meta.dir,
+            "../../../../..",
+            "node_modules/@figma/plugin-typings/plugin-api-standalone.d.ts"
+        );
+        const source = readFileSync(typingsPath, "utf8");
+        const union = source.match(/\ntype BlendMode =([\s\S]*?)\ntype MaskType/);
+        expect(union, "pinned BlendMode union is present").not.toBeNull();
+        const pinned = Array.from(
+            union![1].matchAll(/\|\s*'([^']+)'/g),
+            (match) => match[1]
+        );
+
+        expect([...BLEND_MODES]).toEqual(pinned);
+    });
+
     it("Q35: style_manage effects are per-variant strict, and every pinned type is constructible", () => {
         const style = TOOLS.style_manage.inputSchema;
         const valid: Record<string, any> = {
@@ -453,13 +487,72 @@ describe("Phase 7 D8: recursive strictness", () => {
         for (const wrong of [
             { type: "INNER_SHADOW", showShadowBehindNode: true },
             { type: "LAYER_BLUR", startRadius: 2 },
-            { type: "NOISE", noiseType: "MONOTONE", color: { r: 0, g: 0, b: 0 }, noiseSize: 1, density: 1, opacity: 0.5 },
         ]) {
             expect(style.safeParse({
                 type: "EFFECT",
                 name: "Probe",
                 properties: { effects: [wrong] },
             }).success, `${wrong.type} must reject a foreign-variant field`).toBe(false);
+        }
+
+        // Keep this oracle isolated from RGBA validation: the complete colour
+        // is valid, and the actionable opacity issue proves the MONOTONE
+        // cross-variant field itself caused the refusal.
+        const monotoneOpacity: any = style.safeParse({
+            type: "EFFECT",
+            name: "Probe",
+            properties: {
+                effects: [{
+                    type: "NOISE",
+                    noiseType: "MONOTONE",
+                    color: { r: 0, g: 0, b: 0, a: 1 },
+                    noiseSize: 1,
+                    density: 1,
+                    opacity: 0.5,
+                }],
+            },
+        });
+        expect(monotoneOpacity.success).toBe(false);
+        expect(monotoneOpacity.error.issues.some(
+            (issue: any) =>
+                issue.path.join(".") === "properties.effects.0.opacity" &&
+                issue.message === "opacity is only valid when noiseType is 'MULTITONE'."
+        )).toBe(true);
+
+        for (const effect of [
+            { type: "DROP_SHADOW", blendMode: "NOT_A_BLEND_MODE" },
+            { type: "INNER_SHADOW", blendMode: "NOT_A_BLEND_MODE" },
+            {
+                type: "NOISE",
+                noiseType: "MONOTONE",
+                color: { r: 0, g: 0, b: 0, a: 1 },
+                noiseSize: 1,
+                density: 1,
+                blendMode: "NOT_A_BLEND_MODE",
+            },
+        ]) {
+            const invalidBlendMode: any = style.safeParse({
+                type: "EFFECT",
+                name: "Probe",
+                properties: { effects: [effect] },
+            });
+            expect(
+                invalidBlendMode.success,
+                `${effect.type} must reject NOT_A_BLEND_MODE`
+            ).toBe(false);
+            expect(invalidBlendMode.error.issues.some(
+                (issue: any) =>
+                    issue.path.join(".") === "properties.effects.0.blendMode"
+            )).toBe(true);
+        }
+        for (const accepted of BLEND_MODES) {
+            expect(style.safeParse({
+                type: "EFFECT",
+                name: "Probe",
+                properties: {
+                    effects: [{ type: "DROP_SHADOW", blendMode: accepted }],
+                },
+            }).success, `DROP_SHADOW must accept pinned BlendMode ${accepted}`).toBe(true);
         }
 
         // Live-verified on zgkx (2026-07-26): Figma rejects an effect colour
@@ -502,6 +595,132 @@ describe("Phase 7 D8: recursive strictness", () => {
         expect(halfProgressive.error.issues.some(
             (issue: any) => issue.message.includes("blurType is 'PROGRESSIVE'")
         )).toBe(true);
+    });
+
+    it("F78-06: enforces live-confirmed effect bounds while accepting their boundaries", () => {
+        const style = TOOLS.style_manage.inputSchema;
+        const parseEffect = (candidate: any) => style.safeParse({
+            type: "EFFECT",
+            name: "Numeric bounds probe",
+            properties: { effects: [candidate] },
+        });
+
+        // Exact values rejected by live Figma on o4g6 must be stopped at the
+        // MCP boundary instead of consuming a runtime round trip.
+        expect(parseEffect({ type: "LAYER_BLUR", radius: -1 }).success).toBe(false);
+        expect(parseEffect({
+            type: "GLASS",
+            lightIntensity: 2,
+            lightAngle: 45,
+            refraction: 0.5,
+            depth: 0,
+            dispersion: 0.5,
+            radius: 1,
+        }).success).toBe(false);
+        expect(parseEffect({
+            type: "GLASS",
+            lightIntensity: 0.5,
+            lightAngle: 45,
+            refraction: 2,
+            depth: 0,
+            dispersion: 0.5,
+            radius: 1,
+        }).success).toBe(false);
+        expect(parseEffect({
+            type: "GLASS",
+            lightIntensity: 0.5,
+            lightAngle: 45,
+            refraction: 0.5,
+            depth: 0,
+            dispersion: 2,
+            radius: 1,
+        }).success).toBe(false);
+        expect(parseEffect({
+            type: "GLASS",
+            lightIntensity: 0.5,
+            lightAngle: 45,
+            refraction: 0.5,
+            depth: 0,
+            dispersion: 0.5,
+            radius: -1,
+        }).success).toBe(false);
+
+        // Both ends of each confirmed closed interval are valid. In
+        // particular, depth: 0 was accepted live and must not inherit the
+        // stale typings comment that suggested a minimum of one.
+        expect(parseEffect({
+            type: "GLASS",
+            lightIntensity: 0,
+            lightAngle: 45,
+            refraction: 1,
+            depth: 0,
+            dispersion: 0,
+            radius: 0,
+        }).success).toBe(true);
+        expect(parseEffect({
+            type: "GLASS",
+            lightIntensity: 1,
+            lightAngle: 45,
+            refraction: 0,
+            depth: 0,
+            dispersion: 1,
+            radius: 0,
+        }).success).toBe(true);
+
+        // The pinned ShadowEffect typings require non-negative radii for both
+        // variants. LAYER_BLUR and BACKGROUND_BLUR share their radius schema,
+        // so the live-confirmed LAYER_BLUR lower bound protects its sibling.
+        expect(parseEffect({ type: "DROP_SHADOW", radius: -1 }).success).toBe(false);
+        expect(parseEffect({ type: "INNER_SHADOW", radius: -1 }).success).toBe(false);
+        expect(parseEffect({ type: "DROP_SHADOW", radius: 0 }).success).toBe(true);
+        expect(parseEffect({ type: "INNER_SHADOW", radius: 0 }).success).toBe(true);
+        expect(parseEffect({ type: "BACKGROUND_BLUR", radius: -1 }).success).toBe(false);
+    });
+
+    it("F78-05: node_set_effects rejects cross-variant fields before its registered callback", async () => {
+        const input = TOOLS.node_set_effects.inputSchema;
+        const wrong: any = input.safeParse({
+            nodeId: "1:2",
+            nodeName: "Card",
+            effects: [{ type: "INNER_SHADOW", showShadowBehindNode: true }],
+        });
+        expect(wrong.success).toBe(false);
+        expect(wrong.error.issues.some(
+            (issue: any) =>
+                issue.code === "unrecognized_keys" &&
+                issue.path.join(".") === "effects.0" &&
+                issue.keys?.includes("showShadowBehindNode")
+        )).toBe(true);
+        const badBlendMode: any = input.safeParse({
+            nodeId: "1:2",
+            nodeName: "Card",
+            effects: [{
+                type: "DROP_SHADOW",
+                blendMode: "NOT_A_BLEND_MODE",
+            }],
+        });
+        expect(badBlendMode.success).toBe(false);
+        expect(badBlendMode.error.issues.some(
+            (issue: any) => issue.path.join(".") === "effects.0.blendMode"
+        )).toBe(true);
+
+        const valid: any = input.safeParse({
+            nodeId: "1:2",
+            nodeName: "Card",
+            effects: [{
+                type: "DROP_SHADOW",
+                radius: 0,
+                showShadowBehindNode: true,
+            }],
+        });
+        expect(valid.success).toBe(true);
+
+        (sendCommandToFigma as any).mockClear();
+        await TOOLS.node_set_effects.handler(valid.data);
+        expect((sendCommandToFigma as any).mock.calls).toEqual([[
+            "node_set_effects",
+            valid.data,
+        ]]);
     });
 
     it("Q35: normalizeEffects forwards validated fields instead of rebuilding from a field list", () => {
@@ -687,6 +906,8 @@ describe("Phase 7 D10: real append/list behavior", () => {
             nodeId: child.id,
             beforeCount: 0,
             afterCount: 1,
+            beforeCountVerified: true,
+            afterCountVerified: true,
         }]);
         expect(child.annotations).toEqual([{
             labelMarkdown: "  Child **note**  ",
@@ -707,6 +928,54 @@ describe("Phase 7 D10: real append/list behavior", () => {
         });
         expect(TOOLS.annotation_set.outputSchema.safeParse(result).success).toBe(true);
         expect(TOOLS.annotation_list.outputSchema.safeParse(listed).success).toBe(true);
+    });
+
+    it("F78-04: traverses a GROUP root without AnnotationsMixin through the registered callback", async () => {
+        const annotatedChild = {
+            id: "2:4",
+            name: "Annotated child",
+            type: "RECTANGLE",
+            annotations: [{ labelMarkdown: "Descendant note" }],
+        };
+        const group = {
+            id: "2:3",
+            name: "Container group",
+            type: "GROUP",
+            children: [annotatedChild],
+        };
+        nodes.set(group.id, group);
+        nodes.set(annotatedChild.id, annotatedChild);
+
+        const expected = {
+            annotatedNodes: [{
+                nodeId: annotatedChild.id,
+                name: annotatedChild.name,
+                annotations: annotatedChild.annotations,
+            }],
+        };
+        expect(await getAnnotations({
+            nodeId: group.id,
+            includeCategories: false,
+        })).toEqual(expected);
+
+        const parsed: any = TOOLS.annotation_list.inputSchema.safeParse({
+            nodeId: group.id,
+            includeCategories: false,
+        });
+        expect(parsed.success).toBe(true);
+
+        (sendCommandToFigma as any).mockImplementationOnce(
+            async (command: string, params: any) => {
+                expect(command).toBe("annotation_list");
+                return getAnnotations(params);
+            }
+        );
+        const callbackResult = await TOOLS.annotation_list.handler(parsed.data);
+        expect(callbackResult.isError).toBeUndefined();
+        expect(callbackResult.structuredContent).toEqual(expected);
+        expect(TOOLS.annotation_list.outputSchema.safeParse(
+            callbackResult.structuredContent
+        ).success).toBe(true);
     });
 
     it("prevalidates every category before mutation, including a later bad category", async () => {
@@ -798,10 +1067,129 @@ describe("Phase 7 D10: real append/list behavior", () => {
             error: "setter threw after committing",
             beforeCount: 1,
             afterCount: 2,
+            beforeCountVerified: true,
+            afterCountVerified: true,
             partialMutation: true,
             whatChanged: "the annotation was appended before the failure occurred — the node's annotation count went from 1 to 2.",
             before: { annotationCount: 1 },
         }]);
+        expect(TOOLS.annotation_set.outputSchema.safeParse(result).success).toBe(true);
+    });
+
+    it("fails safe when a setter throws and the committed post-state is unreadable through the registered callback", async () => {
+        let stored = [{ labelMarkdown: "Existing note" }];
+        let annotationReads = 0;
+        const node = {
+            id: "4:2",
+            name: "Unknown setter outcome",
+            type: "RECTANGLE",
+            get annotations() {
+                annotationReads++;
+                if (annotationReads > 1) {
+                    throw new Error("post-state getter unavailable");
+                }
+                return stored;
+            },
+            set annotations(next: any[]) {
+                stored = next;
+                throw new Error("setter primary failure");
+            },
+        };
+        nodes.set(node.id, node);
+
+        const parsed: any = TOOLS.annotation_set.inputSchema.safeParse({
+            annotations: [{
+                nodeId: node.id,
+                nodeName: node.name,
+                labelMarkdown: "Possibly appended",
+            }],
+        });
+        expect(parsed.success).toBe(true);
+        (sendCommandToFigma as any).mockImplementationOnce(
+            async (command: string, params: any) => {
+                expect(command).toBe("annotation_set");
+                return setMultipleAnnotations(params);
+            }
+        );
+
+        const callbackResult = await TOOLS.annotation_set.handler(parsed.data);
+        expect(callbackResult.isError).toBeUndefined();
+        expect(stored).toHaveLength(2);
+        const row = callbackResult.structuredContent.results[0];
+        expect(row).toEqual({
+            success: false,
+            status: "failed",
+            nodeId: node.id,
+            error: "setter primary failure",
+            beforeCount: 1,
+            afterCount: null,
+            beforeCountVerified: true,
+            afterCountVerified: false,
+            partialMutation: true,
+            outcomeUnknown: true,
+            whatChanged: "the annotation append was attempted, but the post-attempt annotation count could not be verified; the append may have committed.",
+            before: { annotationCount: 1 },
+            postStateError: "post-attempt annotation count read failed: post-state getter unavailable",
+        });
+        expect(TOOLS.annotation_set.outputSchema.safeParse(
+            callbackResult.structuredContent
+        ).success).toBe(true);
+    });
+
+    it("fails safe when the aggregator's outer path cannot read post-attempt state", async () => {
+        let stored = [{ labelMarkdown: "Existing note" }];
+        let annotationReads = 0;
+        const node = {
+            id: "4:3",
+            name: "Unknown outer outcome",
+            type: "RECTANGLE",
+            get annotations() {
+                annotationReads++;
+                if (annotationReads > 2) {
+                    throw new Error("outer post-state unavailable");
+                }
+                return stored;
+            },
+            set annotations(next: any[]) {
+                stored = next;
+            },
+        };
+        nodes.set(node.id, node);
+
+        let nodeIdReads = 0;
+        const annotation: any = {
+            nodeName: node.name,
+            labelMarkdown: "Append before outer failure",
+        };
+        Object.defineProperty(annotation, "nodeId", {
+            enumerable: false,
+            get() {
+                nodeIdReads++;
+                if (nodeIdReads === 3) {
+                    throw new Error("outer row construction failure");
+                }
+                return node.id;
+            },
+        });
+
+        const result = await setMultipleAnnotations({ annotations: [annotation] });
+        expect(stored).toHaveLength(2);
+        expect(result.status).toBe("failed");
+        expect(result.results[0]).toEqual({
+            success: false,
+            status: "failed",
+            nodeId: node.id,
+            error: "outer row construction failure",
+            beforeCount: 1,
+            afterCount: null,
+            beforeCountVerified: true,
+            afterCountVerified: false,
+            partialMutation: true,
+            outcomeUnknown: true,
+            whatChanged: "the annotation append was attempted, but the post-attempt annotation count could not be verified; the append may have committed.",
+            before: { annotationCount: 1 },
+            postStateError: "post-attempt annotation count read failed: outer post-state unavailable",
+        });
         expect(TOOLS.annotation_set.outputSchema.safeParse(result).success).toBe(true);
     });
 
@@ -831,6 +1219,8 @@ describe("Phase 7 D10: real append/list behavior", () => {
         expect(row.status).toBe("failed");
         expect(row.beforeCount).toBe(1);
         expect(row.afterCount).toBe(1);
+        expect(row.beforeCountVerified).toBe(true);
+        expect(row.afterCountVerified).toBe(true);
         expect(row.partialMutation).toBeUndefined();
         expect(row.whatChanged).toBeUndefined();
         expect(row.before).toBeUndefined();

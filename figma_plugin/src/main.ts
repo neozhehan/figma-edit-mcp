@@ -740,7 +740,11 @@ async function handleCommand(command: any, params: any) {
             return await applyStyle(params);
 
         case "create_component":
-            await validateSingleNodeWrite(params, { checkScopeRoot: true, checkLocked: true });
+            await validateSingleNodeWrite(params, {
+                checkScopeRoot: true,
+                checkLocked: true,
+                instanceCheckVerb: "converted to a component",
+            });
             return await createComponent(params);
 
         case "create_component_set": {

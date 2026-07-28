@@ -102,8 +102,40 @@ const annotationCategory = z
     .catchall(z.any());
 
 const annotationResultRow = batchResultRow.safeExtend({
-    beforeCount: z.number().int().nonnegative().describe("Annotation count on the target immediately before this row"),
-    afterCount: z.number().int().nonnegative().describe("Annotation count on the target immediately after this row"),
+    beforeCount: z.number().int().nonnegative().nullable().describe("Verified annotation count immediately before this row, or null when the count could not be read"),
+    afterCount: z.number().int().nonnegative().nullable().describe("Verified annotation count after this row's attempt, or null when post-attempt state is unknown"),
+    beforeCountVerified: z.boolean().describe("Whether beforeCount is a verified observation (false requires beforeCount:null)"),
+    afterCountVerified: z.boolean().describe("Whether afterCount is a verified observation (false requires afterCount:null)"),
+    outcomeUnknown: z.literal(true).optional().describe("Present when an append was attempted but post-attempt state could not be verified; never retry blindly"),
+    postStateError: z.string().optional().describe("Secondary readback failure explaining why annotation state is unknown; the row error remains the initiating failure"),
+}).superRefine((row, ctx) => {
+    for (const side of ["before", "after"] as const) {
+        const count = row[`${side}Count`];
+        const verified = row[`${side}CountVerified`];
+        if (verified !== (count !== null)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: [`${side}CountVerified`],
+                message: `${side}CountVerified must be true exactly when ${side}Count is a verified number.`,
+            });
+        }
+    }
+    if (row.outcomeUnknown) {
+        if (!row.partialMutation) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["partialMutation"],
+                message: "outcomeUnknown rows must fail safe with partialMutation:true.",
+            });
+        }
+        if (row.afterCountVerified) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["afterCountVerified"],
+                message: "outcomeUnknown requires an unverified post-attempt count.",
+            });
+        }
+    }
 });
 
 export function registerAnnotationTools(server: McpServer) {
@@ -138,7 +170,7 @@ export function registerAnnotationTools(server: McpServer) {
         "annotation_set",
         {
             title: "Set Annotations",
-            description: "Append native annotations to one or more nodes in a batched call. If the status is 'partial_success', treat it as an incomplete operation and report the failed and skipped items to the user. Appending is NOT idempotent and a 'failed' row may already have appended its annotation (its beforeCount and afterCount differ, and it carries partialMutation: true) — before retrying any non-success item, call annotation_list and compare the labels already on the node, or you will create a duplicate.",
+            description: "Append native annotations to one or more nodes in a batched call. If the status is 'partial_success', treat it as an incomplete operation and report the failed and skipped items to the user. Appending is NOT idempotent and a 'failed' row may already have appended its annotation (verified counts differ, or outcomeUnknown is true when post-state is unreadable; both carry partialMutation: true) — before retrying any non-success item, call annotation_list and compare the labels already on the node, or you will create a duplicate.",
             inputSchema: z.object({
                 annotations: z
                     .array(

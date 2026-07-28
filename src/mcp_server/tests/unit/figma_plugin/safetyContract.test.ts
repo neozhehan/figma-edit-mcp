@@ -83,7 +83,7 @@ const mainMod: any = await import("../../../../../figma_plugin/src/main.js?scope
 const pluginState = mainMod.getPluginState();
 const gateOnMessage = gateFigma.ui.onmessage as (msg: any) => Promise<void> | void;
 
-// Expected tool-to-gate mapping (13 generic gate categories)
+// Expected tool-to-gate mapping (14 generic gate categories)
 // 1. nodePerm
 // 2. scope
 // 3. name
@@ -97,6 +97,7 @@ const gateOnMessage = gateFigma.ui.onmessage as (msg: any) => Promise<void> | vo
 // 11. remoteAsset
 // 12. batchPrevalidation
 // 13. handlerPrevalidationBeforeMutation
+// 14. explicitNameNonEmpty
 const EXPECTED_CONTRACTS: Record<string, string[]> = {
     node_set_fill: ["nodePerm", "scope", "name", "lockedTarget"],
     node_set_stroke: ["nodePerm", "scope", "name", "lockedTarget"],
@@ -119,14 +120,14 @@ const EXPECTED_CONTRACTS: Record<string, string[]> = {
     text_set_content: ["nodePerm", "scope", "name", "lockedTarget", "batchPrevalidation"],
     annotation_set: ["nodePerm", "scope", "name", "lockedTarget", "batchPrevalidation"],
     instance_set_overrides: ["nodePerm", "scope", "name", "lockedTarget", "batchPrevalidation"],
-    create_component_set: ["nodePerm", "scope", "name", "instanceInteriorTarget", "remoteAsset", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "batchPrevalidation", "handlerPrevalidationBeforeMutation"],
+    create_component_set: ["nodePerm", "scope", "name", "instanceInteriorTarget", "remoteAsset", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "batchPrevalidation", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
 
-    create_shape: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
-    create_frame: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
-    create_text: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
-    create_svg: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
+    create_shape: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
+    create_frame: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
+    create_text: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
+    create_svg: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
     create_instance: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
-    create_component: ["nodePerm", "scope", "name", "lockedTarget", "scopeRootPreservation", "handlerPrevalidationBeforeMutation"],
+    create_component: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "scopeRootPreservation", "handlerPrevalidationBeforeMutation"],
     node_insert_child: ["nodePerm", "parentScope", "parentName", "scope", "name", "lockedParent", "lockedTarget", "instanceInteriorParent", "instanceInteriorTarget"],
     create_connection: ["nodePerm", "lockedTarget"],
 
@@ -165,6 +166,8 @@ const TOKEN_TO_GATE: Record<string, string> = {
     "handler-prevalidation-before-mutation": "handlerPrevalidationBeforeMutation",
     "parent-first + cleanup": "handlerPrevalidationBeforeMutation",
     "plan/mutate two-phase": "handlerPrevalidationBeforeMutation",
+    "explicit name non-empty when supplied": "explicitNameNonEmpty",
+    "explicit set name non-empty when supplied": "explicitNameNonEmpty",
     "styleName verification": "name",
     "required name verification, both modes": "name",
     "scope-root self-destruction": "scopeRootPreservation"

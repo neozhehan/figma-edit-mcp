@@ -25,12 +25,19 @@ mock.module("fs", () => {
 const { registerAllResources } = await import("../../resources.js");
 const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
 
+const GUIDE_IDS = [
+  "constraints",
+  "error-playbook",
+  "workflows",
+  "tool-selection",
+] as const;
+
 describe("WS2 - Resources Handler (R2.2, R5.1h)", () => {
   afterAll(() => {
     delete (globalThis as any).mockFsFail;
   });
 
-  it("should register the 5 guide resources and read markdown content", async () => {
+  it("should register the 5 guide resources and serve the exact four operational guide sources", async () => {
     (globalThis as any).mockFsFail = false;
     const server = new McpServer({ name: "test", version: "1.0.0" });
     registerAllResources(server);
@@ -44,16 +51,46 @@ describe("WS2 - Resources Handler (R2.2, R5.1h)", () => {
     expect(keys).toContain("figma-edit://guide/tool-selection");
     expect(keys).toContain("figma-edit://guide/node-fields");
 
-    // Test successful read of a guide
+    // Test metadata for one representative guide.
     const constraints = registered["figma-edit://guide/constraints"];
     expect(constraints.title).toBe("Figma Edit constraints guide");
     expect(constraints.metadata.mimeType).toBe("text/markdown");
 
-    const result = await constraints.readCallback(new URL("figma-edit://guide/constraints"), {} as any);
-    expect(result.contents).toBeDefined();
-    expect(result.contents.length).toBe(1);
-    expect(result.contents[0].uri).toBe("figma-edit://guide/constraints");
-    expect(result.contents[0].text).toContain("Hard constraints");
+    // The MCP resources are mirrors by reference, not copied files: verify every
+    // published operational guide is byte-for-byte the repository source.
+    const guideText: Record<(typeof GUIDE_IDS)[number], string> = {} as any;
+    for (const id of GUIDE_IDS) {
+      const uri = `figma-edit://guide/${id}`;
+      const result = await registered[uri].readCallback(new URL(uri), {} as any);
+      expect(result.contents).toBeDefined();
+      expect(result.contents.length).toBe(1);
+      expect(result.contents[0].uri).toBe(uri);
+
+      const expected = readFileSync(`skills/figma-edit/references/${id}.md`, "utf8");
+      expect(result.contents[0].text).toBe(expected);
+      guideText[id] = result.contents[0].text;
+    }
+
+    // Concise semantic pins for the Phase 7/8 operational contract. These catch
+    // a source-and-resource edit that remains byte-identical but drops recovery
+    // guidance users need before issuing a second write.
+    expect(guideText.constraints).toContain("actual and verified parent IDs");
+    expect(guideText.constraints).toContain("removedComponents");
+    expect(guideText.constraints).toContain("reparentedComponents");
+    expect(guideText.constraints).toContain("beforeCountVerified");
+    expect(guideText.constraints).toContain("outcomeUnknown");
+    expect(guideText["error-playbook"]).toContain("before.survivingNodeId");
+    expect(guideText["error-playbook"]).toContain("survivingParentState");
+    expect(guideText["error-playbook"]).toContain("before.removedComponents");
+    expect(guideText["error-playbook"]).toContain("retainedVariantComponents");
+    expect(guideText["error-playbook"]).toContain("postStateError");
+    expect(guideText.workflows).toContain("GROUP/FRAME roots are valid");
+    expect(guideText.workflows).toContain("required parent:");
+    expect(guideText.workflows).toContain("afterCountVerified");
+    expect(guideText["tool-selection"]).toContain("accepts exactly `DROP_SHADOW`");
+    expect(guideText["tool-selection"]).toContain("`blendMode` must be one of the 19");
+    expect(guideText["tool-selection"]).toContain("Prevalidation atomicity is not a runtime transaction");
+    expect(guideText["tool-selection"]).toContain("canonical `UNKNOWN_ERROR` envelope");
   });
 
   it("should fail soft on a missing file (return error markdown instead of crashing)", async () => {

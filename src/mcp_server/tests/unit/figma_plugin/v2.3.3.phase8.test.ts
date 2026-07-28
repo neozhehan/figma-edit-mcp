@@ -109,6 +109,7 @@ const {
     createComponent,
     createComponentInstance,
     createComponentSet,
+    validateCreateComponentSetPlan,
 } = await import("../../../../../figma_plugin/handlers/componentHandlers.js?phase8");
 const { flattenNode } = await import("../../../../../figma_plugin/handlers/nodeModifiers.js?phase8");
 
@@ -189,6 +190,145 @@ beforeEach(() => {
     flattenArgs = [];
     combineArgs = [];
     installFigma();
+});
+
+describe("v2.3.3 Phase 8: creator name presence semantics", () => {
+    it("rejects explicit empty names before any implicit creator runs", async () => {
+        const parent = makeParent();
+
+        await expect(createShape({
+            type: "RECTANGLE",
+            parentId: "parent",
+            name: "",
+        })).rejects.toThrow("create_shape: name must not be empty");
+        await expect(createFrame({
+            parentId: "parent",
+            name: "",
+        })).rejects.toThrow("create_frame: name must not be empty");
+        await expect(createText({
+            parentId: "parent",
+            text: "Body copy",
+            name: "",
+        })).rejects.toThrow("create_text: name must not be empty");
+        await expect(createNodeFromSvg({
+            parentId: "parent",
+            svg: "<svg/>",
+            name: "",
+        })).rejects.toThrow("create_svg: name must not be empty");
+
+        expect(trace.filter((entry) => entry.startsWith("create:"))).toEqual([]);
+        expect(parent.children).toEqual([]);
+    });
+
+    it("keeps existing defaults when names are omitted", async () => {
+        makeParent();
+
+        const omitted = await Promise.all([
+            createShape({
+                type: "RECTANGLE",
+                parentId: "parent",
+            }),
+            createFrame({
+                parentId: "parent",
+            }),
+            createText({
+                parentId: "parent",
+                text: "Body copy",
+            }),
+            createNodeFromSvg({
+                parentId: "parent",
+                svg: "<svg/>",
+            }),
+        ]);
+        expect(omitted.map((result) => result.name)).toEqual([
+            "Rectangle",
+            "Frame",
+            "Body copy",
+            "SVG",
+        ]);
+    });
+
+    it("accepts non-empty whitespace names without normalization", async () => {
+        makeParent();
+
+        const whitespace = await Promise.all([
+            createShape({
+                type: "RECTANGLE",
+                parentId: "parent",
+                name: " ",
+            }),
+            createFrame({
+                parentId: "parent",
+                name: " ",
+            }),
+            createText({
+                parentId: "parent",
+                text: "Body copy",
+                name: " ",
+            }),
+            createNodeFromSvg({
+                parentId: "parent",
+                svg: "<svg/>",
+                name: " ",
+            }),
+        ]);
+        expect(whitespace.map((result) => result.name)).toEqual([" ", " ", " ", " "]);
+    });
+});
+
+describe("v2.3.3 Phase 8: create_text font contract", () => {
+    it("rejects unsupported fontWeight before implicit creation", async () => {
+        makeParent();
+        await expect(createText({
+            parentId: "parent",
+            text: "Body",
+            fontWeight: 350,
+        })).rejects.toThrow("Unsupported fontWeight 350");
+        expect(trace).not.toContain("create:text");
+    });
+
+    it("applies a supported weight without echoing a fallback", async () => {
+        makeParent();
+        const result = await createText({
+            parentId: "parent",
+            text: "Bold body",
+            fontWeight: 700,
+            fontSize: 16,
+        });
+        expect(result.fontWeight).toBe(700);
+        expect(result.fontSize).toBe(16);
+        expect(created.get("Text").fontName).toEqual({
+            family: "Inter",
+            style: "Bold",
+        });
+    });
+
+    it("routes font-load failure through creator cleanup instead of returning success", async () => {
+        makeParent();
+        (globalThis as any).figma.loadFontAsync = async () => {
+            throw new Error("font load failed");
+        };
+
+        await expect(createText({
+            parentId: "parent",
+            text: "Body",
+        })).rejects.toThrow("font load failed");
+        expect(created.get("Text").removed).toBe(true);
+        expect(trace).toContain("cleanup:Text");
+    });
+
+    it("routes fontSize configuration failure through creator cleanup instead of returning success", async () => {
+        makeParent();
+        throwOn = { label: "Text", property: "fontSize" };
+
+        await expect(createText({
+            parentId: "parent",
+            text: "Body",
+            fontSize: 16,
+        })).rejects.toThrow("injected Text.fontSize failure");
+        expect(created.get("Text").removed).toBe(true);
+        expect(trace).toContain("cleanup:Text");
+    });
 });
 
 describe("v2.3.3 Phase 8: observable-boundary containment", () => {
@@ -439,17 +579,64 @@ describe("v2.3.3 Phase 8: observable-boundary containment", () => {
         nodes.set(component.id, component);
         const source = { id: "source", name: "Source", type: "RECTANGLE", parent, clone: () => makeNode("Clone", "RECTANGLE") };
         nodes.set("source", source);
+        const componentSource = makeNode("Component Source", "FRAME", {
+            id: "component-source",
+            parent,
+            x: 5,
+            y: 6,
+            width: 120,
+            height: 80,
+            fills: [],
+            strokes: [],
+            strokeWeight: 1,
+            strokeAlign: "INSIDE",
+            strokeCap: "NONE",
+            strokeJoin: "MITER",
+            dashPattern: [],
+            effects: [],
+            layoutGrids: [],
+            opacity: 1,
+            blendMode: "PASS_THROUGH",
+            isMask: false,
+            cornerRadius: 0,
+            layoutMode: "NONE",
+            children: [],
+        });
+        parent.children.push(componentSource);
+        nodes.set(componentSource.id, componentSource);
+        const variantA = { id: "variant-a", name: "A", type: "COMPONENT" };
+        const variantB = { id: "variant-b", name: "B", type: "COMPONENT" };
 
-        const results = [
-            await createShape({ type: "RECTANGLE", parentId: "parent" }),
-            await createFrame({ parentId: "parent" }),
-            await createText({ parentId: "parent", text: "t" }),
-            await createNodeFromSvg({ parentId: "parent", svg: "<svg/>" }),
-            await createComponentInstance({ parentId: "parent", componentId: component.id }),
-            await cloneNode({ nodeId: "source", nodeName: "Source" }),
+        const results: Array<[string, any]> = [
+            ["create_shape", await createShape({ type: "RECTANGLE", parentId: "parent" })],
+            ["create_frame", await createFrame({ parentId: "parent" })],
+            ["create_text", await createText({ parentId: "parent", text: "t" })],
+            ["create_svg", await createNodeFromSvg({ parentId: "parent", svg: "<svg/>" })],
+            ["create_instance", await createComponentInstance({ parentId: "parent", componentId: component.id })],
+            ["node_clone", await cloneNode({ nodeId: "source", nodeName: "Source" })],
+            ["create_component", await createComponent({ nodeId: componentSource.id })],
+            ["create_component_set", await createComponentSet({
+                components: [
+                    { node: variantA, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                    { node: variantB, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+                ],
+                properties: ["Size"],
+                parent,
+                componentSetName: "Set",
+            })],
         ];
-        for (const [index, result] of results.entries()) {
-            expect((result as any).parentId, `creator #${index} must report its parent`).toBe(parent.id);
+        expect(results.map(([creator]) => creator)).toEqual([
+            "create_shape",
+            "create_frame",
+            "create_text",
+            "create_svg",
+            "create_instance",
+            "node_clone",
+            "create_component",
+            "create_component_set",
+        ]);
+        for (const [creator, result] of results) {
+            expect(result.parentId, `${creator} must report its parent`).toBe(parent.id);
         }
     });
 
@@ -562,6 +749,307 @@ describe("v2.3.3 Phase 8: observable-boundary containment", () => {
         expect(thrown.message).toBe("injected Component.x failure");
         expect(created.get("Component").removed).toBe(true);
         expect(source.removed).toBe(false);
+    });
+
+    it("Q32: create_component preserves the primary error and discloses an artifact when cleanup throws", async () => {
+        const parent = makeParent();
+        const source = makeNode("Source", "FRAME", {
+            id: "source",
+            parent,
+            x: 5,
+            y: 6,
+            width: 120,
+            height: 80,
+            fills: [],
+            strokes: [],
+            strokeWeight: 1,
+            strokeAlign: "INSIDE",
+            strokeCap: "NONE",
+            strokeJoin: "MITER",
+            dashPattern: [],
+            effects: [],
+            layoutGrids: [],
+            opacity: 1,
+            blendMode: "PASS_THROUGH",
+            isMask: false,
+            cornerRadius: 0,
+            layoutMode: "NONE",
+            children: [],
+        });
+        parent.children.push(source);
+        nodes.set("source", source);
+
+        const component = makeNode("Component", "COMPONENT");
+        component.remove = () => {
+            throw new Error("injected component cleanup failure");
+        };
+        (globalThis as any).figma.createComponent = () => {
+            trace.push("create:component");
+            return component;
+        };
+        throwOn = { label: "Component", property: "x" };
+
+        let thrown: any = null;
+        const consoleError = console.error;
+        console.error = () => {};
+        try {
+            await createComponent({ nodeId: "source" });
+        } catch (error: any) {
+            thrown = error;
+        } finally {
+            console.error = consoleError;
+        }
+
+        expect(thrown.message).toContain("injected Component.x failure");
+        expect(thrown.message).not.toContain("injected component cleanup failure");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before).toEqual({
+            sourceFrameId: "source",
+            sourceFrameName: "Source",
+            sourceFrameRemoved: false,
+            survivingComponentId: component.id,
+            survivingComponentParentState: "located",
+            survivingComponentParentId: parent.id,
+            verifiedParentId: parent.id,
+            sourceFrameRemovalState: "live",
+            restoredChildIds: [],
+            movedChildIds: [],
+            unknownParentChildIds: [],
+            relocatedChildren: [],
+            restorationFailures: [],
+            componentChildCount: 0,
+        });
+        expect(component.removed).toBe(false);
+        expect(component.parent).toBe(parent);
+        expect(source.removed).toBe(false);
+    });
+
+    it("Q32: create_component treats an unreadable source removal state as partial and never removes the component", async () => {
+        const parent = makeParent();
+        const source = makeNode("Source", "FRAME", {
+            id: "source",
+            parent,
+            x: 5,
+            y: 6,
+            width: 120,
+            height: 80,
+            fills: [],
+            strokes: [],
+            strokeWeight: 1,
+            strokeAlign: "INSIDE",
+            strokeCap: "NONE",
+            strokeJoin: "MITER",
+            dashPattern: [],
+            effects: [],
+            layoutGrids: [],
+            opacity: 1,
+            blendMode: "PASS_THROUGH",
+            isMask: false,
+            cornerRadius: 0,
+            layoutMode: "NONE",
+            children: [],
+        });
+        Object.defineProperty(source, "removed", {
+            configurable: true,
+            get: () => {
+                throw new Error("source removed getter refused");
+            },
+        });
+        parent.children.push(source);
+        nodes.set("source", source);
+        throwOn = { label: "Component", property: "x" };
+
+        let thrown: any = null;
+        try {
+            await createComponent({ nodeId: "source" });
+        } catch (error: any) {
+            thrown = error;
+        }
+
+        const component = created.get("Component");
+        expect(thrown.message).toContain("injected Component.x failure");
+        expect(thrown.message).not.toContain("removed getter refused");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before?.sourceFrameRemovalState).toBe("unknown");
+        expect(thrown.details?.before?.sourceFrameRemoved).toBeNull();
+        expect(thrown.details?.before?.componentChildCount).toBe(0);
+        expect(component.removed).toBe(false);
+        expect(component.parent).toBe(parent);
+        expect(trace).not.toContain("cleanup:Component");
+    });
+
+    it("Q32: create_component discloses unreadable and relocated child states without unsafe cleanup", async () => {
+        const parent = makeParent();
+        const externalParent = { id: "external", name: "External", type: "FRAME", children: [] as any[] };
+        let recoveryStarted = false;
+        let unknownChildParent: any = null;
+        const unknownChild: any = { id: "unknown-child", name: "Unknown", type: "RECTANGLE" };
+        Object.defineProperty(unknownChild, "parent", {
+            configurable: true,
+            get: () => {
+                if (recoveryStarted) throw new Error("child parent getter refused");
+                return unknownChildParent;
+            },
+            set: (value) => {
+                unknownChildParent = value;
+            },
+        });
+        const relocatedChild: any = { id: "relocated-child", name: "Relocated", type: "RECTANGLE" };
+        const source = makeNode("Source", "FRAME", {
+            id: "source",
+            parent,
+            x: 5,
+            y: 6,
+            width: 120,
+            height: 80,
+            fills: [],
+            strokes: [],
+            strokeWeight: 1,
+            strokeAlign: "INSIDE",
+            strokeCap: "NONE",
+            strokeJoin: "MITER",
+            dashPattern: [],
+            effects: [],
+            layoutGrids: [],
+            opacity: 1,
+            blendMode: "PASS_THROUGH",
+            isMask: false,
+            cornerRadius: 0,
+            layoutMode: "NONE",
+            children: [unknownChild, relocatedChild],
+        });
+        unknownChild.parent = source;
+        relocatedChild.parent = source;
+        parent.children.push(source);
+        nodes.set("source", source);
+
+        const component = makeNode("Component", "COMPONENT");
+        source.remove = () => {
+            const relocatedIndex = component.children.indexOf(relocatedChild);
+            if (relocatedIndex >= 0) component.children.splice(relocatedIndex, 1);
+            relocatedChild.parent = externalParent;
+            externalParent.children.push(relocatedChild);
+            recoveryStarted = true;
+            throw new Error("injected source removal failure");
+        };
+        (globalThis as any).figma.createComponent = () => component;
+
+        let thrown: any = null;
+        try {
+            await createComponent({ nodeId: "source" });
+        } catch (error: any) {
+            thrown = error;
+        }
+
+        expect(thrown.message).toContain("injected source removal failure");
+        expect(thrown.message).not.toContain("child parent getter refused");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before?.sourceFrameRemovalState).toBe("live");
+        expect(thrown.details?.before?.unknownParentChildIds).toEqual(["unknown-child"]);
+        expect(thrown.details?.before?.relocatedChildren).toEqual([
+            { childId: "relocated-child", currentParentId: externalParent.id },
+        ]);
+        expect(thrown.details?.before?.restoredChildIds).toEqual([]);
+        expect(thrown.details?.before?.movedChildIds).toEqual([]);
+        expect(component.removed).toBe(false);
+        expect(component.children).toEqual([unknownChild]);
+        expect(relocatedChild.parent).toBe(externalParent);
+        expect(trace).not.toContain("cleanup:Component");
+    });
+
+    it("Q32: create_component continues later child restorations after an earlier restore fails", async () => {
+        const parent = makeParent();
+        const firstChild: any = { id: "first", name: "First", type: "RECTANGLE" };
+        const secondChild: any = { id: "second", name: "Second", type: "RECTANGLE" };
+        const thirdChild: any = { id: "third", name: "Third", type: "RECTANGLE" };
+        const restoreAttempts: Array<{ childId: string; index: number }> = [];
+        const source = makeNode("Source", "FRAME", {
+            id: "source",
+            parent,
+            x: 5,
+            y: 6,
+            width: 120,
+            height: 80,
+            fills: [],
+            strokes: [],
+            strokeWeight: 1,
+            strokeAlign: "INSIDE",
+            strokeCap: "NONE",
+            strokeJoin: "MITER",
+            dashPattern: [],
+            effects: [],
+            layoutGrids: [],
+            opacity: 1,
+            blendMode: "PASS_THROUGH",
+            isMask: false,
+            cornerRadius: 0,
+            layoutMode: "NONE",
+            children: [firstChild, secondChild, thirdChild],
+            insertChild: (index: number, child: any) => {
+                restoreAttempts.push({ childId: child.id, index });
+                if (child === firstChild) {
+                    throw new Error("first child restore refused");
+                }
+                const oldParent = child.parent;
+                const oldIndex = oldParent?.children?.indexOf(child) ?? -1;
+                if (oldIndex >= 0) oldParent.children.splice(oldIndex, 1);
+                source.children.splice(index, 0, child);
+                child.parent = source;
+            },
+        });
+        firstChild.parent = source;
+        secondChild.parent = source;
+        thirdChild.parent = source;
+        parent.children.push(source);
+        nodes.set("source", source);
+
+        const component = makeNode("Component", "COMPONENT");
+        let moveCount = 0;
+        component.appendChild = (child: any) => {
+            moveCount++;
+            if (moveCount === 3) {
+                // The final child remains on the source. Later recovery must
+                // insert the second child before this untouched later sibling,
+                // even though restoring the first child fails.
+                throw new Error("injected third child move failure");
+            }
+            const oldParent = child.parent;
+            const oldIndex = oldParent.children.indexOf(child);
+            if (oldIndex >= 0) oldParent.children.splice(oldIndex, 1);
+            child.parent = component;
+            component.children.push(child);
+        };
+        (globalThis as any).figma.createComponent = () => component;
+
+        let thrown: any = null;
+        const consoleError = console.error;
+        console.error = () => {};
+        try {
+            await createComponent({ nodeId: "source" });
+        } catch (error: any) {
+            thrown = error;
+        } finally {
+            console.error = consoleError;
+        }
+
+        expect(thrown.message).toContain("injected third child move failure");
+        expect(thrown.message).not.toContain("first child restore refused");
+        expect(restoreAttempts).toEqual([
+            { childId: "first", index: 0 },
+            { childId: "second", index: 0 },
+        ]);
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before?.restoredChildIds).toEqual(["second", "third"]);
+        expect(thrown.details?.before?.movedChildIds).toEqual(["first"]);
+        expect(thrown.details?.before?.unknownParentChildIds).toEqual([]);
+        expect(thrown.details?.before?.relocatedChildren).toEqual([]);
+        expect(thrown.details?.before?.restorationFailures).toEqual([
+            { childId: "first", attemptedIndex: 0 },
+        ]);
+        expect(component.removed).toBe(false);
+        expect(component.children).toEqual([firstChild]);
+        expect(source.children).toEqual([secondChild, thirdChild]);
+        expect(trace).not.toContain("cleanup:Component");
     });
 
     it("node_clone appends immediately after clone()", async () => {
@@ -709,16 +1197,415 @@ describe("v2.3.3 Phase 8: observable-boundary containment", () => {
             return shape;
         };
         throwOn = { label: "Shape", property: "x" };
+        let thrown: any = null;
         console.error = (...args: any[]) => { logged.push(String(args[0])); };
         try {
-            await expect(
-                createShape({ type: "RECTANGLE", parentId: "parent", x: 10 }),
-            ).rejects.toThrow("injected Shape.x failure");
+            await createShape({ type: "RECTANGLE", parentId: "parent", x: 10 });
+        } catch (error: any) {
+            thrown = error;
         } finally {
             console.error = consoleError;
         }
+        expect(thrown.message).toContain("injected Shape.x failure");
+        expect(thrown.message).not.toContain("remove() refused");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before).toEqual({
+            survivingNodeId: shape.id,
+            survivingNodeName: "Shape",
+            survivingNodeType: "RECTANGLE",
+            survivingParentState: "located",
+            survivingParentId: "parent",
+            verifiedParentId: "parent",
+        });
         expect(logged.some((entry) => entry.includes("create_shape") && entry.includes("cleanup"))).toBe(true);
     });
+
+    it("Q32: append failure plus a no-op cleanup reports the survivor's actual parent", async () => {
+        const parent = makeParent();
+        const implicitPage = { id: "page", name: "Page", type: "PAGE", children: [] as any[] };
+        const shape = makeNode("Shape", "RECTANGLE", { parent: implicitPage });
+        implicitPage.children.push(shape);
+        shape.remove = () => {
+            // Non-conforming/no-op cleanup: returning is not proof of removal.
+        };
+        parent.appendChild = () => {
+            throw new Error("APPEND_FAILURE");
+        };
+        (globalThis as any).figma.createRectangle = () => {
+            trace.push("create:shape");
+            return shape;
+        };
+
+        let thrown: any = null;
+        const consoleError = console.error;
+        console.error = () => {};
+        try {
+            await createShape({ type: "RECTANGLE", parentId: parent.id });
+        } catch (error: any) {
+            thrown = error;
+        } finally {
+            console.error = consoleError;
+        }
+
+        expect(thrown.message).toContain("APPEND_FAILURE");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.whatChanged).toContain("survives");
+        expect(thrown.details?.before).toEqual({
+            survivingNodeId: shape.id,
+            survivingNodeName: "Shape",
+            survivingNodeType: "RECTANGLE",
+            survivingParentState: "located",
+            survivingParentId: implicitPage.id,
+            verifiedParentId: parent.id,
+        });
+        expect(shape.removed).toBe(false);
+        expect(shape.parent).toBe(implicitPage);
+    });
+
+    it("Q32: cleanup can prove a surviving creator artifact is detached", async () => {
+        const parent = makeParent();
+        const shape = makeNode("Shape", "RECTANGLE");
+        shape.remove = () => {
+            // The host detached the node but did not mark it removed. This is a
+            // surviving artifact at a known detached location, not an
+            // unreadable-parent state.
+            shape.parent = null;
+        };
+        (globalThis as any).figma.createRectangle = () => {
+            trace.push("create:shape");
+            return shape;
+        };
+        throwOn = { label: "Shape", property: "x" };
+
+        let thrown: any = null;
+        const consoleError = console.error;
+        console.error = () => {};
+        try {
+            await createShape({ type: "RECTANGLE", parentId: parent.id, x: 10 });
+        } catch (error: any) {
+            thrown = error;
+        } finally {
+            console.error = consoleError;
+        }
+
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.whatChanged).toContain("detached/null");
+        expect(thrown.details?.before).toEqual({
+            survivingNodeId: shape.id,
+            survivingNodeName: "Shape",
+            survivingNodeType: "RECTANGLE",
+            survivingParentState: "detached",
+            survivingParentId: null,
+            verifiedParentId: parent.id,
+        });
+        expect(shape.removed).toBe(false);
+        expect(shape.parent).toBeNull();
+    });
+
+    it("Q32: throwing survivor getters cannot mask the creator's initiating error", async () => {
+        makeParent();
+        const shape = makeNode("Shape", "RECTANGLE");
+        let recoveryStarted = false;
+        let parentValue: any = null;
+        for (const [property, value] of [
+            ["id", "shape-id"],
+            ["name", "Shape"],
+            ["type", "RECTANGLE"],
+        ] as const) {
+            Object.defineProperty(shape, property, {
+                configurable: true,
+                get: () => {
+                    if (recoveryStarted) throw new Error(`${property} getter refused`);
+                    return value;
+                },
+            });
+        }
+        Object.defineProperty(shape, "removed", {
+            configurable: true,
+            get: () => {
+                if (recoveryStarted) throw new Error("removed getter refused");
+                return false;
+            },
+        });
+        Object.defineProperty(shape, "parent", {
+            configurable: true,
+            get: () => {
+                if (recoveryStarted) throw new Error("parent getter refused");
+                return parentValue;
+            },
+            set: (value) => {
+                parentValue = value;
+            },
+        });
+        shape.remove = () => {
+            recoveryStarted = true;
+            // The post-remove `removed` read now throws. Recovery must treat
+            // that as unconfirmed cleanup without replacing the primary error.
+        };
+        (globalThis as any).figma.createRectangle = () => {
+            trace.push("create:shape");
+            return shape;
+        };
+        throwOn = { label: "Shape", property: "x" };
+
+        let thrown: any = null;
+        const consoleError = console.error;
+        console.error = () => {};
+        try {
+            await createShape({ type: "RECTANGLE", parentId: "parent", x: 10 });
+        } catch (error: any) {
+            thrown = error;
+        } finally {
+            console.error = consoleError;
+        }
+
+        expect(thrown.message).toContain("injected Shape.x failure");
+        expect(thrown.message).not.toContain("getter refused");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before).toEqual({
+            survivingNodeId: "unknown",
+            survivingNodeName: "unknown",
+            survivingNodeType: "unknown",
+            survivingParentState: "unknown",
+            survivingParentId: null,
+            verifiedParentId: "parent",
+        });
+        expect(thrown.details?.whatChanged).toContain("unknown (the parent could not be read safely)");
+        expect(thrown.details?.whatChanged).not.toContain("detached/null");
+    });
+
+    it("Q32: a hostile thrown Proxy cannot erase a post-mutation creator disclosure", async () => {
+        const parent = makeParent();
+        const shape = makeNode("Shape", "RECTANGLE");
+        const hostile = new Proxy({}, {
+            get: () => {
+                throw new Error("hostile getter must not escape");
+            },
+            ownKeys: () => {
+                throw new Error("hostile enumeration must not escape");
+            },
+        });
+        Object.defineProperty(shape, "x", {
+            configurable: true,
+            get: () => 0,
+            set: () => {
+                throw hostile;
+            },
+        });
+        shape.remove = () => {
+            throw new Error("cleanup refused");
+        };
+        (globalThis as any).figma.createRectangle = () => {
+            trace.push("create:shape");
+            return shape;
+        };
+
+        let thrown: any = null;
+        const consoleError = console.error;
+        console.error = () => {};
+        try {
+            await createShape({
+                type: "RECTANGLE",
+                parentId: parent.id,
+                x: 10,
+            });
+        } catch (error: any) {
+            thrown = error;
+        } finally {
+            console.error = consoleError;
+        }
+
+        expect(thrown.code).toBe("UNKNOWN_ERROR");
+        expect(thrown.message).toContain("Error executing command Partial mutation:");
+        expect(thrown.message).not.toContain("hostile getter");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before).toEqual({
+            survivingNodeId: shape.id,
+            survivingNodeName: "Shape",
+            survivingNodeType: "RECTANGLE",
+            survivingParentState: "located",
+            survivingParentId: parent.id,
+            verifiedParentId: parent.id,
+        });
+    });
+
+    const cleanupDisclosureCases: Array<{
+        name: string;
+        setup: () => {
+            run: () => Promise<any>;
+            survivor: any;
+            primaryError: string;
+            verifiedParentId: string;
+        };
+    }> = [
+        {
+            name: "create_shape",
+            setup: () => {
+                const parent = makeParent();
+                const survivor = makeNode("Shape", "RECTANGLE");
+                survivor.remove = () => { throw new Error("cleanup refused"); };
+                (globalThis as any).figma.createRectangle = () => survivor;
+                throwOn = { label: "Shape", property: "x" };
+                return {
+                    run: () => createShape({ type: "RECTANGLE", parentId: parent.id, x: 10 }),
+                    survivor,
+                    primaryError: "injected Shape.x failure",
+                    verifiedParentId: parent.id,
+                };
+            },
+        },
+        {
+            name: "create_frame",
+            setup: () => {
+                const parent = makeParent();
+                const survivor = makeNode("Frame", "FRAME", {
+                    layoutMode: "NONE",
+                    layoutWrap: "NO_WRAP",
+                    strokeWeight: 1,
+                });
+                survivor.remove = () => { throw new Error("cleanup refused"); };
+                (globalThis as any).figma.createFrame = () => survivor;
+                throwOn = { label: "Frame", property: "x" };
+                return {
+                    run: () => createFrame({ parentId: parent.id, x: 10 }),
+                    survivor,
+                    primaryError: "injected Frame.x failure",
+                    verifiedParentId: parent.id,
+                };
+            },
+        },
+        {
+            name: "create_text",
+            setup: () => {
+                const parent = makeParent();
+                const survivor = makeNode("Text", "TEXT", {
+                    characters: "",
+                    fontName: { family: "Inter", style: "Regular" },
+                    fontSize: 14,
+                });
+                survivor.remove = () => { throw new Error("cleanup refused"); };
+                (globalThis as any).figma.createText = () => survivor;
+                throwOn = { label: "Text", property: "x" };
+                return {
+                    run: () => createText({ parentId: parent.id, text: "Text", x: 10 }),
+                    survivor,
+                    primaryError: "injected Text.x failure",
+                    verifiedParentId: parent.id,
+                };
+            },
+        },
+        {
+            name: "create_svg",
+            setup: () => {
+                const parent = makeParent();
+                const survivor = makeNode("SVG", "FRAME");
+                survivor.remove = () => { throw new Error("cleanup refused"); };
+                (globalThis as any).figma.createNodeFromSvg = () => survivor;
+                throwOn = { label: "SVG", property: "x" };
+                return {
+                    run: () => createNodeFromSvg({ parentId: parent.id, svg: "<svg/>", x: 10 }),
+                    survivor,
+                    primaryError: "injected SVG.x failure",
+                    verifiedParentId: parent.id,
+                };
+            },
+        },
+        {
+            name: "create_instance",
+            setup: () => {
+                const parent = makeParent();
+                const survivor = makeNode("Instance", "INSTANCE");
+                survivor.remove = () => { throw new Error("cleanup refused"); };
+                const component = {
+                    id: "cleanup-component",
+                    name: "Cleanup Component",
+                    type: "COMPONENT",
+                    createInstance: () => survivor,
+                };
+                nodes.set(component.id, component);
+                throwOn = { label: "Instance", property: "x" };
+                return {
+                    run: () => createComponentInstance({
+                        parentId: parent.id,
+                        componentId: component.id,
+                        x: 10,
+                    }),
+                    survivor,
+                    primaryError: "injected Instance.x failure",
+                    verifiedParentId: parent.id,
+                };
+            },
+        },
+        {
+            name: "node_clone",
+            setup: () => {
+                const parent = makeParent();
+                const survivor = makeNode("Clone", "RECTANGLE");
+                survivor.remove = () => { throw new Error("cleanup refused"); };
+                const source = {
+                    id: "cleanup-source",
+                    name: "Cleanup Source",
+                    type: "RECTANGLE",
+                    parent,
+                    clone: () => survivor,
+                };
+                nodes.set(source.id, source);
+                throwOn = { label: "Clone", property: "x" };
+                return {
+                    run: () => cloneNode({
+                        nodeId: source.id,
+                        nodeName: source.name,
+                        x: 10,
+                        y: 20,
+                    }),
+                    survivor,
+                    primaryError: "injected Clone.x failure",
+                    verifiedParentId: parent.id,
+                };
+            },
+        },
+    ];
+
+    it("T78-04: cleanup-disclosure matrix independently inventories all six ordinary creators", () => {
+        expect(cleanupDisclosureCases.map((entry) => entry.name)).toEqual([
+            "create_shape",
+            "create_frame",
+            "create_text",
+            "create_svg",
+            "create_instance",
+            "node_clone",
+        ]);
+    });
+
+    for (const cleanupCase of cleanupDisclosureCases) {
+        it(`T78-04: ${cleanupCase.name} discloses its survivor when configuration and cleanup both fail`, async () => {
+            const { run, survivor, primaryError, verifiedParentId } = cleanupCase.setup();
+            let thrown: any = null;
+            const consoleError = console.error;
+            console.error = () => {};
+            try {
+                await run();
+            } catch (error: any) {
+                thrown = error;
+            } finally {
+                console.error = consoleError;
+            }
+
+            expect(thrown.message).toContain(primaryError);
+            expect(thrown.message).not.toContain("cleanup refused");
+            expect(thrown.details?.partialMutation).toBe(true);
+            expect(thrown.details?.before).toEqual({
+                survivingNodeId: survivor.id,
+                survivingNodeName: survivor.name,
+                survivingNodeType: survivor.type,
+                survivingParentState: "located",
+                survivingParentId: verifiedParentId,
+                verifiedParentId,
+            });
+            expect(survivor.removed).toBe(false);
+            expect(survivor.parent?.id).toBe(verifiedParentId);
+        });
+    }
 
     it("node_flatten passes the captured parent and exact source index", async () => {
         const parent = makeParent();
@@ -752,35 +1639,432 @@ describe("v2.3.3 Phase 8: observable-boundary containment", () => {
         expect(trace.filter((entry) => entry.includes(":append"))).toEqual([]);
     });
 
+    it("create_component_set rejects an explicit empty set name before validation reads, member renames, or combine", async () => {
+        const parent = makeParent();
+        const emptyA: any = { id: "empty-a", name: "A", type: "COMPONENT" };
+        const emptyB: any = { id: "empty-b", name: "B", type: "COMPONENT" };
+
+        await expect(validateCreateComponentSetPlan({
+            componentSetName: "",
+        }, parent)).rejects.toThrow(
+            "create_component_set: componentSetName must not be empty",
+        );
+        await expect(createComponentSet({
+            components: [
+                { node: emptyA, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                { node: emptyB, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+            ],
+            properties: ["Size"],
+            parent,
+            componentSetName: "",
+        })).rejects.toThrow(
+            "create_component_set: componentSetName must not be empty",
+        );
+
+        expect(emptyA.name).toBe("A");
+        expect(emptyB.name).toBe("B");
+        expect(trace).not.toContain("mutate:combineAsVariants");
+        expect(combineArgs).toEqual([]);
+    });
+
+    it("create_component_set keeps Figma's default when the set name is omitted and accepts whitespace", async () => {
+        const parent = makeParent();
+
+        const omittedA: any = { id: "omitted-a", name: "A", type: "COMPONENT" };
+        const omittedB: any = { id: "omitted-b", name: "B", type: "COMPONENT" };
+        const omittedNameResult = await createComponentSet({
+            components: [
+                { node: omittedA, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                { node: omittedB, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+            ],
+            properties: ["Size"],
+            parent,
+        });
+
+        expect(omittedNameResult.name).toBe("Set");
+        expect(omittedNameResult.parentId).toBe(parent.id);
+
+        const whitespaceA: any = { id: "whitespace-a", name: "A", type: "COMPONENT" };
+        const whitespaceB: any = { id: "whitespace-b", name: "B", type: "COMPONENT" };
+        const whitespaceNameResult = await createComponentSet({
+            components: [
+                { node: whitespaceA, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                { node: whitespaceB, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+            ],
+            properties: ["Size"],
+            parent,
+            componentSetName: " ",
+        });
+        expect(whitespaceNameResult.name).toBe(" ");
+        expect(whitespaceNameResult.parentId).toBe(parent.id);
+    });
+
     it("create_component_set restores every original component name when combineAsVariants throws", async () => {
         // The handler renames members to variant names BEFORE combining, so a
         // failed combine would otherwise leave the user's components renamed
         // with no set to justify it.
         const parent = makeParent();
-        const a: any = { id: "a", name: "A", type: "COMPONENT" };
-        const b: any = { id: "b", name: "B", type: "COMPONENT" };
+        const a: any = { id: "a", name: "A", type: "COMPONENT", removed: false };
+        const b: any = { id: "b", name: "B", type: "COMPONENT", removed: false };
         (globalThis as any).figma.combineAsVariants = () => {
             throw new Error("injected combine failure");
         };
 
-        await expect(createComponentSet({
-            components: [
-                { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
-                { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
-            ],
-            properties: ["Size"],
-            parent,
-            componentSetName: "Set",
-        })).rejects.toThrow("injected combine failure");
+        let thrown: any = null;
+        try {
+            await createComponentSet({
+                components: [
+                    { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                    { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+                ],
+                properties: ["Size"],
+                parent,
+                componentSetName: "Set",
+            });
+        } catch (error: any) {
+            thrown = error;
+        }
 
+        expect(thrown.message).toBe("injected combine failure");
+        expect(thrown.details).toBeUndefined();
         expect(a.name).toBe("A");
         expect(b.name).toBe("B");
     });
 
-    it("create_component_set skips removed members when restoring names, so restoration cannot mask the cause", async () => {
+    it("Q32: unreadable component removal state forces partial disclosure even when names and placement restore", async () => {
+        const parent = makeParent();
+        const a: any = { id: "a", name: "A", type: "COMPONENT" };
+        Object.defineProperty(a, "removed", {
+            configurable: true,
+            get: () => {
+                throw new Error("removed getter refused");
+            },
+        });
+        const b: any = { id: "b", name: "B", type: "COMPONENT", removed: false };
+        (globalThis as any).figma.combineAsVariants = () => {
+            throw new Error("injected combine failure");
+        };
+
+        let thrown: any = null;
+        try {
+            await createComponentSet({
+                components: [
+                    { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                    { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+                ],
+                properties: ["Size"],
+                parent,
+                componentSetName: "Set",
+            });
+        } catch (error: any) {
+            thrown = error;
+        }
+
+        expect(thrown.message).toContain("injected combine failure");
+        expect(thrown.message).not.toContain("removed getter refused");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before?.removedComponents).toEqual([]);
+        expect(thrown.details?.before?.unknownRemovalComponents).toEqual([
+            {
+                componentId: "a",
+                originalName: "A",
+                variantName: "Size=A",
+            },
+        ]);
+        expect(thrown.details?.before?.restoredComponents).toHaveLength(2);
+        expect(thrown.details?.before?.reparentedComponents).toEqual([]);
+        expect(thrown.details?.before?.unverifiedPlacementComponents).toEqual([]);
+        expect(a.name).toBe("A");
+        expect(b.name).toBe("B");
+    });
+
+    it("Q32: failed combine retains variant names for members reparented into a surviving set", async () => {
+        const parent = makeParent();
+        const originalParent: any = {
+            id: "original-parent",
+            name: "Original Parent",
+            type: "FRAME",
+            children: [] as any[],
+        };
+        const a: any = { id: "a", name: "A", type: "COMPONENT", parent: originalParent, removed: false };
+        const b: any = { id: "b", name: "B", type: "COMPONENT", parent: originalParent, removed: false };
+        originalParent.children.push(a, b);
+        const survivingSet: any = {
+            id: "surviving-set",
+            name: "Surviving Set",
+            type: "COMPONENT_SET",
+            parent,
+            children: [a, b],
+        };
+        (globalThis as any).figma.combineAsVariants = () => {
+            originalParent.children.length = 0;
+            a.parent = survivingSet;
+            b.parent = survivingSet;
+            throw new Error("injected combine failure after reparenting");
+        };
+
+        let thrown: any = null;
+        try {
+            await createComponentSet({
+                components: [
+                    { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                    { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+                ],
+                properties: ["Size"],
+                parent,
+                componentSetName: "Set",
+            });
+        } catch (error: any) {
+            thrown = error;
+        }
+
+        expect(thrown.message).toContain("injected combine failure after reparenting");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.whatChanged).toContain("2 remain valid members of 1 surviving set");
+        expect(thrown.details?.before?.restoredComponents).toEqual([]);
+        expect(thrown.details?.before?.unrestoredComponents).toEqual([]);
+        expect(thrown.details?.before?.removedComponents).toEqual([]);
+        expect(thrown.details?.before?.reparentedComponents).toEqual([
+            {
+                componentId: "a",
+                originalParentId: originalParent.id,
+                currentParentId: survivingSet.id,
+                currentParentName: survivingSet.name,
+                currentParentType: survivingSet.type,
+            },
+            {
+                componentId: "b",
+                originalParentId: originalParent.id,
+                currentParentId: survivingSet.id,
+                currentParentName: survivingSet.name,
+                currentParentType: survivingSet.type,
+            },
+        ]);
+        expect(thrown.details?.before?.unverifiedPlacementComponents).toEqual([]);
+        expect(thrown.details?.before?.survivingComponentSets).toEqual([
+            {
+                componentSetId: survivingSet.id,
+                componentSetName: survivingSet.name,
+                parentId: parent.id,
+                memberIds: ["a", "b"],
+            },
+        ]);
+        expect(thrown.details?.before?.retainedVariantComponents).toEqual([
+            {
+                componentId: "a",
+                componentSetId: survivingSet.id,
+                originalName: "A",
+                variantName: "Size=A",
+                observedNameBeforeConfirmation: "Size=A",
+                currentName: "Size=A",
+            },
+            {
+                componentId: "b",
+                componentSetId: survivingSet.id,
+                originalName: "B",
+                variantName: "Size=B",
+                observedNameBeforeConfirmation: "Size=B",
+                currentName: "Size=B",
+            },
+        ]);
+        expect(thrown.details?.before?.unconfirmedVariantComponents).toEqual([]);
+        expect(a.name).toBe("Size=A");
+        expect(b.name).toBe("Size=B");
+        expect(a.parent).toBe(survivingSet);
+        expect(b.parent).toBe(survivingSet);
+    });
+
+    it("Q32: unreadable changed-parent type never authorizes restoring pre-set names", async () => {
+        const parent = makeParent();
+        const originalParent: any = {
+            id: "original-parent",
+            name: "Original Parent",
+            type: "FRAME",
+            children: [] as any[],
+        };
+        const a: any = {
+            id: "a",
+            name: "A",
+            type: "COMPONENT",
+            parent: originalParent,
+            removed: false,
+        };
+        const b: any = {
+            id: "b",
+            name: "B",
+            type: "COMPONENT",
+            parent: originalParent,
+            removed: false,
+        };
+        originalParent.children.push(a, b);
+        const survivingSet: any = {
+            id: "surviving-set",
+            name: "Surviving Set",
+            parent,
+            children: [a, b],
+        };
+        Object.defineProperty(survivingSet, "type", {
+            configurable: true,
+            get: () => {
+                throw new Error("surviving set type getter refused");
+            },
+        });
+        (globalThis as any).figma.combineAsVariants = () => {
+            originalParent.children.length = 0;
+            a.parent = survivingSet;
+            b.parent = survivingSet;
+            throw new Error("injected combine failure after reparenting");
+        };
+
+        let thrown: any = null;
+        try {
+            await createComponentSet({
+                components: [
+                    { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                    { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+                ],
+                properties: ["Size"],
+                parent,
+                componentSetName: "Set",
+            });
+        } catch (error: any) {
+            thrown = error;
+        }
+
+        expect(thrown.message).toContain("injected combine failure after reparenting");
+        expect(thrown.message).not.toContain("type getter refused");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before?.restoredComponents).toEqual([]);
+        expect(thrown.details?.before?.reparentedComponents).toEqual([
+            {
+                componentId: "a",
+                originalParentId: originalParent.id,
+                currentParentId: survivingSet.id,
+                currentParentName: survivingSet.name,
+                currentParentType: "unknown",
+            },
+            {
+                componentId: "b",
+                originalParentId: originalParent.id,
+                currentParentId: survivingSet.id,
+                currentParentName: survivingSet.name,
+                currentParentType: "unknown",
+            },
+        ]);
+        expect(thrown.details?.before?.unverifiedPlacementComponents).toEqual([
+            {
+                componentId: "a",
+                originalParentId: originalParent.id,
+            },
+            {
+                componentId: "b",
+                originalParentId: originalParent.id,
+            },
+        ]);
+        expect(thrown.details?.before?.survivingComponentSets).toEqual([]);
+        expect(thrown.details?.before?.retainedVariantComponents).toEqual([]);
+        expect(thrown.details?.before?.unconfirmedVariantComponents).toEqual([]);
+        expect(a.name).toBe("Size=A");
+        expect(b.name).toBe("Size=B");
+        expect(a.parent).toBe(survivingSet);
+        expect(b.parent).toBe(survivingSet);
+    });
+
+    it("Q32: surviving-set variant confirmation failure preserves the combine error and never restores the original name", async () => {
+        const parent = makeParent();
+        const originalParent: any = {
+            id: "original-parent",
+            name: "Original Parent",
+            type: "FRAME",
+            children: [] as any[],
+        };
+        let aName = "A";
+        let confirmationPhase = false;
+        const aNameWrites: string[] = [];
+        const a: any = { id: "a", type: "COMPONENT", parent: originalParent, removed: false };
+        Object.defineProperty(a, "name", {
+            get: () => aName,
+            set: (value: string) => {
+                aNameWrites.push(value);
+                if (confirmationPhase && value === "Size=A") {
+                    throw new Error("variant confirmation refused");
+                }
+                aName = value;
+            },
+        });
+        const b: any = { id: "b", name: "B", type: "COMPONENT", parent: originalParent, removed: false };
+        originalParent.children.push(a, b);
+        const survivingSet: any = {
+            id: "surviving-set",
+            name: "Surviving Set",
+            type: "COMPONENT_SET",
+            parent,
+            children: [a, b],
+        };
+        (globalThis as any).figma.combineAsVariants = () => {
+            originalParent.children.length = 0;
+            a.parent = survivingSet;
+            b.parent = survivingSet;
+            aName = "Wrong";
+            confirmationPhase = true;
+            throw new Error("injected combine failure after reparenting");
+        };
+
+        let thrown: any = null;
+        const consoleError = console.error;
+        console.error = () => {};
+        try {
+            await createComponentSet({
+                components: [
+                    { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                    { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+                ],
+                properties: ["Size"],
+                parent,
+                componentSetName: "Set",
+            });
+        } catch (error: any) {
+            thrown = error;
+        } finally {
+            console.error = consoleError;
+        }
+
+        expect(thrown.message).toContain("injected combine failure after reparenting");
+        expect(thrown.message).not.toContain("variant confirmation refused");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before?.retainedVariantComponents).toEqual([
+            {
+                componentId: "b",
+                componentSetId: survivingSet.id,
+                originalName: "B",
+                variantName: "Size=B",
+                observedNameBeforeConfirmation: "Size=B",
+                currentName: "Size=B",
+            },
+        ]);
+        expect(thrown.details?.before?.unconfirmedVariantComponents).toEqual([
+            {
+                componentId: "a",
+                componentSetId: survivingSet.id,
+                originalName: "A",
+                variantName: "Size=A",
+                observedNameBeforeConfirmation: "Wrong",
+                currentName: "Wrong",
+            },
+        ]);
+        expect(thrown.details?.before?.restoredComponents).toEqual([]);
+        expect(aNameWrites).toEqual(["Size=A", "Size=A"]);
+        expect(aNameWrites).not.toContain("A");
+        expect(a.name).toBe("Wrong");
+        expect(b.name).toBe("Size=B");
+        expect(a.parent).toBe(survivingSet);
+        expect(b.parent).toBe(survivingSet);
+    });
+
+    it("Q32: create_component_set discloses removed members while restoring every later live name", async () => {
         const parent = makeParent();
         const a: any = { id: "a", name: "A", type: "COMPONENT", removed: false };
-        const b: any = { id: "b", name: "B", type: "COMPONENT" };
+        const b: any = { id: "b", name: "B", type: "COMPONENT", removed: false };
         (globalThis as any).figma.combineAsVariants = () => {
             // The member disappears as part of the same failure — a removed node
             // rejects writes, so restoring it would throw and replace the cause.
@@ -792,16 +2076,141 @@ describe("v2.3.3 Phase 8: observable-boundary containment", () => {
             throw new Error("injected combine failure");
         };
 
-        await expect(createComponentSet({
-            components: [
-                { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
-                { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
-            ],
-            properties: ["Size"],
-            parent,
-            componentSetName: "Set",
-        })).rejects.toThrow("injected combine failure");
+        let thrown: any = null;
+        const consoleError = console.error;
+        console.error = () => {};
+        try {
+            await createComponentSet({
+                components: [
+                    { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                    { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+                ],
+                properties: ["Size"],
+                parent,
+                componentSetName: "Set",
+            });
+        } catch (error: any) {
+            thrown = error;
+        } finally {
+            console.error = consoleError;
+        }
 
+        expect(thrown.message).toContain("injected combine failure");
+        expect(thrown.message).not.toContain("cannot rename a removed node");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.whatChanged).toContain("1 component(s) were removed");
+        expect(thrown.details?.before?.appliedComponents).toEqual([
+            {
+                componentId: "a",
+                originalName: "A",
+                variantName: "Size=A",
+                observedNameBeforeRestore: "Size=A",
+            },
+            {
+                componentId: "b",
+                originalName: "B",
+                variantName: "Size=B",
+                observedNameBeforeRestore: "Size=B",
+            },
+        ]);
+        expect(thrown.details?.before?.restoredComponents).toEqual([
+            {
+                componentId: "b",
+                originalName: "B",
+                variantName: "Size=B",
+                observedNameBeforeRestore: "Size=B",
+                currentName: "B",
+            },
+        ]);
+        expect(thrown.details?.before?.unrestoredComponents).toEqual([]);
+        expect(thrown.details?.before?.removedComponents).toEqual([
+            {
+                componentId: "a",
+                originalName: "A",
+                variantName: "Size=A",
+            },
+        ]);
+        expect(a.removed).toBe(true);
+        expect(b.name).toBe("B");
+    });
+
+    it("Q32: create_component_set preserves the combine error, restores later names, and discloses each unrestored name", async () => {
+        const parent = makeParent();
+        let aName = "A";
+        const a: any = { id: "a", type: "COMPONENT", removed: false };
+        Object.defineProperty(a, "name", {
+            get: () => aName,
+            set: (value: string) => {
+                if (value === "A" && aName === "Size=A") {
+                    throw new Error("injected restoration failure");
+                }
+                aName = value;
+            },
+        });
+        const b: any = { id: "b", name: "B", type: "COMPONENT", removed: false };
+        (globalThis as any).figma.combineAsVariants = () => {
+            throw new Error("injected combine failure");
+        };
+
+        let thrown: any = null;
+        const consoleError = console.error;
+        console.error = () => {};
+        try {
+            await createComponentSet({
+                components: [
+                    { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                    { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+                ],
+                properties: ["Size"],
+                parent,
+                componentSetName: "Set",
+            });
+        } catch (error: any) {
+            thrown = error;
+        } finally {
+            console.error = consoleError;
+        }
+
+        expect(thrown.message).toContain("injected combine failure");
+        expect(thrown.message).not.toContain("injected restoration failure");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.whatChanged).toContain("2 component variant name(s) were applied");
+        expect(thrown.details?.whatChanged).toContain("1 ordinary member name(s) were restored");
+        expect(thrown.details?.whatChanged).toContain("1 could not be restored");
+        expect(thrown.details?.before?.appliedComponents).toEqual([
+            {
+                componentId: "a",
+                originalName: "A",
+                variantName: "Size=A",
+                observedNameBeforeRestore: "Size=A",
+            },
+            {
+                componentId: "b",
+                originalName: "B",
+                variantName: "Size=B",
+                observedNameBeforeRestore: "Size=B",
+            },
+        ]);
+        expect(thrown.details?.before?.restoredComponents).toEqual([
+            {
+                componentId: "b",
+                originalName: "B",
+                variantName: "Size=B",
+                observedNameBeforeRestore: "Size=B",
+                currentName: "B",
+            },
+        ]);
+        expect(thrown.details?.before?.unrestoredComponents).toEqual([
+            {
+                componentId: "a",
+                originalName: "A",
+                variantName: "Size=A",
+                observedNameBeforeRestore: "Size=A",
+                currentName: "Size=A",
+            },
+        ]);
+        expect(thrown.details?.before?.removedComponents).toEqual([]);
+        expect(a.name).toBe("Size=A");
         expect(b.name).toBe("B");
     });
 
@@ -818,9 +2227,16 @@ describe("v2.3.3 Phase 8: observable-boundary containment", () => {
                 variantGroupProperties: {},
             };
             let storedName = "Set";
+            let renameFailed = false;
             Object.defineProperty(set, "name", {
-                get: () => storedName,
-                set: () => { throw new Error("injected set rename failure"); },
+                get: () => {
+                    if (renameFailed) throw new Error("injected evidence getter failure");
+                    return storedName;
+                },
+                set: () => {
+                    renameFailed = true;
+                    throw new Error("injected set rename failure");
+                },
             });
             return set;
         };
@@ -841,6 +2257,8 @@ describe("v2.3.3 Phase 8: observable-boundary containment", () => {
         }
 
         expect(thrown).not.toBeNull();
+        expect(thrown.message).toContain("injected set rename failure");
+        expect(thrown.message).not.toContain("injected evidence getter failure");
         expect(thrown.details?.partialMutation).toBe(true);
         expect(thrown.details?.whatChanged).toContain("already created");
         expect(thrown.details?.before?.componentSetId).toBe("set-id");
@@ -849,5 +2267,83 @@ describe("v2.3.3 Phase 8: observable-boundary containment", () => {
         // The members keep their variant names — renaming them back would
         // corrupt the set that now exists (D5's no-transaction posture).
         expect(a.name).toBe("Size=A");
+    });
+
+    it("Q32: a set created under the wrong parent is a disclosed partial mutation", async () => {
+        const parent = makeParent();
+        const wrongParent = makeParent("wrong-parent");
+        const a: any = { id: "a", name: "A", type: "COMPONENT" };
+        const b: any = { id: "b", name: "B", type: "COMPONENT" };
+        (globalThis as any).figma.combineAsVariants = (...args: any[]) => ({
+            id: "misplaced-set",
+            name: "Set",
+            type: "COMPONENT_SET",
+            children: args[0],
+            parent: wrongParent,
+            variantGroupProperties: {},
+        });
+
+        let thrown: any = null;
+        try {
+            await createComponentSet({
+                components: [
+                    { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                    { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+                ],
+                properties: ["Size"],
+                parent,
+                componentSetName: "Set",
+            });
+        } catch (error: any) {
+            thrown = error;
+        }
+
+        expect(thrown.message).toContain("wrong-parent");
+        expect(thrown.details?.partialMutation).toBe(true);
+        expect(thrown.details?.before).toMatchObject({
+            componentSetId: "misplaced-set",
+            componentSetParentId: wrongParent.id,
+            verifiedParentId: parent.id,
+        });
+    });
+
+    it("post-combine optional projection failures return success with total warnings", async () => {
+        const parent = makeParent();
+        const a: any = { id: "a", name: "A", type: "COMPONENT" };
+        const b: any = { id: "b", name: "B", type: "COMPONENT" };
+        (globalThis as any).figma.combineAsVariants = () => {
+            const set: any = {
+                id: "set-id",
+                name: "Set",
+                type: "COMPONENT_SET",
+                parent,
+            };
+            Object.defineProperty(set, "children", {
+                get: () => { throw new Error("children getter failed"); },
+            });
+            Object.defineProperty(set, "variantGroupProperties", {
+                get: () => { throw Object.create(null); },
+            });
+            return set;
+        };
+
+        const result = await createComponentSet({
+            components: [
+                { node: a, originalName: "A", variantName: "Size=A", propertyValues: ["A"] },
+                { node: b, originalName: "B", variantName: "Size=B", propertyValues: ["B"] },
+            ],
+            properties: ["Size"],
+            parent,
+        });
+
+        expect(result).toMatchObject({
+            id: "set-id",
+            name: "Set",
+            parentId: parent.id,
+        });
+        expect(result.childCount).toBeUndefined();
+        expect(result.variantProperties).toBeUndefined();
+        expect(result.warning).toContain("Failed to read variant properties: Error executing command");
+        expect(result.warning).toContain("Failed to read component-set child count: children getter failed");
     });
 });

@@ -384,8 +384,10 @@ describe("Phase 4: Stop on first failure in batch handlers", () => {
         expect(result.results[1].afterCount).toBe(0);
         expect(result.results[2].success).toBe(false);
         expect(result.results[2].status).toBe("skipped");
-        expect(result.results[2].beforeCount).toBe(0);
-        expect(result.results[2].afterCount).toBe(0);
+        expect(result.results[2].beforeCount).toBeNull();
+        expect(result.results[2].afterCount).toBeNull();
+        expect(result.results[2].beforeCountVerified).toBe(false);
+        expect(result.results[2].afterCountVerified).toBe(false);
     });
 
     it("deleteMultipleNodes is resilient and does not stop on failure", async () => {

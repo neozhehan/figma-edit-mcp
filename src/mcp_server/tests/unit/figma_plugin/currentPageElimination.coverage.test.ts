@@ -56,7 +56,13 @@ describe("createComponentSet: combines directly in the verified parent", () => {
             getNodeByIdAsync: async (id: string) => ({ c1, c2, "page-1": page } as any)[id] ?? null,
             combineAsVariants: (_comps: any[], pageArg: any) => {
                 combinePageArg = pageArg;
-                return { id: "set1", name: "Set", children: [], variantGroupProperties: {} };
+                return {
+                    id: "set1",
+                    name: "Set",
+                    parent: pageArg,
+                    children: [],
+                    variantGroupProperties: {},
+                };
             },
             currentPage: { id: "CURRENT_PAGE", type: "PAGE" },
         };

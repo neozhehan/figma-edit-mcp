@@ -5,6 +5,7 @@
 import { rgbaToHex } from './colorUtils.js';
 import { PathTuple } from '../../src/shared/nodeTypes.js';
 import { NODE_DATA_FIELDS } from './nodeFields.generated.js';
+import { withPartialDisclosure } from './errors.js';
 
 /**
  * Property names readable directly from a Figma node without an exportAsync.
@@ -233,26 +234,158 @@ export function isAncestorOf(maybeAncestor: any, node: any): boolean {
 }
 
 /**
+ * Recovery-path reads are untrusted too: a removed/detached host object or a
+ * hostile test double can throw from a property getter. Never let evidence
+ * collection replace the initiating mutation error.
+ */
+export function readDuringRecovery<T>(reader: () => T, fallback: T): T {
+    try {
+        return reader();
+    } catch {
+        return fallback;
+    }
+}
+
+export function reportRecoveryError(...args: any[]) {
+    try {
+        console.error(...args);
+    } catch {
+        // Logging is recovery machinery as well; it cannot become the failure.
+    }
+}
+
+/**
  * Removes a created-but-uncommitted node during D11 cleanup, best-effort.
  *
- * Cleanup runs on the failure path, so a throwing `remove()` would REPLACE the
- * error that actually caused the failure — the caller would be told the cleanup
- * complaint instead of the real cause. Removal failure is therefore reported to
- * the console and swallowed, the same rule notification and progress delivery
- * follow (C3/R14/R15): recovery machinery may not become a second failure.
+ * Cleanup runs on the failure path, so a throwing `remove()` would replace the
+ * error that actually caused the failure. Removal failure is therefore reported
+ * and swallowed: recovery machinery may not become a second failure.
  *
- * Returns true when the node is known to be gone, so a caller that must decide
- * whether the document was left changed (Q32) can branch on the real outcome.
+ * Returns true only when the node is observably gone. Callers use that result to
+ * decide whether the failed creator left a partial mutation behind (Q32).
  */
 export function removeUncommitted(node: any, context: string): boolean {
     if (!node) return true;
-    if ((node as any).removed === true) return true;
-    if (typeof node.remove !== "function") return false;
-    try {
-        node.remove();
-        return true;
-    } catch (cleanupError: any) {
-        console.error(`${context}: failed to remove the uncommitted node during cleanup`, cleanupError);
+    if (readDuringRecovery(() => (node as any).removed === true, false)) return true;
+    const remove = readDuringRecovery<(() => void) | null>(
+        () => typeof node.remove === "function" ? node.remove : null,
+        null,
+    );
+    if (!remove) {
+        reportRecoveryError(`${context}: the uncommitted node has no readable remove() method; cleanup could not be confirmed`);
         return false;
     }
+    try {
+        remove.call(node);
+    } catch (cleanupError: any) {
+        reportRecoveryError(`${context}: failed to remove the uncommitted node during cleanup`, cleanupError);
+        return false;
+    }
+
+    // BaseNodeMixin.removed is the observable confirmation that removal
+    // completed. A no-op/non-conforming remove() must not be reported as a
+    // successful rollback merely because it returned without throwing.
+    if (readDuringRecovery(() => (node as any).removed === true, false)) return true;
+    reportRecoveryError(`${context}: remove() returned but the uncommitted node still survives`);
+    return false;
+}
+
+export type CreatorSurvivorEvidence = {
+    survivingNodeId: string;
+    survivingNodeName: string;
+    survivingNodeType: string;
+    survivingParentState: "located" | "detached" | "unknown";
+    survivingParentId: string | null;
+    verifiedParentId: string;
+};
+
+export function getCreatorSurvivorEvidence(
+    node: any,
+    verifiedParentId: string,
+): CreatorSurvivorEvidence {
+    const unreadableParent = {};
+    const parent = readDuringRecovery<any>(
+        () => node.parent,
+        unreadableParent,
+    );
+    let survivingParentState: CreatorSurvivorEvidence["survivingParentState"];
+    let survivingParentId: string | null;
+    if (parent === unreadableParent || parent === undefined) {
+        survivingParentState = "unknown";
+        survivingParentId = null;
+    } else if (parent === null) {
+        survivingParentState = "detached";
+        survivingParentId = null;
+    } else {
+        const unreadableParentId = {};
+        const parentId = readDuringRecovery<any>(
+            () => typeof parent.id === "string"
+                ? parent.id
+                : unreadableParentId,
+            unreadableParentId,
+        );
+        if (parentId === unreadableParentId) {
+            survivingParentState = "unknown";
+            survivingParentId = null;
+        } else {
+            survivingParentState = "located";
+            survivingParentId = parentId;
+        }
+    }
+
+    return {
+        survivingNodeId: readDuringRecovery(
+            () => typeof node.id === "string" ? node.id : "unknown",
+            "unknown",
+        ),
+        survivingNodeName: readDuringRecovery(
+            () => typeof node.name === "string" ? node.name : "unknown",
+            "unknown",
+        ),
+        survivingNodeType: readDuringRecovery(
+            () => typeof node.type === "string" ? node.type : "unknown",
+            "unknown",
+        ),
+        survivingParentState,
+        survivingParentId,
+        verifiedParentId,
+    };
+}
+
+export function describeCreatorSurvivorParent(
+    evidence: CreatorSurvivorEvidence,
+): string {
+    if (evidence.survivingParentState === "located") {
+        return `'${evidence.survivingParentId}'`;
+    }
+    if (evidence.survivingParentState === "detached") {
+        return "detached/null";
+    }
+    return "unknown (the parent could not be read safely)";
+}
+
+/**
+ * Re-throws a creator's initiating error after best-effort cleanup.
+ *
+ * A failed cleanup is itself a durable mutation outcome, but it must not mask
+ * the operation that triggered recovery. Preserve that primary error and add
+ * the exact survivor/destination evidence required by D7/Q32.
+ */
+export function rethrowAfterCreatorCleanup(
+    error: any,
+    node: any,
+    context: string,
+    verifiedParentId: string,
+): never {
+    if (removeUncommitted(node, context)) {
+        throw error;
+    }
+
+    const evidence = getCreatorSurvivorEvidence(node, verifiedParentId);
+
+    throw withPartialDisclosure(
+        error,
+        `${context} created node '${evidence.survivingNodeName}' (${evidence.survivingNodeId}) survives because cleanup could not remove it; its current parent is ${describeCreatorSurvivorParent(evidence)}.`,
+        evidence,
+    );
 }

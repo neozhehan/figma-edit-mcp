@@ -4,6 +4,7 @@ import { sendCommandToFigma } from "../figma-client.js";
 import { toolResult, looseOutput, batchResults } from "./_result.js";
 import { noDuplicateTargets } from "./_batch.js";
 import { resizeIfOversized } from "../imageResize.js";
+import { nodeEffect } from "./style.js";
 // Allowlist of bindable fields, generated from @figma/plugin-typings
 // (VariableBindableNodeField ∪ VariableBindableTextField + fills/strokes) by
 // scripts/gen-node-fields.ts. Regenerated on every build:all and CI-checked for
@@ -631,32 +632,8 @@ export function registerNodeTools(server: McpServer) {
                 nodeId: z.string().describe("The ID of the node to modify"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 effects: z
-                    .array(
-                        z.object({
-                            type: z.enum([
-                                "DROP_SHADOW",
-                                "INNER_SHADOW",
-                                "LAYER_BLUR",
-                                "BACKGROUND_BLUR",
-                            ]).describe("Effect type"),
-                            visible: z.boolean().optional().describe("Visibility"),
-                            color: z
-                                .object({
-                                    r: z.number().describe("Red (0-1)"),
-                                    g: z.number().describe("Green (0-1)"),
-                                    b: z.number().describe("Blue (0-1)"),
-                                    a: z.number().optional().describe("Alpha (0-1)"),
-                                })
-                                .optional()
-                                .describe("Effect color"),
-                            offset: z.object({ x: z.number().describe("X offset"), y: z.number().describe("Y offset") }).optional().describe("Shadow offset"),
-                            radius: z.number().optional().describe("Blur radius"),
-                            spread: z.number().optional().describe("Shadow spread"),
-                            blendMode: z.string().optional().describe("Blend mode"),
-                            showShadowBehindNode: z.boolean().optional().describe("Show shadow behind node"),
-                        }).describe("Figma effect settings")
-                    )
-                    .describe("Array of effect objects"),
+                    .array(nodeEffect)
+                    .describe("Array of strict per-variant Figma effects: DROP_SHADOW/INNER_SHADOW or LAYER_BLUR/BACKGROUND_BLUR"),
             }),
             outputSchema: looseOutput({
                 name: z.string().optional().describe("Name of the modified node"),

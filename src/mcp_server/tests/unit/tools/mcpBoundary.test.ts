@@ -98,6 +98,41 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
         expect(result.structuredContent.error.message).toContain("not found");
     });
 
+    it("a hostile thrown Proxy still resolves through a real registered callback as UNKNOWN_ERROR", async () => {
+        const hostile = new Proxy({}, {
+            get: () => {
+                throw new Error("hostile getter must not escape");
+            },
+            ownKeys: () => {
+                throw new Error("hostile enumeration must not escape");
+            },
+        });
+        commandBehavior = async () => {
+            throw hostile;
+        };
+
+        // This crosses the real registered style_manage callback and official
+        // SDK client boundary. It must resolve in-band instead of rejecting
+        // while the wrapper tries code/message/details or String(error).
+        const result = await client.callTool({
+            name: "style_manage",
+            arguments: {
+                type: "PAINT",
+                styleId: "S:1",
+                currentStyleName: "Body",
+            },
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.structuredContent.error).toEqual({
+            code: "UNKNOWN_ERROR",
+            message: "Error executing command",
+        });
+        expect(result.content[0].text).toBe(
+            "Error [UNKNOWN_ERROR]: Error executing command",
+        );
+    });
+
     it("successful results still pass client-side output validation", async () => {
         commandBehavior = async () => ({ id: "S:1", name: "Body", type: "PAINT" });
         const result = await client.callTool({
@@ -106,6 +141,278 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
         });
         expect(result.isError).toBeFalsy();
         expect(result.structuredContent.name).toBe("Body");
+    });
+
+    it("F78-15: creator callbacks reject exact-empty names as -32602 without dispatch", async () => {
+        let dispatchCount = 0;
+        commandBehavior = async () => {
+            dispatchCount++;
+            throw new Error("empty-name validation must prevent dispatch");
+        };
+
+        const calls = [
+            {
+                name: "create_shape",
+                arguments: {
+                    type: "RECTANGLE",
+                    x: 0,
+                    y: 0,
+                    width: 100,
+                    height: 100,
+                    name: "",
+                    parentId: "1:2",
+                    parentNodeName: "Parent",
+                },
+            },
+            {
+                name: "create_frame",
+                arguments: {
+                    x: 0,
+                    y: 0,
+                    width: 100,
+                    height: 100,
+                    name: "",
+                    parentId: "1:2",
+                    parentNodeName: "Parent",
+                },
+            },
+            {
+                name: "create_text",
+                arguments: {
+                    x: 0,
+                    y: 0,
+                    text: "Body copy",
+                    name: "",
+                    parentId: "1:2",
+                    parentNodeName: "Parent",
+                },
+            },
+            {
+                name: "create_svg",
+                arguments: {
+                    svg: "<svg/>",
+                    name: "",
+                    parentId: "1:2",
+                    parentNodeName: "Parent",
+                },
+            },
+            {
+                name: "create_component_set",
+                arguments: {
+                    components: [
+                        { nodeId: "2:1", nodeName: "A", propertyValues: ["A"] },
+                        { nodeId: "2:2", nodeName: "B", propertyValues: ["B"] },
+                    ],
+                    properties: ["State"],
+                    componentSetName: "",
+                    parentId: "1:2",
+                    parentNodeName: "Parent",
+                },
+            },
+        ];
+
+        const registered = (server as any)._registeredTools;
+        for (const call of calls) {
+            const registeredSchema = registered[call.name].inputSchema;
+            const schemaResult = await registeredSchema.safeParseAsync(
+                call.arguments,
+            );
+            expect(
+                schemaResult.success,
+                `${call.name}'s registered schema must reject an exact-empty name`,
+            ).toBe(false);
+            const nameField = call.name === "create_component_set"
+                ? "componentSetName"
+                : "name";
+            const whitespaceResult = await registeredSchema.safeParseAsync({
+                ...call.arguments,
+                [nameField]: " ",
+            });
+            expect(
+                whitespaceResult.success,
+                `${call.name}'s registered schema must continue to accept whitespace`,
+            ).toBe(true);
+
+            let validationError: any;
+            try {
+                await (server as any).validateToolInput(
+                    registered[call.name],
+                    call.arguments,
+                    call.name,
+                );
+            } catch (caught) {
+                validationError = caught;
+            }
+            expect(
+                validationError,
+                `${call.name}'s SDK validation must throw Invalid Params`,
+            ).toBeDefined();
+            expect(
+                validationError.code,
+                `${call.name}'s SDK validation must use Invalid Params`,
+            ).toBe(-32602);
+
+            // McpServer 1.29 catches the internal -32602 and intentionally
+            // exposes it through tools/call as an in-band tool error.
+            const result = await client.callTool(call);
+            expect(result.isError).toBe(true);
+            expect(result.content[0].text).toContain("Input validation error");
+            expect(result.content[0].text).toContain(call.name);
+            expect(dispatchCount, `${call.name} must not dispatch`).toBe(0);
+        }
+    });
+
+    it("F78-15: creator callbacks still dispatch omissions with existing defaults", async () => {
+        const dispatched: Array<{ command: string; params: any }> = [];
+        const fallbackNames: Record<string, string> = {
+            create_shape: "Rectangle",
+            create_frame: "Frame",
+            create_text: "Text",
+            create_svg: "SVG",
+            create_component_set: "Component set",
+        };
+        commandBehavior = async (command, params) => {
+            dispatched.push({ command, params });
+            const suppliedName = command === "create_component_set"
+                ? params.componentSetName
+                : params.name;
+            return {
+                id: `${command}-id`,
+                name: suppliedName ?? fallbackNames[command],
+                parentId: params.parentId,
+            };
+        };
+
+        const calls = [
+            {
+                name: "create_shape",
+                arguments: {
+                    type: "RECTANGLE",
+                    x: 0,
+                    y: 0,
+                    width: 100,
+                    height: 100,
+                    parentId: "1:2",
+                    parentNodeName: "Parent",
+                },
+            },
+            {
+                name: "create_frame",
+                arguments: {
+                    x: 0,
+                    y: 0,
+                    width: 100,
+                    height: 100,
+                    parentId: "1:2",
+                    parentNodeName: "Parent",
+                },
+            },
+            {
+                name: "create_text",
+                arguments: {
+                    x: 0,
+                    y: 0,
+                    text: "Body copy",
+                    parentId: "1:2",
+                    parentNodeName: "Parent",
+                },
+            },
+            {
+                name: "create_svg",
+                arguments: {
+                    svg: "<svg/>",
+                    parentId: "1:2",
+                    parentNodeName: "Parent",
+                },
+            },
+        ];
+
+        const omittedResults = [];
+        for (const call of calls) {
+            const result = await client.callTool(call);
+            expect(result.isError).toBeFalsy();
+            omittedResults.push(result);
+        }
+        expect(omittedResults.map((result) => result.structuredContent.name))
+            .toEqual(["Rectangle", "Frame", "Text", "SVG"]);
+        const omitted = dispatched;
+        expect(Object.hasOwn(omitted[0].params, "name")).toBe(false);
+        expect(omitted[1].params.name).toBe("Frame");
+        expect(omitted[2].params.name).toBe("Text");
+        expect(omitted[2].params.fontSize).toBe(14);
+        expect(omitted[2].params.fontWeight).toBe(400);
+        expect(Object.hasOwn(omitted[3].params, "name")).toBe(false);
+
+        const componentSetArguments = {
+            components: [
+                { nodeId: "2:1", nodeName: "A", propertyValues: ["A"] },
+                { nodeId: "2:2", nodeName: "B", propertyValues: ["B"] },
+            ],
+            properties: ["State"],
+            parentId: "1:2",
+            parentNodeName: "Parent",
+        };
+        const omittedSet = await client.callTool({
+            name: "create_component_set",
+            arguments: componentSetArguments,
+        });
+        expect(omittedSet.isError).toBeFalsy();
+        expect(omittedSet.structuredContent.name).toBe("Component set");
+        expect(Object.hasOwn(dispatched.at(-1)!.params, "componentSetName")).toBe(false);
+    });
+
+    it("create_text rejects invalid font size/weight before dispatch and accepts every supported weight", async () => {
+        let dispatchCount = 0;
+        commandBehavior = async (_command, params) => {
+            dispatchCount++;
+            return {
+                id: "text-id",
+                name: params.name,
+                parentId: params.parentId,
+            };
+        };
+        const base = {
+            x: 0,
+            y: 0,
+            text: "Body copy",
+            name: "Body",
+            parentId: "1:2",
+            parentNodeName: "Parent",
+        };
+
+        for (const invalid of [
+            { fontSize: 0 },
+            { fontSize: -1 },
+            { fontWeight: 0 },
+            { fontWeight: 350 },
+        ]) {
+            const beforeDispatch = dispatchCount;
+            let refused = false;
+            try {
+                const result = await client.callTool({
+                    name: "create_text",
+                    arguments: { ...base, ...invalid },
+                });
+                refused = result.isError === true;
+            } catch {
+                refused = true;
+            }
+            expect(refused, `create_text must refuse ${JSON.stringify(invalid)}`).toBe(true);
+            expect(
+                dispatchCount,
+                `create_text must not dispatch ${JSON.stringify(invalid)}`,
+            ).toBe(beforeDispatch);
+        }
+        expect(dispatchCount).toBe(0);
+
+        for (const fontWeight of [100, 200, 300, 400, 500, 600, 700, 800, 900]) {
+            const result = await client.callTool({
+                name: "create_text",
+                arguments: { ...base, fontSize: 1, fontWeight },
+            });
+            expect(result.isError).toBeFalsy();
+        }
+        expect(dispatchCount).toBe(9);
     });
 
     it("every registered tool's advertised output schema accepts the common error envelope", () => {
@@ -127,6 +434,7 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
     it("output schemas are still advertised in tools/list (fields documented; error field present)", () => {
         const styleManage = toolsList.tools.find((t: any) => t.name === "style_manage");
         const nodeDelete = toolsList.tools.find((t: any) => t.name === "node_delete");
+        const createInstance = toolsList.tools.find((t: any) => t.name === "create_instance");
         expect(styleManage.outputSchema).toBeDefined();
         // Success fields remain documented (types advertised, requiredness relaxed)…
         expect(styleManage.outputSchema.properties.id).toBeDefined();
@@ -142,6 +450,35 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
             nodeDelete.outputSchema.properties.results.items.properties.before.description;
         expect(beforeDescription).toContain("diagnostic evidence");
         expect(beforeDescription).not.toContain("so a restoring write can be composed");
+
+        // F78-07: `componentId` is part of create_instance's public result, not
+        // merely an undeclared extra tolerated by looseOutput.
+        expect(createInstance.outputSchema.properties.componentId).toBeDefined();
+        expect(createInstance.outputSchema.properties.componentId.type).toBe("string");
+    });
+
+    it("T78-02: all eight creator output schemas advertise parentId", () => {
+        const creatorNames = [
+            "create_shape",
+            "create_frame",
+            "create_text",
+            "create_svg",
+            "create_instance",
+            "node_clone",
+            "create_component",
+            "create_component_set",
+        ];
+        expect(creatorNames).toHaveLength(8);
+
+        for (const name of creatorNames) {
+            const tool = toolsList.tools.find((candidate: any) => candidate.name === name);
+            expect(tool, `${name} present in emitted tools/list`).toBeDefined();
+            expect(
+                tool.outputSchema?.properties?.parentId,
+                `${name} advertises parentId`,
+            ).toBeDefined();
+            expect(tool.outputSchema.properties.parentId.type).toBe("string");
+        }
     });
 
     it("Q21: the dual-description contract holds in the emitted tools/list", () => {

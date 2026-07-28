@@ -530,6 +530,8 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                     nodeId: "1:2",
                     beforeCount: 0,
                     afterCount: 1,
+                    beforeCountVerified: true,
+                    afterCountVerified: true,
                 }],
             },
             instance_set_overrides: {
@@ -584,7 +586,12 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                     requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
                     results: [{
                         nodeId: "1:2",
-                        ...(tool === "annotation_set" ? { beforeCount: 0, afterCount: 1 } : {}),
+                        ...(tool === "annotation_set" ? {
+                            beforeCount: 0,
+                            afterCount: 1,
+                            beforeCountVerified: true,
+                            afterCountVerified: true,
+                        } : {}),
                     }], // no `status`
                 };
                 expect((TOOLS[tool] as any).safeParse(noStatus).success, `${tool} rejects a status-less row`).toBe(false);
@@ -603,7 +610,12 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                         results: [{
                             nodeId: "1:2",
                             status,
-                            ...(tool === "annotation_set" ? { beforeCount: 0, afterCount: 0 } : {}),
+                            ...(tool === "annotation_set" ? {
+                                beforeCount: 0,
+                                afterCount: 0,
+                                beforeCountVerified: true,
+                                afterCountVerified: true,
+                            } : {}),
                         }], // no `error`
                     };
                     expect((TOOLS[tool] as any).safeParse(noReason).success, `${tool} rejects a reasonless '${status}' row`).toBe(false);
@@ -616,7 +628,12 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                         nodeId: "1:2",
                         status: "failed",
                         error: "Node not found: 1:2",
-                        ...(tool === "annotation_set" ? { beforeCount: 0, afterCount: 0 } : {}),
+                        ...(tool === "annotation_set" ? {
+                            beforeCount: 0,
+                            afterCount: 0,
+                            beforeCountVerified: true,
+                            afterCountVerified: true,
+                        } : {}),
                     }],
                 };
                 expect((TOOLS[tool] as any).safeParse(withReason).success, `${tool} accepts a reasoned failure row`).toBe(true);

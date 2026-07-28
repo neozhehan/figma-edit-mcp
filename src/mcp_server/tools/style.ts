@@ -5,9 +5,9 @@ import { toolResult, looseOutput } from "./_result.js";
 
 // ── style_manage `properties` (hybrid typing) ──────────────────────────────
 // Common cases are fully typed (enums + value-objects) so an LLM gets a real,
-// validated contract; the polymorphic Figma types (gradient/image paints,
-// effects, grids) accept their full objects via `.catchall` rather than forcing
-// the model to hand-author matrices/stops through a strict schema.
+// validated contract. Gradient/image paints and layout grids retain their full
+// polymorphic Figma payloads via the two ratified `.catchall` exemptions;
+// effects use the strict per-variant union below.
 const rgb = z.object({
     r: z.number().min(0).max(1).describe("Red, 0–1"),
     g: z.number().min(0).max(1).describe("Green, 0–1"),
@@ -81,6 +81,33 @@ export const EFFECT_TYPES = [
     "GLASS",
 ] as const;
 
+// Exact parity with the pinned @figma/plugin-typings `BlendMode` union. Effects
+// that expose blendMode use this closed enum so a misspelling is rejected at
+// the MCP boundary rather than reaching Figma or being silently normalized.
+export const BLEND_MODES = [
+    "PASS_THROUGH",
+    "NORMAL",
+    "DARKEN",
+    "MULTIPLY",
+    "LINEAR_BURN",
+    "COLOR_BURN",
+    "LIGHTEN",
+    "SCREEN",
+    "LINEAR_DODGE",
+    "COLOR_DODGE",
+    "OVERLAY",
+    "SOFT_LIGHT",
+    "HARD_LIGHT",
+    "DIFFERENCE",
+    "EXCLUSION",
+    "HUE",
+    "SATURATION",
+    "COLOR",
+    "LUMINOSITY",
+] as const;
+
+const blendMode = z.enum(BLEND_MODES);
+
 // Alpha is REQUIRED, unlike the `rgb` used by paints. Figma's effect colours are
 // `RGBA` and its runtime rejects a partial colour outright — live-verified on
 // channel zgkx (2026-07-26): a DROP_SHADOW with `color: {r,g,b}` fails with
@@ -103,10 +130,10 @@ const vector = z.object({
 const shadowFields = {
     color: rgba.optional().describe("Shadow colour (default {r:0,g:0,b:0,a:0.25})"),
     offset: vector.optional().describe("Shadow offset (default {x:0,y:4})"),
-    radius: z.number().optional().describe("Blur radius, px (default 4)"),
+    radius: z.number().nonnegative().optional().describe("Blur radius, px; must be ≥ 0 (default 4)"),
     spread: z.number().optional().describe("Shadow spread, px (default 0)"),
     visible: z.boolean().optional().describe("default true"),
-    blendMode: z.string().optional().describe("Blend mode, e.g. 'NORMAL', 'MULTIPLY' (default 'NORMAL')"),
+    blendMode: blendMode.optional().describe("Figma BlendMode (default 'NORMAL')"),
 };
 
 const dropShadowEffect = z.object({
@@ -124,7 +151,7 @@ const innerShadowEffect = z.object({
 // discriminator, and the PROGRESSIVE fields are gated on it so a model cannot
 // send a half-specified progressive blur and get a silent normal blur instead.
 const blurFields = {
-    radius: z.number().optional().describe("Blur radius, px (default 4)"),
+    radius: z.number().nonnegative().optional().describe("Blur radius, px; must be ≥ 0 (default 4)"),
     visible: z.boolean().optional().describe("default true"),
     blurType: z.enum(["NORMAL", "PROGRESSIVE"]).optional().describe("default 'NORMAL'"),
     startRadius: z.number().optional().describe("PROGRESSIVE only: radius at the start of the ramp"),
@@ -171,7 +198,7 @@ const noiseEffect = z.object({
     noiseSize: z.number().describe("Noise grain size"),
     density: z.number().describe("Noise density"),
     visible: z.boolean().optional().describe("default true"),
-    blendMode: z.string().optional().describe("Blend mode (default 'NORMAL')"),
+    blendMode: blendMode.optional().describe("Figma BlendMode (default 'NORMAL')"),
     secondaryColor: rgba.optional().describe("DUOTONE only: the second colour"),
     opacity: z.number().min(0).max(1).optional().describe("MULTITONE only: 0–1"),
 }).superRefine((noise, ctx) => {
@@ -215,14 +242,26 @@ const textureEffect = z.object({
 
 const glassEffect = z.object({
     type: z.literal("GLASS"),
-    lightIntensity: z.number().describe("Light intensity"),
+    lightIntensity: z.number().min(0).max(1).describe("Light intensity, 0–1"),
     lightAngle: z.number().describe("Light angle, degrees"),
-    refraction: z.number().describe("Refraction amount"),
-    depth: z.number().describe("Glass depth"),
-    dispersion: z.number().describe("Chromatic dispersion"),
-    radius: z.number().describe("Corner/blur radius"),
+    refraction: z.number().min(0).max(1).describe("Refraction amount, 0–1"),
+    depth: z.number().describe("Glass depth (0 is accepted by Figma)"),
+    dispersion: z.number().min(0).max(1).describe("Chromatic dispersion, 0–1"),
+    radius: z.number().nonnegative().describe("Corner/blur radius; must be ≥ 0"),
     visible: z.boolean().optional().describe("default true"),
 });
+
+/**
+ * The four variants historically exposed by `node_set_effects`. Sharing these
+ * exact objects with `style_manage` keeps their field gates and live-confirmed
+ * numeric bounds identical while preserving the node tool's existing surface.
+ */
+export const nodeEffect = z.discriminatedUnion("type", [
+    dropShadowEffect,
+    innerShadowEffect,
+    layerBlurEffect,
+    backgroundBlurEffect,
+]);
 
 const effect = z.discriminatedUnion("type", [
     dropShadowEffect,

@@ -96,6 +96,7 @@ const gateFigma = {
             id: "comp-1",
             name: "Component",
             type: "COMPONENT",
+            children: [],
             resize: (w: number, h: number) => {
                 if (mockResizeThrow) throw new Error("Mock resize throw");
             },
@@ -141,7 +142,7 @@ const nodeCreatorsMod: any = await import("../../../../../figma_plugin/handlers/
 const vectorHandlersMod: any = await import("../../../../../figma_plugin/handlers/vectorHandlers.js?scope=phase3");
 const componentHandlersMod: any = await import("../../../../../figma_plugin/handlers/componentHandlers.js?scope=phase3");
 
-describe("Phase 3: Creation Handlers and Clone Cleanup - No Orphans", () => {
+describe("Phase 3: Creation Handlers and Clone Cleanup - Success Containment and Truthful Survivors", () => {
     beforeEach(() => {
         gateNodeMap.clear();
         mockResizeThrow = false;
@@ -433,7 +434,8 @@ describe("Phase 3: Creation Handlers and Clone Cleanup - No Orphans", () => {
                 height: 100,
                 parent: parentNode,
                 children: [],
-                remove: () => { (sourceFrame as any).removed = true; }
+                remove: () => { (sourceFrame as any).removed = true; },
+                removed: false,
             };
             gateNodeMap.set("frame-src", sourceFrame);
             parentNode.children.push(sourceFrame);

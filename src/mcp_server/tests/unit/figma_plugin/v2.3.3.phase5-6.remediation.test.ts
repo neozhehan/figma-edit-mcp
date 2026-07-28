@@ -90,7 +90,43 @@ describe("One name-verification description form across every tool", () => {
     // guides state the rule but load on demand, while descriptions are always in
     // context, so a drifting phrasing is a first-call-correctness leak.
     const VERIFICATION_FIELD = /^(nodeName|parentNodeName|childNodeName|startNodeName|endNodeName|styleName)$/;
-    const CONFORMING = /^The .+'s current exact name, passed back verbatim from `(node_info|style_list)`\.$/;
+    const EXPECTED_READ_TOOLS: Record<string, "node_info" | "style_list"> = {
+        "annotation_set.annotations.nodeName": "node_info",
+        "component_delete_property.nodeName": "node_info",
+        "component_manage_property.nodeName": "node_info",
+        "create_component.nodeName": "node_info",
+        "create_component_set.components.nodeName": "node_info",
+        "create_component_set.parentNodeName": "node_info",
+        "create_connection.connections.endNodeName": "node_info",
+        "create_connection.connections.startNodeName": "node_info",
+        "create_frame.parentNodeName": "node_info",
+        "create_instance.parentNodeName": "node_info",
+        "create_shape.parentNodeName": "node_info",
+        "create_svg.parentNodeName": "node_info",
+        "create_text.parentNodeName": "node_info",
+        "instance_set_overrides.targetNodes.nodeName": "node_info",
+        "instance_set_property.nodeName": "node_info",
+        "node_apply_style.nodeName": "node_info",
+        "node_bind_variable.nodeName": "node_info",
+        "node_clone.nodeName": "node_info",
+        "node_delete.nodes.nodeName": "node_info",
+        "node_flatten.nodeName": "node_info",
+        "node_group.nodes.nodeName": "node_info",
+        "node_insert_child.childNodeName": "node_info",
+        "node_insert_child.parentNodeName": "node_info",
+        "node_rename.nodeName": "node_info",
+        "node_set_auto_layout.nodeName": "node_info",
+        "node_set_corner_radius.nodeName": "node_info",
+        "node_set_effects.nodeName": "node_info",
+        "node_set_fill.nodeName": "node_info",
+        "node_set_stroke.nodeName": "node_info",
+        "node_transform.nodeName": "node_info",
+        "node_ungroup.nodeName": "node_info",
+        "reaction_update.nodeName": "node_info",
+        "style_delete.styleName": "style_list",
+        "text_set_content.text.nodeName": "node_info",
+        "text_set_style.nodeName": "node_info",
+    };
 
     const collect = (schema: any, path: string[] = []): Array<[string, string]> => {
         const found: Array<[string, string]> = [];
@@ -111,16 +147,28 @@ describe("One name-verification description form across every tool", () => {
         return found;
     };
 
-    it("every name-verification field names the read tool and says 'verbatim'", () => {
-        const offenders: string[] = [];
-        let checked = 0;
+    it("pins all 35 field paths to the correct read tool and shared semantic form", () => {
+        const collected: Array<[string, string]> = [];
         for (const [tool, schema] of Object.entries<any>(INPUTS)) {
-            for (const [path, description] of collect(schema, [tool])) {
-                checked++;
-                if (!CONFORMING.test(description)) offenders.push(`${path}: ${JSON.stringify(description)}`);
+            collected.push(...collect(schema, [tool]));
+        }
+
+        const actualPaths = collected.map(([path]) => path).sort();
+        expect(actualPaths).toEqual(Object.keys(EXPECTED_READ_TOOLS).sort());
+
+        const offenders: string[] = [];
+        for (const [path, description] of collected) {
+            const readTool = EXPECTED_READ_TOOLS[path];
+            const wrongReadTool = readTool === "node_info" ? "style_list" : "node_info";
+            if (
+                !description.includes("current exact name") ||
+                !description.includes("passed back verbatim") ||
+                !description.includes(readTool) ||
+                description.includes(wrongReadTool)
+            ) {
+                offenders.push(`${path} (expected ${readTool}): ${JSON.stringify(description)}`);
             }
         }
-        expect(checked).toBeGreaterThan(25);
         expect(offenders, `name-verification fields off the shared form:\n${offenders.join("\n")}`).toEqual([]);
     });
 });
@@ -592,7 +640,12 @@ describe("R3: real batch handler output validates against the registered output 
                 success: true, status: "success", requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
                 results: [{
                     nodeId: "1:2",
-                    ...(tool === "annotation_set" ? { beforeCount: 0, afterCount: 1 } : {}),
+                    ...(tool === "annotation_set" ? {
+                        beforeCount: 0,
+                        afterCount: 1,
+                        beforeCountVerified: true,
+                        afterCountVerified: true,
+                    } : {}),
                 }], // no `status`
             };
             expect(OUTPUTS[tool].safeParse(drifted).success, `${tool} rejects a row missing status`).toBe(false);

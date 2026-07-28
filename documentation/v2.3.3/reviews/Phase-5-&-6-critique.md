@@ -130,7 +130,7 @@ D7 says the `before` data lets the caller compose a restoring write directly fro
 - `text_set_style` accepts only one whole-node `{family, style}` `fontName` ([text.ts:47–101](../../../src/mcp_server/tools/text.ts#L47)), and its handler assigns `node.fontName` globally. No registered tool accepts segment start/end ranges, and no plugin write path calls `setRangeFontName`.
 - An instance failure returns the original `mainComponentId`, but `instance_set_overrides` requires a `sourceInstanceId` ([instance.ts:66–101](../../../src/mcp_server/tools/instance.ts#L66)). `instance_set_property` changes a component property—including an `INSTANCE_SWAP` property inside an instance—not the target instance's own main component. `create_instance(componentId)` creates a different node; it does not restore the existing target.
 
-Consequently these before-values are diagnostic evidence, not an executable one-round-trip recovery payload. This is not assigned to a later phase: Phase 6 marks the Q9/Q24 disclosure and its before-values complete ([task.md:111–123](../task.md#L111)), while Phase 7 defers annotation repair and recursive input strictness only ([task.md:127–143](../task.md#L127)).
+Consequently these before-values are diagnostic evidence, not an executable one-round-trip recovery payload. This is not assigned to a later phase: Phase 6 marks the Q9/Q24 disclosure and its before-values complete ([task.md:109–112](../task.md#L109)), while Phase 7 defers annotation repair and recursive input strictness only ([task.md:127–141](../task.md#L127)).
 
 **Required remediation and acceptance:** choose and record one truthful contract. Either (A) prevent or automatically roll back these partial mutations—at minimum fail before mixed-font normalization when exact rollback is unavailable, and restore the original main component/applied override fields on later instance failure—or (B) expose name/scope/lock-verified write inputs that can apply the returned text segments and swap an existing target directly back to the returned main component. A deterministic round-trip test must feed the returned `before` data into the documented recovery and prove exact pre-state restoration of mixed-font ranges and the target instance; if no such recovery is implemented, amend the PRD/task to remove “genuinely restorable” and “one round trip” and classify the limitation explicitly as an accepted residual rather than completed functionality.
 
@@ -190,7 +190,7 @@ A deterministic probe made `getStyledTextSegments()` throw while `getRangeFontNa
 }
 ```
 
-That value cannot compose the restoring write promised by D7 and contradicts the corrected contract's required `{mixed: true, segments}` form ([prd.md:167](../prd.md#L167)). The same correction has not propagated to the fallback-only Phase 6 summaries/checklists ([prd.md:262](../prd.md#L262), [task.md:112–123](../task.md#L112), [task.md:264](../task.md#L264)).
+That value cannot compose the restoring write promised by D7 and contradicts the corrected contract's required `{mixed: true, segments}` form ([prd.md:167](../prd.md#L167)). The same correction has not propagated to the fallback-only Phase 6 summaries/checklists ([prd.md:262](../prd.md#L262), [task.md:109–112](../task.md#L109), [task.md:263](../task.md#L263)).
 
 **Required remediation and acceptance:** if a restorable mixed snapshot cannot be captured, fail before assigning `fontName`; do not silently downgrade the before-state. Add a real mixed-normalization → character-failure regression plus a snapshot-read-failure regression that proves zero mutation. Update every Phase 6/Q24 summary to cover both fallback and mixed normalization.
 
@@ -230,7 +230,7 @@ The new callback test captures and invokes the registered callbacks, which is an
 
 The registered wrapper still makes every declared success field optional and accepts arbitrary extra keys ([index.ts:44–59](../../../src/mcp_server/tools/index.ts#L44)); all four `results` fields remain `z.array(z.any())` ([node.ts:182–190](../../../src/mcp_server/tools/node.ts#L182), [text.ts:27–35](../../../src/mcp_server/tools/text.ts#L27), [annotation.ts:54–62](../../../src/mcp_server/tools/annotation.ts#L54), [instance.ts:85–93](../../../src/mcp_server/tools/instance.ts#L85)).
 
-A direct real-callback probe supplied the transport result `{nodesDeleted: 1}`. The registered `node_delete` callback surfaced it unchanged, and the registered output schema accepted it. All four schemas also accepted arbitrary result rows. The checked claim that the test prevents `looseOutput` from re-masking drift ([task.md:122](../task.md#L122)) is therefore still unproven.
+A direct real-callback probe supplied the transport result `{nodesDeleted: 1}`. The registered `node_delete` callback surfaced it unchanged, and the registered output schema accepted it. All four schemas also accepted arbitrary result rows. The checked claim that the test prevents `looseOutput` from re-masking drift ([task.md:120](../task.md#L120)) is therefore still unproven.
 
 **Required remediation and acceptance:** connect each production batch handler result to the registered callback test, or add a shared exact-success validator that runs on callback output before `toolResult`. Assert the exact allowed top-level key set for each real success/partial/failure return and encode/assert the per-row `nodeId`/`status`/`error` vocabulary. A deliberately reintroduced legacy count or legacy instance row must turn the test red.
 
@@ -250,7 +250,7 @@ The injected C1 handler test reports a mutation through the seam but does not it
 
 ### R5 — [P2, ledger/dependency] Phase 6 remains checked complete while its Layer-1 contract is incomplete
 
-The ledger now admits that at-any-depth strictness is deferred, but the Three-Layer Boundary line remains checked ([task.md:99–102](../task.md#L99)) and Phase 7 recursive strictness remains open ([task.md:127–143](../task.md#L127)). Direct `safeParse` probes against all four registered batch schemas accepted nested sentinel keys and silently stripped them, contrary to D7's Layer-1 rule ([prd.md:160](../prd.md#L160)).
+The ledger now admits that at-any-depth strictness is deferred, but the Three-Layer Boundary line remains checked ([task.md:96–99](../task.md#L96)) and Phase 7 recursive strictness remains open ([task.md:127–141](../task.md#L127)). Direct `safeParse` probes against all four registered batch schemas accepted nested sentinel keys and silently stripped them, contrary to D7's Layer-1 rule ([prd.md:160](../prd.md#L160)).
 
 **Required remediation and acceptance:** leave the Phase 6 Three-Layer Boundary checkbox open—or mark Phase 6 explicitly “implemented pending Phase 7”—until recursive strictness lands. Phase 7 must prove rejection, not stripping, at every nested object depth for all four batch tools.
 
@@ -260,7 +260,7 @@ The ledger now admits that at-any-depth strictness is deferred, but the Three-La
 
 All four registered descriptions now correctly instruct the caller to retry “every non-success item (both failed and skipped)” ([node.ts:169](../../../src/mcp_server/tools/node.ts#L169), [text.ts:13](../../../src/mcp_server/tools/text.ts#L13), [annotation.ts:38](../../../src/mcp_server/tools/annotation.ts#L38), [instance.ts:71](../../../src/mcp_server/tools/instance.ts#L71)).
 
-The PRD still says “report the failed items” and “retry exactly the failed items” ([prd.md:158–163](../prd.md#L158)); the Phase 6 and Phase 12 task text retains the same shorthand ([task.md:109](../task.md#L109), [task.md:230](../task.md#L230)). No test inspects the emitted `tools/list` descriptions for the corrected recovery.
+The PRD still says “report the failed items” and “retry exactly the failed items” ([prd.md:158–163](../prd.md#L158)); the Phase 6 and Phase 12 task text retains the same shorthand ([task.md:95](../task.md#L95), [task.md:246](../task.md#L246)). No test inspects the emitted `tools/list` descriptions for the corrected recovery.
 
 **Required remediation and acceptance:** use “every non-success row (`failed` and `skipped`)" consistently in the PRD, task ledger, guides, and tool descriptions. Add an emitted-`tools/list` assertion covering all four batch tools.
 
@@ -293,7 +293,7 @@ The requested guards are absent: no C4 early-field-success/later-field-failure t
 
 The specifically enumerated `totalNodes` and `totalReplacements` fields are removed from the early delete/text payloads ([nodeModifiers.ts:125–164](../../../figma_plugin/handlers/nodeModifiers.ts#L125), [textHandlers.ts:54–64](../../../figma_plugin/handlers/textHandlers.ts#L54)). However, intermediate `node_delete` progress payloads still emit `successCount` and `failureCount` ([nodeModifiers.ts:175–190](../../../figma_plugin/handlers/nodeModifiers.ts#L175), [nodeModifiers.ts:245–262](../../../figma_plugin/handlers/nodeModifiers.ts#L245)).
 
-Those keys duplicate the envelope's `succeededCount`/`failedCount` values and therefore preserve the second count vocabulary Q26's general rule removes ([prd.md:165](../prd.md#L165), [task.md:97](../task.md#L97)). No test asserts the key set of each progress stage.
+Those keys duplicate the envelope's `succeededCount`/`failedCount` values and therefore preserve the second count vocabulary Q26's general rule removes ([prd.md:165](../prd.md#L165), [task.md:94](../task.md#L94)). No test asserts the key set of each progress stage.
 
 **Required remediation and acceptance:** use the shared `succeededCount`/`failedCount` names in intermediate progress or omit the duplicate counts. Capture every delete/text progress emission in a regression test and assert that no legacy or alternate count vocabulary appears.
 
@@ -360,7 +360,7 @@ This was a fresh review of the then-claimed post-remediation state. It did not a
 
 The required path is: the primary font load fails, `setCharacters` assigns the fallback font, and character assignment then fails. The handler creates the report object inside its `try`, but copies `report.fallbackApplied` into the outer flag only after `setTextContent()` resolves successfully ([textHandlers.ts:166–171](../../../figma_plugin/handlers/textHandlers.ts#L166)). Character-assignment failure rejects that await, so control reaches the catch while the outer flag remains `false` ([textHandlers.ts:194–213](../../../figma_plugin/handlers/textHandlers.ts#L194)).
 
-A direct probe changed `fontName` from `Primary/Regular` to `Inter/Regular`, while the returned failed row contained only `status`, `nodeId`, and `error`—no `partialMutation`, `whatChanged`, or `before`. This contradicts [PRD D7/Q24](../prd.md#L166) and the checked [Phase 6 disclosure task](../task.md#L111).
+A direct probe changed `fontName` from `Primary/Regular` to `Inter/Regular`, while the returned failed row contained only `status`, `nodeId`, and `error`—no `partialMutation`, `whatChanged`, or `before`. This contradicts [PRD D7/Q24](../prd.md#L166) and the checked [Phase 6 disclosure task](../task.md#L109).
 
 The remediation test only checks the `setCharacters` out-parameter in isolation ([v2.3.3.phase5-6.remediation.test.ts:93–112](../../../src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase5-6.remediation.test.ts#L93)); it never drives the required real handler failure path.
 
@@ -426,7 +426,7 @@ The dispatcher initially resolves and validates every requested target ([main.ts
 
 ### C6 — [P2] Q26 progress-payload cleanup is incomplete
 
-The checked Q26 task explicitly says to drop the old progress-payload copies ([task.md:97](../task.md#L97)). Legacy names remain in early progress events:
+The checked Q26 task explicitly says to drop the old progress-payload copies ([task.md:94](../task.md#L94)). Legacy names remain in early progress events:
 
 - `node_delete` emits `totalNodes` ([nodeModifiers.ts:125–135](../../../figma_plugin/handlers/nodeModifiers.ts#L125), [nodeModifiers.ts:151–164](../../../figma_plugin/handlers/nodeModifiers.ts#L151)).
 - `text_set_content` emits `totalReplacements` ([textHandlers.ts:84–94](../../../figma_plugin/handlers/textHandlers.ts#L84)).
@@ -437,7 +437,7 @@ The ordinary final returns correctly remove the enumerated legacy aliases; the p
 
 ### C7 — [P2] The checked registered-callback/exact-key tests do not exist
 
-The task requires registered callbacks to be exercised and their returned key sets checked exactly ([task.md:122](../task.md#L122).) Instead, `outputSchema.test.ts` captures only `config.outputSchema` and discards the registered handler ([outputSchema.test.ts:19–22](../../../src/mcp_server/tests/unit/tools/outputSchema.test.ts#L19)). It validates hand-authored representative objects rather than callback results.
+The task requires registered callbacks to be exercised and their returned key sets checked exactly ([task.md:120](../task.md#L120).) Instead, `outputSchema.test.ts` captures only `config.outputSchema` and discards the registered handler ([outputSchema.test.ts:19–22](../../../src/mcp_server/tests/unit/tools/outputSchema.test.ts#L19)). It validates hand-authored representative objects rather than callback results.
 
 The output convention is deliberately permissive: `looseOutput` uses a catchall, and the registration wrapper makes all declared fields optional and adds another catchall ([index.ts:44–59](../../../src/mcp_server/tools/index.ts#L44)). The current Q26 test only confirms that selected legacy fields are absent from the declared `.shape` ([outputSchema.test.ts:470–492](../../../src/mcp_server/tests/unit/tools/outputSchema.test.ts#L470)).
 
@@ -454,7 +454,7 @@ All four `results` schemas are also `z.array(z.any())`, so the registered contra
 
 ### C8 — [P2] Phase 6's test-completion claims materially exceed the coverage
 
-The claimed all-four invariant suite imports only deletion, instance, and annotation handlers; text is absent ([v2.3.3.phase5-6.remediation.test.ts:129–132](../../../src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase5-6.remediation.test.ts#L129)). Annotation is exercised only on a success path ([v2.3.3.phase5-6.remediation.test.ts:182–191](../../../src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase5-6.remediation.test.ts#L182)). This is neither a property test nor “every return path” as claimed by [task.md:119](../task.md#L119).
+The claimed all-four invariant suite imports only deletion, instance, and annotation handlers; text is absent ([v2.3.3.phase5-6.remediation.test.ts:129–132](../../../src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase5-6.remediation.test.ts#L129)). Annotation is exercised only on a success path ([v2.3.3.phase5-6.remediation.test.ts:182–191](../../../src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase5-6.remediation.test.ts#L182)). This is neither a property test nor “every return path” as claimed by [task.md:117](../task.md#L117).
 
 Q25 is asserted only on one failing instance row, not on every success/failure/skip row across all four handlers. The required Q24 real fallback-then-assignment failure and node-gone/not-TEXT clean failures do not exist. Progress failures, instance target disappearance, missing override descendants, and partial override-field writes are also untested.
 
@@ -484,7 +484,7 @@ This violates D6's distinct-cause contract and exact-name semantics, although it
 
 D7 defines unknown keys “at any depth” as Layer-1 schema rejection ([prd.md:160](../prd.md#L160)). The current central wrapper applies `.strict()` only to the top-level input object ([index.ts:35–43](../../../src/mcp_server/tools/index.ts#L35)); nested batch-item objects remain non-strict and silently strip unknown fields.
 
-Direct `safeParse` probes against the actual registered schemas accepted nested unknown keys for all four batch tools. The Phase 6 task itself acknowledges that recursive wiring is deferred to unfinished Phase 7 ([task.md:100](../task.md#L100)).
+Direct `safeParse` probes against the actual registered schemas accepted nested unknown keys for all four batch tools. The Phase 6 task itself acknowledges that recursive wiring is deferred to unfinished Phase 7 ([task.md:97](../task.md#L97)).
 
 This is primarily a ledger/status contradiction rather than misassigned implementation work: either Phase 6 should remain “implemented pending Phase 7 dependency,” or the Three-Layer Boundary checkbox should remain open until Phase 7 lands.
 

@@ -170,21 +170,50 @@
       console.warn(`Notification delivery failed (ignored): ${describeError(error)}`);
     }
   }
+  function readErrorProperty(value, property) {
+    try {
+      return {
+        readable: true,
+        value: value[property]
+      };
+    } catch (e) {
+      return { readable: false };
+    }
+  }
+  function copyReadableErrorDetails(value) {
+    if (value === void 0) return void 0;
+    if (value === null || typeof value !== "object") return value;
+    try {
+      if (Array.isArray(value)) return [...value];
+      return { ...value };
+    } catch (e) {
+      return void 0;
+    }
+  }
+  function structuredErrorFromObject(value) {
+    if (value === null || typeof value !== "object") return null;
+    const codeRead = readErrorProperty(value, "code");
+    if (!codeRead.readable || typeof codeRead.value !== "string") return null;
+    const messageRead = readErrorProperty(value, "message");
+    const detailsRead = readErrorProperty(value, "details");
+    const result = {
+      code: codeRead.value,
+      message: messageRead.readable && typeof messageRead.value === "string" && messageRead.value.length > 0 ? messageRead.value : "Error executing command"
+    };
+    if (detailsRead.readable) {
+      const details = copyReadableErrorDetails(detailsRead.value);
+      if (details !== void 0) result.details = details;
+    }
+    return result;
+  }
   function getStructuredError(e) {
-    if (e && typeof e === "object") {
-      if (typeof e.code === "string") {
-        return {
-          code: e.code,
-          message: e.message || "Error executing command",
-          details: e.details
-        };
-      }
-      if (e.error && typeof e.error.code === "string") {
-        return {
-          code: e.error.code,
-          message: e.error.message || "Error executing command",
-          details: e.error.details
-        };
+    const direct = structuredErrorFromObject(e);
+    if (direct) return direct;
+    if (e !== null && typeof e === "object") {
+      const nestedRead = readErrorProperty(e, "error");
+      if (nestedRead.readable) {
+        const nested = structuredErrorFromObject(nestedRead.value);
+        if (nested) return nested;
       }
     }
     return { code: UNKNOWN_ERROR, message: describeError(e) };
@@ -521,17 +550,105 @@
     }
     return false;
   }
+  function readDuringRecovery(reader, fallback) {
+    try {
+      return reader();
+    } catch (e) {
+      return fallback;
+    }
+  }
+  function reportRecoveryError(...args) {
+    try {
+      console.error(...args);
+    } catch (e) {
+    }
+  }
   function removeUncommitted(node, context) {
     if (!node) return true;
-    if (node.removed === true) return true;
-    if (typeof node.remove !== "function") return false;
-    try {
-      node.remove();
-      return true;
-    } catch (cleanupError) {
-      console.error(`${context}: failed to remove the uncommitted node during cleanup`, cleanupError);
+    if (readDuringRecovery(() => node.removed === true, false)) return true;
+    const remove = readDuringRecovery(
+      () => typeof node.remove === "function" ? node.remove : null,
+      null
+    );
+    if (!remove) {
+      reportRecoveryError(`${context}: the uncommitted node has no readable remove() method; cleanup could not be confirmed`);
       return false;
     }
+    try {
+      remove.call(node);
+    } catch (cleanupError) {
+      reportRecoveryError(`${context}: failed to remove the uncommitted node during cleanup`, cleanupError);
+      return false;
+    }
+    if (readDuringRecovery(() => node.removed === true, false)) return true;
+    reportRecoveryError(`${context}: remove() returned but the uncommitted node still survives`);
+    return false;
+  }
+  function getCreatorSurvivorEvidence(node, verifiedParentId) {
+    const unreadableParent = {};
+    const parent = readDuringRecovery(
+      () => node.parent,
+      unreadableParent
+    );
+    let survivingParentState;
+    let survivingParentId;
+    if (parent === unreadableParent || parent === void 0) {
+      survivingParentState = "unknown";
+      survivingParentId = null;
+    } else if (parent === null) {
+      survivingParentState = "detached";
+      survivingParentId = null;
+    } else {
+      const unreadableParentId = {};
+      const parentId = readDuringRecovery(
+        () => typeof parent.id === "string" ? parent.id : unreadableParentId,
+        unreadableParentId
+      );
+      if (parentId === unreadableParentId) {
+        survivingParentState = "unknown";
+        survivingParentId = null;
+      } else {
+        survivingParentState = "located";
+        survivingParentId = parentId;
+      }
+    }
+    return {
+      survivingNodeId: readDuringRecovery(
+        () => typeof node.id === "string" ? node.id : "unknown",
+        "unknown"
+      ),
+      survivingNodeName: readDuringRecovery(
+        () => typeof node.name === "string" ? node.name : "unknown",
+        "unknown"
+      ),
+      survivingNodeType: readDuringRecovery(
+        () => typeof node.type === "string" ? node.type : "unknown",
+        "unknown"
+      ),
+      survivingParentState,
+      survivingParentId,
+      verifiedParentId
+    };
+  }
+  function describeCreatorSurvivorParent(evidence) {
+    if (evidence.survivingParentState === "located") {
+      return `'${evidence.survivingParentId}'`;
+    }
+    if (evidence.survivingParentState === "detached") {
+      return "detached/null";
+    }
+    return "unknown (the parent could not be read safely)";
+  }
+  function rethrowAfterCreatorCleanup(error, node, context, verifiedParentId) {
+    if (removeUncommitted(node, context)) {
+      throw error;
+    }
+    const evidence = getCreatorSurvivorEvidence(node, verifiedParentId);
+    throw withPartialDisclosure(
+      error,
+      `${context} created node '${evidence.survivingNodeName}' (${evidence.survivingNodeId}) survives because cleanup could not remove it; its current parent is ${describeCreatorSurvivorParent(evidence)}.`,
+      evidence
+    );
   }
 
   // figma_plugin/handlers/nodeReaders.ts
@@ -1174,6 +1291,15 @@
     return true;
   };
 
+  // figma_plugin/utils/creatorValidation.ts
+  function assertNonEmptyExplicitCreatorName(value, parameterName, command) {
+    if (value === "") {
+      throw new Error(
+        `${command}: ${parameterName} must not be empty. Omit ${parameterName} to use the default name.`
+      );
+    }
+  }
+
   // figma_plugin/handlers/nodeCreators.ts
   async function resolveAppendableParent(parentId, command) {
     if (!parentId) throw new Error(`${command}: missing parentId parameter.`);
@@ -1204,6 +1330,7 @@
     if (!type) {
       throw new Error("Missing shape type parameter");
     }
+    assertNonEmptyExplicitCreatorName(name, "name", "create_shape");
     const upperType = type.toUpperCase();
     if (arcData !== void 0 && upperType !== "ELLIPSE") {
       throw new Error(`arcData is only supported for shape type ELLIPSE, got ${type}`);
@@ -1235,7 +1362,6 @@
       default:
         throw new Error(`Unsupported shape type: ${type}`);
     }
-    let committed = false;
     const node = createNode();
     try {
       parent.appendChild(node);
@@ -1255,7 +1381,7 @@
       node.x = x;
       node.y = y;
       node.resize(width, height);
-      if (name) {
+      if (name !== void 0) {
         node.name = name;
       } else {
         node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
@@ -1299,10 +1425,9 @@
         height: node.height,
         parentId: node.parent ? node.parent.id : void 0
       };
-      committed = true;
       return result;
-    } finally {
-      if (!committed) removeUncommitted(node, "create_shape");
+    } catch (error) {
+      rethrowAfterCreatorCleanup(error, node, "create_shape", parentId);
     }
   }
   async function createFrame(params) {
@@ -1328,8 +1453,8 @@
       layoutSizingVertical = "FIXED",
       itemSpacing = 0
     } = params || {};
+    assertNonEmptyExplicitCreatorName(name, "name", "create_frame");
     const parentNode = await resolveAppendableParent(parentId, "create_frame");
-    let committed = false;
     const frame = figma.createFrame();
     try {
       parentNode.appendChild(frame);
@@ -1391,10 +1516,9 @@
         layoutWrap: frame.layoutWrap,
         parentId: frame.parent ? frame.parent.id : void 0
       };
-      committed = true;
       return result;
-    } finally {
-      if (!committed) removeUncommitted(frame, "create_frame");
+    } catch (error) {
+      rethrowAfterCreatorCleanup(error, frame, "create_frame", parentId);
     }
   }
   function getFontStyle(weight) {
@@ -1418,7 +1542,7 @@
       case 900:
         return "Black";
       default:
-        return "Regular";
+        throw new Error(`Unsupported fontWeight ${weight}; expected one of 100, 200, 300, 400, 500, 600, 700, 800, or 900.`);
     }
   }
   async function createText(params) {
@@ -1430,27 +1554,24 @@
       fontWeight = 400,
       fontColor = { r: 0, g: 0, b: 0, a: 1 },
       // Default to black
-      name = "",
+      name,
       parentId
     } = params || {};
+    assertNonEmptyExplicitCreatorName(name, "name", "create_text");
+    const fontStyle = getFontStyle(fontWeight);
     const parentNode = await resolveAppendableParent(parentId, "create_text");
-    let committed = false;
     const textNode = figma.createText();
     try {
       parentNode.appendChild(textNode);
       textNode.x = x;
       textNode.y = y;
-      textNode.name = name || text;
-      try {
-        await figma.loadFontAsync({
-          family: "Inter",
-          style: getFontStyle(fontWeight)
-        });
-        textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
-        textNode.fontSize = parseInt(fontSize);
-      } catch (error) {
-        console.error("Error setting font size", error);
-      }
+      textNode.name = name !== void 0 ? name : text;
+      await figma.loadFontAsync({
+        family: "Inter",
+        style: fontStyle
+      });
+      textNode.fontName = { family: "Inter", style: fontStyle };
+      textNode.fontSize = fontSize;
       await setCharacters(textNode, text);
       const paintStyle = {
         type: "SOLID",
@@ -1477,10 +1598,9 @@
         fills: textNode.fills,
         parentId: textNode.parent ? textNode.parent.id : void 0
       };
-      committed = true;
       return result;
-    } finally {
-      if (!committed) removeUncommitted(textNode, "create_text");
+    } catch (error) {
+      rethrowAfterCreatorCleanup(error, textNode, "create_text", parentId);
     }
   }
   async function cloneNode(params) {
@@ -1499,7 +1619,7 @@
     if (!("appendChild" in parent)) {
       throw new Error(`node_clone: parent '${parent.name}' (type ${parent.type}) cannot accept cloned children.`);
     }
-    let committed = false;
+    const verifiedParentId = parent.id;
     const clone = node.clone();
     try {
       parent.appendChild(clone);
@@ -1518,10 +1638,9 @@
         // confirm containment from the response instead of re-reading.
         parentId: clone.parent ? clone.parent.id : void 0
       };
-      committed = true;
       return result;
-    } finally {
-      if (!committed) removeUncommitted(clone, "node_clone");
+    } catch (error) {
+      rethrowAfterCreatorCleanup(error, clone, "node_clone", verifiedParentId);
     }
   }
 
@@ -2621,7 +2740,6 @@
       }
     }
     const parentNode = await resolveAppendableParent(parentId, "create_instance");
-    let committed = false;
     const instance = component.createInstance();
     try {
       parentNode.appendChild(instance);
@@ -2639,10 +2757,9 @@
         // confirm containment from the response instead of re-reading.
         parentId: instance.parent ? instance.parent.id : void 0
       };
-      committed = true;
       return result;
-    } finally {
-      if (!committed) removeUncommitted(instance, "create_instance");
+    } catch (error) {
+      rethrowAfterCreatorCleanup(error, instance, "create_instance", parentId);
     }
   }
   async function exportNodeAsImage(params) {
@@ -3060,6 +3177,7 @@
     if (node.type !== "FRAME") {
       throw new Error(`Target node must be a FRAME, got ${node.type}`);
     }
+    assertNotInstanceInterior(node, "converted to a component");
     const parentNode = node.parent;
     if (!parentNode) {
       throw new Error("create_component: parent node not found.");
@@ -3070,12 +3188,12 @@
     if (!("insertChild" in parentNode)) {
       throw new Error(`create_component: parent '${parentNode.name}' (type ${parentNode.type}) cannot preserve the source frame's child index.`);
     }
+    const verifiedParentId = parentNode.id;
     const index = parentNode.children.indexOf(node);
     if (index < 0) {
       throw new Error(`create_component: source frame '${node.name}' is no longer a child of its resolved parent.`);
     }
     const childrenToMove = [...node.children];
-    let committed = false;
     const component = figma.createComponent();
     try {
       parentNode.insertChild(index, component);
@@ -3127,43 +3245,166 @@
         parentId: component.parent ? component.parent.id : void 0
       };
       node.remove();
-      committed = true;
       return result;
     } catch (error) {
-      const sourceFrameRemoved = node.removed === true;
-      let restoredAllChildren = !sourceFrameRemoved;
-      for (let childIndex = 0; childIndex < childrenToMove.length; childIndex++) {
-        const child = childrenToMove[childIndex];
-        if (child.parent === component && restoredAllChildren) {
+      const inspectChildParent = (child) => {
+        try {
+          const currentParent = child.parent;
+          if (currentParent === node) return { kind: "source" };
+          if (currentParent === component) return { kind: "component" };
+          return {
+            kind: "relocated",
+            currentParentId: readDuringRecovery(
+              () => typeof (currentParent == null ? void 0 : currentParent.id) === "string" ? currentParent.id : null,
+              null
+            )
+          };
+        } catch (e) {
+          return { kind: "unknown" };
+        }
+      };
+      const childId = (child) => readDuringRecovery(
+        () => typeof child.id === "string" ? child.id : "unknown",
+        "unknown"
+      );
+      const sourceFrameRemovalState = readDuringRecovery(
+        () => {
+          const removed = node.removed;
+          if (removed === false) return "live";
+          if (removed === true) return "removed";
+          return "unknown";
+        },
+        "unknown"
+      );
+      const sourceFrameRemoved = sourceFrameRemovalState === "removed" ? true : sourceFrameRemovalState === "live" ? false : null;
+      const restorationFailures = [];
+      if (sourceFrameRemovalState === "live") {
+        for (let childIndex = 0; childIndex < childrenToMove.length; childIndex++) {
+          const child = childrenToMove[childIndex];
+          if (inspectChildParent(child).kind !== "component") continue;
+          const currentSourceChildren = readDuringRecovery(
+            () => Array.isArray(node.children) ? [...node.children] : null,
+            null
+          );
+          if (currentSourceChildren === null) {
+            restorationFailures.push({
+              childId: childId(child),
+              attemptedIndex: null
+            });
+            reportRecoveryError(
+              "create_component: source children were unreadable; skipped a child restore rather than guessing an insertion index"
+            );
+            continue;
+          }
+          let safeInsertionIndex = currentSourceChildren.length;
+          for (let laterIndex = childIndex + 1; laterIndex < childrenToMove.length; laterIndex++) {
+            const siblingIndex = currentSourceChildren.indexOf(
+              childrenToMove[laterIndex]
+            );
+            if (siblingIndex >= 0) {
+              safeInsertionIndex = siblingIndex;
+              break;
+            }
+          }
           try {
-            node.insertChild(childIndex, child);
+            node.insertChild(safeInsertionIndex, child);
           } catch (restoreError) {
-            restoredAllChildren = false;
-            console.error("create_component: failed to restore a moved child after conversion failure", restoreError);
+            restorationFailures.push({
+              childId: childId(child),
+              attemptedIndex: safeInsertionIndex
+            });
+            reportRecoveryError("create_component: failed to restore a moved child after conversion failure", restoreError);
           }
         }
       }
-      if (restoredAllChildren && typeof component.remove === "function" && component.removed !== true) {
-        component.remove();
+      const restoredChildIds = [];
+      const survivingChildIds = [];
+      const unknownParentChildIds = [];
+      const relocatedChildren = [];
+      for (const child of childrenToMove) {
+        const id = childId(child);
+        const parentState = inspectChildParent(child);
+        if (parentState.kind === "source") {
+          restoredChildIds.push(id);
+        } else if (parentState.kind === "component") {
+          survivingChildIds.push(id);
+        } else if (parentState.kind === "relocated") {
+          relocatedChildren.push({
+            childId: id,
+            currentParentId: parentState.currentParentId
+          });
+        } else {
+          unknownParentChildIds.push(id);
+        }
       }
-      if (restoredAllChildren && component.removed === true) {
-        throw error;
+      const componentChildCount = readDuringRecovery(
+        () => Array.isArray(component.children) ? component.children.length : null,
+        null
+      );
+      const everyOriginalChildConfirmedRestored = restoredChildIds.length === childrenToMove.length && survivingChildIds.length === 0 && unknownParentChildIds.length === 0 && relocatedChildren.length === 0;
+      const componentConfirmedEmpty = componentChildCount === 0;
+      const cleanupIsSafe = sourceFrameRemovalState === "live" && everyOriginalChildConfirmedRestored && componentConfirmedEmpty;
+      if (cleanupIsSafe) {
+        const componentRemoved = removeUncommitted(component, "create_component");
+        if (componentRemoved) {
+          throw error;
+        }
+        const survivor2 = getCreatorSurvivorEvidence(component, verifiedParentId);
+        const sourceFrameId2 = readDuringRecovery(() => node.id, "unknown");
+        const sourceFrameName2 = readDuringRecovery(() => node.name, "unknown");
+        throw withPartialDisclosure(
+          error,
+          `component '${survivor2.survivingNodeName}' (${survivor2.survivingNodeId}) survives because cleanup could not remove it; its current parent is ${describeCreatorSurvivorParent(survivor2)}.`,
+          {
+            sourceFrameId: sourceFrameId2,
+            sourceFrameName: sourceFrameName2,
+            sourceFrameRemoved,
+            survivingComponentId: survivor2.survivingNodeId,
+            survivingComponentParentState: survivor2.survivingParentState,
+            survivingComponentParentId: survivor2.survivingParentId,
+            verifiedParentId: survivor2.verifiedParentId,
+            sourceFrameRemovalState,
+            restoredChildIds,
+            movedChildIds: survivingChildIds,
+            unknownParentChildIds,
+            relocatedChildren,
+            restorationFailures,
+            componentChildCount
+          }
+        );
       }
+      const survivor = getCreatorSurvivorEvidence(component, verifiedParentId);
+      const sourceFrameId = readDuringRecovery(() => node.id, "unknown");
+      const sourceFrameName = readDuringRecovery(() => node.name, "unknown");
       throw withPartialDisclosure(
         error,
-        sourceFrameRemoved ? `the source frame '${node.name}' was already removed and component '${component.name}' (${component.id}) survives in its place, holding its children.` : `component '${component.name}' (${component.id}) survives and still holds ${childrenToMove.filter((child) => child.parent === component).length} of the source frame's children, which could not be restored.`,
+        sourceFrameRemovalState === "removed" ? `the source frame '${sourceFrameName}' was already removed and component '${survivor.survivingNodeName}' (${survivor.survivingNodeId}) survives in its place.` : sourceFrameRemovalState === "unknown" ? `the source frame '${sourceFrameName}' removal state could not be read, so component '${survivor.survivingNodeName}' (${survivor.survivingNodeId}) was not removed.` : `component '${survivor.survivingNodeName}' (${survivor.survivingNodeId}) was not removed because one or more children could not be restored or confirmed on the source, or component emptiness could not be confirmed.`,
         {
-          sourceFrameId: node.id,
-          sourceFrameName: node.name,
+          sourceFrameId,
+          sourceFrameName,
           sourceFrameRemoved,
-          survivingComponentId: component.id,
-          movedChildIds: childrenToMove.map((child) => child.id)
+          survivingComponentId: survivor.survivingNodeId,
+          survivingComponentParentState: survivor.survivingParentState,
+          survivingComponentParentId: survivor.survivingParentId,
+          verifiedParentId: survivor.verifiedParentId,
+          sourceFrameRemovalState,
+          restoredChildIds,
+          movedChildIds: survivingChildIds,
+          unknownParentChildIds,
+          relocatedChildren,
+          restorationFailures,
+          componentChildCount
         }
       );
     }
   }
   async function validateCreateComponentSetPlan(params, scopeRoot) {
     const { components, properties, componentSetName, parentId } = params;
+    assertNonEmptyExplicitCreatorName(
+      componentSetName,
+      "componentSetName",
+      "create_component_set"
+    );
     if (!components || !Array.isArray(components) || components.length === 0) {
       throw new Error("components must be a non-empty array");
     }
@@ -3286,53 +3527,362 @@
     };
   }
   async function createComponentSet(plan) {
+    var _a;
+    assertNonEmptyExplicitCreatorName(
+      plan.componentSetName,
+      "componentSetName",
+      "create_component_set"
+    );
     let componentSet;
+    const successfullyRenamed = /* @__PURE__ */ new Set();
+    const verifiedParentId = readDuringRecovery(
+      () => plan.parent && typeof plan.parent.id === "string" ? plan.parent.id : "unknown",
+      "unknown"
+    );
+    const originalPlacementByNode = /* @__PURE__ */ new Map();
+    for (const c of plan.components) {
+      const unreadableParent = {};
+      const originalParent = readDuringRecovery(
+        () => {
+          var _a2;
+          return c.node ? (_a2 = c.node.parent) != null ? _a2 : null : null;
+        },
+        unreadableParent
+      );
+      if (originalParent === unreadableParent) {
+        originalPlacementByNode.set(c.node, {
+          readable: false,
+          parentId: null
+        });
+      } else {
+        const unreadableParentId = {};
+        const originalParentId = originalParent ? readDuringRecovery(
+          () => typeof originalParent.id === "string" ? originalParent.id : null,
+          unreadableParentId
+        ) : null;
+        originalPlacementByNode.set(c.node, {
+          readable: originalParentId !== unreadableParentId,
+          parentId: originalParentId === unreadableParentId ? null : originalParentId
+        });
+      }
+    }
     try {
       for (const c of plan.components) {
         c.node.name = c.variantName;
+        successfullyRenamed.add(c.node);
       }
       componentSet = figma.combineAsVariants(plan.components.map((c) => c.node), plan.parent);
     } catch (error) {
+      const appliedComponents = [];
+      const restoredComponents = [];
+      const unrestoredComponents = [];
+      const removedComponents = [];
+      const unknownRemovalComponents = [];
+      const reparentedComponents = [];
+      const unverifiedPlacementComponents = [];
+      const retainedVariantComponents = [];
+      const unconfirmedVariantComponents = [];
+      const survivingSetByNode = /* @__PURE__ */ new Map();
       for (const c of plan.components) {
-        if (c.node && c.node.removed !== true) {
-          c.node.name = c.originalName;
+        if (c.node) {
+          const componentId = readDuringRecovery(() => c.node.id, "unknown");
+          const componentRemovalState = readDuringRecovery(
+            () => {
+              const removed = c.node.removed;
+              if (removed === false) return "live";
+              if (removed === true) return "removed";
+              return "unknown";
+            },
+            "unknown"
+          );
+          const observedNameBeforeRestore = readDuringRecovery(
+            () => typeof c.node.name === "string" ? c.node.name : null,
+            null
+          );
+          const wasApplied = successfullyRenamed.has(c.node) || observedNameBeforeRestore !== null && observedNameBeforeRestore !== c.originalName;
+          const appliedEvidence = {
+            componentId,
+            originalName: c.originalName,
+            variantName: c.variantName,
+            observedNameBeforeRestore
+          };
+          if (wasApplied) {
+            appliedComponents.push(appliedEvidence);
+          }
+          if (componentRemovalState === "removed") {
+            removedComponents.push({
+              componentId,
+              originalName: c.originalName,
+              variantName: c.variantName
+            });
+            continue;
+          }
+          if (componentRemovalState === "unknown") {
+            unknownRemovalComponents.push({
+              componentId,
+              originalName: c.originalName,
+              variantName: c.variantName
+            });
+          }
+          const originalPlacement = (_a = originalPlacementByNode.get(c.node)) != null ? _a : {
+            readable: false,
+            parentId: null
+          };
+          const originalParentId = originalPlacement.parentId;
+          const unreadableParent = {};
+          const currentParent = readDuringRecovery(
+            () => {
+              var _a2;
+              return (_a2 = c.node.parent) != null ? _a2 : null;
+            },
+            unreadableParent
+          );
+          if (currentParent === unreadableParent || !originalPlacement.readable) {
+            unverifiedPlacementComponents.push({
+              componentId,
+              originalParentId
+            });
+            continue;
+          }
+          const unreadableParentId = {};
+          const currentParentId = currentParent ? readDuringRecovery(
+            () => typeof currentParent.id === "string" ? currentParent.id : null,
+            unreadableParentId
+          ) : null;
+          if (currentParentId === unreadableParentId) {
+            unverifiedPlacementComponents.push({
+              componentId,
+              originalParentId
+            });
+            continue;
+          }
+          const currentParentName = readDuringRecovery(
+            () => typeof (currentParent == null ? void 0 : currentParent.name) === "string" ? currentParent.name : "unknown",
+            "unknown"
+          );
+          const currentParentType = readDuringRecovery(
+            () => currentParent === null ? "DETACHED" : typeof (currentParent == null ? void 0 : currentParent.type) === "string" ? currentParent.type : "unknown",
+            "unknown"
+          );
+          const placementChanged = currentParentId !== originalParentId;
+          if (placementChanged) {
+            reparentedComponents.push({
+              componentId,
+              originalParentId,
+              currentParentId,
+              currentParentName,
+              currentParentType
+            });
+          }
+          if (placementChanged && currentParentType === "unknown") {
+            unverifiedPlacementComponents.push({
+              componentId,
+              originalParentId
+            });
+            continue;
+          }
+          if (placementChanged && currentParentType === "COMPONENT_SET") {
+            const componentSetId2 = currentParentId != null ? currentParentId : "unknown";
+            let setEvidence = survivingSetByNode.get(currentParent);
+            if (!setEvidence) {
+              setEvidence = {
+                componentSetId: componentSetId2,
+                componentSetName: currentParentName,
+                parentId: readDuringRecovery(
+                  () => {
+                    var _a2;
+                    return typeof ((_a2 = currentParent == null ? void 0 : currentParent.parent) == null ? void 0 : _a2.id) === "string" ? currentParent.parent.id : null;
+                  },
+                  null
+                ),
+                memberIds: []
+              };
+              survivingSetByNode.set(currentParent, setEvidence);
+            }
+            setEvidence.memberIds.push(componentId);
+            if (observedNameBeforeRestore !== c.variantName) {
+              try {
+                c.node.name = c.variantName;
+              } catch (confirmError) {
+                reportRecoveryError(
+                  `create_component_set: failed to confirm variant name for surviving set member '${componentId}'`,
+                  confirmError
+                );
+              }
+            }
+            const currentName2 = readDuringRecovery(
+              () => typeof c.node.name === "string" ? c.node.name : null,
+              null
+            );
+            const setMemberEvidence = {
+              componentId,
+              componentSetId: componentSetId2,
+              originalName: c.originalName,
+              variantName: c.variantName,
+              observedNameBeforeConfirmation: observedNameBeforeRestore,
+              currentName: currentName2
+            };
+            if (currentName2 === c.variantName) {
+              retainedVariantComponents.push(setMemberEvidence);
+            } else {
+              unconfirmedVariantComponents.push(setMemberEvidence);
+            }
+            continue;
+          }
+          let restoreError = null;
+          try {
+            c.node.name = c.originalName;
+          } catch (caught) {
+            restoreError = caught;
+            reportRecoveryError(
+              `create_component_set: failed to restore component '${componentId}' to its original name`,
+              caught
+            );
+          }
+          const currentName = readDuringRecovery(
+            () => typeof c.node.name === "string" ? c.node.name : null,
+            null
+          );
+          if (currentName !== c.originalName) {
+            unrestoredComponents.push({
+              ...appliedEvidence,
+              currentName
+            });
+          } else if (wasApplied) {
+            restoredComponents.push({
+              ...appliedEvidence,
+              currentName
+            });
+          }
+          if (restoreError && currentName === c.originalName) {
+            reportRecoveryError(
+              `create_component_set: component '${componentId}' restored despite its setter reporting an error`,
+              restoreError
+            );
+          }
         }
+      }
+      const survivingComponentSets = Array.from(survivingSetByNode.values());
+      if (unrestoredComponents.length > 0 || removedComponents.length > 0 || unknownRemovalComponents.length > 0 || reparentedComponents.length > 0 || unverifiedPlacementComponents.length > 0 || survivingComponentSets.length > 0 || unconfirmedVariantComponents.length > 0) {
+        throw withPartialDisclosure(
+          error,
+          `${appliedComponents.length} component variant name(s) were applied before create_component_set failed; ${retainedVariantComponents.length} remain valid members of ${survivingComponentSets.length} surviving set(s), ${unconfirmedVariantComponents.length} surviving-set member name(s) could not be confirmed, ${restoredComponents.length} ordinary member name(s) were restored, ${unrestoredComponents.length} could not be restored, ${removedComponents.length} component(s) were removed, ${unknownRemovalComponents.length} have unreadable removal state, ${reparentedComponents.length} remain under a different parent, and ${unverifiedPlacementComponents.length} have unreadable placement.`,
+          {
+            appliedComponents,
+            restoredComponents,
+            unrestoredComponents,
+            removedComponents,
+            unknownRemovalComponents,
+            reparentedComponents,
+            unverifiedPlacementComponents,
+            survivingComponentSets,
+            retainedVariantComponents,
+            unconfirmedVariantComponents
+          }
+        );
       }
       throw error;
     }
-    if (plan.componentSetName) {
+    const unreadableSetValue = {};
+    const componentSetId = readDuringRecovery(
+      () => typeof componentSet.id === "string" ? componentSet.id : unreadableSetValue,
+      unreadableSetValue
+    );
+    const initialComponentSetName = readDuringRecovery(
+      () => typeof componentSet.name === "string" ? componentSet.name : unreadableSetValue,
+      unreadableSetValue
+    );
+    const componentSetParentId = readDuringRecovery(
+      () => {
+        var _a2;
+        return typeof ((_a2 = componentSet.parent) == null ? void 0 : _a2.id) === "string" ? componentSet.parent.id : null;
+      },
+      unreadableSetValue
+    );
+    if (componentSetId === unreadableSetValue || initialComponentSetName === unreadableSetValue || componentSetParentId === unreadableSetValue || componentSetParentId !== verifiedParentId) {
+      throw withPartialDisclosure(
+        new Error(
+          componentSetParentId !== unreadableSetValue && componentSetParentId !== verifiedParentId ? `create_component_set: Figma created the set under parent '${componentSetParentId != null ? componentSetParentId : "detached/null"}' instead of verified parent '${verifiedParentId}'.` : "create_component_set: the created set's identity or parent could not be read safely."
+        ),
+        "the component set was already created and its members already carry their variant names, but the set's identity/location could not be confirmed for a normal success response.",
+        {
+          componentSetId: componentSetId === unreadableSetValue ? "unknown" : componentSetId,
+          componentSetName: initialComponentSetName === unreadableSetValue ? "unknown" : initialComponentSetName,
+          componentSetParentId: componentSetParentId === unreadableSetValue ? null : componentSetParentId,
+          verifiedParentId,
+          variantNames: plan.components.map((c) => c.variantName),
+          originalComponentNames: plan.components.map((c) => c.originalName)
+        }
+      );
+    }
+    let finalComponentSetName = initialComponentSetName;
+    if (plan.componentSetName !== void 0) {
       try {
         componentSet.name = plan.componentSetName;
       } catch (error) {
+        const observedName2 = readDuringRecovery(
+          () => typeof componentSet.name === "string" ? componentSet.name : "unknown",
+          "unknown"
+        );
         throw withPartialDisclosure(
           error,
-          `component set '${componentSet.name}' (${componentSet.id}) was already created from the listed components and their names were changed to variant names; only the set's own rename failed.`,
+          `component set '${observedName2}' (${componentSetId}) was already created from the listed components and their names were changed to variant names; only the set's own rename failed.`,
           {
-            componentSetId: componentSet.id,
-            componentSetName: componentSet.name,
+            componentSetId,
+            componentSetName: observedName2,
+            componentSetParentId,
+            verifiedParentId,
             variantNames: plan.components.map((c) => c.variantName),
             originalComponentNames: plan.components.map((c) => c.originalName)
           }
         );
       }
+      const observedName = readDuringRecovery(
+        () => typeof componentSet.name === "string" ? componentSet.name : unreadableSetValue,
+        unreadableSetValue
+      );
+      if (observedName === unreadableSetValue || observedName !== plan.componentSetName) {
+        throw withPartialDisclosure(
+          new Error(
+            observedName === unreadableSetValue ? "create_component_set: the set rename completed but its resulting name could not be read safely." : `create_component_set: the requested set name '${plan.componentSetName}' did not persist; observed '${observedName}'.`
+          ),
+          "the component set was already created and its members already carry their variant names, but the requested set name could not be confirmed.",
+          {
+            componentSetId,
+            componentSetName: observedName === unreadableSetValue ? "unknown" : observedName,
+            componentSetParentId,
+            verifiedParentId,
+            requestedComponentSetName: plan.componentSetName,
+            variantNames: plan.components.map((c) => c.variantName),
+            originalComponentNames: plan.components.map((c) => c.originalName)
+          }
+        );
+      }
+      finalComponentSetName = observedName;
     }
     let variantGroupProperties = void 0;
-    let warning = void 0;
+    let childCount = void 0;
+    const warnings = [];
     try {
       variantGroupProperties = componentSet.variantGroupProperties;
     } catch (err) {
-      warning = `Failed to read variant properties: ${err.message || String(err)}`;
+      warnings.push(`Failed to read variant properties: ${describeError(err)}`);
+    }
+    try {
+      childCount = componentSet.children.length;
+    } catch (err) {
+      warnings.push(`Failed to read component-set child count: ${describeError(err)}`);
     }
     return {
-      id: componentSet.id,
-      name: componentSet.name,
+      id: componentSetId,
+      name: finalComponentSetName,
       type: "COMPONENT_SET",
       // D11: report where the set actually landed, so the caller can confirm
       // containment from the response instead of re-reading.
-      parentId: componentSet.parent ? componentSet.parent.id : void 0,
-      childCount: componentSet.children.length,
+      parentId: componentSetParentId,
+      childCount,
       variantProperties: variantGroupProperties,
-      warning
+      warning: warnings.length > 0 ? warnings.join(" ") : void 0
     };
   }
   async function setComponentInstanceProperty(params) {
@@ -4199,13 +4749,52 @@
   }
 
   // figma_plugin/handlers/annotationHandlers.ts
-  function annotationDisclosure(beforeCount, afterCount) {
-    if (afterCount === beforeCount) return {};
+  function annotationDisclosure(beforeCount, beforeCountVerified, after, appendAttempted) {
+    if (!appendAttempted) return {};
+    if (!after.verified || after.count === null || !beforeCountVerified || beforeCount === null) {
+      return {
+        // Fail safe: the write crossed the setter boundary and mutation
+        // cannot be ruled out. `outcomeUnknown` distinguishes this from a
+        // confirmed count delta while retaining the shared Q9 recovery flag.
+        partialMutation: true,
+        outcomeUnknown: true,
+        whatChanged: "the annotation append was attempted, but the post-attempt annotation count could not be verified; the append may have committed.",
+        ...beforeCountVerified && beforeCount !== null ? { before: { annotationCount: beforeCount } } : {},
+        ...after.error ? { postStateError: after.error } : {}
+      };
+    }
+    if (after.count === beforeCount) return {};
     return {
       partialMutation: true,
-      whatChanged: `the annotation was appended before the failure occurred \u2014 the node's annotation count went from ${beforeCount} to ${afterCount}.`,
+      whatChanged: `the annotation was appended before the failure occurred \u2014 the node's annotation count went from ${beforeCount} to ${after.count}.`,
       before: { annotationCount: beforeCount }
     };
+  }
+  function observeAnnotationCount(node) {
+    try {
+      if (!node || !("annotations" in node)) {
+        return {
+          count: null,
+          verified: false,
+          error: "the target does not expose a readable annotations collection"
+        };
+      }
+      const annotations = node.annotations;
+      if (!annotations || typeof annotations.length !== "number") {
+        return {
+          count: null,
+          verified: false,
+          error: "the target's annotations collection has no readable length"
+        };
+      }
+      return { count: annotations.length, verified: true };
+    } catch (error) {
+      return {
+        count: null,
+        verified: false,
+        error: `post-attempt annotation count read failed: ${describeError(error)}`
+      };
+    }
   }
   async function getAnnotations(params) {
     try {
@@ -4262,9 +4851,6 @@
         if (!node) {
           throw new Error(`Node not found: ${nodeId}`);
         }
-        if (!("annotations" in node)) {
-          throw new Error(`Node type ${node.type} does not support annotations`);
-        }
         const annotatedNodes = [];
         const collect = async (n) => {
           if ("annotations" in n && n.annotations && n.annotations.length > 0) {
@@ -4297,31 +4883,60 @@
   async function setAnnotation(params, report = {}) {
     const { nodeId, labelMarkdown, categoryId, properties } = params || {};
     let node = null;
-    let beforeCount = 0;
-    let afterCount = 0;
+    let beforeCount = null;
+    let beforeCountVerified = false;
+    let afterCount = null;
+    let afterCountVerified = false;
+    let appendAttempted = false;
     if (!nodeId) {
-      return { success: false, error: "Missing nodeId parameter", beforeCount, afterCount };
+      return {
+        success: false,
+        error: "Missing nodeId parameter",
+        beforeCount,
+        afterCount,
+        beforeCountVerified,
+        afterCountVerified
+      };
     }
     if (typeof labelMarkdown !== "string" || labelMarkdown.trim().length === 0) {
-      return { success: false, error: "Missing or blank labelMarkdown parameter", beforeCount, afterCount };
+      return {
+        success: false,
+        error: "Missing or blank labelMarkdown parameter",
+        beforeCount,
+        afterCount,
+        beforeCountVerified,
+        afterCountVerified
+      };
     }
     try {
       node = await figma.getNodeByIdAsync(nodeId);
       if (!node) {
-        return { success: false, error: `Node not found: ${nodeId}`, beforeCount, afterCount };
+        return {
+          success: false,
+          error: `Node not found: ${nodeId}`,
+          beforeCount,
+          afterCount,
+          beforeCountVerified,
+          afterCountVerified
+        };
       }
       if (!("annotations" in node)) {
         return {
           success: false,
           error: `Node type ${node.type} does not support annotations`,
           beforeCount,
-          afterCount
+          afterCount,
+          beforeCountVerified,
+          afterCountVerified
         };
       }
       const existingAnnotations = node.annotations || [];
-      beforeCount = existingAnnotations.length;
-      afterCount = beforeCount;
-      report.beforeCount = beforeCount;
+      const verifiedBeforeCount = existingAnnotations.length;
+      beforeCount = verifiedBeforeCount;
+      beforeCountVerified = true;
+      afterCount = verifiedBeforeCount;
+      afterCountVerified = true;
+      report.beforeCount = verifiedBeforeCount;
       const annotationObj = {
         labelMarkdown
       };
@@ -4331,40 +4946,62 @@
       if (properties && Array.isArray(properties)) {
         annotationObj.properties = properties;
       }
+      appendAttempted = true;
+      report.appendAttempted = true;
       node.annotations = [...existingAnnotations, annotationObj];
       afterCount = node.annotations.length;
+      afterCountVerified = true;
       return {
         success: true,
         nodeId,
         beforeCount,
-        afterCount
+        afterCount,
+        beforeCountVerified,
+        afterCountVerified
       };
     } catch (error) {
-      console.error("Error in setAnnotation:", error);
+      const initiatingError = describeError(error);
       try {
-        if (node && "annotations" in node && node.annotations) {
-          afterCount = node.annotations.length;
-        }
+        console.error("Error in setAnnotation:", error);
       } catch (e) {
       }
+      const observedAfter = observeAnnotationCount(node);
+      afterCount = observedAfter.count;
+      afterCountVerified = observedAfter.verified;
       return {
         success: false,
-        error: describeError(error),
+        error: initiatingError,
         beforeCount,
         afterCount,
-        ...annotationDisclosure(beforeCount, afterCount)
+        beforeCountVerified,
+        afterCountVerified,
+        ...annotationDisclosure(
+          beforeCount,
+          beforeCountVerified,
+          observedAfter,
+          appendAttempted
+        )
       };
     }
   }
   async function readAnnotationCount(nodeId) {
     try {
       const node = await figma.getNodeByIdAsync(nodeId);
-      if (node && "annotations" in node && node.annotations) {
-        return node.annotations.length;
+      if (!node) {
+        return {
+          count: null,
+          verified: false,
+          error: `annotation target '${nodeId}' could not be resolved during count verification`
+        };
       }
-    } catch (e) {
+      return observeAnnotationCount(node);
+    } catch (error) {
+      return {
+        count: null,
+        verified: false,
+        error: `annotation count verification failed: ${describeError(error)}`
+      };
     }
-    return 0;
   }
   async function verifyAnnotationCategories(annotations) {
     const verified = /* @__PURE__ */ new Set();
@@ -4406,8 +5043,11 @@
           status: "skipped",
           nodeId: annotation.nodeId || "unknown",
           error: "Skipped due to previous failure in batch",
-          beforeCount: annotationCount,
-          afterCount: annotationCount
+          beforeCount: annotationCount.count,
+          afterCount: annotationCount.count,
+          beforeCountVerified: annotationCount.verified,
+          afterCountVerified: annotationCount.verified,
+          ...!annotationCount.verified && annotationCount.error ? { postStateError: annotationCount.error } : {}
         });
         continue;
       }
@@ -4432,18 +5072,18 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         }, report);
         console.log("setAnnotation result:", JSON.stringify(result, null, 2));
         if (result.success) {
-          successCount++;
           results.push({
             success: true,
             status: "success",
             nodeId: annotation.nodeId,
             beforeCount: result.beforeCount,
-            afterCount: result.afterCount
+            afterCount: result.afterCount,
+            beforeCountVerified: result.beforeCountVerified,
+            afterCountVerified: result.afterCountVerified
           });
+          successCount++;
           console.log(`\u2713 Annotation ${i + 1} applied successfully`);
         } else {
-          hasFailed = true;
-          failureCount++;
           results.push({
             success: false,
             status: "failed",
@@ -4454,13 +5094,22 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             error: result.error,
             beforeCount: result.beforeCount,
             afterCount: result.afterCount,
-            ...annotationDisclosure(result.beforeCount, result.afterCount)
+            beforeCountVerified: result.beforeCountVerified,
+            afterCountVerified: result.afterCountVerified,
+            ...result.partialMutation ? { partialMutation: true } : {},
+            ...result.outcomeUnknown ? { outcomeUnknown: true } : {},
+            ...result.whatChanged ? { whatChanged: result.whatChanged } : {},
+            ...result.before ? { before: result.before } : {},
+            ...result.postStateError ? { postStateError: result.postStateError } : {}
           });
+          hasFailed = true;
+          failureCount++;
           console.error(`\u2717 Annotation ${i + 1} failed:`, result.error);
         }
       } catch (error) {
         const observedCount = await readAnnotationCount(annotation.nodeId);
-        const beforeCount = (_a = report.beforeCount) != null ? _a : observedCount;
+        const beforeCount = (_a = report.beforeCount) != null ? _a : null;
+        const beforeCountVerified = report.beforeCount !== void 0;
         hasFailed = true;
         failureCount++;
         results.push({
@@ -4469,8 +5118,15 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           nodeId: annotation.nodeId || "unknown",
           error: describeError(error),
           beforeCount,
-          afterCount: observedCount,
-          ...annotationDisclosure(beforeCount, observedCount)
+          afterCount: observedCount.count,
+          beforeCountVerified,
+          afterCountVerified: observedCount.verified,
+          ...annotationDisclosure(
+            beforeCount,
+            beforeCountVerified,
+            observedCount,
+            report.appendAttempted === true
+          )
         });
         console.error(`\u2717 Annotation ${i + 1} failed with error:`, error);
       }
@@ -5569,12 +6225,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     if (!svg) {
       throw new Error("Missing required parameter: svg string.");
     }
+    assertNonEmptyExplicitCreatorName(name, "name", "create_svg");
     const parentNode = await resolveAppendableParent(parentId, "create_svg");
-    let committed = false;
     const node = figma.createNodeFromSvg(svg);
     try {
       parentNode.appendChild(node);
-      if (name) {
+      if (name !== void 0) {
         node.name = name;
       }
       node.x = x;
@@ -5587,10 +6243,9 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         // confirm containment from the response instead of re-reading.
         parentId: node.parent ? node.parent.id : void 0
       };
-      committed = true;
       return result;
-    } finally {
-      if (!committed) removeUncommitted(node, "create_svg");
+    } catch (error) {
+      rethrowAfterCreatorCleanup(error, node, "create_svg", parentId);
     }
   }
 
@@ -6193,7 +6848,11 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         await validateSingleNodeWrite(params, { checkLocked: true });
         return await applyStyle(params);
       case "create_component":
-        await validateSingleNodeWrite(params, { checkScopeRoot: true, checkLocked: true });
+        await validateSingleNodeWrite(params, {
+          checkScopeRoot: true,
+          checkLocked: true,
+          instanceCheckVerb: "converted to a component"
+        });
         return await createComponent(params);
       case "create_component_set": {
         if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);

@@ -600,6 +600,51 @@ describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
         const coded = getStructuredError({ code: "ANY_FUTURE_CODE", message: "m", details: { a: 1 } });
         expect(coded.code).toBe("ANY_FUTURE_CODE"); // structural pass-through, untouched
     });
+
+    it("error structuring is total for hostile direct and nested getters", () => {
+        const hostile = new Proxy({}, {
+            get: () => {
+                throw new Error("hostile getter must not escape");
+            },
+            ownKeys: () => {
+                throw new Error("hostile enumeration must not escape");
+            },
+        });
+        expect(getStructuredError(hostile)).toEqual({
+            code: UNKNOWN_ERROR,
+            message: "Error executing command",
+        });
+
+        const codedWithHostileOptionalFields: any = { code: "CODE_SURVIVES" };
+        Object.defineProperties(codedWithHostileOptionalFields, {
+            message: {
+                get: () => {
+                    throw new Error("message getter must not escape");
+                },
+            },
+            details: {
+                get: () => {
+                    throw new Error("details getter must not escape");
+                },
+            },
+        });
+        expect(getStructuredError(codedWithHostileOptionalFields)).toEqual({
+            code: "CODE_SURVIVES",
+            message: "Error executing command",
+        });
+
+        const nested = {
+            error: {
+                code: "NESTED_CODE",
+                message: "nested message",
+                details: hostile,
+            },
+        };
+        expect(getStructuredError(nested)).toEqual({
+            code: "NESTED_CODE",
+            message: "nested message",
+        });
+    });
 });
 
 // =============================================================================

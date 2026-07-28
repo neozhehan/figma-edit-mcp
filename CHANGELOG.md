@@ -2,6 +2,10 @@
 
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
+> **v2.3.3 correction to the v2.3.2 “no-orphan” wording:** creator placement remains destination-first at the observable success boundary, but cleanup after a later failure is best-effort rather than an infallible rollback. If removal throws or cannot be confirmed, the initiating error is preserved and carries `details.partialMutation: true`, `whatChanged`, the verified destination, and a tri-state survivor location (`located` / `detached` / `unknown`) so callers can reconcile it before retrying. The historical v2.3.2 entry is retained unchanged below.
+>
+> **v2.3.3 F78-15 empty-name correction:** Figma natively normalizes an empty layer name instead of preserving `""` (live channel `2476`: shape → `Rectangle`, frame → `Frame`, text → its content, SVG root → `Frame`, component set → `Component`; an independent `node_rename` probe did the same). `create_shape`, `create_frame`, `create_text`, `create_svg`, and `create_component_set` therefore reject an explicitly empty new name before mutation at both the MCP and plugin boundaries. Omit `name` / `componentSetName` to retain the established default, or supply a non-empty name.
+
 ## [2.3.2]
 This release makes the documented safety contract match the implementation and prevents future drift: dispatcher guard parity, `create_component_set` atomicity, no-orphan creation handlers, an executable safety matrix, output-schema conformance, and version synchronization across every surface.
 

@@ -1,5 +1,6 @@
 import { resolveAppendableParent } from './nodeCreators.js';
-import { removeUncommitted } from '../utils/nodeUtils.js';
+import { rethrowAfterCreatorCleanup } from '../utils/nodeUtils.js';
+import { assertNonEmptyExplicitCreatorName } from '../utils/creatorValidation.js';
 
 export async function createNodeFromSvg(params: any) {
     const { parentId, svg, name, x = 0, y = 0 } = params || {};
@@ -8,15 +9,16 @@ export async function createNodeFromSvg(params: any) {
         throw new Error("Missing required parameter: svg string.");
     }
 
+    assertNonEmptyExplicitCreatorName(name, "name", "create_svg");
+
     const parentNode = await resolveAppendableParent(parentId, "create_svg");
 
-    let committed = false;
     const node = figma.createNodeFromSvg(svg);
     try {
         // D11: createNodeFromSvg uses an implicit parent; contain it first.
         parentNode.appendChild(node);
 
-        if (name) {
+        if (name !== undefined) {
             node.name = name;
         }
 
@@ -31,9 +33,8 @@ export async function createNodeFromSvg(params: any) {
             // confirm containment from the response instead of re-reading.
             parentId: node.parent ? node.parent.id : undefined,
         };
-        committed = true;
         return result;
-    } finally {
-        if (!committed) removeUncommitted(node, "create_svg");
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, node, "create_svg", parentId);
     }
 }

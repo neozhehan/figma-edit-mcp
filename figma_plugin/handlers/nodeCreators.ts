@@ -4,7 +4,8 @@
  */
 
 import { setCharacters } from '../utils/textUtils.js';
-import { removeUncommitted } from '../utils/nodeUtils.js';
+import { rethrowAfterCreatorCleanup } from '../utils/nodeUtils.js';
+import { assertNonEmptyExplicitCreatorName } from '../utils/creatorValidation.js';
 
 export async function resolveAppendableParent(parentId: string, command: string): Promise<any> {
     if (!parentId) throw new Error(`${command}: missing parentId parameter.`);
@@ -55,6 +56,8 @@ export async function createShape(params: any) {
         throw new Error("Missing shape type parameter");
     }
 
+    assertNonEmptyExplicitCreatorName(name, "name", "create_shape");
+
     const upperType = type.toUpperCase();
     if (arcData !== undefined && upperType !== "ELLIPSE") {
         throw new Error(`arcData is only supported for shape type ELLIPSE, got ${type}`);
@@ -90,7 +93,6 @@ export async function createShape(params: any) {
             throw new Error(`Unsupported shape type: ${type}`);
     }
 
-    let committed = false;
     const node = createNode();
     try {
         // D11: implicit creators place on currentPage. Reparent synchronously
@@ -114,7 +116,7 @@ export async function createShape(params: any) {
         node.x = x;
         node.y = y;
         node.resize(width, height);
-        if (name) {
+        if (name !== undefined) {
             node.name = name;
         } else {
             node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
@@ -163,10 +165,9 @@ export async function createShape(params: any) {
             height: node.height,
             parentId: node.parent ? node.parent.id : undefined
         };
-        committed = true;
         return result;
-    } finally {
-        if (!committed) removeUncommitted(node, "create_shape");
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, node, "create_shape", parentId);
     }
 }
 
@@ -210,9 +211,10 @@ export async function createFrame(params: any) {
         itemSpacing = 0,
     } = params || {};
 
+    assertNonEmptyExplicitCreatorName(name, "name", "create_frame");
+
     const parentNode = await resolveAppendableParent(parentId, "create_frame");
 
-    let committed = false;
     const frame = figma.createFrame();
     try {
         // D11: contain the new frame before any fallible configuration.
@@ -293,10 +295,9 @@ export async function createFrame(params: any) {
             layoutWrap: frame.layoutWrap,
             parentId: frame.parent ? frame.parent.id : undefined,
         };
-        committed = true;
         return result;
-    } finally {
-        if (!committed) removeUncommitted(frame, "create_frame");
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, frame, "create_frame", parentId);
     }
 }
 
@@ -326,7 +327,7 @@ function getFontStyle(weight: any) {
         case 900:
             return "Black";
         default:
-            return "Regular";
+            throw new Error(`Unsupported fontWeight ${weight}; expected one of 100, 200, 300, 400, 500, 600, 700, 800, or 900.`);
     }
 }
 
@@ -351,13 +352,17 @@ export async function createText(params: any) {
         fontSize = 14,
         fontWeight = 400,
         fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
-        name = "",
+        name,
         parentId,
     } = params || {};
 
+    assertNonEmptyExplicitCreatorName(name, "name", "create_text");
+
+    // Defense in depth for clients that bypass the MCP schema. Never silently
+    // map an unsupported weight to Regular and then echo the unapplied input.
+    const fontStyle = getFontStyle(fontWeight);
     const parentNode = await resolveAppendableParent(parentId, "create_text");
 
-    let committed = false;
     const textNode = figma.createText();
     try {
         // D11: insertion must precede font-loading awaits and character writes.
@@ -365,17 +370,16 @@ export async function createText(params: any) {
 
         textNode.x = x;
         textNode.y = y;
-        textNode.name = name || text;
-        try {
-            await figma.loadFontAsync({
-                family: "Inter",
-                style: getFontStyle(fontWeight),
-            });
-            textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
-            textNode.fontSize = parseInt(fontSize);
-        } catch (error: any) {
-            console.error("Error setting font size", error);
-        }
+        textNode.name = name !== undefined ? name : text;
+        // Font loading and both configuration writes are part of creation.
+        // Failure must reach the outer creator cleanup/disclosure path rather
+        // than returning success with a default or partially applied style.
+        await figma.loadFontAsync({
+            family: "Inter",
+            style: fontStyle,
+        });
+        textNode.fontName = { family: "Inter", style: fontStyle };
+        textNode.fontSize = fontSize;
         // setCharacters is async (loads fonts + writes characters); must be awaited
         // or the node has no text when we read/return it (characters:"", width:0).
         await setCharacters(textNode, text);
@@ -407,10 +411,9 @@ export async function createText(params: any) {
             fills: textNode.fills,
             parentId: textNode.parent ? textNode.parent.id : undefined,
         };
-        committed = true;
         return result;
-    } finally {
-        if (!committed) removeUncommitted(textNode, "create_text");
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, textNode, "create_text", parentId);
     }
 }
 
@@ -443,8 +446,8 @@ export async function cloneNode(params: any) {
     if (!("appendChild" in (parent as BaseNode))) {
         throw new Error(`node_clone: parent '${parent.name}' (type ${parent.type}) cannot accept cloned children.`);
     }
+    const verifiedParentId = parent.id;
 
-    let committed = false;
     // Clone the node
     // @ts-expect-error TS2339: Property 'clone' does not exist on type 'BaseNode'.
     const clone = node.clone();
@@ -469,9 +472,8 @@ export async function cloneNode(params: any) {
             // confirm containment from the response instead of re-reading.
             parentId: clone.parent ? clone.parent.id : undefined,
         };
-        committed = true;
         return result;
-    } finally {
-        if (!committed) removeUncommitted(clone, "node_clone");
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, clone, "node_clone", verifiedParentId);
     }
 }

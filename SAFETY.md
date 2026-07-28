@@ -31,9 +31,9 @@ The system guarantees, subject to the Assumptions below, that:
 
 | # | Guarantee | Implemented by |
 |---|---|---|
-| **G1** | **Bounded write surface** — no node write outside the user-selected scope subtree; no node writes at all without a scope link. | A2 |
+| **G1** | **Bounded write surface** — no successful node write finishes outside the user-selected scope subtree; successful creation returns only after the artifact is in its verified destination; no node writes at all without a scope link. A failed creator cleanup may terminate with a survivor only under the explicit-disclosure residual R6. | A2 · A4 |
 | **G2** | **Right-node assurance** — no write proceeds unless the caller-supplied name matches the resolved node's actual name (every write tool, including `reaction_update` and `variable_delete`). | A3 |
-| **G3** | **Explicit placement** — no node is created without an explicit, resolved parent. | A4 |
+| **G3** | **Explicit placement** — every successful creation uses an explicit, resolved destination and reports its actual parent. | A4 |
 | **G4** | **All-or-nothing batches** — a batch containing any invalid member mutates nothing. | A5 |
 | **G5** | **Reads cannot mutate** — discovery/navigation never change the document and are never blocked. | A6 |
 | **G6** | **Self-preservation** — the session's scope anchor cannot be destroyed or replaced by an edit (`node_delete`/`node_flatten`/`node_ungroup`/`create_component`). | A9 · §1 |
@@ -59,11 +59,12 @@ Each guarantee holds **only while these conditions hold**. Violating one voids t
 
 Explicitly **not** guaranteed — accepted trade-offs a safe integration must account for:
 
-- **R1 — TOCTOU race.** A node may be locked/unlocked, reparented, or deleted by the user between validation and mutation; guards do not hold a lock across that gap. The handler's `try/catch` reports whatever Figma then throws. *(A8.)*
+- **R1 — TOCTOU race.** A node may be locked/unlocked, reparented, or deleted by the user between validation and mutation; guards do not hold a lock across that gap. The initiating Figma failure remains authoritative; if recovery cannot restore the prior state, the error is enriched with partial-mutation evidence rather than replaced. *(A8.)*
 - **R2 — In-scope *wrong* edits.** The system bounds *where* and *which node (by name/type/protection)* — not whether an in-scope, name-matched, unprotected edit is *what the user actually wanted*. A confidently-wrong-but-valid edit is not prevented.
 - **R3 — Off-scope visual export.** `node_export_visual` can render a node outside scope (read-surface only; low risk, since `node_info` already exposes full reads). *(A6 / PRD D5.)*
 - **R4 — No protection against the host.** A malicious or buggy *host* that bypasses the plugin (violating AS1) is out of scope for this manual.
 - **R5 — Advisory validations are not exhaustive.** Some checks deliberately defer final arbitration to Figma: `INSTANCE_SWAP` values are shape-checked only (§5/D10), and instance-interior *override* writes are permitted with Figma as the final arbiter (§4/D7). A structurally-valid call that Figma still refuses degrades to a normal handler error rather than a pre-emptive `"Operation Denied"`.
+- **R6 — Implicit-creator placement and recovery are not transactional.** Figma APIs without a parent parameter construct on `currentPage` for part of one synchronous stack; the plugin inserts the artifact into the verified destination as the immediate next operation, before any `await` or fallible configuration. If placement or later configuration fails, cleanup is best-effort and counts as complete only when removal is confirmed. A survivor may therefore remain — including at the implicit page location — but the initiating error stays primary and carries `details.partialMutation: true`, `whatChanged`, and actual-versus-verified location evidence. Survivor location is explicitly `located`, `detached`, or `unknown`: only an observed `parent === null` proves detachment, while an unreadable parent or parent ID remains unknown. Integrations must reconcile that evidence before retrying. *(A4/A8.)*
 
 > Limitations present in earlier releases are now **closed** and have moved into the guarantees: document-global asset reach from a node-scoped session is gated by the permission axes (G8 / §14, v2.2.0), remote-library-asset edits are blocked by a structured pre-check (G7 / §7, v2.2.0), and the scope-root clone escape under G1 is closed by the `node_clone` destination-parent scope check (v2.3.2 — cloning the scope root is now denied).
 
@@ -115,10 +116,12 @@ The three permission axes are **independent** — none implies another:
 Every modify tool requires a `nodeName`; every create tool a `parentNodeName`; batch tools a name **per item**. The plugin resolves the node by ID and rejects on mismatch (`verifyNodeName`; absent name ⇒ rejected). This catches stale/fabricated IDs. Names must be passed back **verbatim** (AS3). As of v2.2.0 this is universal — `reaction_update` (§6A) and `variable_delete` (§6B, both id and collection modes) now verify names, and `style_delete`'s guard matches the strict rule.
 
 ### A4. Creation requires an explicit parent → G3
-No "current page" fallback. `create_shape`/`create_frame`/`create_text`/`create_svg`/`create_instance` require a resolvable `parentId` + `parentNodeName`.
+There is no successful "current page" fallback. `create_shape`/`create_frame`/`create_text`/`create_svg`/`create_instance` and `create_component_set` require a resolvable `parentId` + `parentNodeName`; `create_component` derives its destination from the verified source frame's parent. APIs that cannot accept a parent directly are inserted into that verified destination as the immediate next synchronous operation. The same-stack construction transient and failed-cleanup survivor are the explicit R6 residual, not successful placement modes.
+
+Creator names are presence-sensitive but cannot be explicitly empty. Live Figma normalizes `""` to a type/content-derived name, so `create_shape`, `create_frame`, `create_text`, `create_svg`, and `create_component_set` reject an explicitly empty `name` / `componentSetName` before any creator, rename, or combine mutation. Omission (`undefined`) remains valid and selects the established default; a supplied name must be non-empty.
 
 ### A5. Batch atomicity (pre-validate → zero-mutation abort) → G4
-Batch tools validate **every** item (existence, scope, name, type, **locked**, **instance-interior**, **scope-root**) **before** any mutation. A single bad member aborts the whole batch with **zero mutations**. Once mutation begins, handlers process sequentially, stop on first failure, and return a completed-vs-failed report — **no general transaction layer is promised**. Residual TOCTOU placement failures are reported without auto-rollback. (`text_set_content`, `annotation_set`, `instance_set_overrides`, `create_component_set`, `node_delete`.)
+Batch tools validate **every** item (existence, scope, name, type, **locked**, **instance-interior**, **scope-root**) **before** any mutation. A single bad member aborts the whole batch with **zero mutations**. Once mutation begins, handlers process sequentially, stop on first failure, and return a completed-vs-failed report — **no general transaction layer is promised**. Tool-specific best-effort recovery may run; any durable state it cannot restore is reported with partial-mutation evidence. (`text_set_content`, `annotation_set`, `instance_set_overrides`, `create_component_set`, `node_delete`.)
 - **Exception:** `node_delete` (`deleteMultipleNodes`) runs resilient parallel chunks and is excluded from stop-on-first-failure — but its **pre-validation** still runs, so it never *starts* on an invalid target.
 - The v2.2.0 scope-root / locked / instance-interior guards run inside this same pre-validation loop (PRD **D6**), reusing the resolved-node reference.
 
@@ -128,14 +131,16 @@ Discovery and navigation ignore the node/variable/style permission axes, scope, 
 ### A7. Node-ID normalization
 Figma-URL IDs use dashes (`20485-41`); the API expects colons (`20485:41`). The MCP server converts before forwarding; pass URL-format IDs through unchanged.
 
-### A8. TOCTOU is an accepted residual → R1
-A node can be locked/unlocked, reparented, or deleted by the user between validation and mutation. Guards do not hold a lock across the gap; the handler's `try/catch` reports whatever Figma throws.
+### A8. TOCTOU and incomplete recovery are accepted residuals → R1, R6
+A node can be locked/unlocked, reparented, or deleted by the user between validation and mutation. Guards do not hold a lock across the gap. Recovery machinery cannot replace the initiating failure: when cleanup/restoration is incomplete, that original error carries `details.partialMutation: true`, a plain-language `whatChanged`, and cheap before/location evidence.
+
+Error reporting is total for arbitrary JavaScript thrown values. Plugin structuring guards direct and nested `code`/`error`/`message`/`details` reads and optional-details copying; the registered MCP callback also guards its field reads and fallback stringification. A readable coded error keeps its structural code/message/details. If the thrown value itself is hostile or unreadable, reporting falls back to the canonical `UNKNOWN_ERROR` envelope, omits unreadable optional details, and preserves separately constructed partial-mutation evidence so reconciliation can still proceed.
 
 ### A9. Structural-integrity guards (cross-cutting) → G6, G7
 Four families of plugin-side guard, each returning `"Operation Denied: …"`:
 - **Scope-root preservation (§1):** refuse to delete/flatten/ungroup/convert the node that *is* `scopeRootId` — it would brick the session with `SCOPE_DELETED`. Covers `node_delete`, `node_flatten`, `node_ungroup`, and `create_component` (which replaces the source frame with a new component id). → **G6**
 - **Locked-layer block (§2):** refuse any write whose target — or any ancestor — is `locked` (`findLockedAncestor`). Single-target writes check the target; batch writes check each item; creation/reparent check the parent (and, for reparent, the child). → **G7**
-- **Instance-interior block (§4):** refuse *structural* edits — delete, reparent, group/ungroup, create-under — inside an `INSTANCE` (`findInstanceAncestor`), or when the parent node is an `INSTANCE` itself. Property/override writes remain allowed, with Figma as final arbiter (R5). → **G7**
+- **Instance-interior block (§4):** refuse *structural* edits — delete, reparent, group/ungroup, create/clone-under, or convert-to-component — inside an `INSTANCE` (`findInstanceAncestor`), or when the parent node is an `INSTANCE` itself. Property/override writes remain allowed, with Figma as final arbiter (R5). → **G7**
 - **Remote-asset block (§7):** refuse edits to remote (shared-library) **styles, variables, and main components** (`.remote`). Instances of remote components stay fully editable (local overrides), so `instance_set_property` is **not** remote-gated. → **G7**
 
 ---
@@ -175,20 +180,24 @@ Gate order in the dispatcher (most-specific error wins): **permission → scope 
 | `text_set_content` | node-perm · scopeRoot · exists · scope · name · type TEXT · **locked** · **correct `characters` contract (§16)** |
 | `annotation_set` | node-perm · scopeRoot · exists · scope · name · supports-annotations · **locked** |
 | `instance_set_overrides` | node-perm · scopeRoot · source exists+INSTANCE · per-target exists+scope+name+INSTANCE+**locked** |
-| `create_component_set` | node-perm · scopeRoot · per-component exists+scope+name+propValues-count+COMPONENT-type · **instance-interior (§4)** · **remote block (§7)** · parent scope+name+**locked**+**instance-interior (§4)** · **parent-cycle (v2.3.2 §2)** · **set-member block (v2.3.2 §2)** · **value separator rules (v2.3.2 §2)** · **duplicate component IDs (v2.3.2 §2)** · **duplicate-variant uniqueness (§11)** · **plan/mutate two-phase (v2.3.2 §2)** |
+| `create_component_set` | node-perm · scopeRoot · per-component exists+scope+name+propValues-count+COMPONENT-type · **instance-interior (§4)** · **remote block (§7)** · parent scope+name+**locked**+**instance-interior (§4)** · **explicit set name non-empty when supplied (§3)** · **parent-cycle (v2.3.2 §2)** · **set-member block (v2.3.2 §2)** · **value separator rules (v2.3.2 §2)** · **duplicate component IDs (v2.3.2 §2)** · **duplicate-variant uniqueness (§11)** · **plan/mutate two-phase (v2.3.2 §2)** |
+
+`create_component_set` snapshots each member's original parent and inspects post-failure placement before any recovery name write. An ordinary member whose original placement is confirmed is restored to its original name best-effort, continuing after individual recovery errors. A member confirmed inside a surviving `COMPONENT_SET` instead retains or best-effort confirms its computed `Property=Value` variant name; an unreadable changed-parent type blocks original-name restoration. The initiating error discloses `before.appliedComponents`, `restoredComponents`, `unrestoredComponents`, `removedComponents`, `unknownRemovalComponents`, `reparentedComponents`, `unverifiedPlacementComponents`, `survivingComponentSets`, `retainedVariantComponents`, and `unconfirmedVariantComponents`. Removal is tri-state (`live | removed | unknown`); unknown never authorizes optimistic recovery and remains partial. Once a set exists, required identity/name/parent evidence is snapshotted, the actual parent is checked against the verified destination, and later failures disclose the created set. Optional child-count/variant-property read failures return success warnings.
 
 ### B3. Creation tools (gate on the parent)
 
 | Tool | Enforced gate stack |
 |---|---|
-| `create_shape` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · shape-param checks (arcData=ellipse, pointCount≥3, innerRadius=star) · color 0–1 (Zod) · **parent-first + cleanup (v2.3.2 §3)** |
-| `create_frame` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · color 0–1 (Zod) · **opacity normalized, no NaN (§12)** · **parent-first + cleanup (v2.3.2 §3)** |
-| `create_text` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · color 0–1 (Zod) · **opacity normalized, no NaN (§12)** · **parent-first + cleanup (v2.3.2 §3)** |
-| `create_svg` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **parent-first + cleanup (v2.3.2 §3)** |
-| `create_instance` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **parent-first + cleanup (v2.3.2 §3)** |
-| `create_component` | node-perm · scope · name · locked · **scope-root self-destruction (§1)** · **parent-first + cleanup (v2.3.2 §3)** |
+| `create_shape` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **explicit name non-empty when supplied (§3)** · shape-param checks (arcData=ellipse, pointCount≥3, innerRadius=star) · color 0–1 (Zod) · **handler-prevalidation-before-mutation** |
+| `create_frame` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **explicit name non-empty when supplied (§3)** · color 0–1 (Zod) · **opacity normalized, no NaN (§12)** · **handler-prevalidation-before-mutation** |
+| `create_text` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **explicit name non-empty when supplied (§3)** · color 0–1 (Zod) · **opacity normalized, no NaN (§12)** · **handler-prevalidation-before-mutation** |
+| `create_svg` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **explicit name non-empty when supplied (§3)** · **handler-prevalidation-before-mutation** |
+| `create_instance` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **handler-prevalidation-before-mutation** |
+| `create_component` | node-perm · scope · name · locked · **instance-interior (§4)** · **scope-root self-destruction (§1)** · **handler-prevalidation-before-mutation** |
 | `node_insert_child` | node-perm · parent scope+name · child scope+name · **locked(parent & child)** · **self/cyclic-parent (§3)** · **instance-interior, both ids (§4)** · **index bounds (§13)** |
 | `create_connection` | node-perm · connector scope (if set) · per-connection start/end scope+name · locked |
+
+For the implicit creator and `node_clone` paths, handler prevalidation resolves the destination before construction and insertion is the immediate next synchronous operation. Later failures trigger best-effort cleanup. A failed cleanup preserves the initiating error and discloses the survivor's ID/name/type, `survivingParentState: "located" | "detached" | "unknown"`, nullable `survivingParentId`, and `verifiedParentId`. `located` carries the exact readable ID, `detached` requires an observed null parent, and `unknown` means the parent or its ID could not be read safely. `create_component` uses the analogous `survivingComponentParentState`/`survivingComponentParentId`, attempts every eligible child restoration independently, and removes its new component only after positive proof that the source is live, every original child is back, and the component is empty; its evidence separates restored, still-owned, unknown-parent, and relocated children plus restoration failures.
 
 ### B4. Document-global asset tools (gated by the asset permission axes, not positional scope)
 
@@ -208,7 +217,8 @@ Gate order in the dispatcher (most-specific error wins): **permission → scope 
 | Tool | Requirement | Gated? |
 |---|---|---|
 | `node_info` | empty-args → falls back to `scopeRootId`; node-read-only empty-args returns `{nodes:[]}` | No (read) |
-| `page_info`, `style_list`, `component_list`, `variable_list`, `annotation_list` | — | No (read) |
+| `page_info`, `style_list`, `component_list`, `variable_list` | — | No (read) |
+| `annotation_list` | exactly one of `pageId`/`nodeId`; node mode accepts any traversable root, even when the root itself lacks `AnnotationsMixin` | No (read) |
 | `instance_get_overrides` | requires `instanceNodeId` | No (read) |
 | `reaction_list` | requires `nodeIds[]` | No (read) |
 | `node_export_visual` | — | No (read; accepted off-scope residual R3) |
@@ -226,6 +236,7 @@ These run in the MCP server before the plugin and reject malformed input early (
 - **Enums** for layout (`layoutMode`, `primaryAxisAlignItems`, `counterAxisAlignItems`, `layoutSizingHorizontal/Vertical`), `textCase`, `textDecoration`, shape `type`, paint `type`, grid `pattern`.
 - **Bindable Fields Allowlist:** `node_bind_variable` constrains `bindVariables` keys to a strict typings-derived allowlist `BINDABLE_FIELDS` instead of an open record (v2.3.1 §2).
 - **Shape params:** `pointCount ≥ 3`, `innerRadius`/`arcData.innerRadius` `0–1`, `strokeWeight` positive.
+- **Effects:** `node_set_effects` accepts exactly `DROP_SHADOW`, `INNER_SHADOW`, `LAYER_BLUR`, and `BACKGROUND_BLUR`; `style_manage` also accepts `NOISE`, `TEXTURE`, and `GLASS`. Each is a strict discriminated shape: unknown/cross-variant keys are rejected, `showShadowBehindNode` is DROP_SHADOW-only, progressive blur ramp fields are required together only with `blurType:"PROGRESSIVE"`, and `blendMode` is one of the 19 literals pinned from Figma's `BlendMode` union. A supplied effect color is complete RGBA with every channel `0–1`; shadow/blur and GLASS radii are non-negative; GLASS `lightIntensity`, `refraction`, and `dispersion` are `0–1` (`depth: 0` is valid).
 - **`lineHeight`:** both `style_manage` and `text_set_style` accept the `{unit:"AUTO"}` union (§15).
 - **Name fields:** `nodeName`/`parentNodeName` on every write; `variableNames`/`collectionName` on `variable_delete` (§6B); `nodeName` on `reaction_update` (§6A).
 
@@ -250,6 +261,7 @@ The plugin returns these from [`main.ts` `ERRORS`](figma_plugin/src/main.ts#L45)
 | `"Sizing 'FILL' requires … Auto-Layout parent"` (§8); index-bounds (§13); duplicate-variant (§11); auto-layout child transform (§9) | The remaining structured `"Operation Denied: …"` strings. |
 | Actionable Prechecks | `node_bind_variable` blocks missing auto-layout (v2.3.1 §3) and non-solid paint binds (v2.3.1 §1). |
 | `MISSING_*` / type errors | Parameter/shape/type violations from the dispatcher and handlers. |
+| `details.partialMutation: true` | The command failed after a durable change or recovery could not confirm restoration. Preserve the initiating error and inspect `whatChanged` plus `before`: creators disclose survivor identity plus located/detached/unknown parent state and actual/verified parent IDs; `create_component` discloses the analogous component-parent state plus tri-state source/child recovery evidence; `create_component_set` discloses applied/restored/unrestored/removed/removal-unknown/reparented/location-unreadable members, surviving sets, and retained/unconfirmed variant names, or the already-created set and its actual/verified parent. An `annotation_set` row with `outcomeUnknown:true` crossed the append setter but could not verify post-state: its nullable counts and `beforeCountVerified`/`afterCountVerified` flags are observations, not guesses, and `postStateError` is secondary to the row's initiating `error`. Reconcile before retrying even when a hostile initiating throw was normalized to `UNKNOWN_ERROR`. |
 
 ---
 

@@ -4,6 +4,7 @@
  */
 
 import { customBase64Encode, bytesToUtf8 } from '../utils/exportUtils.js';
+import { assertNonEmptyExplicitCreatorName } from '../utils/creatorValidation.js';
 
 /**
  * Gets all local styles from the document
@@ -155,7 +156,7 @@ export async function getComponents(params: any) {
     };
 }
 
-import { getContainingPageNode, isAncestorOf, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent, removeUncommitted } from '../utils/nodeUtils.js';
+import { getContainingPageNode, isAncestorOf, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent, describeCreatorSurvivorParent, getCreatorSurvivorEvidence, readDuringRecovery, removeUncommitted, reportRecoveryError, rethrowAfterCreatorCleanup } from '../utils/nodeUtils.js';
 import { ERRORS, REFUSALS, describeError, formatScopeError, notifyBestEffort, withPartialDisclosure } from '../utils/errors.js';
 import { batchEnvelope } from '../utils/batchResult.js';
 import { resolveAppendableParent } from './nodeCreators.js';
@@ -296,7 +297,6 @@ export async function createComponentInstance(params: any) {
     // scope and the instance would land in an unverified destination.
     const parentNode = await resolveAppendableParent(parentId, "create_instance");
 
-    let committed = false;
     const instance = component.createInstance();
     try {
         // D11: createInstance uses an implicit parent; contain it before writes.
@@ -317,10 +317,9 @@ export async function createComponentInstance(params: any) {
             // confirm containment from the response instead of re-reading.
             parentId: instance.parent ? instance.parent.id : undefined,
         };
-        committed = true;
         return result;
-    } finally {
-        if (!committed) removeUncommitted(instance, "create_instance");
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, instance, "create_instance", parentId);
     }
 }
 
@@ -968,6 +967,12 @@ export async function createComponent(params: any) {
         throw new Error(`Target node must be a FRAME, got ${node.type}`);
     }
 
+    // Converting a frame inside an instance cannot succeed: Figma creates the
+    // component first and only then refuses insertion into the instance,
+    // leaving a detached/out-of-scope artifact. Refuse before createComponent()
+    // so no implicit node exists to recover.
+    assertNotInstanceInterior(node, "converted to a component");
+
     const parentNode = node.parent;
     if (!parentNode) {
         throw new Error("create_component: parent node not found.");
@@ -981,6 +986,7 @@ export async function createComponent(params: any) {
     if (!("insertChild" in (parentNode as BaseNode))) {
         throw new Error(`create_component: parent '${parentNode.name}' (type ${parentNode.type}) cannot preserve the source frame's child index.`);
     }
+    const verifiedParentId = parentNode.id;
 
     const index = parentNode.children.indexOf(node);
     if (index < 0) {
@@ -988,7 +994,6 @@ export async function createComponent(params: any) {
     }
 
     const childrenToMove = [...node.children];
-    let committed = false;
     const component = figma.createComponent(); // This creates a new empty component
     try {
         // D11: createComponent uses an implicit parent. Preserve the frame's
@@ -1060,33 +1065,182 @@ export async function createComponent(params: any) {
 
         // Remove original frame
         node.remove();
-        committed = true;
         return result;
     } catch (error: any) {
-        // Reached only on a failed, uncommitted attempt: the success path sets
-        // `committed` and returns, so there is nothing to undo there.
-        const sourceFrameRemoved = (node as any).removed === true;
-        let restoredAllChildren = !sourceFrameRemoved;
-        for (let childIndex = 0; childIndex < childrenToMove.length; childIndex++) {
-            const child = childrenToMove[childIndex];
-            if (child.parent === component && restoredAllChildren) {
+        // Reached only on a failed, uncommitted attempt: the success path
+        // returns before this recovery block.
+        type ChildParentState =
+            | { kind: "source" }
+            | { kind: "component" }
+            | { kind: "relocated"; currentParentId: string | null }
+            | { kind: "unknown" };
+        const inspectChildParent = (child: any): ChildParentState => {
+            try {
+                const currentParent = child.parent;
+                if (currentParent === node) return { kind: "source" };
+                if (currentParent === component) return { kind: "component" };
+                return {
+                    kind: "relocated",
+                    currentParentId: readDuringRecovery(
+                        () => typeof currentParent?.id === "string" ? currentParent.id : null,
+                        null,
+                    ),
+                };
+            } catch {
+                return { kind: "unknown" };
+            }
+        };
+        const childId = (child: any) => readDuringRecovery(
+            () => typeof child.id === "string" ? child.id : "unknown",
+            "unknown",
+        );
+
+        // `removed` is tri-state during recovery. An unreadable host object is
+        // NOT proof that the source is still live, so it can never authorize
+        // deletion of the new component.
+        const sourceFrameRemovalState = readDuringRecovery<"live" | "removed" | "unknown">(
+            () => {
+                const removed = (node as any).removed;
+                if (removed === false) return "live";
+                if (removed === true) return "removed";
+                return "unknown";
+            },
+            "unknown",
+        );
+        const sourceFrameRemoved =
+            sourceFrameRemovalState === "removed"
+                ? true
+                : sourceFrameRemovalState === "live"
+                    ? false
+                    : null;
+
+        const restorationFailures: Array<{
+            childId: string;
+            attemptedIndex: number | null;
+        }> = [];
+        if (sourceFrameRemovalState === "live") {
+            // Every child is evaluated independently. One failed restore must
+            // not suppress later attempts. Insert before the first later
+            // original sibling still on the source (or append if none remains)
+            // so order is retained even when an earlier restore failed.
+            for (let childIndex = 0; childIndex < childrenToMove.length; childIndex++) {
+                const child = childrenToMove[childIndex];
+                if (inspectChildParent(child).kind !== "component") continue;
+                const currentSourceChildren = readDuringRecovery<any[] | null>(
+                    () => Array.isArray(node.children) ? [...node.children] : null,
+                    null,
+                );
+                if (currentSourceChildren === null) {
+                    restorationFailures.push({
+                        childId: childId(child),
+                        attemptedIndex: null,
+                    });
+                    reportRecoveryError(
+                        "create_component: source children were unreadable; skipped a child restore rather than guessing an insertion index",
+                    );
+                    continue;
+                }
+                let safeInsertionIndex = currentSourceChildren.length;
+                for (
+                    let laterIndex = childIndex + 1;
+                    laterIndex < childrenToMove.length;
+                    laterIndex++
+                ) {
+                    const siblingIndex = currentSourceChildren.indexOf(
+                        childrenToMove[laterIndex],
+                    );
+                    if (siblingIndex >= 0) {
+                        safeInsertionIndex = siblingIndex;
+                        break;
+                    }
+                }
                 try {
-                    node.insertChild(childIndex, child);
+                    node.insertChild(safeInsertionIndex, child);
                 } catch (restoreError) {
-                    restoredAllChildren = false;
-                    console.error("create_component: failed to restore a moved child after conversion failure", restoreError);
+                    restorationFailures.push({
+                        childId: childId(child),
+                        attemptedIndex: safeInsertionIndex,
+                    });
+                    reportRecoveryError("create_component: failed to restore a moved child after conversion failure", restoreError);
                 }
             }
         }
-        // Never delete the newly created container while it still owns
-        // pre-existing user nodes; leave it contained if restoration fails.
-        if (restoredAllChildren && typeof component.remove === "function" && (component as any).removed !== true) {
-            component.remove();
+
+        const restoredChildIds: string[] = [];
+        const survivingChildIds: string[] = [];
+        const unknownParentChildIds: string[] = [];
+        const relocatedChildren: Array<{
+            childId: string;
+            currentParentId: string | null;
+        }> = [];
+        for (const child of childrenToMove) {
+            const id = childId(child);
+            const parentState = inspectChildParent(child);
+            if (parentState.kind === "source") {
+                restoredChildIds.push(id);
+            } else if (parentState.kind === "component") {
+                survivingChildIds.push(id);
+            } else if (parentState.kind === "relocated") {
+                relocatedChildren.push({
+                    childId: id,
+                    currentParentId: parentState.currentParentId,
+                });
+            } else {
+                unknownParentChildIds.push(id);
+            }
         }
-        if (restoredAllChildren && (component as any).removed === true) {
-            // Cleanup fully succeeded: nothing durable changed, so this is a
-            // clean failure and must NOT carry the partial-mutation flag.
-            throw error;
+
+        const componentChildCount = readDuringRecovery<number | null>(
+            () => Array.isArray(component.children) ? component.children.length : null,
+            null,
+        );
+        const everyOriginalChildConfirmedRestored =
+            restoredChildIds.length === childrenToMove.length &&
+            survivingChildIds.length === 0 &&
+            unknownParentChildIds.length === 0 &&
+            relocatedChildren.length === 0;
+        const componentConfirmedEmpty = componentChildCount === 0;
+        const cleanupIsSafe =
+            sourceFrameRemovalState === "live" &&
+            everyOriginalChildConfirmedRestored &&
+            componentConfirmedEmpty;
+
+        // Remove only after positive proof of all three recovery predicates:
+        // source live, every original child back on source, component empty.
+        if (cleanupIsSafe) {
+            const componentRemoved = removeUncommitted(component, "create_component");
+            if (componentRemoved) {
+                // Cleanup fully succeeded: nothing durable changed, so this is
+                // a clean failure and must NOT carry the partial-mutation flag.
+                throw error;
+            }
+
+            // The source frame and its children were restored, but the new
+            // component itself survives. Preserve the initiating error and
+            // disclose exactly where that artifact remains.
+            const survivor = getCreatorSurvivorEvidence(component, verifiedParentId);
+            const sourceFrameId = readDuringRecovery(() => node.id, "unknown");
+            const sourceFrameName = readDuringRecovery(() => node.name, "unknown");
+            throw withPartialDisclosure(
+                error,
+                `component '${survivor.survivingNodeName}' (${survivor.survivingNodeId}) survives because cleanup could not remove it; its current parent is ${describeCreatorSurvivorParent(survivor)}.`,
+                {
+                    sourceFrameId,
+                    sourceFrameName,
+                    sourceFrameRemoved,
+                    survivingComponentId: survivor.survivingNodeId,
+                    survivingComponentParentState: survivor.survivingParentState,
+                    survivingComponentParentId: survivor.survivingParentId,
+                    verifiedParentId: survivor.verifiedParentId,
+                    sourceFrameRemovalState,
+                    restoredChildIds,
+                    movedChildIds: survivingChildIds,
+                    unknownParentChildIds,
+                    relocatedChildren,
+                    restorationFailures,
+                    componentChildCount,
+                },
+            );
         }
 
         // Q32 (Rev 46): cleanup could not return the document to its prior
@@ -1095,17 +1249,31 @@ export async function createComponent(params: any) {
         // rule is that it is disclosed explicitly, never reported as a clean
         // failure. The before-values are diagnostic evidence (R10): they say
         // what changed so it can be reported and judged, not a restore payload.
+        const survivor = getCreatorSurvivorEvidence(component, verifiedParentId);
+        const sourceFrameId = readDuringRecovery(() => node.id, "unknown");
+        const sourceFrameName = readDuringRecovery(() => node.name, "unknown");
         throw withPartialDisclosure(
             error,
-            sourceFrameRemoved
-                ? `the source frame '${node.name}' was already removed and component '${component.name}' (${component.id}) survives in its place, holding its children.`
-                : `component '${component.name}' (${component.id}) survives and still holds ${childrenToMove.filter((child: any) => child.parent === component).length} of the source frame's children, which could not be restored.`,
+            sourceFrameRemovalState === "removed"
+                ? `the source frame '${sourceFrameName}' was already removed and component '${survivor.survivingNodeName}' (${survivor.survivingNodeId}) survives in its place.`
+                : sourceFrameRemovalState === "unknown"
+                    ? `the source frame '${sourceFrameName}' removal state could not be read, so component '${survivor.survivingNodeName}' (${survivor.survivingNodeId}) was not removed.`
+                    : `component '${survivor.survivingNodeName}' (${survivor.survivingNodeId}) was not removed because one or more children could not be restored or confirmed on the source, or component emptiness could not be confirmed.`,
             {
-                sourceFrameId: node.id,
-                sourceFrameName: node.name,
+                sourceFrameId,
+                sourceFrameName,
                 sourceFrameRemoved,
-                survivingComponentId: component.id,
-                movedChildIds: childrenToMove.map((child: any) => child.id),
+                survivingComponentId: survivor.survivingNodeId,
+                survivingComponentParentState: survivor.survivingParentState,
+                survivingComponentParentId: survivor.survivingParentId,
+                verifiedParentId: survivor.verifiedParentId,
+                sourceFrameRemovalState,
+                restoredChildIds,
+                movedChildIds: survivingChildIds,
+                unknownParentChildIds,
+                relocatedChildren,
+                restorationFailures,
+                componentChildCount,
             }
         );
     }
@@ -1138,6 +1306,12 @@ export interface ComponentSetPlan {
 
 export async function validateCreateComponentSetPlan(params: any, scopeRoot: BaseNode): Promise<ComponentSetPlan> {
     const { components, properties, componentSetName, parentId } = params;
+
+    assertNonEmptyExplicitCreatorName(
+        componentSetName,
+        "componentSetName",
+        "create_component_set",
+    );
 
     if (!components || !Array.isArray(components) || components.length === 0) {
         throw new Error("components must be a non-empty array");
@@ -1292,71 +1466,498 @@ export async function validateCreateComponentSetPlan(params: any, scopeRoot: Bas
 }
 
 export async function createComponentSet(plan: ComponentSetPlan) {
+    assertNonEmptyExplicitCreatorName(
+        plan.componentSetName,
+        "componentSetName",
+        "create_component_set",
+    );
+
     let componentSet: ComponentSetNode;
+    const successfullyRenamed = new Set<any>();
+    const verifiedParentId = readDuringRecovery(
+        () => plan.parent && typeof plan.parent.id === "string"
+            ? plan.parent.id
+            : "unknown",
+        "unknown",
+    );
+    // Capture placement before the first mutation. A failed Figma combine can
+    // reparent live components into a newly-created set and then throw; name
+    // restoration alone is not proof that the document returned to its prior
+    // state.
+    const originalPlacementByNode = new Map<any, {
+        readable: boolean;
+        parentId: string | null;
+    }>();
+    for (const c of plan.components) {
+        const unreadableParent = {};
+        const originalParent = readDuringRecovery<any>(
+            () => c.node ? c.node.parent ?? null : null,
+            unreadableParent,
+        );
+        if (originalParent === unreadableParent) {
+            originalPlacementByNode.set(c.node, {
+                readable: false,
+                parentId: null,
+            });
+        } else {
+            const unreadableParentId = {};
+            const originalParentId = originalParent
+                ? readDuringRecovery<any>(
+                    () => typeof originalParent.id === "string"
+                        ? originalParent.id
+                        : null,
+                    unreadableParentId,
+                )
+                : null;
+            originalPlacementByNode.set(c.node, {
+                readable: originalParentId !== unreadableParentId,
+                parentId: originalParentId === unreadableParentId
+                    ? null
+                    : originalParentId,
+            });
+        }
+    }
     try {
         for (const c of plan.components) {
             c.node.name = c.variantName;
+            successfullyRenamed.add(c.node);
         }
         // D11: combineAsVariants accepts the destination directly, so the set
         // never exists at an implicit page-level location.
         componentSet = figma.combineAsVariants(plan.components.map(c => c.node), plan.parent);
     } catch (error: any) {
-        // A rename or combineAsVariants threw before a component set exists —
-        // restore every original name (skipping removed nodes so restoration
-        // cannot mask the original error) and rethrow. Once the set exists,
-        // renaming members back would corrupt its variant naming, so no
-        // post-combine rollback is attempted (D5).
+        // A thrown combine is not proof that no set exists: Figma may already
+        // have reparented members into a durable COMPONENT_SET. Inspect current
+        // placement before writing any recovery name. Members owned by such a
+        // set must retain their computed variant names; only ordinary pre-set
+        // failures restore originals.
+        type AppliedNameEvidence = {
+            componentId: string;
+            originalName: string;
+            variantName: string;
+            observedNameBeforeRestore: string | null;
+        };
+        type RestoredNameEvidence = AppliedNameEvidence & {
+            currentName: string | null;
+        };
+        type RemovedComponentEvidence = {
+            componentId: string;
+            originalName: string;
+            variantName: string;
+        };
+        type UnknownRemovalEvidence = RemovedComponentEvidence;
+        type ReparentedComponentEvidence = {
+            componentId: string;
+            originalParentId: string | null;
+            currentParentId: string | null;
+            currentParentName: string;
+            currentParentType: string;
+        };
+        type UnverifiedPlacementEvidence = {
+            componentId: string;
+            originalParentId: string | null;
+        };
+        type SetMemberNameEvidence = {
+            componentId: string;
+            componentSetId: string;
+            originalName: string;
+            variantName: string;
+            observedNameBeforeConfirmation: string | null;
+            currentName: string | null;
+        };
+        type SurvivingComponentSetEvidence = {
+            componentSetId: string;
+            componentSetName: string;
+            parentId: string | null;
+            memberIds: string[];
+        };
+        const appliedComponents: AppliedNameEvidence[] = [];
+        const restoredComponents: RestoredNameEvidence[] = [];
+        const unrestoredComponents: RestoredNameEvidence[] = [];
+        const removedComponents: RemovedComponentEvidence[] = [];
+        const unknownRemovalComponents: UnknownRemovalEvidence[] = [];
+        const reparentedComponents: ReparentedComponentEvidence[] = [];
+        const unverifiedPlacementComponents: UnverifiedPlacementEvidence[] = [];
+        const retainedVariantComponents: SetMemberNameEvidence[] = [];
+        const unconfirmedVariantComponents: SetMemberNameEvidence[] = [];
+        const survivingSetByNode = new Map<any, SurvivingComponentSetEvidence>();
         for (const c of plan.components) {
-            if (c.node && (c.node as any).removed !== true) {
-                c.node.name = c.originalName;
+            if (c.node) {
+                const componentId = readDuringRecovery(() => c.node.id, "unknown");
+                const componentRemovalState = readDuringRecovery<"live" | "removed" | "unknown">(
+                    () => {
+                        const removed = (c.node as any).removed;
+                        if (removed === false) return "live";
+                        if (removed === true) return "removed";
+                        return "unknown";
+                    },
+                    "unknown",
+                );
+                const observedNameBeforeRestore = readDuringRecovery(
+                    () => typeof c.node.name === "string" ? c.node.name : null,
+                    null,
+                );
+                const wasApplied =
+                    successfullyRenamed.has(c.node) ||
+                    (observedNameBeforeRestore !== null && observedNameBeforeRestore !== c.originalName);
+                const appliedEvidence = {
+                    componentId,
+                    originalName: c.originalName,
+                    variantName: c.variantName,
+                    observedNameBeforeRestore,
+                };
+                if (wasApplied) {
+                    appliedComponents.push(appliedEvidence);
+                }
+
+                if (componentRemovalState === "removed") {
+                    removedComponents.push({
+                        componentId,
+                        originalName: c.originalName,
+                        variantName: c.variantName,
+                    });
+                    continue;
+                }
+                if (componentRemovalState === "unknown") {
+                    unknownRemovalComponents.push({
+                        componentId,
+                        originalName: c.originalName,
+                        variantName: c.variantName,
+                    });
+                }
+
+                const originalPlacement = originalPlacementByNode.get(c.node) ?? {
+                    readable: false,
+                    parentId: null,
+                };
+                const originalParentId = originalPlacement.parentId;
+                const unreadableParent = {};
+                const currentParent = readDuringRecovery<any>(
+                    () => c.node.parent ?? null,
+                    unreadableParent,
+                );
+                if (currentParent === unreadableParent || !originalPlacement.readable) {
+                    unverifiedPlacementComponents.push({
+                        componentId,
+                        originalParentId,
+                    });
+                    continue;
+                }
+
+                const unreadableParentId = {};
+                const currentParentId = currentParent
+                    ? readDuringRecovery<any>(
+                        () => typeof currentParent.id === "string"
+                            ? currentParent.id
+                            : null,
+                        unreadableParentId,
+                    )
+                    : null;
+                if (currentParentId === unreadableParentId) {
+                    unverifiedPlacementComponents.push({
+                        componentId,
+                        originalParentId,
+                    });
+                    continue;
+                }
+
+                const currentParentName = readDuringRecovery(
+                    () => typeof currentParent?.name === "string"
+                        ? currentParent.name
+                        : "unknown",
+                    "unknown",
+                );
+                const currentParentType = readDuringRecovery(
+                    () => currentParent === null
+                        ? "DETACHED"
+                        : typeof currentParent?.type === "string"
+                            ? currentParent.type
+                            : "unknown",
+                    "unknown",
+                );
+                const placementChanged = currentParentId !== originalParentId;
+                if (placementChanged) {
+                    reparentedComponents.push({
+                        componentId,
+                        originalParentId,
+                        currentParentId,
+                        currentParentName,
+                        currentParentType,
+                    });
+                }
+
+                // A changed parent with unreadable type might itself be the
+                // surviving set. Do not risk corrupting it by restoring the
+                // original name; disclose the unverified placement instead.
+                if (placementChanged && currentParentType === "unknown") {
+                    unverifiedPlacementComponents.push({
+                        componentId,
+                        originalParentId,
+                    });
+                    continue;
+                }
+
+                if (placementChanged && currentParentType === "COMPONENT_SET") {
+                    const componentSetId = currentParentId ?? "unknown";
+                    let setEvidence = survivingSetByNode.get(currentParent);
+                    if (!setEvidence) {
+                        setEvidence = {
+                            componentSetId,
+                            componentSetName: currentParentName,
+                            parentId: readDuringRecovery(
+                                () => typeof currentParent?.parent?.id === "string"
+                                    ? currentParent.parent.id
+                                    : null,
+                                null,
+                            ),
+                            memberIds: [],
+                        };
+                        survivingSetByNode.set(currentParent, setEvidence);
+                    }
+                    setEvidence.memberIds.push(componentId);
+
+                    // Retain the valid variant name. If Figma left a different
+                    // name, best-effort confirmation writes the computed
+                    // variant — never the original pre-set name.
+                    if (observedNameBeforeRestore !== c.variantName) {
+                        try {
+                            c.node.name = c.variantName;
+                        } catch (confirmError: any) {
+                            reportRecoveryError(
+                                `create_component_set: failed to confirm variant name for surviving set member '${componentId}'`,
+                                confirmError,
+                            );
+                        }
+                    }
+                    const currentName = readDuringRecovery(
+                        () => typeof c.node.name === "string" ? c.node.name : null,
+                        null,
+                    );
+                    const setMemberEvidence = {
+                        componentId,
+                        componentSetId,
+                        originalName: c.originalName,
+                        variantName: c.variantName,
+                        observedNameBeforeConfirmation: observedNameBeforeRestore,
+                        currentName,
+                    };
+                    if (currentName === c.variantName) {
+                        retainedVariantComponents.push(setMemberEvidence);
+                    } else {
+                        unconfirmedVariantComponents.push(setMemberEvidence);
+                    }
+                    continue;
+                }
+
+                let restoreError: any = null;
+                try {
+                    c.node.name = c.originalName;
+                } catch (caught: any) {
+                    restoreError = caught;
+                    reportRecoveryError(
+                        `create_component_set: failed to restore component '${componentId}' to its original name`,
+                        caught,
+                    );
+                }
+
+                const currentName = readDuringRecovery(
+                    () => typeof c.node.name === "string" ? c.node.name : null,
+                    null,
+                );
+                if (currentName !== c.originalName) {
+                    unrestoredComponents.push({
+                        ...appliedEvidence,
+                        currentName,
+                    });
+                } else if (wasApplied) {
+                    restoredComponents.push({
+                        ...appliedEvidence,
+                        currentName,
+                    });
+                }
+                if (restoreError && currentName === c.originalName) {
+                    reportRecoveryError(
+                        `create_component_set: component '${componentId}' restored despite its setter reporting an error`,
+                        restoreError,
+                    );
+                }
             }
+        }
+        const survivingComponentSets = Array.from(survivingSetByNode.values());
+        if (
+            unrestoredComponents.length > 0 ||
+            removedComponents.length > 0 ||
+            unknownRemovalComponents.length > 0 ||
+            reparentedComponents.length > 0 ||
+            unverifiedPlacementComponents.length > 0 ||
+            survivingComponentSets.length > 0 ||
+            unconfirmedVariantComponents.length > 0
+        ) {
+            throw withPartialDisclosure(
+                error,
+                `${appliedComponents.length} component variant name(s) were applied before create_component_set failed; ${retainedVariantComponents.length} remain valid members of ${survivingComponentSets.length} surviving set(s), ${unconfirmedVariantComponents.length} surviving-set member name(s) could not be confirmed, ${restoredComponents.length} ordinary member name(s) were restored, ${unrestoredComponents.length} could not be restored, ${removedComponents.length} component(s) were removed, ${unknownRemovalComponents.length} have unreadable removal state, ${reparentedComponents.length} remain under a different parent, and ${unverifiedPlacementComponents.length} have unreadable placement.`,
+                {
+                    appliedComponents,
+                    restoredComponents,
+                    unrestoredComponents,
+                    removedComponents,
+                    unknownRemovalComponents,
+                    reparentedComponents,
+                    unverifiedPlacementComponents,
+                    survivingComponentSets,
+                    retainedVariantComponents,
+                    unconfirmedVariantComponents,
+                },
+            );
         }
         throw error;
     }
 
-    // Post-combine steps can still fail, but direct-parent construction keeps
-    // the component set inside the verified destination throughout. Renaming
-    // members back after the combine would corrupt the set's variant naming, so
-    // there is no rollback here (D5's no-transaction posture) — which makes
-    // disclosure mandatory: Q32 (Rev 46) requires a mutate-then-fail to be
-    // reported as partial, never as a clean failure.
-    if (plan.componentSetName) {
+    // The combine has now durably mutated the document. Snapshot the required
+    // response/evidence fields before any later operation, and verify that
+    // Figma honored the direct-parent destination. An unreadable or mismatched
+    // location is a partial outcome, never a clean projection failure.
+    const unreadableSetValue = {};
+    const componentSetId = readDuringRecovery<any>(
+        () => typeof componentSet.id === "string"
+            ? componentSet.id
+            : unreadableSetValue,
+        unreadableSetValue,
+    );
+    const initialComponentSetName = readDuringRecovery<any>(
+        () => typeof componentSet.name === "string"
+            ? componentSet.name
+            : unreadableSetValue,
+        unreadableSetValue,
+    );
+    const componentSetParentId = readDuringRecovery<any>(
+        () => typeof componentSet.parent?.id === "string"
+            ? componentSet.parent.id
+            : null,
+        unreadableSetValue,
+    );
+    if (
+        componentSetId === unreadableSetValue ||
+        initialComponentSetName === unreadableSetValue ||
+        componentSetParentId === unreadableSetValue ||
+        componentSetParentId !== verifiedParentId
+    ) {
+        throw withPartialDisclosure(
+            new Error(
+                componentSetParentId !== unreadableSetValue &&
+                componentSetParentId !== verifiedParentId
+                    ? `create_component_set: Figma created the set under parent '${componentSetParentId ?? "detached/null"}' instead of verified parent '${verifiedParentId}'.`
+                    : "create_component_set: the created set's identity or parent could not be read safely.",
+            ),
+            "the component set was already created and its members already carry their variant names, but the set's identity/location could not be confirmed for a normal success response.",
+            {
+                componentSetId:
+                    componentSetId === unreadableSetValue
+                        ? "unknown"
+                        : componentSetId,
+                componentSetName:
+                    initialComponentSetName === unreadableSetValue
+                        ? "unknown"
+                        : initialComponentSetName,
+                componentSetParentId:
+                    componentSetParentId === unreadableSetValue
+                        ? null
+                        : componentSetParentId,
+                verifiedParentId,
+                variantNames: plan.components.map((c) => c.variantName),
+                originalComponentNames: plan.components.map((c) => c.originalName),
+            },
+        );
+    }
+
+    // Post-combine steps can still fail. Renaming members back would corrupt
+    // their valid variant naming, so no post-combine rollback is attempted
+    // (D5's no-transaction posture); every later failure must carry the set
+    // snapshot above.
+    let finalComponentSetName = initialComponentSetName as string;
+    if (plan.componentSetName !== undefined) {
         try {
             componentSet.name = plan.componentSetName;
         } catch (error: any) {
+            const observedName = readDuringRecovery(
+                () => typeof componentSet.name === "string"
+                    ? componentSet.name
+                    : "unknown",
+                "unknown",
+            );
             throw withPartialDisclosure(
                 error,
-                `component set '${componentSet.name}' (${componentSet.id}) was already created from the listed components and their names were changed to variant names; only the set's own rename failed.`,
+                `component set '${observedName}' (${componentSetId}) was already created from the listed components and their names were changed to variant names; only the set's own rename failed.`,
                 {
-                    componentSetId: componentSet.id,
-                    componentSetName: componentSet.name,
+                    componentSetId,
+                    componentSetName: observedName,
+                    componentSetParentId,
+                    verifiedParentId,
                     variantNames: plan.components.map((c) => c.variantName),
                     originalComponentNames: plan.components.map((c) => c.originalName),
-                }
+                },
             );
         }
+
+        const observedName = readDuringRecovery<any>(
+            () => typeof componentSet.name === "string"
+                ? componentSet.name
+                : unreadableSetValue,
+            unreadableSetValue,
+        );
+        if (
+            observedName === unreadableSetValue ||
+            observedName !== plan.componentSetName
+        ) {
+            throw withPartialDisclosure(
+                new Error(
+                    observedName === unreadableSetValue
+                        ? "create_component_set: the set rename completed but its resulting name could not be read safely."
+                        : `create_component_set: the requested set name '${plan.componentSetName}' did not persist; observed '${observedName}'.`,
+                ),
+                "the component set was already created and its members already carry their variant names, but the requested set name could not be confirmed.",
+                {
+                    componentSetId,
+                    componentSetName:
+                        observedName === unreadableSetValue
+                            ? "unknown"
+                            : observedName,
+                    componentSetParentId,
+                    verifiedParentId,
+                    requestedComponentSetName: plan.componentSetName,
+                    variantNames: plan.components.map((c) => c.variantName),
+                    originalComponentNames: plan.components.map((c) => c.originalName),
+                },
+            );
+        }
+        finalComponentSetName = observedName;
     }
 
-    // variantGroupProperties can throw after fully successful mutation; never
-    // convert that into a failure — return success with a warning instead.
+    // Optional projection reads cannot erase a fully confirmed mutation.
     let variantGroupProperties: any = undefined;
-    let warning: string | undefined = undefined;
+    let childCount: number | undefined = undefined;
+    const warnings: string[] = [];
     try {
         variantGroupProperties = componentSet.variantGroupProperties;
     } catch (err: any) {
-        warning = `Failed to read variant properties: ${err.message || String(err)}`;
+        warnings.push(`Failed to read variant properties: ${describeError(err)}`);
+    }
+    try {
+        childCount = componentSet.children.length;
+    } catch (err: any) {
+        warnings.push(`Failed to read component-set child count: ${describeError(err)}`);
     }
 
     return {
-        id: componentSet.id,
-        name: componentSet.name,
+        id: componentSetId,
+        name: finalComponentSetName,
         type: "COMPONENT_SET",
         // D11: report where the set actually landed, so the caller can confirm
         // containment from the response instead of re-reading.
-        parentId: componentSet.parent ? componentSet.parent.id : undefined,
-        childCount: componentSet.children.length,
+        parentId: componentSetParentId,
+        childCount,
         variantProperties: variantGroupProperties,
-        warning
+        warning: warnings.length > 0 ? warnings.join(" ") : undefined,
     };
 }
 

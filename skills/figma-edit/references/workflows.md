@@ -60,8 +60,17 @@ These are the canonical shapes. Adapt parameters; do not skip steps.
 1. node_info({ nodeIds: [frameId], maxDepth: 0 })       → confirm parent name and check that parent is not inside an INSTANCE (structural edits inside instances are blocked)
 2. create_shape({ type: "RECTANGLE", parentId: frameId,
                   parentNodeName: <verbatim name>,
-                  x, y, width, height })
+                  x, y, width, height })                 → on success, confirm returned parentId === frameId
+3. If the call fails with details.partialMutation: true, inspect
+   details.before.survivingNodeId, survivingParentState, survivingParentId,
+   and verifiedParentId; reconcile the survivor before retrying. "located"
+   carries an exact parent ID, "detached" means observed null, and "unknown"
+   means the parent or ID could not be read safely.
 ```
+
+Figma's implicit creators construct on `currentPage` for part of one synchronous stack, then the plugin immediately inserts into the verified destination. Cleanup after a later failure is best-effort, which is why a failed call can carry survivor evidence even though a successful call cannot return at the wrong parent.
+
+Error normalization is also fail-safe: a hostile thrown value whose error getters or string conversion throw becomes `UNKNOWN_ERROR` instead of breaking the response. That fallback does not cancel `details.partialMutation`; always reconcile any surviving evidence before issuing another write.
 
 ### Apply an image or clear a fill
 
@@ -93,6 +102,23 @@ When applying variables, certain properties require the node to be in a specific
 3. <write tool>({ nodeId: urlId, nodeName: <name from step 2>, ... })
 ```
 
+### Convert a frame into a component (`create_component`)
+
+```
+1. node_info({ nodeIds: [frameId], maxDepth: 0 })       → verify exact name, type FRAME, and parent
+2. Verify the frame is not the editable scope root and is not inside an INSTANCE.
+3. create_component({ nodeId: frameId,
+                      nodeName: <verbatim name> })       → on success, verify returned parentId
+4. If refused as instance-interior, edit the main component or use instance overrides.
+5. If details.partialMutation is true, inspect survivingComponentId,
+   survivingComponentParentState, survivingComponentParentId,
+   sourceFrameRemovalState, restoredChildIds, movedChildIds,
+   unknownParentChildIds, relocatedChildren, restorationFailures, and
+   componentChildCount before deleting, restoring, or retrying anything.
+   Only "located" supplies a confirmed parent ID; "detached" requires an
+   observed null parent, and "unknown" never authorizes deletion.
+```
+
 ### Combine components into a component set (create_component_set)
 
 ```
@@ -100,14 +126,59 @@ When applying variables, certain properties require the node to be in a specific
                                                          not already inside a component set; take names verbatim
 2. Choose properties (e.g. ["Size"]) and one propertyValues row per component — every combination must be
    unique, and values must be non-empty without '=' or ','
-3. node_info({ nodeIds: [parentId], maxDepth: 0 })     → optional parent: appendable, in scope, not inside an
+3. node_info({ nodeIds: [parentId], maxDepth: 0 })     → required parent: appendable, in scope, not inside an
                                                          instance, and NOT one of the combined components
 4. create_component_set({
      components: [ { nodeId, nodeName: <name verbatim>, propertyValues: ["Small"] }, … ],
      properties: ["Size"],
      componentSetName: "My Component Set",
      parentId, parentNodeName: <parent name verbatim> })  → combine (variant names are computed from propertyValues)
+   Omit `componentSetName` to keep Figma's default set name, or supply a
+   non-empty name. An explicit `""` is rejected before any rename/combine
+   because Figma would normalize it instead of preserving the request.
+5. On success, verify returned parentId === requested parentId.
+6. On details.partialMutation:
+   - before.appliedComponents/restoredComponents/unrestoredComponents,
+     removedComponents/unknownRemovalComponents, and
+     reparentedComponents/unverifiedPlacementComponents means the combine
+     failed during rename/combine recovery. Unknown removal or placement is
+     never proof that another write is safe.
+   - before.survivingComponentSets/retainedVariantComponents/
+     unconfirmedVariantComponents means combine created or exposed a surviving
+     set before throwing. Keep each member's computed `Property=Value` variant
+     name; repair an unconfirmed variant name only after a fresh read proves it
+     is safely writable, and never restore its old ordinary name. A changed
+     parent whose type was unreadable also blocks an original-name restore.
+   - before.componentSetId means the set already exists; inspect/finish that set and
+     compare componentSetParentId with verifiedParentId; do not retry the combine
+     while it remains.
+   Reconcile every populated bucket before retrying, even when the initiating
+   error code was normalized to UNKNOWN_ERROR.
 ```
+
+### List annotations below a container root
+
+```
+1. node_info({ nodeIds: [rootId], maxDepth: 0 })       → verify the intended traversal root
+2. annotation_list({ nodeId: rootId })                 → GROUP/FRAME roots are valid even when the root
+                                                         itself has no annotations; annotated descendants
+                                                         are returned in grouped annotatedNodes entries
+```
+
+Pass exactly one of `nodeId` or `pageId`. The `annotation_set` mixin restriction applies to the node being written, not to an `annotation_list` traversal root.
+
+After `annotation_set`, treat counts as verified only when their matching flags are true. A failed row with `outcomeUnknown: true` means the append was attempted but post-state could not be read (`afterCount` is null and `afterCountVerified` is false); preserve the initiating `error`, treat `postStateError` as secondary evidence, and run `annotation_list` before retrying so an already-committed annotation is not duplicated.
+
+### Set effects without silent field loss
+
+```
+1. node_info({ nodeIds: [nodeId], properties: ["name", "effects"], maxDepth: 0 })
+2. node_set_effects({ nodeId, nodeName, effects: [...] })   → exactly DROP_SHADOW, INNER_SHADOW,
+                                                              LAYER_BLUR, or BACKGROUND_BLUR
+   OR style_manage({ type: "EFFECT", ... })                 → those four plus NOISE, TEXTURE, GLASS
+```
+
+Effect objects are strict per `type`: cross-variant keys are errors, not ignored hints, and `blendMode` must be one of the advertised Figma enum literals. `showShadowBehindNode` is DROP_SHADOW-only; progressive blur ramp fields must be supplied together with `blurType: "PROGRESSIVE"`. Supplied colors require complete RGBA channels in `0–1`; shadow/blur and GLASS radii are non-negative; GLASS `lightIntensity`, `refraction`, and `dispersion` are `0–1`, while `depth: 0` is valid.
 
 ### Bulk text replacement (large designs)
 

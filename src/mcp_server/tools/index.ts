@@ -23,10 +23,11 @@ import { registerChannelTools } from "./channel.js";
  * Do not read "polymorphic Figma payload" as the membership rule and extend the
  * list by analogy. Other tools take Figma union payloads too — notably
  * `node_set_effects.effects[]` and the paint objects on the `node_set_*`
- * setters — and they are deliberately STRICT: their plugin handlers rebuild the
- * value from enumerated fields (`normalizeEffects`), so an extra key would be
- * accepted at the boundary and then silently discarded, which is precisely the
- * intent loss recursive strictness exists to prevent. The test in
+ * setters — and they are deliberately STRICT. Their schemas are the authority
+ * for known fields and cross-variant gates; `normalizeEffects` overlays defaults
+ * while preserving those validated fields. Accepting an unknown key would make
+ * intent ambiguous even if the handler happened to forward it, which is
+ * precisely the intent loss recursive strictness exists to prevent. The test in
  * `v2.3.3.phase7.test.ts` pins this list exactly, so membership changes only by
  * explicit decision.
  *
@@ -61,7 +62,7 @@ function parseRelativeSchemaPath(formattedPath: string, toolName: string): strin
  * also contain objects behind arrays, optionals, unions, records, and recursive
  * lazy schemas, so a top-level call silently leaves those nested objects in
  * Zod's default strip mode. This traversal rebuilds the schema graph and sets a
- * `z.never()` catchall on every object except the three explicitly inventoried
+ * `z.never()` catchall on every object except the two explicitly inventoried
  * polymorphic style payloads above. Checks/refinements and all non-object
  * constraints are preserved by reusing leaf schemas and cloning only containers
  * whose descendants change.
@@ -295,6 +296,81 @@ export function recursivelyStrictInputSchema<T>(schema: T, toolName: string): T 
     return visit(schema, []) as T;
 }
 
+type SafeErrorPropertyRead = {
+    readable: boolean;
+    value?: any;
+};
+
+function readThrownProperty(value: any, property: string): SafeErrorPropertyRead {
+    try {
+        return {
+            readable: true,
+            value: value[property],
+        };
+    } catch {
+        return { readable: false };
+    }
+}
+
+function renderThrownValue(value: any): string {
+    if (typeof value === "string") return value || "Error executing command";
+    try {
+        const rendered = String(value);
+        return rendered || "Error executing command";
+    } catch {
+        return "Error executing command";
+    }
+}
+
+function copyReadableThrownDetails(value: any): any {
+    if (value === undefined) return undefined;
+    if (value === null || typeof value !== "object") return value;
+    try {
+        if (Array.isArray(value)) return [...value];
+        return { ...value };
+    } catch {
+        return undefined;
+    }
+}
+
+function describeThrownForToolBoundary(error: any): {
+    code: string;
+    message: string;
+    details?: any;
+} {
+    const isObj = error !== null && typeof error === "object";
+    const codeRead: SafeErrorPropertyRead = isObj
+        ? readThrownProperty(error, "code")
+        : { readable: false };
+    const messageRead: SafeErrorPropertyRead = isObj
+        ? readThrownProperty(error, "message")
+        : { readable: false };
+    const detailsRead: SafeErrorPropertyRead = isObj
+        ? readThrownProperty(error, "details")
+        : { readable: false };
+    const result: {
+        code: string;
+        message: string;
+        details?: any;
+    } = {
+        code:
+            codeRead.readable && typeof codeRead.value === "string"
+                ? codeRead.value
+                : UNKNOWN_ERROR,
+        message:
+            messageRead.readable &&
+            typeof messageRead.value === "string" &&
+            messageRead.value.length > 0
+                ? messageRead.value
+                : renderThrownValue(error),
+    };
+    if (detailsRead.readable) {
+        const details = copyReadableThrownDetails(detailsRead.value);
+        if (details !== undefined) result.details = details;
+    }
+    return result;
+}
+
 /**
  * Wraps a server so every tool's `inputSchema` is registered with *recursive*
  * strictness (reject unknown keys at every object depth) instead of the Zod
@@ -347,10 +423,12 @@ export function withStrictInputSchemas(server: McpServer): McpServer {
                         try {
                             return await cb(args, extra);
                         } catch (error: any) {
-                            const isObj = error !== null && typeof error === "object";
-                            const code = (isObj && typeof error.code === "string") ? error.code : UNKNOWN_ERROR;
-                            const message = (isObj && error.message) ? error.message : String(error);
-                            const details = isObj ? error.details : undefined;
+                            // A thrown value is untrusted input. Hostile Proxies
+                            // can reject code/message/details reads as well as
+                            // String(error); error transport must still resolve
+                            // to the canonical in-band UNKNOWN_ERROR envelope.
+                            const { code, message, details } =
+                                describeThrownForToolBoundary(error);
                             return {
                                 content: [
                                     {

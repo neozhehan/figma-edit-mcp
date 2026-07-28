@@ -239,26 +239,80 @@ export function notifyBestEffort(message: string): void {
     }
 }
 
+type SafePropertyRead = {
+    readable: boolean;
+    value?: any;
+};
+
+function readErrorProperty(value: any, property: string): SafePropertyRead {
+    try {
+        return {
+            readable: true,
+            value: value[property],
+        };
+    } catch {
+        return { readable: false };
+    }
+}
+
+/**
+ * Copies the top-level details record before it is merged into a
+ * partial-mutation disclosure. A hostile Proxy can make enumeration or a field
+ * read throw; those optional details are then omitted instead of being allowed
+ * to erase the primary outcome.
+ */
+function copyReadableErrorDetails(value: any): any {
+    if (value === undefined) return undefined;
+    if (value === null || typeof value !== "object") return value;
+    try {
+        if (Array.isArray(value)) return [...value];
+        return { ...value };
+    } catch {
+        return undefined;
+    }
+}
+
+function structuredErrorFromObject(
+    value: any,
+): { code: string; message: string; details?: any } | null {
+    if (value === null || typeof value !== "object") return null;
+
+    const codeRead = readErrorProperty(value, "code");
+    if (!codeRead.readable || typeof codeRead.value !== "string") return null;
+
+    const messageRead = readErrorProperty(value, "message");
+    const detailsRead = readErrorProperty(value, "details");
+    const result: { code: string; message: string; details?: any } = {
+        code: codeRead.value,
+        message:
+            messageRead.readable &&
+            typeof messageRead.value === "string" &&
+            messageRead.value.length > 0
+                ? messageRead.value
+                : "Error executing command",
+    };
+    if (detailsRead.readable) {
+        const details = copyReadableErrorDetails(detailsRead.value);
+        if (details !== undefined) result.details = details;
+    }
+    return result;
+}
+
 // Formats a thrown value into the structured `{code, message, details?}` shape.
 // The only classification is structural (Q16): a thrown coded object passes
 // through untouched; anything else is the ratified legacy fallback
 // UNKNOWN_ERROR, whose recovery is the message text itself. Codes are never
-// derived from message prose.
+// derived from message prose. Every property read is guarded because a thrown
+// Proxy is adversarial input too: reporting an error must itself be total.
 export function getStructuredError(e: any): { code: string; message: string; details?: any } {
-    if (e && typeof e === "object") {
-        if (typeof e.code === "string") {
-            return {
-                code: e.code,
-                message: e.message || "Error executing command",
-                details: e.details
-            };
-        }
-        if (e.error && typeof e.error.code === "string") {
-            return {
-                code: e.error.code,
-                message: e.error.message || "Error executing command",
-                details: e.error.details
-            };
+    const direct = structuredErrorFromObject(e);
+    if (direct) return direct;
+
+    if (e !== null && typeof e === "object") {
+        const nestedRead = readErrorProperty(e, "error");
+        if (nestedRead.readable) {
+            const nested = structuredErrorFromObject(nestedRead.value);
+            if (nested) return nested;
         }
     }
 

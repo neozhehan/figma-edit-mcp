@@ -10,6 +10,7 @@ let createRectangleCalled = false;
 let createFrameCalled = false;
 let createTextCalled = false;
 let createInstanceCalled = false;
+let createComponentCalled = false;
 let appendChildCalledOnParent = false;
 let insertChildCalledOnParent = false;
 
@@ -49,6 +50,10 @@ const gateFigma = {
         createNodeFromSvgCalled = true;
         return { id: "svg-id", name: "Svg", type: "FRAME" };
     },
+    createComponent: () => {
+        createComponentCalled = true;
+        return { id: "component-id", name: "Component", type: "COMPONENT" };
+    },
     importComponentByKeyAsync: async (key: string) => {
         return {
             id: "remote-comp-id",
@@ -82,6 +87,7 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
         createFrameCalled = false;
         createTextCalled = false;
         createInstanceCalled = false;
+        createComponentCalled = false;
         appendChildCalledOnParent = false;
         insertChildCalledOnParent = false;
     });
@@ -332,6 +338,84 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             const res = await sendCommand("create_svg", { parentId: "parent-id", parentNodeName: "Parent Node", svg: "<svg></svg>" });
             expect(res.type).toBe("command-result");
             expect(createNodeFromSvgCalled).toBe(true);
+        });
+    });
+
+    describe("create_component tests", () => {
+        it("rejects a source frame inside an instance before createComponent() can create an orphan", async () => {
+            const { targetNode, parentNode } = setupEnvironment();
+            parentNode.type = "INSTANCE";
+
+            const res = await sendCommand("create_component", {
+                nodeId: targetNode.id,
+                nodeName: targetNode.name,
+            });
+
+            expect(res.type).toBe("command-error");
+            expect(res.error.message).toContain("inside a component instance");
+            expect(res.error.message).toContain("cannot be converted to a component directly");
+            expect(createComponentCalled).toBe(false);
+            expect(insertChildCalledOnParent).toBe(false);
+        });
+    });
+
+    describe("creator cleanup disclosure through the real dispatcher", () => {
+        it("preserves append failure and transports survivor evidence when cleanup also fails", async () => {
+            const { parentNode } = setupEnvironment();
+            const implicitPage = {
+                id: "page-id",
+                name: "Page",
+                type: "PAGE",
+                children: [] as any[],
+            };
+            const survivor: any = {
+                id: "survivor-id",
+                name: "Rectangle",
+                type: "RECTANGLE",
+                removed: false,
+                parent: implicitPage,
+                remove: () => {
+                    throw new Error("CLEANUP_FAILURE");
+                },
+            };
+            implicitPage.children.push(survivor);
+            parentNode.appendChild = () => {
+                throw new Error("APPEND_FAILURE");
+            };
+
+            const originalCreateRectangle = (gateFigma as any).createRectangle;
+            const originalConsoleError = console.error;
+            let res: any;
+            try {
+                (gateFigma as any).createRectangle = () => {
+                    createRectangleCalled = true;
+                    return survivor;
+                };
+                console.error = () => {};
+                res = await sendCommand("create_shape", {
+                    type: "RECTANGLE",
+                    parentId: parentNode.id,
+                    parentNodeName: parentNode.name,
+                });
+            } finally {
+                (gateFigma as any).createRectangle = originalCreateRectangle;
+                console.error = originalConsoleError;
+            }
+
+            expect(res.type).toBe("command-error");
+            expect(res.error.message).toContain("APPEND_FAILURE");
+            expect(res.error.message).not.toContain("CLEANUP_FAILURE");
+            expect(res.error.details?.partialMutation).toBe(true);
+            expect(res.error.details?.before).toEqual({
+                survivingNodeId: survivor.id,
+                survivingNodeName: survivor.name,
+                survivingNodeType: survivor.type,
+                survivingParentState: "located",
+                survivingParentId: implicitPage.id,
+                verifiedParentId: parentNode.id,
+            });
+            expect(survivor.removed).toBe(false);
+            expect(survivor.parent).toBe(implicitPage);
         });
     });
 
