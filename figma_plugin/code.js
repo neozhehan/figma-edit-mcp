@@ -1292,10 +1292,10 @@
   };
 
   // figma_plugin/utils/creatorValidation.ts
-  function assertNonEmptyExplicitName(value, parameterName, command) {
+  function assertNonEmptyExplicitName(value, parameterName, command, recovery) {
     if (value === "") {
       throw new Error(
-        `${command}: ${parameterName} must not be empty. Omit ${parameterName} to use the default name.`
+        `${command}: ${parameterName} must not be empty. ${recovery}`
       );
     }
   }
@@ -1330,7 +1330,12 @@
     if (!type) {
       throw new Error("Missing shape type parameter");
     }
-    assertNonEmptyExplicitName(name, "name", "create_shape");
+    assertNonEmptyExplicitName(
+      name,
+      "name",
+      "create_shape",
+      "Omit name to use the default name."
+    );
     const upperType = type.toUpperCase();
     if (arcData !== void 0 && upperType !== "ELLIPSE") {
       throw new Error(`arcData is only supported for shape type ELLIPSE, got ${type}`);
@@ -1453,7 +1458,12 @@
       layoutSizingVertical = "FIXED",
       itemSpacing = 0
     } = params || {};
-    assertNonEmptyExplicitName(name, "name", "create_frame");
+    assertNonEmptyExplicitName(
+      name,
+      "name",
+      "create_frame",
+      "Omit name to use the default name."
+    );
     const parentNode = await resolveAppendableParent(parentId, "create_frame");
     const frame = figma.createFrame();
     try {
@@ -1557,7 +1567,12 @@
       name,
       parentId
     } = params || {};
-    assertNonEmptyExplicitName(name, "name", "create_text");
+    assertNonEmptyExplicitName(
+      name,
+      "name",
+      "create_text",
+      "Omit name to use the default name."
+    );
     const fontStyle = getFontStyle(fontWeight);
     const parentNode = await resolveAppendableParent(parentId, "create_text");
     const textNode = figma.createText();
@@ -1966,7 +1981,12 @@
     if (name === void 0) {
       throw new Error("Missing name parameter");
     }
-    assertNonEmptyExplicitName(name, "name", "node_rename");
+    assertNonEmptyExplicitName(
+      name,
+      "name",
+      "node_rename",
+      "Supply a non-empty name."
+    );
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
@@ -1984,7 +2004,12 @@
     if (!nodes || nodes.length < 2) {
       throw new Error("At least 2 nodes are required to create a group");
     }
-    assertNonEmptyExplicitName(name, "name", "node_group");
+    assertNonEmptyExplicitName(
+      name,
+      "name",
+      "node_group",
+      "Omit name to use Figma's default group name."
+    );
     const resolvedNodes = [];
     for (const { nodeId } of nodes) {
       const node = await figma.getNodeByIdAsync(nodeId);
@@ -3405,7 +3430,8 @@
     assertNonEmptyExplicitName(
       componentSetName,
       "componentSetName",
-      "create_component_set"
+      "create_component_set",
+      "Omit componentSetName to use Figma's default component-set name."
     );
     if (!components || !Array.isArray(components) || components.length === 0) {
       throw new Error("components must be a non-empty array");
@@ -3533,7 +3559,8 @@
     assertNonEmptyExplicitName(
       plan.componentSetName,
       "componentSetName",
-      "create_component_set"
+      "create_component_set",
+      "Omit componentSetName to use Figma's default component-set name."
     );
     let componentSet;
     const successfullyRenamed = /* @__PURE__ */ new Set();
@@ -3943,9 +3970,23 @@
       newDefaultValue,
       preferredValues
     } = params || {};
-    if (!nodeId || !action || !propertyName) {
+    if (!nodeId || !action || propertyName == null) {
       throw new Error("Missing nodeId, action, or propertyName parameter");
     }
+    if (action === "ADD") {
+      assertNonEmptyExplicitName(
+        propertyName,
+        "propertyName",
+        "component_manage_property ADD",
+        "Supply a non-empty propertyName."
+      );
+    }
+    assertNonEmptyExplicitName(
+      newPropertyName,
+      "newPropertyName",
+      "component_manage_property EDIT",
+      "Omit newPropertyName to leave the component property's name unchanged."
+    );
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
@@ -5822,6 +5863,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "CREATE_COLLECTION": {
         const { name, modeName } = params;
         if (!name) throw new Error("Missing name for collection");
+        assertNonEmptyExplicitName(
+          modeName,
+          "modeName",
+          "variable_manage CREATE_COLLECTION",
+          "Omit modeName to keep the collection's default mode name."
+        );
         const collection = figma.variables.createVariableCollection(name);
         if (modeName) {
           collection.renameMode(collection.modes[0].modeId, modeName);
@@ -5890,6 +5937,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "UPDATE_VARIABLE": {
         const { variableId, name, value, modeId, description, currentVariableName, scopes } = params;
         if (!variableId) throw new Error("Missing variableId for update");
+        assertNonEmptyExplicitName(
+          name,
+          "name",
+          "variable_manage UPDATE_VARIABLE",
+          "Omit name to leave the variable's name unchanged."
+        );
         if (!currentVariableName) {
           throw REFUSALS.VARIABLE_NAME_MISSING();
         }
@@ -5971,7 +6024,8 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       throw new Error("Missing required parameter: type is required.");
     }
     if (name === "") {
-      throw new Error("Style name must not be empty. Omit name to leave the style's name unchanged.");
+      const recovery = styleId === void 0 ? "Supply a non-empty name for the new style." : "Omit name to leave the style's name unchanged.";
+      throw new Error(`Style name must not be empty. ${recovery}`);
     }
     if (styleId !== void 0) {
       if (!currentStyleName) {
@@ -6227,7 +6281,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     if (!svg) {
       throw new Error("Missing required parameter: svg string.");
     }
-    assertNonEmptyExplicitName(name, "name", "create_svg");
+    assertNonEmptyExplicitName(
+      name,
+      "name",
+      "create_svg",
+      "Omit name to use the default name."
+    );
     const parentNode = await resolveAppendableParent(parentId, "create_svg");
     const node = figma.createNodeFromSvg(svg);
     try {

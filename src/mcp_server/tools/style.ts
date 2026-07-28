@@ -333,7 +333,10 @@ export function registerStyleTools(server: McpServer) {
                 type: z
                     .enum(["TEXT", "PAINT", "EFFECT", "GRID"])
                     .describe("Type of style to create or update"),
-                name: z.string().optional().describe("Name of the style (REQUIRED for CREATE)"),
+                name: z
+                    .string()
+                    .optional()
+                    .describe("Style name. Must be non-empty when supplied. REQUIRED for CREATE; omit it on UPDATE to leave the current style name unchanged."),
                 description: z.string().optional().describe("Description of the style"),
                 properties: styleProperties
                     .optional()
@@ -348,10 +351,13 @@ export function registerStyleTools(server: McpServer) {
                 // Empty names are rejected, never assigned: a style named ""
                 // could not pass exact-name verification afterward (P4-6).
                 if (data.name === "") {
+                    const recovery = data.styleId === undefined
+                        ? "Supply a non-empty name for the new style."
+                        : "Omit name to leave the style's name unchanged.";
                     ctx.addIssue({
                         code: z.ZodIssueCode.custom,
                         path: ["name"],
-                        message: "name must not be empty. Omit name to leave the style's name unchanged."
+                        message: `name must not be empty. ${recovery}`
                     });
                 }
                 // Create/update splits on PRESENCE, not truthiness: an explicit

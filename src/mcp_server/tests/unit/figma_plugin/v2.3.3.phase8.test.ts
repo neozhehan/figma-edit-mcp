@@ -109,8 +109,12 @@ const {
     createComponent,
     createComponentInstance,
     createComponentSet,
+    manageComponentProperty,
     validateCreateComponentSetPlan,
 } = await import("../../../../../figma_plugin/handlers/componentHandlers.js?phase8");
+const { handleVariableRequest } = await import(
+    "../../../../../figma_plugin/handlers/variableHandlers.js?phase8-name-assignment"
+);
 const { flattenNode } = await import("../../../../../figma_plugin/handlers/nodeModifiers.js?phase8");
 
 function installFigma() {
@@ -2363,9 +2367,15 @@ describe("v2.3.3 F78-21: name-assignment tools refuse an exact-empty name", () =
             "../../../../../figma_plugin/handlers/nodeModifiers.js?f7821-rename"
         );
 
-        await expect(setNodeName({ nodeId: "target", name: "" })).rejects.toThrow(
-            "node_rename: name must not be empty",
-        );
+        let refusal: any = null;
+        try {
+            await setNodeName({ nodeId: "target", name: "" });
+        } catch (error) {
+            refusal = error;
+        }
+        expect(refusal?.message).toContain("node_rename: name must not be empty");
+        expect(refusal?.message).toContain("Supply a non-empty name");
+        expect(refusal?.message).not.toContain("Omit name");
         expect(target.name, "the node must not be renamed").toBe("Target");
 
         const renamed = await setNodeName({ nodeId: "target", name: "  " });
@@ -2391,11 +2401,13 @@ describe("v2.3.3 F78-21: name-assignment tools refuse an exact-empty name", () =
         );
         await expect(
             groupNodes({ nodes: [{ nodeId: "first" }, { nodeId: "second" }], name: "" }),
-        ).rejects.toThrow("node_group: name must not be empty");
+        ).rejects.toThrow(
+            "node_group: name must not be empty. Omit name to use Figma's default group name",
+        );
         expect(groupCalls, "no group may be created for a refused name").toBe(0);
     });
 
-    it("node_group still accepts an omitted name and applies a supplied one", async () => {
+    it("node_group still accepts omission, whitespace, and an ordinary supplied name", async () => {
         const parent = makeParent();
         const first = makeNode("First", "RECTANGLE", { parent });
         const second = makeNode("Second", "RECTANGLE", { parent });
@@ -2412,10 +2424,331 @@ describe("v2.3.3 F78-21: name-assignment tools refuse an exact-empty name", () =
         expect(omitted.name, "omission keeps Figma's default").toBe("Group");
 
         created.name = "Group";
+        const whitespace = await groupNodes({
+            nodes: [{ nodeId: "first" }, { nodeId: "second" }],
+            name: " ",
+        });
+        expect(whitespace.name).toBe(" ");
+
+        created.name = "Group";
         const named = await groupNodes({
             nodes: [{ nodeId: "first" }, { nodeId: "second" }],
             name: "Named",
         });
         expect(named.name).toBe("Named");
+    });
+});
+
+describe("v2.3.3 Change 3: variable name-assignment plugin backstops", () => {
+    it("CREATE_COLLECTION modeName rejects exact-empty before creation, while omission and whitespace remain distinct", async () => {
+        let createCalls = 0;
+        const renamedModes: string[] = [];
+        (globalThis as any).figma.variables = {
+            createVariableCollection: (name: string) => {
+                createCalls++;
+                const collection: any = {
+                    id: `collection-${createCalls}`,
+                    name,
+                    key: `key-${createCalls}`,
+                    defaultModeId: `mode-${createCalls}`,
+                    modes: [{
+                        modeId: `mode-${createCalls}`,
+                        name: "Mode 1",
+                    }],
+                    renameMode(_modeId: string, newName: string) {
+                        renamedModes.push(newName);
+                        collection.modes[0].name = newName;
+                    },
+                };
+                return collection;
+            },
+        };
+
+        let refusal: any = null;
+        try {
+            await handleVariableRequest({
+                action: "CREATE_COLLECTION",
+                name: "Empty Mode",
+                modeName: "",
+            });
+        } catch (error) {
+            refusal = error;
+        }
+        expect(refusal?.message).toContain(
+            "variable_manage CREATE_COLLECTION: modeName must not be empty",
+        );
+        expect(refusal?.message).toContain(
+            "Omit modeName to keep the collection's default mode name",
+        );
+        expect(createCalls, "empty modeName must not create a collection").toBe(0);
+
+        const omitted = await handleVariableRequest({
+            action: "CREATE_COLLECTION",
+            name: "Omitted Mode",
+        });
+        expect(omitted.modes[0].name).toBe("Mode 1");
+        expect(renamedModes).toEqual([]);
+
+        const whitespace = await handleVariableRequest({
+            action: "CREATE_COLLECTION",
+            name: "Whitespace Mode",
+            modeName: " ",
+        });
+        expect(whitespace.modes[0].name).toBe(" ");
+        expect(renamedModes).toEqual([" "]);
+        expect(createCalls).toBe(2);
+    });
+
+    it("UPDATE_VARIABLE refuses exact-empty before a name write, while omission and whitespace remain valid", async () => {
+        let currentName = "Variable";
+        let nameWrites = 0;
+        let lookupCalls = 0;
+        const variable: any = {
+            id: "variable-id",
+            key: "variable-key",
+            resolvedType: "STRING",
+            description: "Before",
+            scopes: ["ALL_SCOPES"],
+            remote: false,
+            variableCollectionId: "collection-id",
+        };
+        Object.defineProperty(variable, "name", {
+            configurable: true,
+            get: () => currentName,
+            set: (value: string) => {
+                nameWrites++;
+                currentName = value;
+            },
+        });
+        (globalThis as any).figma.variables = {
+            getVariableByIdAsync: async () => {
+                lookupCalls++;
+                return variable;
+            },
+        };
+
+        let refusal: any = null;
+        try {
+            await handleVariableRequest({
+                action: "UPDATE_VARIABLE",
+                variableId: variable.id,
+                currentVariableName: "Variable",
+                name: "",
+            });
+        } catch (error) {
+            refusal = error;
+        }
+        expect(refusal?.message).toContain(
+            "variable_manage UPDATE_VARIABLE: name must not be empty",
+        );
+        expect(refusal?.message).toContain(
+            "Omit name to leave the variable's name unchanged",
+        );
+        expect(currentName).toBe("Variable");
+        expect(nameWrites).toBe(0);
+        expect(lookupCalls, "empty update must fail before variable lookup").toBe(0);
+
+        const omitted = await handleVariableRequest({
+            action: "UPDATE_VARIABLE",
+            variableId: variable.id,
+            currentVariableName: "Variable",
+            description: "After",
+        });
+        expect(omitted.name).toBe("Variable");
+        expect(variable.description).toBe("After");
+        expect(nameWrites).toBe(0);
+        expect(lookupCalls).toBe(1);
+
+        const whitespace = await handleVariableRequest({
+            action: "UPDATE_VARIABLE",
+            variableId: variable.id,
+            currentVariableName: "Variable",
+            name: " ",
+        });
+        expect(whitespace.name).toBe(" ");
+        expect(currentName).toBe(" ");
+        expect(nameWrites).toBe(1);
+        expect(lookupCalls).toBe(2);
+    });
+});
+
+describe("v2.3.3 Change 3: component-property name-assignment plugin backstops", () => {
+    function installComponentPropertyFixture(initialName?: string) {
+        let serial = 0;
+        let addCalls = 0;
+        let editCalls = 0;
+        let lookupCalls = 0;
+        const definitions: Record<string, any> = {};
+        if (initialName !== undefined) {
+            definitions[`${initialName}#existing`] = {
+                type: "TEXT",
+                defaultValue: "Before",
+            };
+        }
+        const component: any = {
+            id: "component-id",
+            name: "Component",
+            type: "COMPONENT",
+            parent: null,
+            componentPropertyDefinitions: definitions,
+            addComponentProperty(
+                propertyName: string,
+                propertyType: string,
+                defaultValue: unknown,
+            ) {
+                addCalls++;
+                serial++;
+                definitions[`${propertyName}#added-${serial}`] = {
+                    type: propertyType,
+                    defaultValue,
+                };
+            },
+            editComponentProperty(qualifiedName: string, options: any) {
+                editCalls++;
+                const existing = definitions[qualifiedName];
+                if (!existing) throw new Error(`missing ${qualifiedName}`);
+                if (options.defaultValue !== undefined) {
+                    existing.defaultValue = options.defaultValue;
+                }
+                if (options.name !== undefined) {
+                    delete definitions[qualifiedName];
+                    definitions[`${options.name}#existing`] = existing;
+                }
+            },
+        };
+        nodes.set(component.id, component);
+        (globalThis as any).figma.getNodeByIdAsync = async (id: string) => {
+            lookupCalls++;
+            return nodes.get(id) ?? null;
+        };
+        return {
+            component,
+            definitions,
+            addCalls: () => addCalls,
+            editCalls: () => editCalls,
+            lookupCalls: () => lookupCalls,
+        };
+    }
+
+    it("ADD propertyName rejects exact-empty before addComponentProperty, while whitespace and an ordinary name pass through", async () => {
+        const fixture = installComponentPropertyFixture();
+
+        let refusal: any = null;
+        try {
+            await manageComponentProperty({
+                nodeId: fixture.component.id,
+                action: "ADD",
+                propertyName: "",
+                propertyType: "TEXT",
+                defaultValue: "Default",
+            });
+        } catch (error) {
+            refusal = error;
+        }
+        expect(refusal?.message).toContain(
+            "component_manage_property ADD: propertyName must not be empty",
+        );
+        expect(refusal?.message).toContain("Supply a non-empty propertyName");
+        expect(refusal?.message).not.toContain("Omit propertyName");
+        expect(fixture.addCalls()).toBe(0);
+        expect(
+            fixture.lookupCalls(),
+            "empty ADD propertyName must fail before node lookup",
+        ).toBe(0);
+        expect(fixture.definitions).toEqual({});
+
+        const whitespace = await manageComponentProperty({
+            nodeId: fixture.component.id,
+            action: "ADD",
+            propertyName: " ",
+            propertyType: "TEXT",
+            defaultValue: "Whitespace",
+        });
+        expect(whitespace.propertyName).toBe(" ");
+        expect(fixture.addCalls()).toBe(1);
+        expect(fixture.lookupCalls()).toBe(1);
+        expect(Object.keys(fixture.definitions)).toContain(" #added-1");
+
+        const ordinary = await manageComponentProperty({
+            nodeId: fixture.component.id,
+            action: "ADD",
+            propertyName: "Label",
+            propertyType: "TEXT",
+            defaultValue: "Ordinary",
+        });
+        expect(ordinary.propertyName).toBe("Label");
+        expect(fixture.addCalls()).toBe(2);
+        expect(fixture.lookupCalls()).toBe(2);
+        expect(Object.keys(fixture.definitions)).toContain("Label#added-2");
+    });
+
+    it("EDIT newPropertyName rejects exact-empty before editComponentProperty, while omission and whitespace remain valid", async () => {
+        const fixture = installComponentPropertyFixture("Existing");
+        const before = structuredClone(fixture.definitions);
+
+        let refusal: any = null;
+        try {
+            await manageComponentProperty({
+                nodeId: fixture.component.id,
+                action: "EDIT",
+                propertyName: "Existing",
+                newPropertyName: "",
+            });
+        } catch (error) {
+            refusal = error;
+        }
+        expect(refusal?.message).toContain(
+            "component_manage_property EDIT: newPropertyName must not be empty",
+        );
+        expect(refusal?.message).toContain(
+            "Omit newPropertyName to leave the component property's name unchanged",
+        );
+        expect(fixture.editCalls()).toBe(0);
+        expect(
+            fixture.lookupCalls(),
+            "empty newPropertyName must fail before node lookup",
+        ).toBe(0);
+        expect(fixture.definitions).toEqual(before);
+
+        const omitted = await manageComponentProperty({
+            nodeId: fixture.component.id,
+            action: "EDIT",
+            propertyName: "Existing",
+            newDefaultValue: "After",
+        });
+        expect(omitted.propertyName).toBe("Existing");
+        expect(fixture.definitions["Existing#existing"].defaultValue).toBe("After");
+        expect(fixture.editCalls()).toBe(1);
+        expect(fixture.lookupCalls()).toBe(1);
+
+        const whitespace = await manageComponentProperty({
+            nodeId: fixture.component.id,
+            action: "EDIT",
+            propertyName: "Existing",
+            newPropertyName: " ",
+        });
+        expect(whitespace.propertyName).toBe(" ");
+        expect(Object.keys(fixture.definitions)).toEqual([" #existing"]);
+        expect(fixture.editCalls()).toBe(2);
+        expect(fixture.lookupCalls()).toBe(2);
+    });
+
+    it("EDIT treats an exact-empty propertyName as a lookup value rather than omission", async () => {
+        const fixture = installComponentPropertyFixture("");
+
+        const result = await manageComponentProperty({
+            nodeId: fixture.component.id,
+            action: "EDIT",
+            propertyName: "",
+            newDefaultValue: "After",
+        });
+
+        expect(result.propertyName).toBe("");
+        expect(fixture.definitions["#existing"]).toEqual({
+            type: "TEXT",
+            defaultValue: "After",
+        });
+        expect(fixture.editCalls()).toBe(1);
+        expect(fixture.lookupCalls()).toBe(1);
     });
 });

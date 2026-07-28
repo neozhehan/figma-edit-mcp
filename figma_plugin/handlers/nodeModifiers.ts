@@ -424,7 +424,12 @@ export async function setNodeName(params: any) {
     // "" would rename the node to something the caller never asked for and
     // report success. Refuse before any mutation (AS1 defense in depth; the
     // registered schema already requires a non-empty name).
-    assertNonEmptyExplicitName(name, "name", "node_rename");
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "node_rename",
+        "Supply a non-empty name.",
+    );
 
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
@@ -458,7 +463,12 @@ export async function groupNodes(params: any) {
     // Presence, not truthiness: `if (name)` silently discarded an explicit ""
     // and let Figma's default stand while reporting success. Refuse before the
     // group is created, so an empty name never costs a mutation.
-    assertNonEmptyExplicitName(name, "name", "node_group");
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "node_group",
+        "Omit name to use Figma's default group name.",
+    );
 
     // Collect all nodes
     const resolvedNodes: any[] = [];

@@ -199,6 +199,40 @@ describe("v2.3.3 Phase 4: Schema Rejection & Description-Marker Tests", () => {
         expect(createHappy.success).toBe(true);
     });
 
+    it("style_manage empty-name recovery distinguishes required CREATE from optional UPDATE", () => {
+        const createEmpty = styleManageSchema.safeParse({
+            type: "PAINT",
+            name: "",
+        });
+        expect(createEmpty.success).toBe(false);
+        if (!createEmpty.success) {
+            const message = createEmpty.error.issues
+                .map((issue) => issue.message)
+                .join(" | ");
+            expect(message).toContain("Supply a non-empty name for the new style");
+            expect(message).not.toContain("Omit name");
+        }
+
+        const updateEmpty = styleManageSchema.safeParse({
+            type: "PAINT",
+            styleId: "style-123",
+            currentStyleName: "MyStyle",
+            name: "",
+        });
+        expect(updateEmpty.success).toBe(false);
+        if (!updateEmpty.success) {
+            const message = updateEmpty.error.issues
+                .map((issue) => issue.message)
+                .join(" | ");
+            expect(message).toContain(
+                "Omit name to leave the style's name unchanged",
+            );
+            expect(message).not.toContain(
+                "Supply a non-empty name for the new style",
+            );
+        }
+    });
+
     it("P4-2: an explicitly empty styleId is rejected — never silently a create", () => {
         const emptyId = styleManageSchema.safeParse({
             type: "PAINT",
@@ -916,6 +950,50 @@ describe("v2.3.3 Phase 4: Plugin-level Verification & Mutative Safety", () => {
         expect(caughtErr.message).toContain('stored name "MyStyle"');
         expect(caughtErr.message).toContain("style_list");
         expect(mockStyle.name).toBe("MyStyle"); // Unchanged
+    });
+
+    it("style_manage plugin backstop gives action-specific empty-name recovery before lookup or creation", async () => {
+        const getStyleByIdAsync = mock(async () => mockStyle);
+        const createPaintStyle = mock(() => mockStyle);
+        (globalThis as any).figma.getStyleByIdAsync = getStyleByIdAsync;
+        (globalThis as any).figma.createPaintStyle = createPaintStyle;
+
+        let createRefusal: any;
+        try {
+            await createStyle({
+                type: "PAINT",
+                name: "",
+            });
+        } catch (error) {
+            createRefusal = error;
+        }
+        expect(createRefusal?.message).toContain(
+            "Supply a non-empty name for the new style",
+        );
+        expect(createRefusal?.message).not.toContain("Omit name");
+        expect(createPaintStyle).not.toHaveBeenCalled();
+        expect(getStyleByIdAsync).not.toHaveBeenCalled();
+
+        let updateRefusal: any;
+        try {
+            await createStyle({
+                type: "PAINT",
+                styleId: mockStyle.id,
+                currentStyleName: mockStyle.name,
+                name: "",
+            });
+        } catch (error) {
+            updateRefusal = error;
+        }
+        expect(updateRefusal?.message).toContain(
+            "Omit name to leave the style's name unchanged",
+        );
+        expect(updateRefusal?.message).not.toContain(
+            "Supply a non-empty name for the new style",
+        );
+        expect(createPaintStyle).not.toHaveBeenCalled();
+        expect(getStyleByIdAsync).not.toHaveBeenCalled();
+        expect(mockStyle.name).toBe("MyStyle");
     });
 
     it("style_manage update without name does not rename style", async () => {

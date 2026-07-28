@@ -56,7 +56,12 @@ export async function createShape(params: any) {
         throw new Error("Missing shape type parameter");
     }
 
-    assertNonEmptyExplicitName(name, "name", "create_shape");
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "create_shape",
+        "Omit name to use the default name.",
+    );
 
     const upperType = type.toUpperCase();
     if (arcData !== undefined && upperType !== "ELLIPSE") {
@@ -211,7 +216,12 @@ export async function createFrame(params: any) {
         itemSpacing = 0,
     } = params || {};
 
-    assertNonEmptyExplicitName(name, "name", "create_frame");
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "create_frame",
+        "Omit name to use the default name.",
+    );
 
     const parentNode = await resolveAppendableParent(parentId, "create_frame");
 
@@ -356,7 +366,12 @@ export async function createText(params: any) {
         parentId,
     } = params || {};
 
-    assertNonEmptyExplicitName(name, "name", "create_text");
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "create_text",
+        "Omit name to use the default name.",
+    );
 
     // Defense in depth for clients that bypass the MCP schema. Never silently
     // map an unsupported weight to Regular and then echo the unapplied input.

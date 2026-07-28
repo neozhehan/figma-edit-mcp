@@ -9,7 +9,12 @@ export async function createNodeFromSvg(params: any) {
         throw new Error("Missing required parameter: svg string.");
     }
 
-    assertNonEmptyExplicitName(name, "name", "create_svg");
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "create_svg",
+        "Omit name to use the default name.",
+    );
 
     const parentNode = await resolveAppendableParent(parentId, "create_svg");
 

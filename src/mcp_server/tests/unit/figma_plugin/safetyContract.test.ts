@@ -104,7 +104,7 @@ const EXPECTED_CONTRACTS: Record<string, string[]> = {
     node_set_corner_radius: ["nodePerm", "scope", "name", "lockedTarget"],
     node_set_effects: ["nodePerm", "scope", "name", "lockedTarget"],
     node_set_auto_layout: ["nodePerm", "scope", "name", "lockedTarget"],
-    node_rename: ["nodePerm", "scope", "name", "lockedTarget"],
+    node_rename: ["nodePerm", "scope", "name", "lockedTarget", "explicitNameNonEmpty"],
     node_transform: ["nodePerm", "scope", "name", "lockedTarget"],
     node_bind_variable: ["nodePerm", "scope", "name", "lockedTarget"],
     node_apply_style: ["nodePerm", "scope", "name", "lockedTarget"],
@@ -116,7 +116,7 @@ const EXPECTED_CONTRACTS: Record<string, string[]> = {
     reaction_update: ["nodePerm", "scope", "name", "lockedTarget"],
 
     node_delete: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "scopeRootPreservation", "batchPrevalidation"],
-    node_group: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "batchPrevalidation"],
+    node_group: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "batchPrevalidation", "explicitNameNonEmpty"],
     text_set_content: ["nodePerm", "scope", "name", "lockedTarget", "batchPrevalidation"],
     annotation_set: ["nodePerm", "scope", "name", "lockedTarget", "batchPrevalidation"],
     instance_set_overrides: ["nodePerm", "scope", "name", "lockedTarget", "batchPrevalidation"],
@@ -131,11 +131,11 @@ const EXPECTED_CONTRACTS: Record<string, string[]> = {
     node_insert_child: ["nodePerm", "parentScope", "parentName", "scope", "name", "lockedParent", "lockedTarget", "instanceInteriorParent", "instanceInteriorTarget"],
     create_connection: ["nodePerm", "lockedTarget"],
 
-    variable_manage: ["remoteAsset"],
+    variable_manage: ["remoteAsset", "explicitNameNonEmpty"],
     variable_delete: ["name", "remoteAsset"],
-    style_manage: ["remoteAsset"],
+    style_manage: ["remoteAsset", "explicitNameNonEmpty"],
     style_delete: ["name", "remoteAsset"],
-    component_manage_property: ["nodePerm", "scope", "name", "lockedTarget", "remoteAsset"],
+    component_manage_property: ["nodePerm", "scope", "name", "lockedTarget", "remoteAsset", "explicitNameNonEmpty"],
     component_delete_property: ["nodePerm", "scope", "name", "lockedTarget", "remoteAsset"],
 };
 

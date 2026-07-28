@@ -1,4 +1,4 @@
-# Safety Manual — `figma-edit-mcp` (v2.3.2)
+# Safety Manual — `figma-edit-mcp` (v2.3.3)
 
 > **What this is.** A *safety manual* for the project: it states the **safety guarantees** the system makes, the **assumptions** under which those guarantees hold, the **residual risks** it does not cover, and the **controls** (cross-cutting invariants + a per-tool gate matrix) that implement them. The framing is borrowed — informally — from functional-safety *safety manuals* (IEC 61508 / ISO 26262), whose job is to state a component's guarantees **and the conditions of safe use**. It is adapted to an MCP server and is **not** a certification artifact.
 >
@@ -6,7 +6,7 @@
 >
 > **Audience.** Contributors changing the enforcement code; host / integrator authors wiring the plugin into an agent; and auditors or agents reasoning about which edits are possible.
 >
-> **Applies to: v2.3.2** (the Conformance & Atomicity Hardening release). It describes the enforcement state **as of that release** — the v2.1.0/v2.2.0/v2.3.0/v2.3.1 scope-lock and name-verification model plus Phase 1 dispatcher guard parity, Phase 2 component set atomicity, and Phase 3 parent-first creation and cleanup. Bare `§N` references point into the [v2.2.0 PRD](documentation/completed/v2.2.0-safety-enhancement/prd.md), where those structural guards were specified; sections tagged `v2.3.0 §N` / `v2.3.1 §N` / `v2.3.2 §N` point into their own release PRDs.
+> **Applies to: v2.3.3.** It describes the current enforcement state — the v2.1.0/v2.2.0/v2.3.0/v2.3.1 scope-lock and name-verification model, the v2.3.2 dispatcher/component-set/creation hardening, and v2.3.3's name-assignment, batch, strictness, and containment corrections. Bare `§N` references point into the [v2.2.0 PRD](documentation/completed/v2.2.0-safety-enhancement/prd.md), where those structural guards were specified; sections tagged with a release version point into that release's PRD.
 >
 > **Ground truth.** The enforcement lives in three places, in this order of authority:
 > 1. The plugin dispatcher [`figma_plugin/src/main.ts`](figma_plugin/src/main.ts) — the per-command gate stack; the only layer an agent cannot bypass.
@@ -115,6 +115,8 @@ The three permission axes are **independent** — none implies another:
 ### A3. Every write verifies the resolved name → G2
 Every modify tool requires a `nodeName`; every create tool a `parentNodeName`; batch tools a name **per item**. The plugin resolves the node by ID and rejects on mismatch (`verifyNodeName`; absent name ⇒ rejected). This catches stale/fabricated IDs. Names must be passed back **verbatim** (AS3). As of v2.2.0 this is universal — `reaction_update` (§6A) and `variable_delete` (§6B, both id and collection modes) now verify names, and `style_delete`'s guard matches the strict rule.
 
+Name assignment is a separate check from existing-object verification. As of v2.3.3 Rev 54, every public action that assigns a user-visible name rejects an explicit `""` before mutation at the MCP boundary and again at the plugin trust boundary. Omission is action-sensitive: it selects the native default for optional creator/group/collection-mode names, preserves the current name for optional style/variable/property update names, and is invalid for required `node_rename.name`, variable/style creation `name`, and component-property ADD `propertyName`. Dual-role fields are classified by action (`propertyName` assigns on ADD and looks up on EDIT). C9's present-empty exactness covers `parentNodeName` on its two protected parent paths; it does not define a universal empty-value rule for every lookup field. The corresponding action-conditional field descriptions are pinned against the emitted `tools/list` surface.
+
 ### A4. Creation requires an explicit parent → G3
 There is no successful "current page" fallback. `create_shape`/`create_frame`/`create_text`/`create_svg`/`create_instance` and `create_component_set` require a resolvable `parentId` + `parentNodeName`; `create_component` derives its destination from the verified source frame's parent. APIs that cannot accept a parent directly are inserted into that verified destination as the immediate next synchronous operation. The same-stack construction transient and failed-cleanup survivor are the explicit R6 residual, not successful placement modes.
 
@@ -158,7 +160,7 @@ Gate order in the dispatcher (most-specific error wins): **permission → scope 
 | `node_set_corner_radius` | node-perm · scope · name · locked |
 | `node_set_effects` | node-perm · scope · name · locked |
 | `node_set_auto_layout` | node-perm · scope · name · locked · enum checks · **FILL needs auto-layout parent (§8)** · **NONE-frame silent-drop rejected (§8)** · BASELINE horizontal-only · counterAxisSpacing WRAP-only |
-| `node_rename` | node-perm · scope · name · locked |
+| `node_rename` | node-perm · scope · name · locked · **explicit name non-empty when supplied** |
 | `node_transform` | node-perm · scope · name · locked · **layout-controlled x/y hard-reject (§9)** · **resize-resets-sizing warning (§9)** |
 | `node_bind_variable` | node-perm · scope · name · locked · **unsupported node / mixed paint guard (v2.3.1 §1)** · **auto-layout precheck (v2.3.1 §3)** · SOLID-only paint bind (**type-mismatch guard**, gated by node-perm not var-perm) |
 | `node_apply_style` | node-perm · scope · name · locked (gated by node-perm, **not** style-perm) |
@@ -176,7 +178,7 @@ Gate order in the dispatcher (most-specific error wins): **permission → scope 
 | Tool | Enforced gate stack (per item unless noted) |
 |---|---|
 | `node_delete` | node-perm · scopeRoot present · exists · scope · name · **locked** · **instance-interior (§4)** · **scope-root (§1)** |
-| `node_group` | node-perm · scope · name · **same-parent** · **locked** · **instance-interior (§4)** |
+| `node_group` | node-perm · scope · name · **same-parent** · **locked** · **instance-interior (§4)** · **explicit name non-empty when supplied** |
 | `text_set_content` | node-perm · scopeRoot · exists · scope · name · type TEXT · **locked** · **correct `characters` contract (§16)** |
 | `annotation_set` | node-perm · scopeRoot · exists · scope · name · supports-annotations · **locked** |
 | `instance_set_overrides` | node-perm · scopeRoot · source exists+INSTANCE · per-target exists+scope+name+INSTANCE+**locked** |
@@ -203,11 +205,11 @@ For the implicit creator and `node_clone` paths, handler prevalidation resolves 
 
 | Tool | Enforced gate stack |
 |---|---|
-| `variable_manage` | **var-perm (§14)** · **remote block on UPDATE (§7)** |
+| `variable_manage` | **var-perm (§14)** · **remote block on UPDATE (§7)** · **explicit name non-empty when supplied** |
 | `variable_delete` | **var-perm (§14)** · ids-xor-collection · **required name verification, both modes (§6B)** · **remote block (§7)** · full-document consumer scan refuses in-use deletes |
-| `style_manage` | **style-perm (§14)** · **remote block on edit-existing (§7)** · (binding a variable into a style needs only style-perm) |
+| `style_manage` | **style-perm (§14)** · **remote block on edit-existing (§7)** · **explicit name non-empty when supplied** · (binding a variable into a style needs only style-perm) |
 | `style_delete` | **style-perm (§14)** · `styleName` verification (strict) · **remote block (§7)** |
-| `component_manage_property` | node-perm · scope · name · locked · COMPONENT/COMPONENT_SET · blocks VARIANT add · **value type validation (§5)** · **variant-member guard (§5)** · **remote block (§7)** |
+| `component_manage_property` | node-perm · scope · name · locked · COMPONENT/COMPONENT_SET · blocks VARIANT add · **value type validation (§5)** · **variant-member guard (§5)** · **remote block (§7)** · **explicit name non-empty when supplied** |
 | `component_delete_property` | node-perm · scope · name · locked · **remote block (§7)** |
 
 > **Note:** `component_*_property` edit a *main component definition* and remain **node** edits (node-perm + scope + name), plus the §7 remote block. Only `variable_*`/`style_*` move onto the new asset permission axes.
@@ -238,7 +240,8 @@ These run in the MCP server before the plugin and reject malformed input early (
 - **Shape params:** `pointCount ≥ 3`, `innerRadius`/`arcData.innerRadius` `0–1`, `strokeWeight` positive.
 - **Effects:** `node_set_effects` accepts exactly `DROP_SHADOW`, `INNER_SHADOW`, `LAYER_BLUR`, and `BACKGROUND_BLUR`; `style_manage` also accepts `NOISE`, `TEXTURE`, and `GLASS`. Each is a strict discriminated shape: unknown/cross-variant keys are rejected, `showShadowBehindNode` is DROP_SHADOW-only, progressive blur ramp fields are required together only with `blurType:"PROGRESSIVE"`, and `blendMode` is one of the 19 literals pinned from Figma's `BlendMode` union. A supplied effect color is complete RGBA with every channel `0–1`; shadow/blur and GLASS radii are non-negative; GLASS `lightIntensity`, `refraction`, and `dispersion` are `0–1` (`depth: 0` is valid).
 - **`lineHeight`:** both `style_manage` and `text_set_style` accept the `{unit:"AUTO"}` union (§15).
-- **Name fields:** `nodeName`/`parentNodeName` on every write; `variableNames`/`collectionName` on `variable_delete` (§6B); `nodeName` on `reaction_update` (§6A).
+- **Name verification fields:** `nodeName`/`parentNodeName` on every write; `variableNames`/`collectionName` on `variable_delete` (§6B); `nodeName` on `reaction_update` (§6A). These identify an existing object and are distinct from assignment fields.
+- **Name assignment fields (v2.3.3 Rev 54):** explicit empty assigned names are rejected with action-specific issue paths. The independently pinned public inventory covers creator/set names, node rename/group, style create/update names, variable collection/variable create/update names plus collection `modeName`, and component-property ADD `propertyName` / EDIT `newPropertyName`. Required/defaulting/no-change omission semantics are preserved per action rather than inferred from one shared message.
 
 ---
 

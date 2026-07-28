@@ -1311,6 +1311,7 @@ export async function validateCreateComponentSetPlan(params: any, scopeRoot: Bas
         componentSetName,
         "componentSetName",
         "create_component_set",
+        "Omit componentSetName to use Figma's default component-set name.",
     );
 
     if (!components || !Array.isArray(components) || components.length === 0) {
@@ -1470,6 +1471,7 @@ export async function createComponentSet(plan: ComponentSetPlan) {
         plan.componentSetName,
         "componentSetName",
         "create_component_set",
+        "Omit componentSetName to use Figma's default component-set name.",
     );
 
     let componentSet: ComponentSetNode;
@@ -2050,9 +2052,24 @@ export async function manageComponentProperty(params: any) {
         preferredValues 
     } = params || {};
 
-    if (!nodeId || !action || !propertyName) {
+    if (!nodeId || !action || propertyName == null) {
         throw new Error("Missing nodeId, action, or propertyName parameter");
     }
+
+    if (action === "ADD") {
+        assertNonEmptyExplicitName(
+            propertyName,
+            "propertyName",
+            "component_manage_property ADD",
+            "Supply a non-empty propertyName.",
+        );
+    }
+    assertNonEmptyExplicitName(
+        newPropertyName,
+        "newPropertyName",
+        "component_manage_property EDIT",
+        "Omit newPropertyName to leave the component property's name unchanged.",
+    );
 
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {

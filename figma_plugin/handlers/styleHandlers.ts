@@ -12,7 +12,10 @@ export async function createStyle(params: any) {
     // Empty names are rejected, never assigned: a style named "" could not
     // pass exact-name verification afterward (P4-6).
     if (name === "") {
-        throw new Error("Style name must not be empty. Omit name to leave the style's name unchanged.");
+        const recovery = styleId === undefined
+            ? "Supply a non-empty name for the new style."
+            : "Omit name to leave the style's name unchanged.";
+        throw new Error(`Style name must not be empty. ${recovery}`);
     }
 
     // Create/update splits on PRESENCE, not truthiness (P4-2): an explicit

@@ -16,6 +16,16 @@ Every workflow that touches a node should start with a read. There is no excepti
 - Reusing IDs across sessions. Node IDs are stable within a file, but the *scope* and *connection* are session-bound; re-verify each session.
 - Skipping the read because "I just read it." The file is a shared editable document — the designer may have moved or renamed nodes between your read and your write. A `NAME_MISMATCH` means the document changed; re-read.
 
+### Assigned names: omit only when the field permits it
+
+Never send `""` for a field that assigns a user-visible name. The server and plugin refuse it before mutation, but the correct recovery is action-specific:
+
+- Supply a non-empty value for required `node_rename.name`, variable/style creation `name`, and component-property ADD `propertyName`.
+- Omit optional creator/group names or `CREATE_COLLECTION.modeName` to accept the native default.
+- Omit optional style/variable update `name` or component-property EDIT `newPropertyName` to leave the existing name unchanged.
+
+Do not apply those omission rules to lookup/verification inputs. Read the current lookup name and pass it back verbatim; C9's present-empty decision is limited to the protected `parentNodeName` paths.
+
 ---
 
 ## Editor Navigation (view_navigate)

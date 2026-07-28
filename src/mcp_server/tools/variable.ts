@@ -76,12 +76,15 @@ export function registerVariableTools(server: McpServer) {
                 action: z
                     .enum(["CREATE_COLLECTION", "CREATE_VARIABLE", "UPDATE_VARIABLE"])
                     .describe("Action type"),
-                name: z.string().optional().describe("Name (for CREATE or UPDATE actions)"),
+                name: z
+                    .string()
+                    .optional()
+                    .describe("Name for collection/variable creation or variable update. Must be non-empty when supplied. It is required for CREATE_COLLECTION and CREATE_VARIABLE; omit it only on UPDATE_VARIABLE to leave the current name unchanged."),
                 description: z.string().optional().describe("Description (for UPDATE_VARIABLE)"),
                 modeName: z
                     .string()
                     .optional()
-                    .describe("Mode name (for CREATE_COLLECTION)"),
+                    .describe("Optional initial mode name for CREATE_COLLECTION. Must be non-empty when supplied; omit it to keep the collection's native default mode name."),
                 collectionId: z
                     .string()
                     .optional()
@@ -202,6 +205,13 @@ export function registerVariableTools(server: McpServer) {
                             code: z.ZodIssueCode.custom,
                             path: ["name"],
                             message: "name is required for CREATE_COLLECTION."
+                        });
+                    }
+                    if (data.modeName === "") {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["modeName"],
+                            message: "modeName must not be empty for CREATE_COLLECTION. Omit modeName to keep the collection's default mode name."
                         });
                     }
                 }

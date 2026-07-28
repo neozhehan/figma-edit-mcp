@@ -1,6 +1,7 @@
 // figma_plugin/handlers/variableHandlers.ts
 import { sendProgressUpdate } from '../utils/progressUtils.js';
 import { REFUSALS, withPartialDisclosure } from '../utils/errors.js';
+import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
 
 
 export interface StyleConsumerEntry {
@@ -947,6 +948,12 @@ export async function handleVariableRequest(params: any) {
         case 'CREATE_COLLECTION': {
             const { name, modeName } = params;
             if (!name) throw new Error("Missing name for collection");
+            assertNonEmptyExplicitName(
+                modeName,
+                "modeName",
+                "variable_manage CREATE_COLLECTION",
+                "Omit modeName to keep the collection's default mode name.",
+            );
 
             const collection = figma.variables.createVariableCollection(name);
             if (modeName) {
@@ -1036,6 +1043,12 @@ export async function handleVariableRequest(params: any) {
         case 'UPDATE_VARIABLE': {
             const { variableId, name, value, modeId, description, currentVariableName, scopes } = params;
             if (!variableId) throw new Error("Missing variableId for update");
+            assertNonEmptyExplicitName(
+                name,
+                "name",
+                "variable_manage UPDATE_VARIABLE",
+                "Omit name to leave the variable's name unchanged.",
+            );
             if (!currentVariableName) {
                 throw REFUSALS.VARIABLE_NAME_MISSING();
             }

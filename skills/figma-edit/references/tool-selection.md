@@ -51,6 +51,18 @@ When you only need to know *whether* something is bound, request the raw ID fiel
 | Convert a frame into a component | `create_component` after reading the source frame and its parent | Never target the scope root or a frame inside an instance |
 | Combine variants | `create_component_set` with required `parentId` + `parentNodeName`; omit `componentSetName` for Figma's default or supply a non-empty name | Do not pass `componentSetName: ""`, omit the parent, or place the set inside one of its input components |
 
+### Name assignment vs. name lookup
+
+An explicit `""` is never valid for a field that assigns a user-visible name, but omission is not universally valid:
+
+| Assignment | Correct empty-name recovery |
+|---|---|
+| `node_rename.name`; variable/style creation `name`; component-property ADD `propertyName` | Required: supply a non-empty name. |
+| Creator/set/group name; `CREATE_COLLECTION.modeName` | Optional: omit for the established/native default. |
+| Style/variable update `name`; component-property EDIT `newPropertyName` | Optional: omit to keep the current name. |
+
+Fields that identify an existing node/parent/style/variable/property are lookup or verification inputs, not assignment defaults. Obtain them from the matching read tool and pass them verbatim. A dual-role field such as component-property `propertyName` is classified by action: assigned on ADD, lookup on EDIT.
+
 All implicit creator/clone partial failures disclose a three-state survivor location. `survivingParentState: "located"` carries the exact readable `survivingParentId`; `"detached"` is reserved for an observed null parent; `"unknown"` means the parent or its ID could not be read safely. `create_component` uses the analogous `survivingComponentParentState`/`survivingComponentParentId`. Select a follow-up read or repair from that state—never treat a nullable ID alone as proof of detachment.
 
 ## Choosing an effects surface

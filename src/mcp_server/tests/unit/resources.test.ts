@@ -79,18 +79,38 @@ describe("WS2 - Resources Handler (R2.2, R5.1h)", () => {
     expect(guideText.constraints).toContain("reparentedComponents");
     expect(guideText.constraints).toContain("beforeCountVerified");
     expect(guideText.constraints).toContain("outcomeUnknown");
+    expect(guideText.constraints).toContain(
+      "Name **verification** and name **assignment** are different contracts",
+    );
+    expect(guideText.constraints).toContain("CREATE_COLLECTION.modeName");
     expect(guideText["error-playbook"]).toContain("before.survivingNodeId");
     expect(guideText["error-playbook"]).toContain("survivingParentState");
     expect(guideText["error-playbook"]).toContain("before.removedComponents");
     expect(guideText["error-playbook"]).toContain("retainedVariantComponents");
     expect(guideText["error-playbook"]).toContain("postStateError");
+    expect(guideText["error-playbook"]).toContain(
+      "A name-assignment request rejects an explicit empty",
+    );
+    expect(guideText["error-playbook"]).toContain(
+      "Never omit a required field merely because another tool has a default",
+    );
     expect(guideText.workflows).toContain("GROUP/FRAME roots are valid");
     expect(guideText.workflows).toContain("required parent:");
     expect(guideText.workflows).toContain("afterCountVerified");
+    expect(guideText.workflows).toContain(
+      "Assigned names: omit only when the field permits it",
+    );
+    expect(guideText.workflows).toContain(
+      "C9's present-empty decision is limited to the protected `parentNodeName` paths",
+    );
     expect(guideText["tool-selection"]).toContain("accepts exactly `DROP_SHADOW`");
     expect(guideText["tool-selection"]).toContain("`blendMode` must be one of the 19");
     expect(guideText["tool-selection"]).toContain("Prevalidation atomicity is not a runtime transaction");
     expect(guideText["tool-selection"]).toContain("canonical `UNKNOWN_ERROR` envelope");
+    expect(guideText["tool-selection"]).toContain("Name assignment vs. name lookup");
+    expect(guideText["tool-selection"]).toContain(
+      "A dual-role field such as component-property `propertyName` is classified by action",
+    );
   });
 
   it("should fail soft on a missing file (return error markdown instead of crashing)", async () => {
