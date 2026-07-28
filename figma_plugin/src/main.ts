@@ -311,6 +311,14 @@ figma.ui.onmessage = async (msg: any) => {
                 state.allowEditStyle = !!msg.allowEditStyle;
                 notifyBestEffort("Connected in Read-Only Mode for nodes");
             }
+            // Scope readiness is authoritative here, after every permission
+            // field is committed. The UI must match this one-shot request ID
+            // before it opens and joins the WebSocket.
+            figma.ui.postMessage({
+                type: "scope-ready",
+                requestId: msg.requestId,
+                pluginVersion: PLUGIN_VERSION,
+            });
             break;
         case "execute-command":
             // Execute commands received from UI (which gets them from WebSocket)

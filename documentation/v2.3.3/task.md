@@ -2,7 +2,7 @@
 
 This document tracks the tasks required to fulfill the requirements in the [v2.3.3 PRD](file:///Users/neozhehan/Git/figma-edit-mcp/documentation/v2.3.3/prd.md). It is divided into 14 phases, covering both Track 1 (Type-check restoration) and Track 2 (Safety-contract gap closure).
 
-> Release decision status, review outcomes, verification history, and current findings are maintained in the [v2.3.3 release changelog](release-changelog.md#change-3-name-assignment-sink-closure-and-contract-sync-rev-54). The 14 implementation phases remain below.
+> Release decision status, review outcomes, verification history, and current findings are maintained in the [v2.3.3 release changelog](release-changelog.md#change-4-peer-bound-channel-and-scope-ready-handshake-rev-55). The 14 implementation phases remain below.
 
 ---
 
@@ -201,21 +201,23 @@ The guarantee is an **observable success boundary**: no successful command may a
 ---
 
 ## Phase 9: Peer-Bound Channel (D13)
-- [ ] **Peer-Bound Channel Protocol**
-  - [ ] The plugin's join message carries `clientType: "plugin"` and its build version.
-  - [ ] Update the socket server in [socket.ts](file:///Users/neozhehan/Git/figma-edit-mcp/src/socket.ts): assign each connection a random `peerId`; reserve a channel as **exactly one plugin peer plus one MCP session**.
-  - [ ] Implement pair-only command/response routing; responses are correlated by peer, and a response from any other peer is ignored.
-  - [ ] Implement the refusals: joining with zero plugin peers ⇒ `PLUGIN_PEER_UNAVAILABLE`; a second plugin ⇒ `PLUGIN_PEER_AMBIGUOUS`; a second MCP client ⇒ `CHANNEL_IN_USE`.
-  - [ ] `channel_join`'s result includes `serverVersion` and `pluginVersion`; a known-unequal pair is refused with `VERSION_MISMATCH`. (Self-reported version check, not attestation — `SAFETY.md` claims it as exactly that, Phase 12.)
-  - [ ] Update `resetChannel` in [figma-client.ts](file:///Users/neozhehan/Git/figma-edit-mcp/src/mcp_server/figma-client.ts) to perform a real socket-level leave that unbinds the pair and clears state.
-  - [ ] Invalidate the binding when the bound peer disconnects; **every subsequent tool call is blocked until a successful rejoin**.
-- [ ] **Scope-Ready Race Verification (Q11)**
-  - [ ] Verify whether `ui.html` opens the socket before plugin-main acknowledges the committed scope. If confirmed: make the UI wait for plugin-main's acknowledgement before joining, and add a test. If it does not reproduce: record that outcome in the PRD's Provenance table.
-- [ ] **Unit/Integration Tests**
-  - [ ] Peer-binding states: zero plugin peers, two plugin peers, two MCP clients — each refused with its code.
-  - [ ] Version mismatch refused; mismatch → detach → matching rejoin succeeds.
-  - [ ] Bound-peer disconnect invalidates the binding and blocks tool calls until rejoin.
-  - [ ] No cross-peer response acceptance: a response from an unbound peer never resolves a command.
+- [x] **Peer-Bound Channel Protocol**
+  - [x] The plugin's join message carries `clientType: "plugin"` and its build version.
+  - [x] Update the socket server in [socket.ts](file:///Users/neozhehan/Git/figma-edit-mcp/src/socket.ts): assign each connection a random `peerId`; reserve a channel as **exactly one plugin peer plus one MCP session**.
+  - [x] Implement pair-only command/response routing; responses are correlated by peer, and a response from any other peer is ignored.
+  - [x] Implement the refusals: joining with zero plugin peers ⇒ `PLUGIN_PEER_UNAVAILABLE`; a second plugin ⇒ `PLUGIN_PEER_AMBIGUOUS`; a second MCP client ⇒ `CHANNEL_IN_USE`.
+  - [x] `channel_join`'s result includes `serverVersion` and `pluginVersion`; a known-unequal pair is refused with `VERSION_MISMATCH`. (Self-reported version check, not attestation — `SAFETY.md` claims it as exactly that, Phase 12.)
+  - [x] Update `resetChannel` in [figma-client.ts](file:///Users/neozhehan/Git/figma-edit-mcp/src/mcp_server/figma-client.ts) to perform a real socket-level leave that unbinds the pair and clears state.
+  - [x] Invalidate the binding when the bound peer disconnects; **every subsequent tool call is blocked until a successful rejoin**.
+- [x] **Scope-Ready Race Verification (Q11)**
+  - [x] Verify whether `ui.html` opens the socket before plugin-main acknowledges the committed scope. If confirmed: make the UI wait for plugin-main's acknowledgement before joining, and add a test. If it does not reproduce: record that outcome in the PRD's Provenance table.
+- [x] **Unit/Integration Tests**
+  - [x] Peer-binding states: zero plugin peers, two plugin peers, two MCP clients — each refused with its code.
+  - [x] Version mismatch refused; mismatch → detach → matching rejoin succeeds.
+  - [x] Bound-peer disconnect invalidates the binding and blocks tool calls until rejoin.
+  - [x] No cross-peer response acceptance: a response from an unbound peer never resolves a command.
+
+- **Phase 9 closure (Rev 55, 2026-07-28):** the Q11 race was confirmed and repaired with a correlated post-commit `scope-ready` acknowledgement; D13 is covered by real-WebSocket and client/UI tests. Focused verification is **98/98** (**705 assertions**), the full suite is **959/959** (**5,122 assertions across 50 files**), and `build:all`, all type/suppression/generated/version/bundle gates, and `git diff --check` pass. The synchronized `2.3.2` result is expected before Phase 13. No Phase 14 live-Figma verification is claimed here.
 
 ---
 

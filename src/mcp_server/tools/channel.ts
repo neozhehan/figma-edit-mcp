@@ -37,6 +37,16 @@ function joinFailure(channel: string, error: any) {
     };
 }
 
+async function detachAfterJoinFailure() {
+    try {
+        await resetChannel();
+    } catch {
+        // resetChannel clears the local binding before awaiting the socket leave
+        // acknowledgement. Preserve the originating scope/transport failure;
+        // the client remains fail-closed even if the bridge cannot acknowledge.
+    }
+}
+
 export function registerChannelTools(server: McpServer) {
     // 1. Join Channel Tool
     server.registerTool(
@@ -55,6 +65,8 @@ export function registerChannelTools(server: McpServer) {
                 errorCode: z.string().optional().describe("Error code if status is error"),
                 errorMessage: z.string().optional().describe("Error message if status is error"),
                 errorDetails: z.any().optional().describe("Structured error context if status is error and the underlying failure carried any"),
+                serverVersion: z.string().optional().describe("Self-reported MCP server build version (present on every successful join)"),
+                pluginVersion: z.string().optional().describe("Self-reported bound Figma plugin build version (present on every successful join)"),
                 allowEditNode: z.union([z.boolean(), z.string()]).optional().describe("false | 'page' | 'node'"),
                 allowEditVariable: z.boolean().optional().describe("Whether variable edits are allowed"),
                 allowEditStyle: z.boolean().optional().describe("Whether style edits are allowed"),
@@ -102,8 +114,9 @@ export function registerChannelTools(server: McpServer) {
             }
 
             try {
+                let versions: { serverVersion: string; pluginVersion: string };
                 try {
-                    await joinChannel(channel);
+                    versions = await joinChannel(channel);
                 } catch (error: any) {
                     return toolResult(joinFailure(channel, error));
                 }
@@ -113,7 +126,7 @@ export function registerChannelTools(server: McpServer) {
                 try {
                     payload = await sendCommandToFigma("get_connect_payload");
                 } catch (error: any) {
-                    resetChannel();
+                    await detachAfterJoinFailure();
                     return toolResult(joinFailure(channel, error));
                 }
 
@@ -122,7 +135,7 @@ export function registerChannelTools(server: McpServer) {
                 // dropped it unconditionally, inconsistent with joinFailure()
                 // below, which already relays `errorDetails` on the other leg.
                 if (payload && payload.errorCode) {
-                    resetChannel();
+                    await detachAfterJoinFailure();
                     return toolResult({
                         status: "error",
                         channel,
@@ -134,9 +147,10 @@ export function registerChannelTools(server: McpServer) {
 
                 // Success path
                 return toolResult({
+                    ...payload,
                     status: "success",
                     channel,
-                    ...payload
+                    ...versions,
                 });
             } catch (error: any) {
                 return toolResult({

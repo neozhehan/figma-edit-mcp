@@ -63,9 +63,11 @@ export const ERRORS: any = {
  * object as-is — the dispatcher forwards `{code, message, details?}` untouched.
  */
 export const REFUSALS = {
-    // Phase 9–11 operational codes. No live throw site yet — each call site
-    // migrates from `ERRORS`-string prototyping to `REFUSALS.CODE()` as its
-    // phase lands, per the same precedent that moved the D6 parent codes.
+    // Phase 9's four D13 codes now have live socket-origin sites in the separate
+    // server-side canonical channel registry (`src/shared/channelProtocol.ts`);
+    // these plugin factories are the bundle-side mirror kept in exact parity by
+    // the Phase 9 socket tests. Phase 10–11 operational entries remain
+    // placeholders until those phases land.
     PLUGIN_PEER_UNAVAILABLE: () => ({
         code: "PLUGIN_PEER_UNAVAILABLE",
         message: "Operation Denied: Figma Plugin is not running or available. Please open the Figma document, start the figma-edit-mcp plugin, and reconnect.",

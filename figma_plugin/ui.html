@@ -354,6 +354,8 @@
       pendingRequests: new Map(),
       channel: null,
       activeRequestId: null,
+      pendingScopeRequest: null,
+      pluginVersion: "unknown",
     };
 
     // UI Elements
@@ -452,6 +454,7 @@
         state.socket = new WebSocket(`ws://localhost:${port}`);
 
         let wasConnected = false;
+        let closeStatusMessage = null;
         state.socket.onopen = () => {
           wasConnected = true;
           // Use existing channel name if available, otherwise generate new one
@@ -466,6 +469,8 @@
             JSON.stringify({
               type: "join",
               channel: channelName.trim(),
+              clientType: "plugin",
+              pluginVersion: state.pluginVersion,
             })
           );
         };
@@ -507,10 +512,22 @@
                   "*"
                 );
               }
-            } else if (data.type === "error") {
-              console.error("Error:", data.message);
-              updateConnectionStatus(false, `Error: ${data.message}`);
+            } else if (data.type === "join_error") {
+              const code = typeof data.code === "string" ? ` (${data.code})` : "";
+              const detail = typeof data.message === "string"
+                ? data.message
+                : "The socket server refused the plugin join.";
+              closeStatusMessage = `Join failed${code}: ${detail}`;
+              console.error(closeStatusMessage);
+              updateConnectionStatus(false, closeStatusMessage);
               state.socket.close();
+              return;
+            } else if (data.type === "error") {
+              closeStatusMessage = `Error: ${data.message}`;
+              console.error("Error:", data.message);
+              updateConnectionStatus(false, closeStatusMessage);
+              state.socket.close();
+              return;
             }
 
             handleSocketMessage(data);
@@ -524,7 +541,9 @@
           state.connected = false;
           state.socket = null;
 
-          if (previouslyConnected) {
+          if (closeStatusMessage) {
+            updateConnectionStatus(false, closeStatusMessage);
+          } else if (previouslyConnected) {
             updateConnectionStatus(false, "Disconnected from server");
           } else {
             updateConnectionStatus(false, `Failed to connect. Is the MCP server running on port ${port}?`);
@@ -549,6 +568,7 @@
 
     // Disconnect from websocket server
     function disconnectFromServer() {
+      state.pendingScopeRequest = null;
       if (state.socket) {
         state.socket.close();
         state.socket = null;
@@ -730,22 +750,25 @@
 
       const allowEditVariable = document.getElementById("allow-edit-variable").checked;
       const allowEditStyle = document.getElementById("allow-edit-style").checked;
+      const port = parseInt(portInput.value, 10);
+      const requestId = generateId();
 
-      // Set the scope in the plugin logic
+      // Do not advertise the plugin on the socket until plugin main confirms
+      // that this exact scope request has been committed.
+      state.pendingScopeRequest = { requestId, port };
+      updateConnectionStatus(false, "Connecting...");
+      connectionStatus.className = "status info";
+
       parent.postMessage({ 
         pluginMessage: { 
           type: 'set-scope', 
+          requestId,
           scopeNodeId: state.verifiedNodeId,
           scopeNodeType: state.verifiedNodeType,
           allowEditVariable,
           allowEditStyle
         } 
       }, '*');
-
-      const port = parseInt(portInput.value, 10);
-      updateConnectionStatus(false, "Connecting...");
-      connectionStatus.className = "status info";
-      connectToServer(port);
     };
 
     // Scope input validation listener
@@ -849,8 +872,22 @@
 
       switch (message.type) {
         case "plugin-version":
+          state.pluginVersion = message.version;
           document.getElementById("plugin-version-about").textContent = "Version: " + message.version;
           break;
+        case "scope-ready": {
+          const pending = state.pendingScopeRequest;
+          if (!pending || message.requestId !== pending.requestId) {
+            break;
+          }
+
+          // Consume the acknowledgement before opening the socket so a
+          // duplicate acknowledgement cannot create a second connection.
+          state.pendingScopeRequest = null;
+          state.pluginVersion = message.pluginVersion;
+          connectToServer(pending.port);
+          break;
+        }
         case "connection-status":
           updateConnectionStatus(message.connected, message.message);
           break;

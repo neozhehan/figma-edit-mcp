@@ -3,6 +3,11 @@ import { v4 as uuidv4 } from "uuid";
 import { normalizeNodeId, normalizeNodeIds } from "./utils.js";
 import { logger } from "./logger.js";
 import { UNKNOWN_ERROR } from "../shared/errorCodes.js";
+import { SERVER_VERSION } from "../shared/version.js";
+import type {
+    ChannelJoinResult as ProtocolChannelJoinResult,
+    ChannelLeaveResult,
+} from "../shared/channelProtocol.js";
 
 // Prefer the runtime's native WebSocket (bun, and node >= 22) over the `ws`
 // package's client. The `ws` client mishandles the HTTP 101 upgrade under bun:
@@ -38,6 +43,8 @@ export interface FigmaResponse {
     result?: any;
     error?: string | { code: string; message: string; details?: any };
 }
+
+export type JoinChannelResult = ProtocolChannelJoinResult;
 
 // Define interface for command progress updates
 export interface CommandProgressUpdate {
@@ -157,16 +164,59 @@ export type FigmaCommand =
 
 // State management
 let ws: any = null;
-let currentChannel: string | null = null;
 let wsUrl: string = 'ws://localhost:3055'; // Default
 let defaultPort: number = 3055;
+let nextBindingGeneration = 0;
+
+type ChannelBindingState =
+    | { status: "unbound" }
+    | {
+        status: "bound";
+        channel: string;
+        serverVersion: string;
+        pluginVersion: string;
+        generation: number;
+    }
+    | {
+        status: "invalidated";
+        channel: string;
+        generation: number;
+        error: FigmaError;
+        requiresLeave: boolean;
+    };
+
+let bindingState: ChannelBindingState = { status: "unbound" };
 
 const pendingRequests = new Map<string, {
     resolve: (value: unknown) => void;
     reject: (reason: unknown) => void;
     timeout: ReturnType<typeof setTimeout>;
     lastActivity: number;
+    kind: "join" | "leave" | "command";
+    bindingGeneration?: number;
 }>();
+
+function rejectPendingForBinding(generation: number, error: FigmaError) {
+    for (const [id, request] of pendingRequests.entries()) {
+        if (request.bindingGeneration !== generation) continue;
+        clearTimeout(request.timeout);
+        request.reject(error);
+        pendingRequests.delete(id);
+    }
+}
+
+function invalidateBoundChannel(error: FigmaError, requiresLeave: boolean) {
+    if (bindingState.status !== "bound") return;
+    const { channel, generation } = bindingState;
+    bindingState = {
+        status: "invalidated",
+        channel,
+        generation,
+        error,
+        requiresLeave,
+    };
+    rejectPendingForBinding(generation, error);
+}
 
 export function setFigmaServerUrl(url: string) {
     wsUrl = url;
@@ -197,8 +247,6 @@ export function connectToFigma(port: number = defaultPort) {
 
     ws.addEventListener('open', () => {
         logger.info('Connected to Figma socket server');
-        // Reset channel on new connection
-        currentChannel = null;
     });
 
     ws.addEventListener("message", (event: any) => {
@@ -216,6 +264,27 @@ export function connectToFigma(port: number = defaultPort) {
                 ? event.data
                 : (event.data?.toString?.() ?? String(event.data));
             const json = JSON.parse(raw) as ProgressMessage;
+
+            // The socket bridge emits this only when the plugin peer bound to
+            // this MCP session leaves. Generic room broadcasts are not binding
+            // evidence. Invalidate the exact channel generation immediately so
+            // later tool calls fail before a frame can be sent.
+            if (json.type === "peer_disconnected") {
+                if (
+                    bindingState.status === "bound"
+                    && typeof json.channel === "string"
+                    && json.channel === bindingState.channel
+                ) {
+                    invalidateBoundChannel(new FigmaError({
+                        code: typeof json.code === "string" ? json.code : "PLUGIN_DISCONNECTED",
+                        message: typeof json.message === "string"
+                            ? json.message
+                            : "The bound Figma plugin peer disconnected.",
+                        ...(json.details !== undefined ? { details: json.details } : {}),
+                    }), true);
+                }
+                return;
+            }
 
             // Handle join_error
             if (json.type === 'join_error') {
@@ -287,6 +356,28 @@ export function connectToFigma(port: number = defaultPort) {
                 const request = pendingRequests.get(myResponse.id)!;
                 clearTimeout(request.timeout);
 
+                // A response queued for an older binding must never resolve a
+                // command after reset/rejoin. The socket performs peer-bound
+                // routing too; this is the client-side generation backstop.
+                if (
+                    request.kind === "command"
+                    && (
+                        bindingState.status !== "bound"
+                        || request.bindingGeneration !== bindingState.generation
+                    )
+                ) {
+                    request.reject(
+                        bindingState.status === "invalidated"
+                            ? bindingState.error
+                            : new FigmaError({
+                                code: "PLUGIN_DISCONNECTED",
+                                message: "The channel binding changed before the command response arrived.",
+                            }),
+                    );
+                    pendingRequests.delete(myResponse.id);
+                    return;
+                }
+
                 if (myResponse.error) {
                     logger.error(`Error from Figma: ${typeof myResponse.error === "object" ? JSON.stringify(myResponse.error) : myResponse.error}`);
                     request.reject(new FigmaError(myResponse.error));
@@ -313,12 +404,18 @@ export function connectToFigma(port: number = defaultPort) {
         logger.info('Disconnected from Figma socket server');
         ws = null;
 
+        const disconnectError = new FigmaError({
+            code: "PLUGIN_DISCONNECTED",
+            message: "Connection closed",
+        });
+        invalidateBoundChannel(disconnectError, false);
+
         // Reject all pending requests. Coded at origin (Q20): the plugin peer's
         // connection dropped, so the code is PLUGIN_DISCONNECTED — never
         // reconstructed from message prose downstream.
         for (const [id, request] of pendingRequests.entries()) {
             clearTimeout(request.timeout);
-            request.reject(new FigmaError({ code: "PLUGIN_DISCONNECTED", message: "Connection closed" }));
+            request.reject(disconnectError);
             pendingRequests.delete(id);
         }
 
@@ -331,20 +428,141 @@ export function connectToFigma(port: number = defaultPort) {
     });
 }
 
-export function resetChannel() {
-    currentChannel = null;
+function sendLeaveRequest(channel: string, timeoutMs: number = 5000): Promise<void> {
+    return new Promise((resolve, reject) => {
+        if (!ws || ws.readyState !== WS_OPEN) {
+            reject(new FigmaError({
+                code: "PLUGIN_DISCONNECTED",
+                message: "Cannot leave the channel because the socket connection is closed.",
+            }));
+            return;
+        }
+
+        const id = uuidv4();
+        const timeout = setTimeout(() => {
+            if (!pendingRequests.has(id)) return;
+            pendingRequests.delete(id);
+            reject(new Error(`Leave request timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+
+        pendingRequests.set(id, {
+            resolve: (value) => {
+                const acknowledgement = value as Partial<ChannelLeaveResult> | null;
+                if (
+                    acknowledgement?.left === true
+                    && acknowledgement.channel === channel
+                ) {
+                    resolve();
+                    return;
+                }
+                reject(new Error(
+                    `Channel leave acknowledgement was malformed for '${channel}'`,
+                ));
+            },
+            reject,
+            timeout,
+            lastActivity: Date.now(),
+            kind: "leave",
+        });
+
+        try {
+            ws.send(JSON.stringify({ id, type: "leave", channel }));
+            logger.debug(`Sent channel leave: ${channel}`);
+        } catch (error) {
+            clearTimeout(timeout);
+            pendingRequests.delete(id);
+            reject(error);
+        }
+    });
 }
 
-export async function joinChannel(channelName: string): Promise<void> {
+export async function resetChannel(): Promise<void> {
+    if (bindingState.status === "unbound") return;
+
+    const previousBinding = bindingState;
+    bindingState = { status: "unbound" };
+    rejectPendingForBinding(
+        previousBinding.generation,
+        new FigmaError({
+            code: "PLUGIN_DISCONNECTED",
+            message: "The channel binding was reset before the command completed.",
+        }),
+    );
+
+    const mustLeave = previousBinding.status === "bound"
+        || previousBinding.requiresLeave;
+    if (!mustLeave) return;
+
+    try {
+        await sendLeaveRequest(previousBinding.channel);
+        logger.info(`Left channel: ${previousBinding.channel}`);
+    } catch (error) {
+        // A socket close is the protocol's final cleanup path. Do not leave a
+        // stale server-side MCP reservation after local state is already clear.
+        try {
+            ws?.close?.();
+        } catch {
+            // Preserve the leave failure for the caller.
+        }
+        throw error;
+    }
+}
+
+export async function joinChannel(channelName: string): Promise<JoinChannelResult> {
     if (!ws || ws.readyState !== WS_OPEN) {
         throw new Error("Not connected to Figma");
     }
 
+    let socketAdmittedJoin = false;
     try {
-        await sendCommandToFigma("join", { channel: channelName });
-        currentChannel = channelName;
+        // A connection owns at most one channel reservation. Detach the old
+        // pair before attempting a switch or rejoin; a failed new join therefore
+        // cannot silently leave later tools targeting the previous plugin.
+        if (bindingState.status !== "unbound") {
+            await resetChannel();
+        }
+
+        const result = await sendCommandToFigma("join", { channel: channelName });
+        socketAdmittedJoin = true;
+        if (
+            result === null
+            || typeof result !== "object"
+            || typeof (result as any).serverVersion !== "string"
+            || typeof (result as any).pluginVersion !== "string"
+        ) {
+            throw new Error("Channel join acknowledgement omitted serverVersion or pluginVersion");
+        }
+
+        const joined: JoinChannelResult = {
+            serverVersion: (result as any).serverVersion,
+            pluginVersion: (result as any).pluginVersion,
+        };
+        bindingState = {
+            status: "bound",
+            channel: channelName,
+            ...joined,
+            generation: ++nextBindingGeneration,
+        };
         logger.info(`Joined channel: ${channelName}`);
+        return joined;
     } catch (error) {
+        // A successful wire acknowledgement reserves this MCP peer before the
+        // client validates its payload. If that acknowledgement is malformed,
+        // explicitly leave so local fail-closed state cannot strand a server-
+        // side CHANNEL_IN_USE reservation.
+        if (socketAdmittedJoin) {
+            try {
+                await sendLeaveRequest(channelName);
+            } catch {
+                // Preserve the malformed-ack failure. Local state stays unbound;
+                // force-close so the bridge cannot retain a stale reservation.
+                try {
+                    ws?.close?.();
+                } catch {
+                    // The originating malformed acknowledgement remains primary.
+                }
+            }
+        }
         logger.error(`Failed to join channel: ${error instanceof Error ? error.message : String(error)}`);
         // Q20: code the join flow's locally-generated failures at origin. An
         // already-coded error (socket CHANNEL_NOT_FOUND, close-handler
@@ -367,17 +585,27 @@ export function sendCommandToFigma(
     timeoutMs: number = 30000
 ): Promise<unknown> {
     return new Promise((resolve, reject) => {
+        const requiresChannel = command !== "join";
+        const activeBinding = bindingState.status === "bound"
+            ? bindingState
+            : null;
+
+        // Binding validity is checked before socket connectivity so a peer
+        // invalidation remains the stable, actionable failure until channel_join
+        // succeeds. No command frame is emitted while unbound/invalidated.
+        if (requiresChannel && !activeBinding) {
+            if (bindingState.status === "invalidated") {
+                reject(bindingState.error);
+            } else {
+                reject(new Error("Must join a channel before sending commands"));
+            }
+            return;
+        }
+
         // If not connected, try to connect first
         if (!ws || ws.readyState !== WS_OPEN) {
             connectToFigma();
             reject(new Error("Not connected to Figma. Attempting to connect..."));
-            return;
-        }
-
-        // Check if we need a channel for this command
-        const requiresChannel = command !== "join";
-        if (requiresChannel && !currentChannel) {
-            reject(new Error("Must join a channel before sending commands"));
             return;
         }
 
@@ -461,8 +689,12 @@ export function sendCommandToFigma(
             id,
             type: command === "join" ? "join" : "message",
             ...(command === "join"
-                ? { channel: normalizedParams.channel, clientType: "mcp" }
-                : { channel: currentChannel }),
+                ? {
+                    channel: normalizedParams.channel,
+                    clientType: "mcp",
+                    serverVersion: SERVER_VERSION,
+                }
+                : { channel: activeBinding!.channel }),
             message: {
                 id,
                 command,
@@ -485,7 +717,9 @@ export function sendCommandToFigma(
             resolve,
             reject,
             timeout,
-            lastActivity: Date.now()
+            lastActivity: Date.now(),
+            kind: command === "join" ? "join" : "command",
+            ...(activeBinding ? { bindingGeneration: activeBinding.generation } : {}),
         });
 
         try {

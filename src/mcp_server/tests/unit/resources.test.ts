@@ -130,20 +130,27 @@ describe("WS2 - Resources Handler (R2.2, R5.1h)", () => {
 });
 
 describe("WS1 & WS2 - Server Initialization (R1.2, R2.3, R5.1i)", () => {
-  it("should read version dynamically from package.json and supply eager instructions breadcrumb", () => {
+  it("should read version dynamically from package.json and supply eager instructions breadcrumb", async () => {
     (globalThis as any).mockFsFail = false;
-    const src = readFileSync("src/mcp_server/server.ts", "utf8");
+    const serverSrc = readFileSync("src/mcp_server/server.ts", "utf8");
+    const versionSrc = readFileSync("src/shared/version.ts", "utf8");
+    const pkg = JSON.parse(readFileSync("package.json", "utf8"));
+    const { SERVER_NAME, SERVER_VERSION } = await import("../../../shared/version.js");
 
-    // Assert version is read from package.json dynamically
-    expect(src).toContain("pkg.version");
-    expect(src).toContain("pkg.name");
-    expect(src).toContain("readFileSync");
-    expect(src).toContain("package.json");
+    // The shared source is authoritative for both server metadata and the
+    // Phase 9 MCP join self-report; neither consumer hard-codes a version.
+    expect(serverSrc).toContain("SERVER_NAME, SERVER_VERSION");
+    expect(serverSrc).toContain("name: SERVER_NAME");
+    expect(serverSrc).toContain("version: SERVER_VERSION");
+    expect(versionSrc).toContain("readFileSync");
+    expect(versionSrc).toContain("package.json");
+    expect(SERVER_NAME).toBe(pkg.name);
+    expect(SERVER_VERSION).toBe(pkg.version);
 
     // Assert eager instructions are present and non-empty
-    expect(src).toContain("instructions:");
-    expect(src).toContain("figma-edit://guide/");
-    expect(src).toContain("figma-edit");
-    expect(src).toContain("skill");
+    expect(serverSrc).toContain("instructions:");
+    expect(serverSrc).toContain("figma-edit://guide/");
+    expect(serverSrc).toContain("figma-edit");
+    expect(serverSrc).toContain("skill");
   });
 });

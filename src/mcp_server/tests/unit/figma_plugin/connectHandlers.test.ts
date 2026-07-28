@@ -1,4 +1,10 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { SERVER_VERSION } from "../../../../shared/version.js";
+
+const PHASE9_JOIN_VERSIONS = {
+    serverVersion: SERVER_VERSION,
+    pluginVersion: SERVER_VERSION,
+};
 
 // Phase 4 §3a/§3b: Behavioral + snapshot tests for getConnectPayload.
 //
@@ -88,7 +94,7 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
     beforeEach(async () => {
         mock.module("../../../figma-client.js", () => ({
             sendCommandToFigma: mock(() => Promise.resolve({})),
-            joinChannel: mock(() => Promise.resolve()),
+            joinChannel: mock(() => Promise.resolve(PHASE9_JOIN_VERSIONS)),
             resetChannel: mock(() => {}),
         }));
         const clientMod = await import("../../../figma-client.js");
@@ -128,6 +134,12 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
 
     it("readonly payload: exact shape", async () => {
         const payload = {
+            // The plugin payload is not authoritative for transport-owned
+            // identity. These values exercise the merge order explicitly.
+            status: "error",
+            channel: "spoofed-channel",
+            serverVersion: "spoofed-server",
+            pluginVersion: "spoofed-plugin",
             editableScopeType: "readonly",
             allowEditNode: false,
             allowEditVariable: false,
@@ -148,6 +160,8 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         const parsed = JSON.parse(r.content[0].text);
         expect(parsed.status).toBe("success");
         expect(parsed.channel).toBe("ch1");
+        expect(parsed.serverVersion).toBe(SERVER_VERSION);
+        expect(parsed.pluginVersion).toBe(SERVER_VERSION);
         expect(parsed.editableScopeType).toBe("readonly");
         expect(parsed.allowEditNode).toBe(false);
         expect(parsed.allowEditVariable).toBe(false);
@@ -192,6 +206,8 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         const parsed = JSON.parse(r.content[0].text);
         expect(parsed.status).toBe("success");
         expect(parsed.channel).toBe("ch2");
+        expect(parsed.serverVersion).toBe(SERVER_VERSION);
+        expect(parsed.pluginVersion).toBe(SERVER_VERSION);
         expect(parsed.editableScopeType).toBe("page");
         expect(parsed.allowEditNode).toBe("page");
         expect(parsed.allowEditVariable).toBe(false);
@@ -236,6 +252,8 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         const parsed = JSON.parse(r.content[0].text);
         expect(parsed.status).toBe("success");
         expect(parsed.channel).toBe("ch3");
+        expect(parsed.serverVersion).toBe(SERVER_VERSION);
+        expect(parsed.pluginVersion).toBe(SERVER_VERSION);
         expect(parsed.editableScopeType).toBe("node");
         expect(parsed.allowEditNode).toBe("node");
         expect(parsed.allowEditVariable).toBe(true);
@@ -263,7 +281,7 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
     beforeEach(async () => {
         mock.module("../../../figma-client.js", () => ({
             sendCommandToFigma: mock(() => Promise.resolve({})),
-            joinChannel: mock(() => Promise.resolve()),
+            joinChannel: mock(() => Promise.resolve(PHASE9_JOIN_VERSIONS)),
             resetChannel: mock(() => {}),
         }));
         const clientMod = await import("../../../figma-client.js");
@@ -403,6 +421,31 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect((resetChannel as any).mock.calls.length).toBe(1);
     });
 
+    it("Phase 9: an awaited leave failure never replaces the originating leg-2 error", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(Object.assign(
+                    new Error("The bound peer disconnected during scope read"),
+                    {
+                        code: "PLUGIN_DISCONNECTED",
+                        details: { pluginPeerId: "plugin-old" },
+                    },
+                ))
+                : Promise.resolve({}),
+        );
+        (resetChannel as any).mockRejectedValue(
+            new Error("leave acknowledgement timed out"),
+        );
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("PLUGIN_DISCONNECTED");
+        expect(parsed.errorMessage).toContain("disconnected");
+        expect(parsed.errorDetails).toEqual({ pluginPeerId: "plugin-old" });
+        expect((resetChannel as any).mock.calls.length).toBe(1);
+    });
+
     it("Q20: an unknown structured code passes through verbatim with its message — never collapsed", async () => {
         (sendCommandToFigma as any).mockImplementation((cmd: string) =>
             cmd === "get_connect_payload"
@@ -447,7 +490,7 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
     beforeEach(async () => {
         mock.module("../../../figma-client.js", () => ({
             sendCommandToFigma: mock(() => Promise.resolve({})),
-            joinChannel: mock(() => Promise.resolve()),
+            joinChannel: mock(() => Promise.resolve(PHASE9_JOIN_VERSIONS)),
             resetChannel: mock(() => {}),
         }));
         const clientMod = await import("../../../figma-client.js");

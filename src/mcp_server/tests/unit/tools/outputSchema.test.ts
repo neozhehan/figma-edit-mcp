@@ -1,11 +1,15 @@
 import { describe, it, expect, mock } from "bun:test";
+import { SERVER_VERSION } from "../../../../shared/version.js";
 
 // C7: a mutable transport return so the callback tests can drive a specific
 // handler-shaped payload through the REAL registered callback.
 let nextTransportResult: any = {};
 mock.module("../../../figma-client.js", () => ({
     sendCommandToFigma: mock(() => Promise.resolve(nextTransportResult)),
-    joinChannel: mock(() => Promise.resolve()),
+    joinChannel: mock(() => Promise.resolve({
+        serverVersion: SERVER_VERSION,
+        pluginVersion: SERVER_VERSION,
+    })),
     resetChannel: mock(() => { }),
 }));
 
@@ -80,10 +84,18 @@ describe("Phase 4: outputSchema Validation Tests", () => {
     describe("channel_join output schema validation", () => {
         const schema = TOOLS["channel_join"];
 
+        it("advertises both self-reported version fields", () => {
+            const advertised: any = toJsonSchemaCompat(schema, { target: "draft-7" });
+            expect(advertised.properties.serverVersion.type).toBe("string");
+            expect(advertised.properties.pluginVersion.type).toBe("string");
+        });
+
         it("validates successful page-mode connects", () => {
             assertPayloadValidates("channel_join(page)", schema, {
                 status: "success",
                 channel: "my-channel",
+                serverVersion: SERVER_VERSION,
+                pluginVersion: SERVER_VERSION,
                 allowEditNode: "page",
                 allowEditVariable: true,
                 allowEditStyle: true,
@@ -109,6 +121,8 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             assertPayloadValidates("channel_join(node)", schema, {
                 status: "success",
                 channel: "my-channel",
+                serverVersion: SERVER_VERSION,
+                pluginVersion: SERVER_VERSION,
                 allowEditNode: "node",
                 allowEditVariable: false,
                 allowEditStyle: false,
@@ -133,6 +147,8 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             assertPayloadValidates("channel_join(readonly)", schema, {
                 status: "success",
                 channel: "my-channel",
+                serverVersion: SERVER_VERSION,
+                pluginVersion: SERVER_VERSION,
                 allowEditNode: false,
                 allowEditVariable: false,
                 allowEditStyle: false,
@@ -155,7 +171,9 @@ describe("Phase 4: outputSchema Validation Tests", () => {
         const REPRESENTATIVE_OUTPUTS: Record<string, any> = {
             channel_join: {
                 status: "success",
-                channel: "my-channel"
+                channel: "my-channel",
+                serverVersion: SERVER_VERSION,
+                pluginVersion: SERVER_VERSION,
             },
             page_info: {
                 documentId: "doc-1",
