@@ -1,4 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import {
+    JOIN_ATTEMPT_RELEASED_CHANNEL,
+    mergeReleasedChannelDetails,
+} from "../../../shared/channelProtocol.js";
 import { SERVER_VERSION } from "../../../shared/version.js";
 
 class FakeWebSocket {
@@ -74,6 +78,42 @@ async function establishBinding(client: any, channel = "phase9", pluginVersion =
 }
 
 describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
+    it("C6-F5: the shared released-channel merger preserves every JSON details shape", () => {
+        expect(mergeReleasedChannelDetails(undefined, "good")).toEqual({
+            releasedChannel: "good",
+        });
+        expect(mergeReleasedChannelDetails({
+            scopeRootId: "1:2",
+        }, "good")).toEqual({
+            scopeRootId: "1:2",
+            releasedChannel: "good",
+        });
+        expect(mergeReleasedChannelDetails({
+            scopeRootId: "1:2",
+            releasedChannel: "untrusted",
+        }, "good")).toEqual({
+            originDetails: {
+                scopeRootId: "1:2",
+                releasedChannel: "untrusted",
+            },
+            releasedChannel: "good",
+        });
+        for (const originDetails of [
+            null,
+            ["array", 7],
+            "string",
+            42,
+            true,
+        ]) {
+            expect(
+                mergeReleasedChannelDetails(originDetails, "good"),
+            ).toEqual({
+                originDetails,
+                releasedChannel: "good",
+            });
+        }
+    });
+
     it("self-reports the authoritative server version, returns the version pair, and performs an acknowledged leave", async () => {
         const client = await importFreshClient("join-leave");
         const { socket, result, joinFrame } = await establishBinding(client);
@@ -259,6 +299,7 @@ describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
         expect(mismatchError.details).toEqual({
             serverVersion: SERVER_VERSION,
             pluginVersion: "0.0.0",
+            releasedChannel: "versioned",
         });
         await expect(client.sendCommandToFigma("page_info")).rejects.toThrow(
             "No channel is bound to this session",
@@ -333,10 +374,44 @@ describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
         expect(blocked.details).toEqual({ releasedChannel: "good" });
     });
 
-    it("P9-F2: a rejoin of the same channel reports no released channel", async () => {
-        // Rejoining the channel you already hold costs nothing, so the
-        // disclosure must not fire — it would name a channel that is also the
-        // one being requested and read as a spurious loss.
+    it("C6-F5: a leg-1 refusal preserves non-record details beside released-channel evidence", async () => {
+        const client = await importFreshClient("released-array-details");
+        const { socket } = await establishBinding(client, "good");
+
+        const joinPromise = client.joinChannel("next");
+        const leaveFrame = socket.lastFrame();
+        socket.acknowledge(leaveFrame, { left: true, channel: "good" });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const joinFrame = socket.lastFrame();
+        socket.emitFrame({
+            type: "join_error",
+            id: joinFrame.id,
+            code: "PLUGIN_PEER_UNAVAILABLE",
+            message: "No plugin is available.",
+            details: ["socket-origin", 7],
+        });
+
+        let joinError: any;
+        try {
+            await joinPromise;
+        } catch (error) {
+            joinError = error;
+        }
+        expect(joinError.code).toBe("PLUGIN_PEER_UNAVAILABLE");
+        expect(joinError.details).toEqual({
+            originDetails: ["socket-origin", 7],
+            releasedChannel: "good",
+        });
+        expect(joinError[JOIN_ATTEMPT_RELEASED_CHANNEL]).toBe("good");
+    });
+
+    it("P9-F2: a failed same-channel rejoin discloses the healthy binding it released", async () => {
+        // Rejoining the channel already held still releases its live socket
+        // reservation first. If the replacement join fails, that healthy
+        // binding was lost and must be named just like a cross-channel switch.
         const client = await importFreshClient("same-channel-rejoin");
         const { socket } = await establishBinding(client, "same");
 
@@ -362,10 +437,8 @@ describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
             joinError = error;
         }
         expect(joinError.code).toBe("PLUGIN_PEER_UNAVAILABLE");
-        expect(joinError.details?.releasedChannel).toBeUndefined();
+        expect(joinError.details?.releasedChannel).toBe("same");
 
-        // Still coded, but with the generic recovery: there is no specific
-        // channel to name, so the message points at the plugin's status bar.
         let blocked: any;
         try {
             await client.sendCommandToFigma("page_info");
@@ -373,7 +446,254 @@ describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
             blocked = error;
         }
         expect(blocked.code).toBe("CHANNEL_NOT_BOUND");
-        expect(blocked.message).toContain("Call channel_join with the channel code");
+        expect(blocked.message).toContain("released the previously joined channel 'same'");
+        expect(blocked.message).toContain("Call channel_join with 'same'");
+        expect(blocked.details).toEqual({ releasedChannel: "same" });
+    });
+
+    it("P9-F2: leg-2 cleanup preserves a healthy predecessor in fail-closed state", async () => {
+        const client = await importFreshClient("leg2-release");
+        const { socket } = await establishBinding(client, "good");
+
+        const joinPromise = client.joinChannel("scope-fails");
+        const priorLeave = socket.lastFrame();
+        socket.acknowledge(priorLeave, { left: true, channel: "good" });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const joinFrame = socket.lastFrame();
+        socket.acknowledge(joinFrame, {
+            serverVersion: SERVER_VERSION,
+            pluginVersion: SERVER_VERSION,
+        });
+        const joined = await joinPromise;
+        expect(joined).toEqual({
+            serverVersion: SERVER_VERSION,
+            pluginVersion: SERVER_VERSION,
+            releasedChannel: "good",
+        });
+
+        // This is the exact state transition channel.ts performs after its
+        // get_connect_payload leg fails.
+        const detachPromise = client.resetChannel({
+            releasedChannel: joined.releasedChannel,
+        });
+        const failedScopeLeave = socket.lastFrame();
+        expect(failedScopeLeave.channel).toBe("scope-fails");
+        socket.acknowledge(failedScopeLeave, {
+            left: true,
+            channel: "scope-fails",
+        });
+        await detachPromise;
+
+        let blocked: any;
+        try {
+            await client.sendCommandToFigma("page_info");
+        } catch (error) {
+            blocked = error;
+        }
+        expect(blocked.code).toBe("CHANNEL_NOT_BOUND");
+        expect(blocked.details).toEqual({ releasedChannel: "good" });
+    });
+
+    it("C6-T6: the registered callback preserves real leg-1 details without a second merge", async () => {
+        const client = await importFreshClient("registered-leg1-release");
+        const { socket } = await establishBinding(client, "good");
+        const channelTools = await import(
+            "../../tools/channel.js?registered-real-client-leg1-change6"
+        );
+        let registeredJoin: ((args: any) => Promise<any>) | undefined;
+        channelTools.registerChannelTools({
+            registerTool(
+                name: string,
+                _options: unknown,
+                handler: (args: any) => Promise<any>,
+            ) {
+                if (name === "channel_join") registeredJoin = handler;
+            },
+        } as any, {
+            joinChannel: client.joinChannel,
+            sendCommandToFigma: client.sendCommandToFigma,
+            resetChannel: client.resetChannel,
+        });
+        expect(registeredJoin).toBeDefined();
+
+        const toolPromise = registeredJoin!({ channel: "typo" });
+        const priorLeave = socket.lastFrame();
+        socket.acknowledge(priorLeave, { left: true, channel: "good" });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const joinFrame = socket.lastFrame();
+        socket.emitFrame({
+            type: "join_error",
+            id: joinFrame.id,
+            code: "PLUGIN_PEER_UNAVAILABLE",
+            message: "No plugin is available.",
+            details: { channel: "typo", peerCount: 0 },
+        });
+
+        const toolResult = await toolPromise;
+        expect(toolResult.structuredContent).toEqual({
+            status: "error",
+            channel: "typo",
+            errorCode: "PLUGIN_PEER_UNAVAILABLE",
+            errorMessage:
+                "No plugin is available. This attempt also disconnected the previously joined channel 'good'; call channel_join with 'good' to restore it.",
+            errorDetails: {
+                channel: "typo",
+                peerCount: 0,
+                releasedChannel: "good",
+            },
+        });
+    });
+
+    it("C6-T6: the registered callback carries real join metadata through leg-2 cleanup into CHANNEL_NOT_BOUND", async () => {
+        const client = await importFreshClient("registered-leg2-release");
+        const { socket } = await establishBinding(client, "good");
+        const channelTools = await import(
+            "../../tools/channel.js?registered-real-client-change6"
+        );
+        let registeredJoin: ((args: any) => Promise<any>) | undefined;
+        channelTools.registerChannelTools({
+            registerTool(
+                name: string,
+                _options: unknown,
+                handler: (args: any) => Promise<any>,
+            ) {
+                if (name === "channel_join") registeredJoin = handler;
+            },
+        } as any, {
+            joinChannel: client.joinChannel,
+            sendCommandToFigma: client.sendCommandToFigma,
+            resetChannel: client.resetChannel,
+        });
+        expect(registeredJoin).toBeDefined();
+
+        const toolPromise = registeredJoin!({ channel: "scope-fails" });
+        const priorLeave = socket.lastFrame();
+        expect(priorLeave).toMatchObject({
+            type: "leave",
+            channel: "good",
+        });
+        socket.acknowledge(priorLeave, { left: true, channel: "good" });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const joinFrame = socket.lastFrame();
+        expect(joinFrame).toMatchObject({
+            type: "join",
+            channel: "scope-fails",
+        });
+        socket.acknowledge(joinFrame, {
+            serverVersion: SERVER_VERSION,
+            pluginVersion: SERVER_VERSION,
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const scopeFrame = socket.lastFrame();
+        expect(scopeFrame).toMatchObject({
+            type: "message",
+            channel: "scope-fails",
+            message: {
+                command: "get_connect_payload",
+            },
+        });
+        socket.acknowledge(scopeFrame, {
+            errorCode: "SCOPE_INVALID",
+            errorMessage: "The editable scope became invalid.",
+            details: ["plugin-origin", 9],
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const cleanupLeave = socket.lastFrame();
+        expect(cleanupLeave).toMatchObject({
+            type: "leave",
+            channel: "scope-fails",
+        });
+        socket.acknowledge(cleanupLeave, {
+            left: true,
+            channel: "scope-fails",
+        });
+
+        const toolResult = await toolPromise;
+        expect(toolResult.structuredContent).toEqual({
+            status: "error",
+            channel: "scope-fails",
+            errorCode: "SCOPE_INVALID",
+            errorMessage:
+                "The editable scope became invalid. This attempt also disconnected the previously joined channel 'good'; call channel_join with 'good' to restore it.",
+            errorDetails: {
+                originDetails: ["plugin-origin", 9],
+                releasedChannel: "good",
+            },
+        });
+
+        const sentCount = socket.sent.length;
+        let blocked: any;
+        try {
+            await client.sendCommandToFigma("page_info");
+        } catch (error) {
+            blocked = error;
+        }
+        expect(blocked.code).toBe("CHANNEL_NOT_BOUND");
+        expect(blocked.details).toEqual({ releasedChannel: "good" });
+        expect(socket.sent.length).toBe(sentCount);
+    });
+
+    it("P9-F2: an invalidated binding is not reported as released by a later failed join", async () => {
+        const client = await importFreshClient("invalidated-no-release");
+        const { socket } = await establishBinding(client, "already-gone");
+
+        socket.emitFrame({
+            type: "peer_disconnected",
+            channel: "already-gone",
+            code: "PLUGIN_DISCONNECTED",
+            message: "The bound plugin already left.",
+        });
+
+        const joinPromise = client.joinChannel("next");
+        const staleLeave = socket.lastFrame();
+        expect(staleLeave.type).toBe("leave");
+        socket.acknowledge(staleLeave, {
+            left: true,
+            channel: "already-gone",
+        });
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const joinFrame = socket.lastFrame();
+        socket.emitFrame({
+            type: "join_error",
+            id: joinFrame.id,
+            code: "PLUGIN_PEER_UNAVAILABLE",
+            message: "No plugin is available.",
+        });
+
+        let joinError: any;
+        try {
+            await joinPromise;
+        } catch (error) {
+            joinError = error;
+        }
+        expect(joinError.code).toBe("PLUGIN_PEER_UNAVAILABLE");
+        expect(joinError.details?.releasedChannel).toBeUndefined();
+
+        let blocked: any;
+        try {
+            await client.sendCommandToFigma("page_info");
+        } catch (error) {
+            blocked = error;
+        }
+        expect(blocked.code).toBe("CHANNEL_NOT_BOUND");
         expect(blocked.details).toBeUndefined();
     });
 
@@ -403,5 +723,17 @@ describe("v2.3.3 Phase 9: figma-client peer-bound lifecycle", () => {
         });
         // No join frame was ever emitted after the failed leave.
         expect(socket.lastFrame().type).toBe("leave");
+        expect(socket.readyState).toBe(3);
+
+        const sentCount = socket.sent.length;
+        let blocked: any;
+        try {
+            await client.sendCommandToFigma("page_info");
+        } catch (error) {
+            blocked = error;
+        }
+        expect(blocked.code).toBe("CHANNEL_NOT_BOUND");
+        expect(blocked.details).toBeUndefined();
+        expect(socket.sent.length).toBe(sentCount);
     });
 });

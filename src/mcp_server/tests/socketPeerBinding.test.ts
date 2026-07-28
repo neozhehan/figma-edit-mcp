@@ -434,13 +434,83 @@ describe("Phase 9 D13: peer-bound socket protocol", () => {
     expect(delivered.message.result).toEqual({ ok: true });
   });
 
-  it("P9-F4: reclaims routes idle past the bound without evicting an active one", async () => {
+  it("P9-D1: refuses a join without clientType and leaves both channel slots unreserved", async () => {
+    const rolelessPeer = await openPeer();
+    const plugin = await openPeer();
+    const mcp = await openPeer();
+
+    rolelessPeer.send({
+      id: "join-without-client-type",
+      type: "join",
+      channel: "role-required",
+      pluginVersion: SERVER_VERSION,
+    });
+    const refusal = await rolelessPeer.next(
+      (message) => message.type === "error",
+    );
+    expect(refusal.message).toContain(
+      "clientType must be exactly 'plugin' or 'mcp'",
+    );
+
+    // Non-admission is observable, not inferred from the error string: both a
+    // legitimate plugin and MCP can still reserve the channel and exchange a
+    // command, while the refused connection receives none of that pair's data.
+    expect((await joinPlugin(plugin, "role-required")).type).toBe("system");
+    expect((await joinMcp(mcp, "role-required")).type).toBe("system");
+
+    mcp.send({
+      id: "role-required-probe",
+      type: "message",
+      channel: "role-required",
+      message: {
+        id: "role-required-probe",
+        command: "page_info",
+        params: {},
+      },
+    });
+    const routed = await plugin.next(
+      (message) => message.message?.id === "role-required-probe",
+    );
+    expect(routed.message.command).toBe("page_info");
+    await rolelessPeer.expectNo(
+      (message) => message.message?.id === "role-required-probe",
+    );
+  });
+
+  it("P9-F4: expires idle routes by timer and on late-frame arrival without a sweeper command", async () => {
     let clock = 1_000_000;
+    interface ManualRouteTimer {
+      callback: () => void;
+      dueAt: number;
+    }
+    const routeTimers = new Set<ManualRouteTimer>();
+    const routeTimer = {
+      set(callback: () => void, delayMs: number): ManualRouteTimer {
+        const timer = { callback, dueAt: clock + delayMs };
+        routeTimers.add(timer);
+        return timer;
+      },
+      clear(handle: unknown): void {
+        routeTimers.delete(handle as ManualRouteTimer);
+      },
+    };
+    const runDueRouteTimers = () => {
+      for (;;) {
+        const timer = [...routeTimers]
+          .filter((candidate) => candidate.dueAt <= clock)
+          .sort((left, right) => left.dueAt - right.dueAt)[0];
+        if (!timer) return;
+        routeTimers.delete(timer);
+        timer.callback();
+      }
+    };
+
     const idleServer = createFigmaSocketServer({
       logger: { log() {}, error() {} },
       peerIdFactory: () => `idle-peer-${++peerSequence}`,
       now: () => clock,
       routeIdleTimeoutMs: 10_000,
+      routeTimer,
     });
     await new Promise<void>((resolve, reject) => {
       idleServer.httpServer.once("error", reject);
@@ -477,10 +547,15 @@ describe("Phase 9 D13: peer-bound socket protocol", () => {
         await plugin.next((m) => m.type === "broadcast" && m.message?.id === id);
       };
 
-      // "abandoned" never gets a terminal frame. "active" keeps reporting
-      // progress, so its route must survive the same elapsed time.
-      await dispatch("abandoned");
+      // Two replies reach the bridge after their logical idle deadline:
+      // one progress and one terminal. "idle-only" produces no later traffic
+      // at all. "active" keeps reporting progress, so its route must survive
+      // the same elapsed time.
+      await dispatch("late-progress");
+      await dispatch("late-terminal");
+      await dispatch("idle-only");
       await dispatch("active");
+      expect(routeTimers.size).toBe(4);
 
       clock += 8_000;
       plugin.send({
@@ -488,19 +563,46 @@ describe("Phase 9 D13: peer-bound socket protocol", () => {
         message: { id: "active", type: "progress_update", data: { progress: 50 } },
       });
       await mcp.next((m) => m.type === "progress_update" && m.id === "active");
+      // Refresh cancels/replaces the active route's timer, without growing the
+      // timer set or disturbing any inactive neighbour.
+      expect(routeTimers.size).toBe(4);
 
-      // Cross the bound for "abandoned" (16s idle) but not for "active" (8s).
+      // Cross the bound for all three inactive routes (16s idle) but not for
+      // "active" (8s). Deliberately do not run the injected timer yet: the
+      // arrival guard itself must reject both progress and terminal frames
+      // after the deadline.
       clock += 8_000;
-      await dispatch("sweeper");
-
-      // The reclaimed route can no longer deliver: its reply is now unroutable.
       plugin.send({
-        id: "abandoned", type: "message", channel: "idle",
-        message: { id: "abandoned", result: { late: true } },
+        id: "late-progress", type: "progress_update", channel: "idle",
+        message: {
+          id: "late-progress",
+          type: "progress_update",
+          data: { progress: 99 },
+        },
       });
-      await expect(
-        mcp.next((m) => m.message?.result?.late === true, 400),
-      ).rejects.toThrow();
+      await mcp.expectNo(
+        (m) => m.type === "progress_update" && m.id === "late-progress",
+      );
+      expect(routeTimers.size).toBe(3);
+
+      plugin.send({
+        id: "late-terminal", type: "message", channel: "idle",
+        message: { id: "late-terminal", result: { late: true } },
+      });
+      await mcp.expectNo((m) => m.message?.result?.late === true);
+      expect(routeTimers.size).toBe(2);
+
+      // Now fire due timers with no subsequent MCP dispatch. The fully idle
+      // route is reclaimed in the background; only the refreshed route's
+      // future timer remains.
+      runDueRouteTimers();
+      expect(routeTimers.size).toBe(1);
+
+      plugin.send({
+        id: "idle-only", type: "message", channel: "idle",
+        message: { id: "idle-only", result: { leaked: true } },
+      });
+      await mcp.expectNo((m) => m.message?.result?.leaked === true);
 
       // The refreshed route is untouched and still delivers.
       plugin.send({
@@ -509,10 +611,43 @@ describe("Phase 9 D13: peer-bound socket protocol", () => {
       });
       const survived = await mcp.next((m) => m.message?.result?.survived === true);
       expect(survived.message.result).toEqual({ survived: true });
+      expect(routeTimers.size).toBe(0);
+
+      // Teardown must cancel outstanding expiry work as well.
+      await dispatch("pending-at-teardown");
+      expect(routeTimers.size).toBe(1);
     } finally {
       await Promise.all(localPeers.map((peer) => peer.close()));
       await idleServer.close();
     }
+    expect(routeTimers.size).toBe(0);
+  });
+
+  it("P9-F6: normalizes padded versions on real plugin and MCP join frames", async () => {
+    const plugin = await openPeer();
+    const mcp = await openPeer();
+
+    const pluginAck = await joinPlugin(
+      plugin,
+      "normalized-versions",
+      ` ${SERVER_VERSION}`,
+      "join-padded-plugin",
+    );
+    expect(pluginAck.message.result).toEqual({
+      pluginVersion: SERVER_VERSION,
+    });
+
+    const mcpAck = await joinMcp(
+      mcp,
+      "normalized-versions",
+      `${SERVER_VERSION} `,
+      "join-padded-mcp",
+    );
+    expect(mcpAck.type).toBe("system");
+    expect(mcpAck.message.result).toEqual({
+      serverVersion: SERVER_VERSION,
+      pluginVersion: SERVER_VERSION,
+    });
   });
 
   it("refuses a known version mismatch without reserving the MCP slot, then permits a matching rejoin", async () => {

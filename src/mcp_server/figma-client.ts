@@ -4,7 +4,11 @@ import { normalizeNodeId, normalizeNodeIds } from "./utils.js";
 import { logger } from "./logger.js";
 import { UNKNOWN_ERROR } from "../shared/errorCodes.js";
 import { SERVER_VERSION } from "../shared/version.js";
-import { CLIENT_REFUSALS } from "../shared/channelProtocol.js";
+import {
+    CLIENT_REFUSALS,
+    JOIN_ATTEMPT_RELEASED_CHANNEL,
+    mergeReleasedChannelDetails,
+} from "../shared/channelProtocol.js";
 import type {
     ChannelJoinResult as ProtocolChannelJoinResult,
     ChannelLeaveResult,
@@ -45,7 +49,37 @@ export interface FigmaResponse {
     error?: string | { code: string; message: string; details?: any };
 }
 
-export type JoinChannelResult = ProtocolChannelJoinResult;
+export type JoinChannelResult = ProtocolChannelJoinResult & {
+    /**
+     * Internal attempt metadata: a healthy binding that this join released
+     * before the socket admitted the requested channel. The channel tool keeps
+     * this out of successful output, but needs it if its subsequent
+     * get_connect_payload leg fails.
+     */
+    releasedChannel?: string;
+};
+
+export interface ResetChannelOptions {
+    /**
+     * Preserve a healthy predecessor released earlier in the same channel_join
+     * attempt. This keeps the following CHANNEL_NOT_BOUND failure actionable
+     * when the post-join scope read fails.
+     */
+    releasedChannel?: string;
+}
+
+function markJoinAttemptReleasedChannel(
+    error: FigmaError,
+    releasedChannel: string,
+): FigmaError {
+    Object.defineProperty(error, JOIN_ATTEMPT_RELEASED_CHANNEL, {
+        value: releasedChannel,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+    });
+    return error;
+}
 
 // Define interface for command progress updates
 export interface CommandProgressUpdate {
@@ -482,11 +516,27 @@ function sendLeaveRequest(channel: string, timeoutMs: number = 5000): Promise<vo
     });
 }
 
-export async function resetChannel(): Promise<void> {
-    if (bindingState.status === "unbound") return;
+export async function resetChannel(
+    options: ResetChannelOptions = {},
+): Promise<void> {
+    const releasedChannel = typeof options.releasedChannel === "string"
+        && options.releasedChannel.length > 0
+        ? options.releasedChannel
+        : undefined;
+    const nextUnboundState: ChannelBindingState = releasedChannel
+        ? { status: "unbound", releasedChannel }
+        : { status: "unbound" };
+
+    if (bindingState.status === "unbound") {
+        // A transport failure may have cleared the newly admitted binding
+        // before the channel tool performs its leg-2 cleanup. Do not lose the
+        // healthy predecessor that this same join attempt already released.
+        if (releasedChannel) bindingState = nextUnboundState;
+        return;
+    }
 
     const previousBinding = bindingState;
-    bindingState = { status: "unbound" };
+    bindingState = nextUnboundState;
     rejectPendingForBinding(
         previousBinding.generation,
         new FigmaError({
@@ -527,7 +577,8 @@ export async function joinChannel(channelName: string): Promise<JoinChannelResul
         // pair before attempting a switch or rejoin; a failed new join therefore
         // cannot silently leave later tools targeting the previous plugin.
         if (bindingState.status !== "unbound") {
-            const previousChannel = bindingState.channel;
+            const previousBinding = bindingState;
+            const previousChannel = previousBinding.channel;
             try {
                 await resetChannel();
             } catch (leaveError: any) {
@@ -545,7 +596,14 @@ export async function joinChannel(channelName: string): Promise<JoinChannelResul
                     },
                 });
             }
-            if (previousChannel !== channelName) releasedChannel = previousChannel;
+            // Only a healthy bound state qualifies. An invalidated binding is
+            // already unusable, so naming it as a channel this attempt "cost"
+            // would fabricate recovery evidence. A same-channel rejoin DOES
+            // qualify: the live reservation was released before the failed
+            // replacement attempt.
+            if (previousBinding.status === "bound") {
+                releasedChannel = previousChannel;
+            }
         }
 
         const result = await sendCommandToFigma("join", { channel: channelName });
@@ -562,11 +620,13 @@ export async function joinChannel(channelName: string): Promise<JoinChannelResul
         const joined: JoinChannelResult = {
             serverVersion: (result as any).serverVersion,
             pluginVersion: (result as any).pluginVersion,
+            ...(releasedChannel ? { releasedChannel } : {}),
         };
         bindingState = {
             status: "bound",
             channel: channelName,
-            ...joined,
+            serverVersion: joined.serverVersion,
+            pluginVersion: joined.pluginVersion,
             generation: ++nextBindingGeneration,
         };
         logger.info(`Joined channel: ${channelName}`);
@@ -607,22 +667,28 @@ export async function joinChannel(channelName: string): Promise<JoinChannelResul
             if (releasedChannel) {
                 // Preserve code and message verbatim (Q20) and add the released
                 // channel alongside whatever details the origin supplied.
-                throw new FigmaError({
-                    code: (error as any).code,
-                    message: (error as any).message,
-                    details: {
-                        ...((error as any).details ?? {}),
-                        releasedChannel,
-                    },
-                });
+                throw markJoinAttemptReleasedChannel(
+                    new FigmaError({
+                        code: (error as any).code,
+                        message: (error as any).message,
+                        details: mergeReleasedChannelDetails(
+                            (error as any).details,
+                            releasedChannel,
+                        ),
+                    }),
+                    releasedChannel,
+                );
             }
             throw error;
         }
-        throw new FigmaError({
+        const joinError = new FigmaError({
             code: "CHANNEL_JOIN_FAILED",
             message: error instanceof Error ? error.message : String(error),
             ...(releasedChannel ? { details: { releasedChannel } } : {}),
         });
+        throw releasedChannel
+            ? markJoinAttemptReleasedChannel(joinError, releasedChannel)
+            : joinError;
     }
 }
 

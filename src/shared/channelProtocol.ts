@@ -1,9 +1,10 @@
 /**
  * Canonical server-side channel protocol for the v2.3.3 peer-bound transport.
  *
- * The Figma plugin bundle deliberately keeps its own refusal registry because it
- * cannot import server modules at runtime. Socket-originated refusals live here,
- * so `src/socket.ts` never reconstructs codes or messages inline.
+ * The Figma plugin bundle deliberately keeps its own plugin-origin refusal
+ * registry because it cannot import server modules at runtime. Socket-originated
+ * refusals live here only, so `src/socket.ts` never reconstructs codes or
+ * messages inline and the plugin does not ship a dead mirror.
  */
 
 export type ChannelClientType = "plugin" | "mcp";
@@ -64,6 +65,68 @@ export interface ChannelJoinResult {
 export interface ChannelLeaveResult {
   left: true;
   channel: string;
+}
+
+/**
+ * Non-wire provenance carried only on an error created by `joinChannel`.
+ * `Symbol.for` keeps the marker stable across test-isolated module instances;
+ * JSON/socket input cannot forge a symbol-keyed property.
+ */
+export const JOIN_ATTEMPT_RELEASED_CHANNEL = Symbol.for(
+  "figma-edit-mcp.joinAttemptReleasedChannel",
+);
+
+/**
+ * Add trusted join-attempt recovery evidence without destroying the error
+ * origin's details shape (Change 6, C6-F5).
+ *
+ * Ordinary JSON records remain flat so existing callers keep their field
+ * paths. A record that already owns the reserved `releasedChannel` key is
+ * nested whole under `originDetails`; overwriting it would violate origin
+ * preservation, while leaving it flat would confuse untrusted and canonical
+ * evidence. Every other JSON shape is likewise retained verbatim under
+ * `originDetails`; `undefined` has no origin value to retain.
+ */
+export function mergeReleasedChannelDetails(
+  details: unknown,
+  releasedChannel: string,
+): Record<string, unknown> {
+  if (details === undefined) return { releasedChannel };
+
+  if (isPlainDetailsRecord(details)) {
+    if (!Object.prototype.hasOwnProperty.call(details, "releasedChannel")) {
+      return {
+        ...details,
+        releasedChannel,
+      };
+    }
+  }
+
+  return { originDetails: details, releasedChannel };
+}
+
+/**
+ * Preserve join-origin details on either leg while ensuring an origin-authored
+ * `releasedChannel` cannot occupy the trusted top-level evidence slot when the
+ * actual join attempt released no predecessor.
+ */
+export function isolateUntrustedReleasedChannelDetails(
+  details: unknown,
+): unknown {
+  return isPlainDetailsRecord(details)
+    && Object.prototype.hasOwnProperty.call(details, "releasedChannel")
+    ? { originDetails: details }
+    : details;
+}
+
+function isPlainDetailsRecord(
+  value: unknown,
+): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 export const CHANNEL_REFUSALS = {

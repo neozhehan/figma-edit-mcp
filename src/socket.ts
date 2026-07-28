@@ -45,6 +45,8 @@ interface PendingRoute {
   mcpPeerId: string;
   /** Refreshed by progress forwarding; drives idle reclamation (P9-F4). */
   lastActivityAt: number;
+  /** Per-route idle timer; cleared on progress, terminal delivery, or detach. */
+  expiryTimer?: unknown;
 }
 
 interface ChannelState {
@@ -62,6 +64,11 @@ export interface FigmaSocketServerOptions {
   now?: () => number;
   /** Override the idle bound; tests use a short one. */
   routeIdleTimeoutMs?: number;
+  /** Injectable timer paired with `now` for deterministic expiry tests. */
+  routeTimer?: {
+    set(callback: () => void, delayMs: number): unknown;
+    clear(handle: unknown): void;
+  };
 }
 
 export interface FigmaSocketServer {
@@ -86,18 +93,85 @@ export function createFigmaSocketServer(
   const peerIdFactory = options.peerIdFactory ?? randomUUID;
   const now = options.now ?? Date.now;
   const routeIdleTimeoutMs = options.routeIdleTimeoutMs ?? ROUTE_IDLE_TIMEOUT_MS;
+  const routeTimer = options.routeTimer ?? {
+    set(callback: () => void, delayMs: number): unknown {
+      const handle = setTimeout(callback, delayMs);
+      handle.unref?.();
+      return handle;
+    },
+    clear(handle: unknown): void {
+      clearTimeout(handle as ReturnType<typeof setTimeout>);
+    },
+  };
   const channels = new Map<string, ChannelState>();
   const peers = new Map<WebSocket, ConnectedPeer>();
 
+  const deletePendingRoute = (
+    channel: ChannelState,
+    requestId: string,
+    expectedRoute?: PendingRoute,
+  ): boolean => {
+    const route = channel.pending.get(requestId);
+    if (!route || (expectedRoute && route !== expectedRoute)) return false;
+
+    channel.pending.delete(requestId);
+    if (route.expiryTimer !== undefined) {
+      routeTimer.clear(route.expiryTimer);
+      route.expiryTimer = undefined;
+    }
+    return true;
+  };
+
+  const clearPendingRoutes = (channel: ChannelState) => {
+    for (const route of channel.pending.values()) {
+      if (route.expiryTimer !== undefined) {
+        routeTimer.clear(route.expiryTimer);
+        route.expiryTimer = undefined;
+      }
+    }
+    channel.pending.clear();
+  };
+
+  const isIdleRoute = (route: PendingRoute, currentTime = now()) =>
+    currentTime - route.lastActivityAt >= routeIdleTimeoutMs;
+
+  const armRouteExpiry = (
+    channel: ChannelState,
+    route: PendingRoute,
+  ) => {
+    if (route.expiryTimer !== undefined) {
+      routeTimer.clear(route.expiryTimer);
+      route.expiryTimer = undefined;
+    }
+    const elapsed = Math.max(0, now() - route.lastActivityAt);
+    const delayMs = Math.max(0, routeIdleTimeoutMs - elapsed);
+    route.expiryTimer = routeTimer.set(() => {
+      // A cleared/replaced route can leave a queued timer callback behind in
+      // some schedulers. Identity guards it from deleting the replacement.
+      if (channel.pending.get(route.requestId) !== route) return;
+
+      if (isIdleRoute(route)) {
+        deletePendingRoute(channel, route.requestId, route);
+        return;
+      }
+
+      // The injected/logical clock may advance differently from the host
+      // timer. Re-arm for the remaining idle window rather than expiring early.
+      armRouteExpiry(channel, route);
+    }, delayMs);
+  };
+
   /**
    * Reclaim routes whose request produced no terminal frame and no progress
-   * within the idle bound (P9-F4). Called on dispatch, so the map is bounded
-   * by the number of genuinely active requests rather than by session length.
+   * within the idle bound (P9-F4). Per-route timers perform reclamation while
+   * fully idle; dispatch pruning is a defensive backstop for delayed timers.
    */
   const pruneIdleRoutes = (channel: ChannelState) => {
-    const cutoff = now() - routeIdleTimeoutMs;
+    const currentTime = now();
     for (const [requestId, route] of channel.pending) {
-      if (route.lastActivityAt <= cutoff) channel.pending.delete(requestId);
+      if (isIdleRoute(route, currentTime)) {
+        deletePendingRoute(channel, requestId, route);
+      }
     }
   };
 
@@ -171,7 +245,7 @@ export function createFigmaSocketServer(
     notifyPlugin: boolean,
   ) => {
     if (channel.mcp !== peer) return;
-    channel.pending.clear();
+    clearPendingRoutes(channel);
     channel.mcp = null;
     channel.serverVersion = undefined;
     peer.channel = null;
@@ -187,7 +261,7 @@ export function createFigmaSocketServer(
   ) => {
     if (channel.plugin !== peer) return;
 
-    channel.pending.clear();
+    clearPendingRoutes(channel);
     channel.plugin = null;
     peer.channel = null;
     peer.pluginVersion = undefined;
@@ -490,12 +564,17 @@ export function createFigmaSocketServer(
     }
 
     pruneIdleRoutes(channel);
-    channel.pending.set(requestId, {
+    deletePendingRoute(channel, requestId);
+    const route: PendingRoute = {
       requestId,
       pluginPeerId: channel.plugin.peerId,
       mcpPeerId: peer.peerId,
       lastActivityAt: now(),
-    });
+      // Assigned by armRouteExpiry immediately below.
+      expiryTimer: undefined,
+    };
+    channel.pending.set(requestId, route);
+    armRouteExpiry(channel, route);
 
     send(channel.plugin, {
       type: "broadcast",
@@ -533,13 +612,23 @@ export function createFigmaSocketServer(
       return;
     }
 
+    // Enforce the idle boundary on arrival as well as by timer. A host timer
+    // that fires late must not let a late progress/terminal frame revive or
+    // consume an already expired request.
+    const currentTime = now();
+    if (isIdleRoute(route, currentTime)) {
+      deletePendingRoute(channel, requestId, route);
+      return;
+    }
+
     const isProgress =
       data.type === "progress_update" ||
       data.message.type === "progress_update";
     if (isProgress) {
       // Progress is liveness evidence: refresh the route so a long-running
       // command that keeps reporting is never reclaimed under it (P9-F4).
-      route.lastActivityAt = now();
+      route.lastActivityAt = currentTime;
+      armRouteExpiry(channel, route);
       send(channel.mcp, {
         id: requestId,
         type: "progress_update",
@@ -561,7 +650,7 @@ export function createFigmaSocketServer(
       sender: "peer",
       channel: channel.name,
     });
-    channel.pending.delete(requestId);
+    deletePendingRoute(channel, requestId, route);
   };
 
   const handleRelay = (
@@ -641,6 +730,7 @@ export function createFigmaSocketServer(
   });
 
   const close = async () => {
+    for (const channel of channels.values()) clearPendingRoutes(channel);
     for (const client of webSocketServer.clients) client.terminate();
 
     const webSocketClose = new Promise<void>((resolveClose) => {

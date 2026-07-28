@@ -1,12 +1,14 @@
 /**
  * Ratified error-code inventory for v2.3.3 (open-questions Q16, Option A;
- * amended by PRD Rev 27). One authoritative list, used by the MCP-server code
- * and cross-checked against the plugin's registries by the inventory test —
- * the plugin bundle keeps its own registry (`figma_plugin/utils/errors.ts`)
- * to avoid a runtime import across the bundle boundary; the two are kept from
- * drifting by a parity test, not a shared import. This split — plus each
- * side unifying on ONE message-factory pattern internally — is the recorded
- * Q27 decision (Option B, resolved 2026-07-23), not an ad hoc scope-down.
+ * amended through PRD Rev 58). This is the authoritative membership list.
+ * Message factories are origin-scoped: socket admission uses
+ * `CHANNEL_REFUSALS`, pre-wire MCP-client state uses `CLIENT_REFUSALS`, and
+ * plugin-origin refusals use `figma_plugin/utils/errors.ts`. Inventory tests
+ * enforce membership, per-origin parity, and the deliberate absence of dead
+ * mirrors. The plugin keeps its own runtime registry because its bundle cannot
+ * import `src/shared`; Q27's centralization rule therefore means one factory at
+ * the layer that can actually raise each code, not duplicated factories across
+ * every layer (Change 5 P9-F3; Change 6 C6-D5).
  */
 
 /** The ratified legacy fallback: a failure not thrown as a coded object. */

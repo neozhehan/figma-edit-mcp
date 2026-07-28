@@ -20,9 +20,11 @@ export const UNKNOWN_ERROR = "UNKNOWN_ERROR";
  * messages thrown as plain strings that predate v2.3.3's D9 structured-error
  * convention — they are outside Q16's "adds or edits" rule and travel as the
  * ratified `UNKNOWN_ERROR` fallback (converted to coded factories only as
- * each is touched, per the v2.3.4 burn-down). Every code this release adds —
- * D5/D6 verification refusals and the Phase 9–11 operational codes — lives in
- * the `REFUSALS` factory registry below, not here. Do not add new entries.
+ * each is touched, per the v2.3.4 burn-down). Every code this release adds
+ * that can originate inside the plugin — D5/D6/D10 verification refusals and
+ * the Phase 10–11 operational codes — lives in the `REFUSALS` factory registry
+ * below, not here. Socket-admission and MCP-client state codes live at their
+ * actual origins under `src/shared`. Do not add new entries.
  */
 export const ERRORS: any = {
     // Editable Scope Errors
@@ -48,13 +50,15 @@ export const ERRORS: any = {
 };
 
 /**
- * The v2.3.3 coded-refusal registry (Q16; scope corrected by Q27, 2026-07-23):
- * every code this release adds or edits — design-system verification (D5),
- * parent verification (D6), and the ten Phase 9–11 operational placeholders —
- * lives here as a message factory, not as a plain string in `ERRORS`. "Every
+ * The plugin-origin v2.3.3 coded-refusal registry (Q16; scope corrected by
+ * Q27 and Change 5 P9-F3): design-system verification (D5), parent/category
+ * verification (D6/D10), and the six Phase 10–11 operational placeholders
+ * live here as message factories, not as plain strings in `ERRORS`. "Every
  * coded refusal originates from the central registry of message factories"
- * (Q16) means exactly this table; `ERRORS` above is the separate, closed,
- * legacy-only surface Q27 scopes it to.
+ * means the registry at the layer that can actually raise it: this table for
+ * plugin-origin codes, `CHANNEL_REFUSALS` for socket admission, and
+ * `CLIENT_REFUSALS` for pre-wire MCP-client state. `ERRORS` above remains the
+ * separate, closed legacy-only surface Q27 scopes it to.
  *
  * Message factories, not strings: handlers pass operands in and never compose
  * refusal text locally, so each code has exactly one authored message carrying
