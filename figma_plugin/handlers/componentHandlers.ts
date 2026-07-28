@@ -4,7 +4,7 @@
  */
 
 import { customBase64Encode, bytesToUtf8 } from '../utils/exportUtils.js';
-import { assertNonEmptyExplicitCreatorName } from '../utils/creatorValidation.js';
+import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
 
 /**
  * Gets all local styles from the document
@@ -1307,7 +1307,7 @@ export interface ComponentSetPlan {
 export async function validateCreateComponentSetPlan(params: any, scopeRoot: BaseNode): Promise<ComponentSetPlan> {
     const { components, properties, componentSetName, parentId } = params;
 
-    assertNonEmptyExplicitCreatorName(
+    assertNonEmptyExplicitName(
         componentSetName,
         "componentSetName",
         "create_component_set",
@@ -1466,7 +1466,7 @@ export async function validateCreateComponentSetPlan(params: any, scopeRoot: Bas
 }
 
 export async function createComponentSet(plan: ComponentSetPlan) {
-    assertNonEmptyExplicitCreatorName(
+    assertNonEmptyExplicitName(
         plan.componentSetName,
         "componentSetName",
         "create_component_set",

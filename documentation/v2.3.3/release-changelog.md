@@ -2,6 +2,80 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 2: Name-assignment defect class closed (F78-21)
+
+### Author: Claude Opus 5 (Ultracode) @ 2026-07-27 10:05pm PT
+
+**Release status (Rev 53, 2026-07-27): Change 1's verification claims reproduce exactly, and its F78-15 remediation is extended from five instances to the whole defect class.** An independent review of `release-changelog.md` and commit `20e144c` re-ran every falsifiable claim: the suite is **925/925** (**4,809 assertions across 47 files**) as stated, `build:all`, `check:types:plugin`, `check:suppressions`, `check:generated`, `check:versions`, `check:plugin`, and `git diff --check` all pass, the official SDK registers **46** tools, and the ledger counts match the table. The schema-side repairs are present as described (five `minLength:1` name fields, the pinned 19-literal `BlendMode`, the live-confirmed numeric bounds), and `removeUncommitted` correctly requires positive `removed === true` confirmation rather than trusting a non-throwing `remove()`.
+
+Live probing on channel `a7ps` then found that F78-15 had been closed **instance-by-instance rather than as a class**: two further tools that assign a user-visible name still substituted a Figma default silently and reported success. That is recorded here as **F78-21**, with the stub-only whitespace oracle recorded as **T78-13**. Both are fixed, and the full name-assignment inventory is now pinned so the class cannot reaccumulate. Repository verification is green at **932/932** (**4,839 assertions across 47 files**) with every build and static gate passing; the post-fix live matrix on channel `uy38` passed **7/7**, with zero mutation confirmed after each refusal and the page restored to its 59-descendant baseline.
+
+Two hypotheses raised during the review were tested live and **rejected as findings** rather than carried: whitespace names are preserved by Figma, and `component_manage_property.newPropertyName` already fails closed at the host. One earlier item also closed on inspection: F78-01's live orphan `1396:123` no longer exists in the test document.
+
+| ID | Classification | Status | Finding |
+| :- | :- | :- | :- |
+| F78-21 | Functional gap | **Resolved — live verified** | The empty-name defect was closed by instance, so `node_rename` and `node_group` still substituted a Figma default silently and reported success. |
+| T78-13 | Testing gap | **Resolved — live verified** | The whitespace-preservation oracle was stub-only, so it could not establish the host behaviour its title asserted. |
+
+### Resolution and verification
+
+- The name-**assignment** class is now inventoried and enforced at both boundaries. `node_rename.name` and `node_group.name` gain `min(1)` at the MCP schema and `assertNonEmptyExplicitName` at the plugin before any mutation; `groupNodes` moves from `if (name)` to `if (name !== undefined)`, the same truthiness correction F78-15 applied to the five creators.
+- `variable_manage`'s `CREATE_VARIABLE`/`CREATE_COLLECTION` branches reported a supplied-but-empty name as "name is required", conflating two causes against D9's distinct-cause rule. They now name the empty cause separately while keeping the missing-cause message intact.
+- `component_manage_property.newPropertyName` gains `min(1)`. It is not a member of the class — Figma rejects it outright — but the refusal moves from one round trip later carrying raw host prose to the boundary with an actionable path.
+- Lookup and verification fields (`nodeName`, `styleName`, `propertyName`, `collectionName`) are **deliberately excluded**: a present-empty verification value is compared exactly, per the C9 resolution. Content fields (`text`, `labelMarkdown`) are excluded as non-names with their own contracts.
+- The shared helper is renamed `assertNonEmptyExplicitCreatorName` → `assertNonEmptyExplicitName` with **no alias retained** (the Q26 do-not-accrue-legacy rule), because it now guards the class rather than the creators alone.
+- `NAME_ASSIGNMENT_FIELDS` in the official-SDK boundary suite pins all eight assignment fields and asserts `minLength: 1` in the **emitted** `tools/list`. Behavioural tests cover the two refinement-based tools (`style_manage`, `variable_manage`), dispatch-free rejection with whitespace still accepted, and unchanged omission defaults. Plugin-level regressions prove `setNodeName` and `groupNodes` refuse `""` before any mutation and that `groupNodes` creates nothing for a refused name.
+- Repository verification: `bun test src/mcp_server/tests` → **932 pass, 0 fail, 4,839 assertions, 47 files**. `build:all`, `check:types:plugin`, `check:suppressions`, `check:generated`, `check:versions`, and `check:plugin` all pass.
+
+### Functional gaps
+
+#### F78-21 — the empty-name defect was closed by instance, not by class
+
+**Evidence.** F78-15 fixed the five creator surfaces it enumerated. Live probing on channel `a7ps` found the identical defect on two further tools that assign a user-visible name, both reporting success:
+
+| Call | Result |
+| :- | :- |
+| `create_shape({name: ""})` | `-32602`, `too_small, minimum: 1` — refused |
+| `node_rename({name: ""})` | `{"name":"Rectangle","oldName":" "}` — **silently renamed, success** |
+| `node_group({name: ""})` | `{"name":"Group","childCount":2}` — **silently ignored, success** |
+
+Three tools, one document, one release, three answers to the same input. `node_rename` is the tool F78-15 used as its own discriminator to prove native normalization — the evidence was gathered there and the fix applied everywhere else. `node_group` discarded the value even earlier, through the `if (name)` truthiness check that F78-15 specifically replaced with presence-sensitive assignment in the five creators.
+
+Under the Golden Rule this fails both halves. First-call correctness: the emitted schema advertised bare `string`, so a model composing from the schema alone reasonably sends `""`. One-round-trip recovery: there is no error, so there is no round trip — the model is never told anything happened, which is the same unrecoverable silence that decided Q35.
+
+**Required closure.** Close the class rather than two more instances: inventory every field that ASSIGNS a user-visible name, apply one rule at both boundaries, and pin the inventory so a new tool cannot be added off-contract.
+
+**Resolution.** See "Resolution and verification" above. Post-fix live matrix on channel `uy38` — **7/7**:
+
+| Probe | Result |
+| :- | :- |
+| `node_rename({name: ""})` | refused, `too_small, minimum: 1` at `name` |
+| `node_group({name: ""})` | refused, `too_small, minimum: 1` at `name` |
+| `component_manage_property({newPropertyName: ""})` | refused at the boundary — previously a raw Figma error one round trip later |
+| Zero mutation after both refusals | page held at 60 descendants; the two candidate `Star` nodes remained ungrouped at page level |
+| `node_rename({name: "  "})` | applied and persisted — whitespace remains a real name |
+| `node_group` with `name` omitted | `Group` — Figma's default, unchanged |
+| `node_group({name: "Named Group"})` | applied — presence-based assignment works for supplied names |
+
+Cleanup removed both disposable artifacts (`GroupProbe`, and the `PropProbe` component created for the `newPropertyName` probe) and the page returned to its 59-descendant baseline.
+
+### Testing gaps
+
+#### T78-13 — the whitespace oracle was stub-only
+
+**Evidence.** `creatorValidation.ts` stated as fact that "Whitespace is an intentional, non-empty name and must not be normalized", and the supporting test — titled "accepts non-empty whitespace names **without normalization**" — drove local stubs and asserted the name read back as `" "`. That is the same evidentiary error T78-10 recorded for `""`: *"its Figma stubs allowed a node name to remain `\"\"` … the green matrix proved only the local stub behavior and could not establish the claimed contract."* The `4mor` matrix verified explicit-empty refusals and omission defaults; it never probed whitespace. The `""` boundary therefore rested on an untested assumption about where Figma's normalization begins.
+
+**Required closure.** Establish the host behaviour live, then either keep the boundary at `""` with live backing or move it.
+
+**Resolution.** Whitespace is **preserved**. On channel `a7ps`, `" "`, `"   "`, and `"\t"` all persisted exactly under independent `node_info` readback rather than the creating call's own echo. The `=== ""` boundary is therefore correct as written, and the claim is now host-verified rather than stub-inferred. The boundary suite additionally asserts that whitespace continues to pass the registered schema for every newly guarded tool, so a future tightening cannot silently swallow it.
+
+### Live hypotheses rejected — not findings
+
+- **Whitespace normalization.** Raised as a suspected F78-15-class defect; disproved live (see T78-13). Recorded because the concern was methodologically valid even though the conclusion was wrong — the fix needed live backing, not a different boundary.
+- **`component_manage_property.newPropertyName`.** Figma rejects an empty property name outright (`in editComponentProperty: Must pass in valid name, defaultValue, preferredValues, description, or slotSettings`), so it never silently substituted. It was tightened for first-call correctness, not recorded as a class member.
+- **F78-01's live orphan.** Component `1396:123`, recorded in Change 1 as surviving in the test document, no longer exists (`missingNodeIds`). No cleanup action is outstanding.
+
+
 ## Change 1: Current Phase 7-8 re-verification status
 ### Author: GPT-5.6 Sol (Ultra) @ 2026-07-27 10:00am PT
 

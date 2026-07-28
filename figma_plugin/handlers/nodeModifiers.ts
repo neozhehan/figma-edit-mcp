@@ -8,6 +8,7 @@ import { delay } from '../utils/helpers.js';
 import { getContainingPageNode, isAncestorOf } from '../utils/nodeUtils.js';
 import { batchEnvelope } from '../utils/batchResult.js';
 import { describeError } from '../utils/errors.js';
+import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
 
 /**
  * Moves and/or resizes a node (sets absolute coordinates and dimensions)
@@ -419,6 +420,12 @@ export async function setNodeName(params: any) {
         throw new Error("Missing name parameter");
     }
 
+    // Figma normalizes an assigned empty name to a type default, so accepting
+    // "" would rename the node to something the caller never asked for and
+    // report success. Refuse before any mutation (AS1 defense in depth; the
+    // registered schema already requires a non-empty name).
+    assertNonEmptyExplicitName(name, "name", "node_rename");
+
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
         throw new Error(`Node not found with ID: ${nodeId}`);
@@ -448,6 +455,11 @@ export async function groupNodes(params: any) {
         throw new Error("At least 2 nodes are required to create a group");
     }
 
+    // Presence, not truthiness: `if (name)` silently discarded an explicit ""
+    // and let Figma's default stand while reporting success. Refuse before the
+    // group is created, so an empty name never costs a mutation.
+    assertNonEmptyExplicitName(name, "name", "node_group");
+
     // Collect all nodes
     const resolvedNodes: any[] = [];
     for (const { nodeId } of nodes) {
@@ -472,7 +484,7 @@ export async function groupNodes(params: any) {
     }
 
     const group = figma.group(resolvedNodes, parent);
-    if (name) group.name = name;
+    if (name !== undefined) group.name = name;
 
     return { id: group.id, name: group.name, childCount: group.children.length };
 }

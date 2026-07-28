@@ -2347,3 +2347,75 @@ describe("v2.3.3 Phase 8: observable-boundary containment", () => {
         expect(result.warning).toContain("Failed to read component-set child count: children getter failed");
     });
 });
+
+/**
+ * F78-21 plugin-side defense in depth (AS1): the server is not the trust
+ * boundary, so a client that bypasses the schema must still fail closed before
+ * any mutation. `node_rename` and `node_group` assign a user-visible name and
+ * were live-confirmed (channel a7ps, 2026-07-27) to silently substitute a Figma
+ * default for an explicit "" while reporting success.
+ */
+describe("v2.3.3 F78-21: name-assignment tools refuse an exact-empty name", () => {
+    it("node_rename refuses \"\" before touching the node, and preserves whitespace", async () => {
+        const target = makeNode("Target", "RECTANGLE");
+        nodes.set("target", target);
+        const { setNodeName } = await import(
+            "../../../../../figma_plugin/handlers/nodeModifiers.js?f7821-rename"
+        );
+
+        await expect(setNodeName({ nodeId: "target", name: "" })).rejects.toThrow(
+            "node_rename: name must not be empty",
+        );
+        expect(target.name, "the node must not be renamed").toBe("Target");
+
+        const renamed = await setNodeName({ nodeId: "target", name: "  " });
+        expect(renamed.name).toBe("  ");
+        expect(renamed.oldName).toBe("Target");
+    });
+
+    it("node_group refuses \"\" before the group is created", async () => {
+        const parent = makeParent();
+        const first = makeNode("First", "RECTANGLE", { parent });
+        const second = makeNode("Second", "RECTANGLE", { parent });
+        parent.children.push(first, second);
+        nodes.set("first", first);
+        nodes.set("second", second);
+        let groupCalls = 0;
+        (globalThis as any).figma.group = (...args: any[]) => {
+            groupCalls++;
+            return { id: "group-id", name: "Group", children: args[0] };
+        };
+
+        const { groupNodes } = await import(
+            "../../../../../figma_plugin/handlers/nodeModifiers.js?f7821-group"
+        );
+        await expect(
+            groupNodes({ nodes: [{ nodeId: "first" }, { nodeId: "second" }], name: "" }),
+        ).rejects.toThrow("node_group: name must not be empty");
+        expect(groupCalls, "no group may be created for a refused name").toBe(0);
+    });
+
+    it("node_group still accepts an omitted name and applies a supplied one", async () => {
+        const parent = makeParent();
+        const first = makeNode("First", "RECTANGLE", { parent });
+        const second = makeNode("Second", "RECTANGLE", { parent });
+        parent.children.push(first, second);
+        nodes.set("first", first);
+        nodes.set("second", second);
+        const created: any = { id: "group-id", name: "Group", children: [] };
+        (globalThis as any).figma.group = () => created;
+
+        const { groupNodes } = await import(
+            "../../../../../figma_plugin/handlers/nodeModifiers.js?f7821-group-ok"
+        );
+        const omitted = await groupNodes({ nodes: [{ nodeId: "first" }, { nodeId: "second" }] });
+        expect(omitted.name, "omission keeps Figma's default").toBe("Group");
+
+        created.name = "Group";
+        const named = await groupNodes({
+            nodes: [{ nodeId: "first" }, { nodeId: "second" }],
+            name: "Named",
+        });
+        expect(named.name).toBe("Named");
+    });
+});

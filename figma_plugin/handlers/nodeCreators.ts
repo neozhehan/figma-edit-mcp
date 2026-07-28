@@ -5,7 +5,7 @@
 
 import { setCharacters } from '../utils/textUtils.js';
 import { rethrowAfterCreatorCleanup } from '../utils/nodeUtils.js';
-import { assertNonEmptyExplicitCreatorName } from '../utils/creatorValidation.js';
+import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
 
 export async function resolveAppendableParent(parentId: string, command: string): Promise<any> {
     if (!parentId) throw new Error(`${command}: missing parentId parameter.`);
@@ -56,7 +56,7 @@ export async function createShape(params: any) {
         throw new Error("Missing shape type parameter");
     }
 
-    assertNonEmptyExplicitCreatorName(name, "name", "create_shape");
+    assertNonEmptyExplicitName(name, "name", "create_shape");
 
     const upperType = type.toUpperCase();
     if (arcData !== undefined && upperType !== "ELLIPSE") {
@@ -211,7 +211,7 @@ export async function createFrame(params: any) {
         itemSpacing = 0,
     } = params || {};
 
-    assertNonEmptyExplicitCreatorName(name, "name", "create_frame");
+    assertNonEmptyExplicitName(name, "name", "create_frame");
 
     const parentNode = await resolveAppendableParent(parentId, "create_frame");
 
@@ -356,7 +356,7 @@ export async function createText(params: any) {
         parentId,
     } = params || {};
 
-    assertNonEmptyExplicitCreatorName(name, "name", "create_text");
+    assertNonEmptyExplicitName(name, "name", "create_text");
 
     // Defense in depth for clients that bypass the MCP schema. Never silently
     // map an unsupported weight to Regular and then echo the unapplied input.

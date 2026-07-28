@@ -1292,7 +1292,7 @@
   };
 
   // figma_plugin/utils/creatorValidation.ts
-  function assertNonEmptyExplicitCreatorName(value, parameterName, command) {
+  function assertNonEmptyExplicitName(value, parameterName, command) {
     if (value === "") {
       throw new Error(
         `${command}: ${parameterName} must not be empty. Omit ${parameterName} to use the default name.`
@@ -1330,7 +1330,7 @@
     if (!type) {
       throw new Error("Missing shape type parameter");
     }
-    assertNonEmptyExplicitCreatorName(name, "name", "create_shape");
+    assertNonEmptyExplicitName(name, "name", "create_shape");
     const upperType = type.toUpperCase();
     if (arcData !== void 0 && upperType !== "ELLIPSE") {
       throw new Error(`arcData is only supported for shape type ELLIPSE, got ${type}`);
@@ -1453,7 +1453,7 @@
       layoutSizingVertical = "FIXED",
       itemSpacing = 0
     } = params || {};
-    assertNonEmptyExplicitCreatorName(name, "name", "create_frame");
+    assertNonEmptyExplicitName(name, "name", "create_frame");
     const parentNode = await resolveAppendableParent(parentId, "create_frame");
     const frame = figma.createFrame();
     try {
@@ -1557,7 +1557,7 @@
       name,
       parentId
     } = params || {};
-    assertNonEmptyExplicitCreatorName(name, "name", "create_text");
+    assertNonEmptyExplicitName(name, "name", "create_text");
     const fontStyle = getFontStyle(fontWeight);
     const parentNode = await resolveAppendableParent(parentId, "create_text");
     const textNode = figma.createText();
@@ -1966,6 +1966,7 @@
     if (name === void 0) {
       throw new Error("Missing name parameter");
     }
+    assertNonEmptyExplicitName(name, "name", "node_rename");
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
       throw new Error(`Node not found with ID: ${nodeId}`);
@@ -1983,6 +1984,7 @@
     if (!nodes || nodes.length < 2) {
       throw new Error("At least 2 nodes are required to create a group");
     }
+    assertNonEmptyExplicitName(name, "name", "node_group");
     const resolvedNodes = [];
     for (const { nodeId } of nodes) {
       const node = await figma.getNodeByIdAsync(nodeId);
@@ -2001,7 +2003,7 @@
       }
     }
     const group = figma.group(resolvedNodes, parent);
-    if (name) group.name = name;
+    if (name !== void 0) group.name = name;
     return { id: group.id, name: group.name, childCount: group.children.length };
   }
   async function ungroupNodes(params) {
@@ -3400,7 +3402,7 @@
   }
   async function validateCreateComponentSetPlan(params, scopeRoot) {
     const { components, properties, componentSetName, parentId } = params;
-    assertNonEmptyExplicitCreatorName(
+    assertNonEmptyExplicitName(
       componentSetName,
       "componentSetName",
       "create_component_set"
@@ -3528,7 +3530,7 @@
   }
   async function createComponentSet(plan) {
     var _a;
-    assertNonEmptyExplicitCreatorName(
+    assertNonEmptyExplicitName(
       plan.componentSetName,
       "componentSetName",
       "create_component_set"
@@ -6225,7 +6227,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     if (!svg) {
       throw new Error("Missing required parameter: svg string.");
     }
-    assertNonEmptyExplicitCreatorName(name, "name", "create_svg");
+    assertNonEmptyExplicitName(name, "name", "create_svg");
     const parentNode = await resolveAppendableParent(parentId, "create_svg");
     const node = figma.createNodeFromSvg(svg);
     try {

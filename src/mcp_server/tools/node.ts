@@ -145,7 +145,7 @@ export function registerNodeTools(server: McpServer) {
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to rename"),
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
-                name: z.string().describe("New name for the node"),
+                name: z.string().min(1).describe("New non-empty name for the node. Figma normalizes an empty name to a type default, so `\"\"` is refused rather than silently substituted."),
             }),
             outputSchema: looseOutput({
                 name: z.string().describe("The new name of the node"),
@@ -274,7 +274,7 @@ export function registerNodeTools(server: McpServer) {
                         })
                     )
                     .describe("Array of nodes to group"),
-                name: z.string().optional().describe("Name for the new group"),
+                name: z.string().min(1).optional().describe("Optional non-empty name for the new group. Omit to accept Figma's default; `\"\"` is refused rather than silently substituted."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the new group node"),

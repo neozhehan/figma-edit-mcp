@@ -51,7 +51,7 @@ export function registerComponentTools(server: McpServer) {
                 nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 action: z.enum(["ADD", "EDIT"]).describe("Action to perform"),
                 propertyName: z.string().describe("The human-readable name of the property to affect"),
-                newPropertyName: z.string().optional().describe("For the EDIT action, to rename the property"),
+                newPropertyName: z.string().min(1).optional().describe("For the EDIT action, to rename the property. Must be non-empty: Figma rejects an empty property name, so it is refused here instead of one round trip later."),
                 propertyType: z.enum(["BOOLEAN", "TEXT", "INSTANCE_SWAP"]).optional().describe("Required for ADD: The type of property"),
                 defaultValue: z.union([z.string(), z.boolean()]).optional().describe("Required for ADD: Default value for the property. For INSTANCE_SWAP, this must be a component node ID."),
                 newDefaultValue: z.union([z.string(), z.boolean()]).optional().describe("For the EDIT action, to change the default value. For INSTANCE_SWAP, this must be a component node ID."),

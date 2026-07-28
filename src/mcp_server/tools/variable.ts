@@ -170,7 +170,13 @@ export function registerVariableTools(server: McpServer) {
                             message: "scopes is required for CREATE_VARIABLE. Specify the allowed scopes explicitly."
                         });
                     }
-                    if (!data.name) {
+                    if (data.name === "") {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["name"],
+                            message: "name must not be empty for CREATE_VARIABLE. Figma normalizes an empty name, so supply the name you want."
+                        });
+                    } else if (!data.name) {
                         ctx.addIssue({
                             code: z.ZodIssueCode.custom,
                             path: ["name"],
@@ -185,7 +191,13 @@ export function registerVariableTools(server: McpServer) {
                         });
                     }
                 } else if (data.action === "CREATE_COLLECTION") {
-                    if (!data.name) {
+                    if (data.name === "") {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            path: ["name"],
+                            message: "name must not be empty for CREATE_COLLECTION. Figma normalizes an empty name, so supply the name you want."
+                        });
+                    } else if (!data.name) {
                         ctx.addIssue({
                             code: z.ZodIssueCode.custom,
                             path: ["name"],

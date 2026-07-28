@@ -1,6 +1,6 @@
 import { resolveAppendableParent } from './nodeCreators.js';
 import { rethrowAfterCreatorCleanup } from '../utils/nodeUtils.js';
-import { assertNonEmptyExplicitCreatorName } from '../utils/creatorValidation.js';
+import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
 
 export async function createNodeFromSvg(params: any) {
     const { parentId, svg, name, x = 0, y = 0 } = params || {};
@@ -9,7 +9,7 @@ export async function createNodeFromSvg(params: any) {
         throw new Error("Missing required parameter: svg string.");
     }
 
-    assertNonEmptyExplicitCreatorName(name, "name", "create_svg");
+    assertNonEmptyExplicitName(name, "name", "create_svg");
 
     const parentNode = await resolveAppendableParent(parentId, "create_svg");
 
