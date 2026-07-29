@@ -229,20 +229,22 @@ The guarantee is an **observable success boundary**: no successful command may a
 ---
 
 ## Phase 10: Page-Load Isolation (D14)
-- [ ] **Page-Load Wrap & Isolation**
-  - [ ] Wrap each page's `loadAsync()` individually across the multi-page read surface: `page_info` (pageIds), `node_info` traversals, `component_list`, `variable_list` consumer scans, and `annotation_list` by page.
-  - [ ] A failing page becomes a structured per-page error (`PAGE_LOAD_FAILED` / `PAGE_NOT_FOUND` / `TARGET_NOT_PAGE`) inside a shared `coverage` object (`{complete, pageErrors: [{pageId, error}]}`) while successful pages still return their data; invariant `complete === (pageErrors.length === 0)`.
-  - [ ] Single-page commands return the structured error **directly** instead of Figma's raw error string.
-- [ ] **Bounded Per-Page Timeout (Q12)**
-  - [ ] Implement a single bounded per-page timeout for `loadAsync()`: a hung load becomes a structured `PAGE_LOAD_TIMEOUT` page error instead of wedging the serialized command queue. The timeout value is implementation-chosen and documented as **behavior, not contract**.
-  - [ ] A `loadAsync()` that settles *after* its timeout is provably ignored — the late result may not alter a returned response or authorize later work.
-- [ ] **Destructive Scan Protection**
-  - [ ] `variable_delete` (including collection mode and apparently empty collections) aborts **before any `remove()`** with `DOCUMENT_SCAN_INCOMPLETE` when any page could not be loaded and scanned — a page error can never mean zero consumers. Today's accidental fail-closed-by-thrown-error becomes an explicit, tested contract.
-- [ ] **Unit Tests**
-  - [ ] One failing page yields partial data plus `coverage.complete: false` on reads.
-  - [ ] Variable and collection deletion fail closed with no mutation on incomplete coverage, including an apparently empty collection and one failing page among successes.
-  - [ ] A timed-out page yields `PAGE_LOAD_TIMEOUT` while other pages return their data; a late settlement is ignored (does not alter the returned result or enable later mutation).
-  - [ ] Single-page failures return structured codes, not raw Figma strings.
+- [x] **Page-Load Wrap & Isolation**
+  - [x] Wrap each page's `loadAsync()` individually across the multi-page read surface: `page_info` (pageIds), `node_info` traversals, `component_list`, `variable_list` consumer scans, and `annotation_list` by page.
+  - [x] A failing page becomes a structured per-page error (`PAGE_LOAD_FAILED` / `PAGE_NOT_FOUND` / `TARGET_NOT_PAGE`) inside a shared `coverage` object (`{complete, pageErrors: [{pageId, error}]}`) while successful pages still return their data; invariant `complete === (pageErrors.length === 0)`.
+  - [x] Single-page commands return the structured error **directly** instead of Figma's raw error string.
+- [x] **Bounded Per-Page Timeout (Q12)**
+  - [x] Implement a single bounded per-page timeout for `loadAsync()`: a hung load becomes a structured `PAGE_LOAD_TIMEOUT` page error instead of wedging the serialized command queue. The timeout value is implementation-chosen and documented as **behavior, not contract**.
+  - [x] A `loadAsync()` that settles *after* its timeout is provably ignored — the late result may not alter a returned response or authorize later work.
+- [x] **Destructive Scan Protection**
+  - [x] `variable_delete` (including collection mode and apparently empty collections) aborts **before any `remove()`** with `DOCUMENT_SCAN_INCOMPLETE` when any page could not be loaded and scanned — a page error can never mean zero consumers. Today's accidental fail-closed-by-thrown-error becomes an explicit, tested contract.
+- [x] **Unit Tests**
+  - [x] One failing page yields partial data plus `coverage.complete: false` on reads.
+  - [x] Variable and collection deletion fail closed with no mutation on incomplete coverage, including an apparently empty collection and one failing page among successes.
+  - [x] A timed-out page yields `PAGE_LOAD_TIMEOUT` while other pages return their data; a late settlement is ignored (does not alter the returned result or enable later mutation).
+  - [x] Single-page failures return structured codes, not raw Figma strings.
+
+- **Phase 10 closure (Revs 59–60, 2026-07-28):** [Change 7](release-changelog.md#change-7-phase-10-page-load-isolation-revs-5960) centralizes all Phase 10 page loads behind one per-command coordinator with a 10-second behavioral timeout, cached/settlement-guarded outcomes, and shared structured coverage across the five read tools. `variable_delete` now waits for every bounded page attempt and refuses incomplete load or traversal coverage before every variable/collection `remove()`, including an apparently empty collection. Live channel `08rz` reproduced real Page 2/3 load failures with Page 1 retained, then exposed an official-SDK `-32602` collision between the completed in-use refusal's `error:string` and D9's `error` envelope; Rev 60 preserves both advertised shapes and the post-fix live matrix passed without mutation at 59 descendants / 10 variables / 12 collections. The focused handler/schema/official-SDK matrix passes **94/94 tests with 872 assertions**; the full `src/mcp_server/tests` suite passes **1,009/1,009 with 5,421 assertions across 51 files**; and `build:all`, all type/suppression/generated/version/bundle gates, and `git diff --check` pass. Timeout, late-settlement, injected traversal-failure, incomplete destructive-scan, and apparently-empty-collection cases remain deterministic repository evidence.
 
 ---
 

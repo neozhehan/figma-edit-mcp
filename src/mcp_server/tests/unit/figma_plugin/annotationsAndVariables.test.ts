@@ -9,7 +9,7 @@ describe("getAnnotations Handler", () => {
                 getAnnotationCategoriesAsync: mock(async () => [])
             },
             getNodeByIdAsync: mock(async (id: string) => {
-                if (id === "page-1") return { id: "page-1", type: "PAGE", annotations: [], children: [] };
+                if (id === "page-1") return { id: "page-1", type: "PAGE", annotations: [], children: [], loadAsync: async () => { } };
                 if (id === "rect-1") return { id: "rect-1", type: "RECTANGLE", annotations: [] };
                 return null;
             }),
@@ -27,13 +27,19 @@ describe("getAnnotations Handler", () => {
 
     it("throws when pageId is not found", async () => {
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => null);
-        expect(getAnnotations({ pageId: "nonexistent" })).rejects.toThrow("pageId with ID nonexistent not found");
+        expect(getAnnotations({ pageId: "nonexistent" })).rejects.toMatchObject({
+            code: "PAGE_NOT_FOUND",
+            details: { pageId: "nonexistent" },
+        });
     });
 
     it("throws when pageId does not resolve to a PAGE", async () => {
         const mockRect = { id: "rect-1", type: "RECTANGLE" };
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockRect);
-        expect(getAnnotations({ pageId: "rect-1" })).rejects.toThrow("pageId does not resolve to a PAGE");
+        expect(getAnnotations({ pageId: "rect-1" })).rejects.toMatchObject({
+            code: "TARGET_NOT_PAGE",
+            details: { pageId: "rect-1", actualType: "RECTANGLE" },
+        });
     });
 
     it("returns annotations for a valid pageId", async () => {
@@ -42,7 +48,8 @@ describe("getAnnotations Handler", () => {
             name: "Page",
             type: "PAGE",
             annotations: [{ labelMarkdown: "Page note" }],
-            children: []
+            children: [],
+            loadAsync: async () => { },
         };
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockPage);
         const result = await getAnnotations({ pageId: "page-1", includeCategories: false });
@@ -76,6 +83,7 @@ describe("getAnnotations Handler", () => {
                 { nodeId: root.id, name: root.name, annotations: root.annotations },
                 { nodeId: child.id, name: child.name, annotations: child.annotations },
             ],
+            coverage: { complete: true, pageErrors: [] },
         });
         expect(result.annotations).toBeUndefined();
     });
@@ -100,7 +108,7 @@ describe("getVariables Handler", () => {
                 getVariableCollectionByIdAsync: mock(async () => null)
             },
             getNodeByIdAsync: mock(async (id: string) => {
-                if (id === "page-1") return { id: "page-1", type: "PAGE" };
+                if (id === "page-1") return { id: "page-1", type: "PAGE", children: [], loadAsync: async () => { } };
                 return null;
             }),
             currentPage: { id: "page-current", type: "PAGE" }
@@ -113,13 +121,19 @@ describe("getVariables Handler", () => {
 
     it("throws when includeConsumers is 'page' and pageId is not found", async () => {
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => null);
-        expect(getVariables({ variableId: ["v-1"], includeConsumers: "page", pageId: "nonexistent" })).rejects.toThrow("pageId with ID nonexistent not found");
+        expect(getVariables({ variableId: ["v-1"], includeConsumers: "page", pageId: "nonexistent" })).rejects.toMatchObject({
+            code: "PAGE_NOT_FOUND",
+            details: { pageId: "nonexistent" },
+        });
     });
 
     it("throws when includeConsumers is 'page' and pageId does not resolve to a PAGE", async () => {
         const mockRect = { id: "rect-1", type: "RECTANGLE" };
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockRect);
-        expect(getVariables({ variableId: ["v-1"], includeConsumers: "page", pageId: "rect-1" })).rejects.toThrow("pageId does not resolve to a PAGE");
+        expect(getVariables({ variableId: ["v-1"], includeConsumers: "page", pageId: "rect-1" })).rejects.toMatchObject({
+            code: "TARGET_NOT_PAGE",
+            details: { pageId: "rect-1", actualType: "RECTANGLE" },
+        });
     });
 
     it("lookup mode returns an object keyed by `variables` (not a bare array), omitting missingIds when all resolve", async () => {

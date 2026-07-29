@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput, batchResultRow } from "./_result.js";
+import { toolResult, looseOutput, batchResultRow, pageCoverage } from "./_result.js";
 
 // Kept in exact parity with the pinned @figma/plugin-typings
 // `AnnotationPropertyType` union. The Phase 7 contract test mechanically
@@ -144,7 +144,7 @@ export function registerAnnotationTools(server: McpServer) {
         "annotation_list",
         {
             title: "List Annotations",
-            description: "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. Optionally include the file's annotation categories.",
+            description: "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. Optionally include the file's annotation categories. Page loading is bounded; a page-scoped failure returns its structured error directly and successful reads include `coverage`.",
             inputSchema: z.object({
                 pageId: z.string().optional().describe("The page ID to get annotations from. Exactly one of pageId or nodeId is required."),
                 nodeId: z.string().optional().describe("The node ID to get annotations from. Exactly one of pageId or nodeId is required."),
@@ -153,6 +153,7 @@ export function registerAnnotationTools(server: McpServer) {
             outputSchema: looseOutput({
                 annotatedNodes: z.array(annotatedNode).describe("Grouped annotations, preserving the owning node in page and node modes"),
                 categories: z.array(annotationCategory).optional().describe("List of global annotation categories"),
+                coverage: pageCoverage,
             }),
             annotations: {
                 readOnlyHint: true,

@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput, batchResults } from "./_result.js";
+import { toolResult, looseOutput, batchResults, pageCoverage } from "./_result.js";
 import { noDuplicateTargets } from "./_batch.js";
 import { resizeIfOversized } from "../imageResize.js";
 import { nodeEffect } from "./style.js";
@@ -55,7 +55,7 @@ export function registerNodeTools(server: McpServer) {
         "node_info",
         {
             title: "Get Node Info",
-            description: "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. The workhorse read; start here before any write.",
+            description: "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. Inspect `coverage`: a failed containing page is omitted with a structured `pageErrors` row while other pages still return. The workhorse read; start here before any write.",
             inputSchema: z.object({
                 nodeIds: z
                     .array(z.string())
@@ -85,6 +85,7 @@ export function registerNodeTools(server: McpServer) {
             outputSchema: looseOutput({
                 nodes: z.array(nodeInfoEntry).describe("Node entries (id/name/type + optional properties/children/path/descendantCount)"),
                 missingNodeIds: z.array(z.string()).optional().describe("Requested IDs that weren't found"),
+                coverage: pageCoverage,
             }),
             annotations: {
                 readOnlyHint: true,

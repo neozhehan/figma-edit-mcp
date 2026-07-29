@@ -472,14 +472,13 @@ describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
     });
 
     it("P4-5: operational + scopes refusal messages carry actionable recovery content, not just non-emptiness", () => {
-        // The Phase 10-11 operational codes are placeholders with no live throw
-        // site yet, so this is the only guard on their recovery quality until
-        // then. VARIABLE_SCOPES_MISSING is the one D5 code with no read tool, so
-        // the name-verification content-bar tests below don't cover it — it is
-        // included here. Each must tell the caller what to DO (an actionable
-        // verb), not merely restate the failure. The four socket-origin D13
-        // codes are held to the same bar in socketPeerBinding.test.ts, against
-        // the registry that actually defines them (Change 5, P9-F3).
+        // Phase 10 now raises its page-load codes through the shared coordinator;
+        // Phase 11's connector code remains a placeholder. This registry-level
+        // guard continues to hold every operational message to the same recovery
+        // bar. VARIABLE_SCOPES_MISSING is the one D5 code with no read tool, so
+        // the name-verification tests below do not cover it. The four
+        // socket-origin D13 codes are held to the same bar in
+        // socketPeerBinding.test.ts (Change 5, P9-F3).
         type RefusalFactory = () => { code: string; message: string };
         const recoveryVerb = /\b(retry|reconnect|pass|read|list|ensure|open|start|ask|find|use|disconnect|specify|supply|update|resolve|report|verify|continue)\b/i;
         for (const code of [...PLUGIN_OPERATIONAL_CODES, "VARIABLE_SCOPES_MISSING"]) {

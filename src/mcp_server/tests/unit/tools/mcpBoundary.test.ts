@@ -148,6 +148,103 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
         expect(result.structuredContent.name).toBe("Body");
     });
 
+    it("Phase 10: variable_delete in-use refusal crosses the official SDK boundary without -32602", async () => {
+        commandBehavior = async () => ({
+            success: false,
+            error: "Cannot delete: variable(s) are still in use.",
+            variablesInUse: {
+                "VariableID:1": {
+                    nodeConsumers: [{
+                        nodeId: "1:2",
+                        nodeName: "Card",
+                        nodeType: "FRAME",
+                        fields: ["fills"],
+                    }],
+                    styleConsumers: [],
+                    aliasConsumers: [],
+                },
+            },
+        });
+
+        const result = await client.callTool({
+            name: "variable_delete",
+            arguments: {
+                variableIds: ["VariableID:1"],
+                variableNames: ["color/background"],
+            },
+        });
+
+        expect(result.isError).toBeFalsy();
+        expect(result.structuredContent.success).toBe(false);
+        expect(result.structuredContent.error).toContain("still in use");
+        expect(result.structuredContent.variablesInUse["VariableID:1"]).toBeDefined();
+    });
+
+    it("Phase 10: partial page_info coverage survives the official SDK boundary", async () => {
+        commandBehavior = async () => ({
+            documentId: "doc-1",
+            documentName: "Document",
+            pageCount: 2,
+            pages: [{ pageId: "page-good", pageName: "Good" }],
+            missingPageIds: [],
+            coverage: {
+                complete: false,
+                pageErrors: [{
+                    pageId: "page-bad",
+                    error: {
+                        code: "PAGE_LOAD_FAILED",
+                        message: "Failed to load page-bad",
+                        details: { pageId: "page-bad" },
+                    },
+                }],
+            },
+        });
+
+        const result = await client.callTool({
+            name: "page_info",
+            arguments: { pageIds: ["page-good", "page-bad"] },
+        });
+
+        expect(result.isError).toBeFalsy();
+        expect(result.structuredContent.pages).toEqual([
+            { pageId: "page-good", pageName: "Good" },
+        ]);
+        expect(result.structuredContent.coverage).toEqual({
+            complete: false,
+            pageErrors: [{
+                pageId: "page-bad",
+                error: {
+                    code: "PAGE_LOAD_FAILED",
+                    message: "Failed to load page-bad",
+                    details: { pageId: "page-bad" },
+                },
+            }],
+        });
+    });
+
+    it("Phase 10: a single-page load timeout arrives as the direct structured refusal", async () => {
+        commandBehavior = async () => {
+            throw new FigmaError({
+                code: "PAGE_LOAD_TIMEOUT",
+                message: "Page page-timeout did not load within the bounded interval.",
+                details: { pageId: "page-timeout", timeoutMs: 10_000 },
+            });
+        };
+
+        const result = await client.callTool({
+            name: "component_list",
+            arguments: { scope: "page", pageId: "page-timeout" },
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.structuredContent.error).toEqual({
+            code: "PAGE_LOAD_TIMEOUT",
+            message: "Page page-timeout did not load within the bounded interval.",
+            details: { pageId: "page-timeout", timeoutMs: 10_000 },
+        });
+        expect(result.content[0].text).toContain("Error [PAGE_LOAD_TIMEOUT]");
+    });
+
     it("F78-15: creator callbacks reject exact-empty names as -32602 without dispatch", async () => {
         let dispatchCount = 0;
         commandBehavior = async () => {

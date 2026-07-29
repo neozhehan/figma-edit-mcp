@@ -52,8 +52,9 @@ export const ERRORS: any = {
 /**
  * The plugin-origin v2.3.3 coded-refusal registry (Q16; scope corrected by
  * Q27 and Change 5 P9-F3): design-system verification (D5), parent/category
- * verification (D6/D10), and the six Phase 10–11 operational placeholders
- * live here as message factories, not as plain strings in `ERRORS`. "Every
+ * verification (D6/D10), Phase 10's live page-load codes, and Phase 11's
+ * connector placeholder live here as message factories, not as plain strings
+ * in `ERRORS`. "Every
  * coded refusal originates from the central registry of message factories"
  * means the registry at the layer that can actually raise it: this table for
  * plugin-origin codes, `CHANNEL_REFUSALS` for socket admission, and
@@ -72,30 +73,51 @@ export const REFUSALS = {
     // frame reaches Figma, so the plugin has no throw site for them and a
     // bundle-side copy would be dead weight in `code.js`. They live only in
     // `src/shared/channelProtocol.ts`; a regression asserts their absence here.
-    // Phase 10–11 operational entries below remain placeholders until those
-    // phases land, but those ARE plugin-thrown and so belong in this registry.
+    // Phase 10's page-load entries are raised through pageLoad.ts. Phase 11's
+    // connector entry remains a placeholder until that phase lands; both are
+    // plugin-thrown and therefore belong in this registry.
     //
     // Page codes are operational failures, not safety refusals — no "Operation
     // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
-    PAGE_LOAD_FAILED: () => ({
+    PAGE_LOAD_FAILED: (pageId?: string, cause?: string) => ({
         code: "PAGE_LOAD_FAILED",
-        message: "Failed to load the Figma page — it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load.",
+        message: `Failed to load Figma page${pageId ? ` "${pageId}"` : ""} — it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load.`,
+        ...(pageId || cause
+            ? { details: { ...(pageId ? { pageId } : {}), ...(cause ? { cause } : {}) } }
+            : {}),
     }),
-    PAGE_NOT_FOUND: () => ({
+    PAGE_NOT_FOUND: (pageId?: string) => ({
         code: "PAGE_NOT_FOUND",
-        message: "Page not found: the specified page ID does not exist in this document. List pages with page_info and pass a page ID back verbatim.",
+        message: `Page not found${pageId ? `: "${pageId}"` : ""} does not exist in this document. List pages with page_info and pass a page ID back verbatim.`,
+        ...(pageId ? { details: { pageId } } : {}),
     }),
-    TARGET_NOT_PAGE: () => ({
+    TARGET_NOT_PAGE: (pageId?: string, actualType?: string) => ({
         code: "TARGET_NOT_PAGE",
-        message: "Target node is not a PAGE. List pages with page_info and pass a page ID, not a node ID.",
+        message: `Target${pageId ? ` "${pageId}"` : ""} is not a PAGE${actualType ? ` (resolved type: ${actualType})` : ""}. List pages with page_info and pass a page ID, not a node ID.`,
+        ...(pageId || actualType
+            ? { details: { ...(pageId ? { pageId } : {}), ...(actualType ? { actualType } : {}) } }
+            : {}),
     }),
-    PAGE_LOAD_TIMEOUT: () => ({
+    PAGE_LOAD_TIMEOUT: (pageId?: string, timeoutMs?: number) => ({
         code: "PAGE_LOAD_TIMEOUT",
-        message: "Page load timed out. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user.",
+        message: `Figma page${pageId ? ` "${pageId}"` : ""} did not load within the bounded per-page timeout. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user.`,
+        ...(pageId || timeoutMs
+            ? { details: { ...(pageId ? { pageId } : {}), ...(timeoutMs ? { timeoutMs } : {}) } }
+            : {}),
     }),
-    DOCUMENT_SCAN_INCOMPLETE: () => ({
+    DOCUMENT_SCAN_INCOMPLETE: (pageErrors?: any[]) => ({
         code: "DOCUMENT_SCAN_INCOMPLETE",
         message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded — a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first.",
+        ...(Array.isArray(pageErrors) && pageErrors.length > 0
+            ? {
+                details: {
+                    coverage: {
+                        complete: false,
+                        pageErrors,
+                    },
+                },
+            }
+            : {}),
     }),
     CONNECTOR_TEMPLATE_REQUIRED: () => ({
         code: "CONNECTOR_TEMPLATE_REQUIRED",

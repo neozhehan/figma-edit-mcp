@@ -414,9 +414,19 @@ export function withStrictInputSchemas(server: McpServer): McpServer {
                     // as an optional `error` field.
                     const out = config?.outputSchema;
                     if (out && typeof out.partial === "function" && typeof out.extend === "function") {
+                        // A successful tool result may already have a top-level
+                        // `error` field with a tool-specific type. Preserve it
+                        // alongside D9's structured error envelope instead of
+                        // overwriting it: variable_delete legitimately returns
+                        // `{success:false, error:string, variablesInUse}` after
+                        // a complete scan finds consumers.
+                        const declaredError = (out as any).shape?.error;
+                        const advertisedError = declaredError
+                            ? z.union([declaredError, errorEnvelope]).optional()
+                            : errorEnvelope.optional();
                         config = {
                             ...config,
-                            outputSchema: out.partial().extend({ error: errorEnvelope.optional() }).catchall(z.any()),
+                            outputSchema: out.partial().extend({ error: advertisedError }).catchall(z.any()),
                         };
                     }
                     const wrappedCb = async (args: any, extra: any) => {

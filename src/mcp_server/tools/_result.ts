@@ -91,6 +91,31 @@ export const errorEnvelope = z.object({
     details: z.any().optional().describe("Optional structured context (e.g. partialMutation, before-values)"),
 });
 
+/**
+ * D14's shared page-coverage contract. `complete` is derived, never advisory:
+ * it is true exactly when every requested/scanned page completed successfully.
+ */
+export const pageCoverage = z
+    .object({
+        complete: z.boolean().describe("True exactly when pageErrors is empty"),
+        pageErrors: z.array(
+            z.object({
+                pageId: z.string().describe("ID of the page that could not be loaded or scanned"),
+                error: errorEnvelope.describe("Structured per-page failure"),
+            }),
+        ).describe("Structured failures for pages omitted from this result"),
+    })
+    .superRefine((coverage, ctx) => {
+        if (coverage.complete !== (coverage.pageErrors.length === 0)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["complete"],
+                message: "coverage.complete must be true exactly when coverage.pageErrors is empty.",
+            });
+        }
+    })
+    .describe("Page-scan coverage; partial read data remains usable when complete is false");
+
 export function toolResult(result: unknown) {
     const payload: Record<string, unknown> =
         result && typeof result === "object" ? (result as Record<string, unknown>) : {};

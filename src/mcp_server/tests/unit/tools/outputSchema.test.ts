@@ -164,6 +164,62 @@ describe("Phase 4: outputSchema Validation Tests", () => {
         });
     });
 
+    describe("Phase 10 shared page-coverage contract", () => {
+        const BASE_OUTPUTS: Record<string, any> = {
+            page_info: {
+                documentId: "doc-1",
+                documentName: "My Doc",
+                pageCount: 2,
+                pages: [{ pageId: "page-good", pageName: "Good" }],
+            },
+            node_info: {
+                nodes: [{ id: "node-good", name: "Good", type: "FRAME" }],
+            },
+            component_list: {
+                count: 1,
+                components: [{ id: "component-good", name: "Good" }],
+            },
+            variable_list: {
+                variables: [],
+                collections: [],
+            },
+            annotation_list: {
+                annotatedNodes: [],
+                categories: [],
+            },
+        };
+
+        for (const [name, base] of Object.entries(BASE_OUTPUTS)) {
+            it(`${name} advertises and validates partial coverage with the exact complete invariant`, () => {
+                const schema = TOOLS[name];
+                const coverage = {
+                    complete: false,
+                    pageErrors: [{
+                        pageId: "page-bad",
+                        error: {
+                            code: "PAGE_LOAD_FAILED",
+                            message: "Failed to load page-bad",
+                            details: { pageId: "page-bad" },
+                        },
+                    }],
+                };
+
+                assertPayloadValidates(name, schema, { ...base, coverage });
+
+                const advertised: any = toJsonSchemaCompat(schema, { target: "draft-7" });
+                expect(advertised.properties.coverage).toBeDefined();
+                expect(schema.safeParse({
+                    ...base,
+                    coverage: { ...coverage, complete: true },
+                }).success).toBe(false);
+                expect(schema.safeParse({
+                    ...base,
+                    coverage: { complete: false, pageErrors: [] },
+                }).success).toBe(false);
+            });
+        }
+    });
+
     describe("Contract-seam outputSchema validations for all tools", () => {
         // Representative SUCCESS payloads, authored from the plugin handlers'
         // actual `return` statements (not from the schemas — that would be
@@ -180,11 +236,13 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 documentName: "My Doc",
                 pageCount: 1,
                 pages: [{ pageId: "1:1", pageName: "Page" }],
-                missingPageIds: ["9:9"]
+                missingPageIds: ["9:9"],
+                coverage: { complete: true, pageErrors: [] }
             },
             node_info: {
                 nodes: [{ id: "1:2", name: "Node", type: "FRAME" }],
-                missingNodeIds: ["9:9"]
+                missingNodeIds: ["9:9"],
+                coverage: { complete: true, pageErrors: [] }
             },
             node_transform: {
                 id: "1:2",
@@ -404,7 +462,8 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             component_list: {
                 count: 0,
                 scope: "document",
-                components: []
+                components: [],
+                coverage: { complete: true, pageErrors: [] }
             },
             component_manage_property: {
                 id: "1:14",
@@ -454,7 +513,8 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             },
             variable_list: {
                 variables: [],
-                collections: []
+                collections: [],
+                coverage: { complete: true, pageErrors: [] }
             },
             variable_manage: {
                 id: "v1",
@@ -467,7 +527,8 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             },
             annotation_list: {
                 annotatedNodes: [],
-                categories: []
+                categories: [],
+                coverage: { complete: true, pageErrors: [] }
             },
             annotation_set: {
                 success: true,
@@ -489,6 +550,32 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 assertPayloadValidates(name, schema, payload);
             });
         }
+
+        it("variable_delete advertises both its in-use refusal string and the D9 error envelope", () => {
+            assertPayloadValidates("variable_delete(in-use)", TOOLS.variable_delete, {
+                success: false,
+                error: "Cannot delete: variable(s) are still in use.",
+                variablesInUse: {
+                    "VariableID:1": {
+                        nodeConsumers: [{ nodeId: "1:2", nodeName: "Card" }],
+                        styleConsumers: [],
+                        aliasConsumers: [],
+                    },
+                },
+            });
+            assertPayloadValidates("variable_delete(D9)", TOOLS.variable_delete, {
+                error: {
+                    code: "DOCUMENT_SCAN_INCOMPLETE",
+                    message: "The document scan was incomplete.",
+                    details: {
+                        coverage: {
+                            complete: false,
+                            pageErrors: [],
+                        },
+                    },
+                },
+            });
+        });
 
         // Q26 (review P6-8/P6-11): the four batch tools advertise ONLY the shared
         // envelope counts — no tool-specific duplicate count survives in the

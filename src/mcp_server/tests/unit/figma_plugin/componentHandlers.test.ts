@@ -289,13 +289,19 @@ describe("Component Handlers", () => {
 
         it("throws when scope is 'page' and pageId does not exist", async () => {
             (globalThis as any).figma.getNodeByIdAsync = mock(async () => null);
-            expect(getComponents({ scope: "page", pageId: "nonexistent" })).rejects.toThrow("pageId with ID nonexistent not found");
+            expect(getComponents({ scope: "page", pageId: "nonexistent" })).rejects.toMatchObject({
+                code: "PAGE_NOT_FOUND",
+                details: { pageId: "nonexistent" },
+            });
         });
 
         it("throws when scope is 'page' and pageId resolves to a non-PAGE node", async () => {
             const mockRect = { id: "rect-1", type: "RECTANGLE" };
             (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockRect);
-            expect(getComponents({ scope: "page", pageId: "rect-1" })).rejects.toThrow("pageId does not resolve to a PAGE");
+            expect(getComponents({ scope: "page", pageId: "rect-1" })).rejects.toMatchObject({
+                code: "TARGET_NOT_PAGE",
+                details: { pageId: "rect-1", actualType: "RECTANGLE" },
+            });
         });
 
         it("returns components from the specified page", async () => {

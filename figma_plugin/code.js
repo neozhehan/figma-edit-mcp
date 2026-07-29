@@ -28,30 +28,43 @@
     // frame reaches Figma, so the plugin has no throw site for them and a
     // bundle-side copy would be dead weight in `code.js`. They live only in
     // `src/shared/channelProtocol.ts`; a regression asserts their absence here.
-    // Phase 10–11 operational entries below remain placeholders until those
-    // phases land, but those ARE plugin-thrown and so belong in this registry.
+    // Phase 10's page-load entries are raised through pageLoad.ts. Phase 11's
+    // connector entry remains a placeholder until that phase lands; both are
+    // plugin-thrown and therefore belong in this registry.
     //
     // Page codes are operational failures, not safety refusals — no "Operation
     // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
-    PAGE_LOAD_FAILED: () => ({
+    PAGE_LOAD_FAILED: (pageId, cause) => ({
       code: "PAGE_LOAD_FAILED",
-      message: "Failed to load the Figma page \u2014 it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load."
+      message: `Failed to load Figma page${pageId ? ` "${pageId}"` : ""} \u2014 it may be too large or temporarily unavailable. Retry the call; if the page keeps failing, list pages with page_info and continue with the pages that load.`,
+      ...pageId || cause ? { details: { ...pageId ? { pageId } : {}, ...cause ? { cause } : {} } } : {}
     }),
-    PAGE_NOT_FOUND: () => ({
+    PAGE_NOT_FOUND: (pageId) => ({
       code: "PAGE_NOT_FOUND",
-      message: "Page not found: the specified page ID does not exist in this document. List pages with page_info and pass a page ID back verbatim."
+      message: `Page not found${pageId ? `: "${pageId}"` : ""} does not exist in this document. List pages with page_info and pass a page ID back verbatim.`,
+      ...pageId ? { details: { pageId } } : {}
     }),
-    TARGET_NOT_PAGE: () => ({
+    TARGET_NOT_PAGE: (pageId, actualType) => ({
       code: "TARGET_NOT_PAGE",
-      message: "Target node is not a PAGE. List pages with page_info and pass a page ID, not a node ID."
+      message: `Target${pageId ? ` "${pageId}"` : ""} is not a PAGE${actualType ? ` (resolved type: ${actualType})` : ""}. List pages with page_info and pass a page ID, not a node ID.`,
+      ...pageId || actualType ? { details: { ...pageId ? { pageId } : {}, ...actualType ? { actualType } : {} } } : {}
     }),
-    PAGE_LOAD_TIMEOUT: () => ({
+    PAGE_LOAD_TIMEOUT: (pageId, timeoutMs) => ({
       code: "PAGE_LOAD_TIMEOUT",
-      message: "Page load timed out. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user."
+      message: `Figma page${pageId ? ` "${pageId}"` : ""} did not load within the bounded per-page timeout. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user.`,
+      ...pageId || timeoutMs ? { details: { ...pageId ? { pageId } : {}, ...timeoutMs ? { timeoutMs } : {} } } : {}
     }),
-    DOCUMENT_SCAN_INCOMPLETE: () => ({
+    DOCUMENT_SCAN_INCOMPLETE: (pageErrors) => ({
       code: "DOCUMENT_SCAN_INCOMPLETE",
-      message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded \u2014 a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first."
+      message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded \u2014 a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first.",
+      ...Array.isArray(pageErrors) && pageErrors.length > 0 ? {
+        details: {
+          coverage: {
+            complete: false,
+            pageErrors
+          }
+        }
+      } : {}
     }),
     CONNECTOR_TEMPLATE_REQUIRED: () => ({
       code: "CONNECTOR_TEMPLATE_REQUIRED",
@@ -640,9 +653,113 @@
     );
   }
 
+  // figma_plugin/utils/pageLoad.ts
+  var PAGE_LOAD_TIMEOUT_MS = 1e4;
+  function createPageLoadCoordinator(timeoutMs = PAGE_LOAD_TIMEOUT_MS) {
+    const boundedTimeoutMs = Math.max(1, timeoutMs);
+    const pageLoads = /* @__PURE__ */ new Map();
+    const pageResolutions = /* @__PURE__ */ new Map();
+    const pageErrors = /* @__PURE__ */ new Map();
+    const recordError = (pageId, error, reason) => {
+      if (!pageErrors.has(pageId)) {
+        pageErrors.set(pageId, { pageId, error });
+      }
+      return { ok: false, error, reason };
+    };
+    const load = (page) => {
+      const cached = pageLoads.get(page.id);
+      if (cached) return cached;
+      const attempt = new Promise((resolve) => {
+        let acceptingSettlement = true;
+        const finish = (result) => {
+          if (!acceptingSettlement) return;
+          acceptingSettlement = false;
+          clearTimeout(timer);
+          resolve(result);
+        };
+        const timer = setTimeout(() => {
+          if (!acceptingSettlement) return;
+          acceptingSettlement = false;
+          resolve(recordError(
+            page.id,
+            REFUSALS.PAGE_LOAD_TIMEOUT(page.id, boundedTimeoutMs),
+            "timeout"
+          ));
+        }, boundedTimeoutMs);
+        Promise.resolve().then(() => page.loadAsync()).then(
+          () => finish({ ok: true, page }),
+          (error) => finish(recordError(
+            page.id,
+            REFUSALS.PAGE_LOAD_FAILED(page.id, describeError(error)),
+            "load_failed"
+          ))
+        );
+      });
+      pageLoads.set(page.id, attempt);
+      return attempt;
+    };
+    const resolvePage = (pageId) => {
+      const cached = pageResolutions.get(pageId);
+      if (cached) return cached;
+      const resolution = (async () => {
+        let node;
+        try {
+          node = await figma.getNodeByIdAsync(pageId);
+        } catch (error) {
+          return recordError(
+            pageId,
+            REFUSALS.PAGE_LOAD_FAILED(pageId, describeError(error)),
+            "load_failed"
+          );
+        }
+        if (!node) {
+          return recordError(
+            pageId,
+            REFUSALS.PAGE_NOT_FOUND(pageId),
+            "not_found"
+          );
+        }
+        if (node.type !== "PAGE") {
+          return recordError(
+            pageId,
+            REFUSALS.TARGET_NOT_PAGE(pageId, node.type),
+            "not_page"
+          );
+        }
+        return load(node);
+      })();
+      pageResolutions.set(pageId, resolution);
+      return resolution;
+    };
+    return {
+      load,
+      resolve: resolvePage,
+      async require(pageId) {
+        const result = await resolvePage(pageId);
+        if (!result.ok) {
+          throw result.error;
+        }
+        return result.page;
+      },
+      fail(pageId, cause) {
+        return recordError(
+          pageId,
+          REFUSALS.PAGE_LOAD_FAILED(pageId, describeError(cause)),
+          "load_failed"
+        );
+      },
+      coverage() {
+        const errors = Array.from(pageErrors.values());
+        return {
+          complete: errors.length === 0,
+          pageErrors: errors
+        };
+      }
+    };
+  }
+
   // figma_plugin/handlers/nodeReaders.ts
-  async function getPagesInfo(params) {
-    var _a;
+  async function getPagesInfo(params, pageLoads = createPageLoadCoordinator()) {
     const { pageIds, commandId } = params || {};
     const documentId = figma.root.id;
     const documentName = figma.root.name;
@@ -656,7 +773,8 @@
         documentId,
         documentName,
         pageCount,
-        pages: pages2
+        pages: pages2,
+        coverage: pageLoads.coverage()
       };
     }
     const seen = /* @__PURE__ */ new Set();
@@ -676,20 +794,24 @@
     }
     let processedItems = 0;
     for (const id of orderedIds) {
-      const node = await figma.getNodeByIdAsync(id);
-      if (node && node.type === "PAGE" && ((_a = node.parent) == null ? void 0 : _a.id) === figma.root.id) {
-        await node.loadAsync();
-        pages.push({
-          pageId: node.id,
-          pageName: node.name,
-          descendantCount: countDescendants(node),
-          children: node.children.map((child) => ({
-            id: child.id,
-            name: child.name,
-            type: child.type
-          }))
-        });
-      } else {
+      const loaded = await pageLoads.resolve(id);
+      if (loaded.ok) {
+        const node = loaded.page;
+        try {
+          pages.push({
+            pageId: node.id,
+            pageName: node.name,
+            descendantCount: countDescendants(node),
+            children: node.children.map((child) => ({
+              id: child.id,
+              name: child.name,
+              type: child.type
+            }))
+          });
+        } catch (error) {
+          pageLoads.fail(node.id, error);
+        }
+      } else if (loaded.reason === "not_found" || loaded.reason === "not_page") {
         missingPageIds.push(id);
       }
       processedItems++;
@@ -721,10 +843,11 @@
       documentName,
       pageCount,
       pages,
-      missingPageIds
+      missingPageIds,
+      coverage: pageLoads.coverage()
     };
   }
-  async function getNodesInfoParallel(uniqueIds, properties, filter, maxDepth, concurrencyLimit, commandId, exportCache, stats) {
+  async function getNodesInfoParallel(uniqueIds, properties, filter, maxDepth, concurrencyLimit, commandId, exportCache, stats, pageLoads) {
     const results = new Array(uniqueIds.length);
     let nextIndex = 0;
     let completedCount = 0;
@@ -736,11 +859,20 @@
           break;
         }
         const id = uniqueIds[index];
+        let containingPage = null;
         try {
           const node = await figma.getNodeByIdAsync(id);
           if (!node) {
             results[index] = { missing: true, id };
           } else {
+            containingPage = getContainingPageNode(node);
+            if (containingPage) {
+              const loaded = await pageLoads.load(containingPage);
+              if (!loaded.ok) {
+                results[index] = { pageFailed: true, id };
+                continue;
+              }
+            }
             const mappedSubtree = await mapNodeRecursive(
               node,
               0,
@@ -748,7 +880,8 @@
               properties,
               filter,
               exportCache,
-              stats
+              stats,
+              pageLoads
             );
             let entry = mappedSubtree;
             if (!entry) {
@@ -765,12 +898,19 @@
               }
             }
             entry.path = buildPathArray(node);
-            entry.descendantCount = countDescendants(node);
+            if (node.type !== "DOCUMENT") {
+              entry.descendantCount = countDescendants(node);
+            }
             results[index] = entry;
           }
         } catch (error) {
-          console.error(`[getNodesInfoParallel] Error processing node ${id}: ${error.message}`);
-          results[index] = { missing: true, id };
+          console.error(`[getNodesInfoParallel] Error processing node ${id}: ${describeError(error)}`);
+          if (containingPage) {
+            pageLoads.fail(containingPage.id, error);
+            results[index] = { pageFailed: true, id };
+          } else {
+            results[index] = { missing: true, id };
+          }
         } finally {
           completedCount++;
           if (commandId && uniqueIds.length > 1) {
@@ -803,13 +943,13 @@
       const res = results[i];
       if (res && res.missing) {
         missingNodeIds.push(res.id);
-      } else if (res) {
+      } else if (res && !res.pageFailed) {
         nodes.push(res);
       }
     }
     return { nodes, missingNodeIds };
   }
-  async function getNodesInfo(params) {
+  async function getNodesInfo(params, pageLoads = createPageLoadCoordinator()) {
     const {
       nodeIds = [],
       properties = [],
@@ -845,7 +985,8 @@
         limit,
         commandId,
         exportCache,
-        stats
+        stats,
+        pageLoads
       );
       if (commandId) {
         await sendProgressUpdate(
@@ -860,14 +1001,21 @@
       }
       return {
         nodes,
-        missingNodeIds: missingNodeIds.length > 0 ? missingNodeIds : void 0
+        missingNodeIds: missingNodeIds.length > 0 ? missingNodeIds : void 0,
+        coverage: pageLoads.coverage()
       };
     } catch (error) {
       console.error(`[getNodesInfo] Error: ${error.message}`);
       throw error;
     }
   }
-  async function mapNodeRecursive(node, depth, maxDepth, requestedProps, filter, exportCache, progressTracker) {
+  async function mapNodeRecursive(node, depth, maxDepth, requestedProps, filter, exportCache, progressTracker, pageLoads) {
+    if (node.type === "PAGE") {
+      const loaded = await pageLoads.load(node);
+      if (!loaded.ok) {
+        return null;
+      }
+    }
     progressTracker.processed++;
     if (progressTracker.processed % 25 === 0) {
       if (progressTracker.commandId) {
@@ -891,15 +1039,26 @@
     let hasMatchingDescendant = false;
     if (hasChildren && shouldRecurse) {
       for (const child of node.children) {
-        const mappedChild = await mapNodeRecursive(
-          child,
-          depth + 1,
-          maxDepth,
-          requestedProps,
-          filter,
-          exportCache,
-          progressTracker
-        );
+        let mappedChild;
+        try {
+          mappedChild = await mapNodeRecursive(
+            child,
+            depth + 1,
+            maxDepth,
+            requestedProps,
+            filter,
+            exportCache,
+            progressTracker,
+            pageLoads
+          );
+        } catch (error) {
+          if (child.type === "PAGE") {
+            pageLoads.fail(child.id, error);
+            mappedChild = null;
+          } else {
+            throw error;
+          }
+        }
         if (mappedChild) {
           children.push(mappedChild);
           hasMatchingDescendant = true;
@@ -924,7 +1083,7 @@
     if (properties && Object.keys(properties).length > 0) {
       entry.properties = properties;
     }
-    if (!shouldRecurse) {
+    if (!shouldRecurse && node.type !== "DOCUMENT") {
       entry.descendantCount = hasChildren ? countDescendants(node) : 0;
     }
     return entry;
@@ -2580,7 +2739,7 @@
       }))
     };
   }
-  async function getComponents(params) {
+  async function getComponents(params, pageLoads = createPageLoadCoordinator()) {
     const { filter, scope = "document", pageId, commandId } = params || {};
     const isStreaming = scope === "document";
     if (commandId && isStreaming) {
@@ -2599,26 +2758,30 @@
       if (!pageId) {
         throw new Error("pageId is required when scope is 'page'");
       }
-      const pageNode = await figma.getNodeByIdAsync(pageId);
-      if (!pageNode) {
-        throw new Error(`pageId with ID ${pageId} not found`);
-      }
-      if (pageNode.type !== "PAGE") {
-        throw new Error("pageId does not resolve to a PAGE");
-      }
-      await pageNode.loadAsync();
-      const components = pageNode.findAllWithCriteria({
-        types: ["COMPONENT", "COMPONENT_SET"]
-      });
-      allComponents.push(...components);
-    } else {
-      const pages = figma.root.children;
-      for (const [index, page] of pages.entries()) {
-        await page.loadAsync();
-        const components = page.findAllWithCriteria({
+      const pageNode = await pageLoads.require(pageId);
+      try {
+        const components = pageNode.findAllWithCriteria({
           types: ["COMPONENT", "COMPONENT_SET"]
         });
         allComponents.push(...components);
+      } catch (error) {
+        const failed = pageLoads.fail(pageNode.id, error);
+        if (!failed.ok) throw failed.error;
+      }
+    } else {
+      const pages = figma.root.children;
+      for (const [index, page] of pages.entries()) {
+        const loaded = await pageLoads.load(page);
+        if (loaded.ok) {
+          try {
+            const components = page.findAllWithCriteria({
+              types: ["COMPONENT", "COMPONENT_SET"]
+            });
+            allComponents.push(...components);
+          } catch (error) {
+            pageLoads.fail(page.id, error);
+          }
+        }
         if (commandId) {
           await sendProgressUpdate(
             commandId,
@@ -2660,7 +2823,8 @@
     return {
       count: mapped.length,
       scope,
-      components: mapped
+      components: mapped,
+      coverage: pageLoads.coverage()
     };
   }
   function getContainingPageId(node) {
@@ -4828,7 +4992,7 @@
       };
     }
   }
-  async function getAnnotations(params) {
+  async function getAnnotations(params, pageLoads = createPageLoadCoordinator()) {
     try {
       const { nodeId, pageId, includeCategories = true } = params || {};
       if (nodeId && pageId || !nodeId && !pageId) {
@@ -4848,13 +5012,7 @@
         }, {});
       }
       if (pageId) {
-        const page = await figma.getNodeByIdAsync(pageId);
-        if (!page) {
-          throw new Error(`pageId with ID ${pageId} not found`);
-        }
-        if (page.type !== "PAGE") {
-          throw new Error("pageId does not resolve to a PAGE");
-        }
+        const page = await pageLoads.require(pageId);
         const annotations = [];
         const processNode = async (node) => {
           if ("annotations" in node && node.annotations && node.annotations.length > 0) {
@@ -4870,9 +5028,15 @@
             }
           }
         };
-        await processNode(page);
+        try {
+          await processNode(page);
+        } catch (error) {
+          const failed = pageLoads.fail(page.id, error);
+          if (!failed.ok) throw failed.error;
+        }
         const result = {
-          annotatedNodes: annotations
+          annotatedNodes: annotations,
+          coverage: pageLoads.coverage()
         };
         if (includeCategories) {
           result.categories = Object.values(categoriesMap);
@@ -4882,6 +5046,11 @@
         const node = await figma.getNodeByIdAsync(nodeId);
         if (!node) {
           throw new Error(`Node not found: ${nodeId}`);
+        }
+        const containingPage = getContainingPageNode(node);
+        if (containingPage) {
+          const loaded = await pageLoads.load(containingPage);
+          if (!loaded.ok) throw loaded.error;
         }
         const annotatedNodes = [];
         const collect = async (n) => {
@@ -4898,9 +5067,18 @@
             }
           }
         };
-        await collect(node);
+        try {
+          await collect(node);
+        } catch (error) {
+          if (containingPage) {
+            const failed = pageLoads.fail(containingPage.id, error);
+            if (!failed.ok) throw failed.error;
+          }
+          throw error;
+        }
         const result = {
-          annotatedNodes
+          annotatedNodes,
+          coverage: pageLoads.coverage()
         };
         if (includeCategories) {
           result.categories = Object.values(categoriesMap);
@@ -5443,9 +5621,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           }
         }
       }
-      if (node.type === "PAGE") {
-        await node.loadAsync();
-      }
       if ("children" in node) {
         for (const child of node.children) {
           await walk(child);
@@ -5455,7 +5630,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     await walk(rootNode);
     return consumerMap;
   }
-  async function getVariables(params) {
+  async function getVariables(params, pageLoads = createPageLoadCoordinator()) {
     const { variableId, includeConsumers, pageId, commandId } = params || {};
     try {
       if (variableId && variableId.length > 0) {
@@ -5504,21 +5679,27 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             if (!pageId) {
               throw new Error("pageId is required when includeConsumers is 'page'");
             }
-            const pageNode = await figma.getNodeByIdAsync(pageId);
-            if (!pageNode) {
-              throw new Error(`pageId with ID ${pageId} not found`);
+            const pageNode = await pageLoads.require(pageId);
+            try {
+              nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, "get_variables");
+            } catch (error) {
+              const failed = pageLoads.fail(pageNode.id, error);
+              if (!failed.ok) throw failed.error;
             }
-            if (pageNode.type !== "PAGE") {
-              throw new Error("pageId does not resolve to a PAGE");
-            }
-            nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, "get_variables");
           } else {
             const pages = figma.root.children;
             for (const [index, page] of pages.entries()) {
-              const pageConsumers = await findVariableConsumers(page, idSet, commandId, "get_variables");
-              for (const [vid, entries] of pageConsumers) {
-                const existing = nodeConsumerMap.get(vid) || [];
-                nodeConsumerMap.set(vid, existing.concat(entries));
+              const loaded = await pageLoads.load(page);
+              if (loaded.ok) {
+                try {
+                  const pageConsumers = await findVariableConsumers(page, idSet, commandId, "get_variables");
+                  for (const [vid, entries] of pageConsumers) {
+                    const existing = nodeConsumerMap.get(vid) || [];
+                    nodeConsumerMap.set(vid, existing.concat(entries));
+                  }
+                } catch (error) {
+                  pageLoads.fail(page.id, error);
+                }
               }
               if (commandId) {
                 await sendProgressUpdate(
@@ -5552,7 +5733,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             `Completed fetching variable information`
           );
         }
-        return missingIds.length > 0 ? { variables: variables2, missingIds } : { variables: variables2 };
+        return missingIds.length > 0 ? { variables: variables2, missingIds, coverage: pageLoads.coverage() } : { variables: variables2, coverage: pageLoads.coverage() };
       }
       const collections = await figma.variables.getLocalVariableCollectionsAsync();
       const variables = await figma.variables.getLocalVariablesAsync();
@@ -5574,13 +5755,20 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           collectionId: v.variableCollectionId,
           valuesByMode: v.valuesByMode,
           description: v.description
-        }))
+        })),
+        coverage: pageLoads.coverage()
       };
     } catch (err) {
-      throw new Error(`Error getting variables: ${err.message}`);
+      let isStructured = false;
+      try {
+        isStructured = err !== null && typeof err === "object" && typeof err.code === "string";
+      } catch (e) {
+      }
+      if (isStructured) throw err;
+      throw new Error(`Error getting variables: ${describeError(err)}`);
     }
   }
-  async function deleteVariables(params) {
+  async function deleteVariables(params, pageLoads = createPageLoadCoordinator()) {
     var _a;
     const { variableIds, variableNames, collectionId, collectionName, commandId } = params || {};
     if (variableIds && collectionId) {
@@ -5604,10 +5792,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         throw new Error(`Operation Denied: '${collection.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
       }
       idsToCheck = collection.variableIds || [];
-      if (idsToCheck.length === 0) {
-        collection.remove();
-        return { success: true, deleted: [], deletedCollection: collectionId };
-      }
     } else {
       if (!Array.isArray(variableIds) || variableIds.length === 0) {
         throw new Error("variableIds must be a non-empty array");
@@ -5633,12 +5817,25 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     const idSet = new Set(idsToCheck);
     const stylePromise = findStyleConsumers(idSet);
     const aliasPromise = findAliasConsumers(idSet);
-    const nodeMapsPromises = figma.root.children.map((page) => findVariableConsumers(page, idSet, commandId, "variable_delete"));
+    const nodeMapsPromises = figma.root.children.map(async (page) => {
+      const loaded = await pageLoads.load(page);
+      if (!loaded.ok) return /* @__PURE__ */ new Map();
+      try {
+        return await findVariableConsumers(page, idSet, commandId, "variable_delete");
+      } catch (error) {
+        pageLoads.fail(page.id, error);
+        return /* @__PURE__ */ new Map();
+      }
+    });
     const [styleConsumerMap, _aliasConsumerMap, ..._nodeMaps] = await Promise.all([
       stylePromise,
       aliasPromise,
       ...nodeMapsPromises
     ]);
+    const coverage = pageLoads.coverage();
+    if (!coverage.complete) {
+      throw REFUSALS.DOCUMENT_SCAN_INCOMPLETE(coverage.pageErrors);
+    }
     const nodeConsumerMap = /* @__PURE__ */ new Map();
     for (const pageResults of _nodeMaps) {
       for (const [vid, entries] of pageResults) {

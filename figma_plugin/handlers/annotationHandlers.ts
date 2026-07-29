@@ -6,6 +6,8 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { batchEnvelope } from '../utils/batchResult.js';
 import { describeError, REFUSALS } from '../utils/errors.js';
+import { getContainingPageNode } from '../utils/nodeUtils.js';
+import { createPageLoadCoordinator, PageLoadCoordinator } from '../utils/pageLoad.js';
 
 /**
  * Q32 (Rev 46): the D7/Q9 partial-mutation vocabulary reaches the annotation
@@ -104,7 +106,10 @@ function observeAnnotationCount(node: any): AnnotationCountObservation {
  * @param {boolean} params.includeCategories - Whether to include category info
  * @returns {Promise<Object>} Annotations result
  */
-export async function getAnnotations(params: any) {
+export async function getAnnotations(
+    params: any,
+    pageLoads: PageLoadCoordinator = createPageLoadCoordinator(),
+) {
     try {
         const { nodeId, pageId, includeCategories = true } = params || {};
 
@@ -128,13 +133,7 @@ export async function getAnnotations(params: any) {
         }
 
         if (pageId) {
-            const page = await figma.getNodeByIdAsync(pageId);
-            if (!page) {
-                throw new Error(`pageId with ID ${pageId} not found`);
-            }
-            if (page.type !== 'PAGE') {
-                throw new Error("pageId does not resolve to a PAGE");
-            }
+            const page = await pageLoads.require(pageId);
 
             // Get all annotations in the page
             const annotations: any[] = [];
@@ -157,10 +156,16 @@ export async function getAnnotations(params: any) {
                 }
             };
 
-            await processNode(page);
+            try {
+                await processNode(page);
+            } catch (error: any) {
+                const failed = pageLoads.fail(page.id, error);
+                if (!failed.ok) throw failed.error;
+            }
 
             const result: any = {
                 annotatedNodes: annotations,
+                coverage: pageLoads.coverage(),
             };
 
             if (includeCategories) {
@@ -173,6 +178,11 @@ export async function getAnnotations(params: any) {
             const node = await figma.getNodeByIdAsync(nodeId);
             if (!node) {
                 throw new Error(`Node not found: ${nodeId}`);
+            }
+            const containingPage = getContainingPageNode(node) as PageNode | null;
+            if (containingPage) {
+                const loaded = await pageLoads.load(containingPage);
+                if (!loaded.ok) throw loaded.error;
             }
 
             // Use the same grouped ownership shape as page mode. Flattening
@@ -195,10 +205,19 @@ export async function getAnnotations(params: any) {
                     }
                 }
             };
-            await collect(node);
+            try {
+                await collect(node);
+            } catch (error: any) {
+                if (containingPage) {
+                    const failed = pageLoads.fail(containingPage.id, error);
+                    if (!failed.ok) throw failed.error;
+                }
+                throw error;
+            }
 
             const result: any = {
                 annotatedNodes,
+                coverage: pageLoads.coverage(),
             };
 
             if (includeCategories) {

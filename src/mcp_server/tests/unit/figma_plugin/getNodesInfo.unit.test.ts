@@ -36,6 +36,7 @@ type FakeNode = {
     parent?: FakeNode;
     children?: FakeNode[];
     layoutMode?: string;
+    loadAsync?: () => Promise<void>;
 };
 
 function makeNode(
@@ -63,6 +64,11 @@ function installFigma(nodes: FakeNode[]) {
         n.children?.forEach(index);
     };
     nodes.forEach(index);
+    for (const node of nodes) {
+        if (node.type === "PAGE" && !node.loadAsync) {
+            node.loadAsync = async () => { };
+        }
+    }
     (globalThis as any).figma = {
         getNodeByIdAsync: async (id: string) => byId.get(id) ?? null,
         root: { id: "doc", name: "Doc", children: nodes },

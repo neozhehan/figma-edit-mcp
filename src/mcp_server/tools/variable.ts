@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput } from "./_result.js";
+import { toolResult, looseOutput, pageCoverage } from "./_result.js";
 
 const VARIABLE_SCOPES = [
     'ALL_SCOPES',
@@ -35,7 +35,7 @@ export function registerVariableTools(server: McpServer) {
         "variable_list",
         {
             title: "List Variables",
-            description: "List local variables/collections, or detailed info for specific variable ids; optionally scan for consumers.",
+            description: "List local variables/collections, or detailed info for specific variable ids; optionally scan for consumers. Document consumer scans isolate page failures and report them in `coverage`; page-scoped failures return their structured error directly.",
             inputSchema: z.object({
                 variableId: z
                     .array(z.string())
@@ -54,6 +54,7 @@ export function registerVariableTools(server: McpServer) {
                 variables: z.array(z.any()).optional().describe("List of variables — present in both list-all and lookup modes (each may carry nodeConsumers/styleConsumers/aliasConsumers when includeConsumers is set)"),
                 collections: z.array(z.any()).optional().describe("List of variable collections (list-all mode only)"),
                 missingIds: z.array(z.string()).optional().describe("Requested variable IDs that did not resolve (lookup mode only; omitted when none)"),
+                coverage: pageCoverage,
             }),
             annotations: {
                 readOnlyHint: true,
@@ -235,7 +236,7 @@ export function registerVariableTools(server: McpServer) {
         "variable_delete",
         {
             title: "Delete Variables",
-            description: "Delete specific variables or an entire collection. Runs a full-document consumer check first and rejects the whole operation if any target is still in use.",
+            description: "Delete specific variables or an entire collection. Runs a full-document consumer check first and rejects the whole operation with DOCUMENT_SCAN_INCOMPLETE before any removal if any page cannot be loaded and scanned; a page error can never mean zero consumers.",
             inputSchema: z.object({
                 variableIds: z
                     .array(z.string())
@@ -257,6 +258,7 @@ export function registerVariableTools(server: McpServer) {
             outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether variables were deleted successfully"),
                 message: z.string().optional().describe("Status message"),
+                error: z.string().optional().describe("Human-readable refusal when a complete consumer scan finds the target variable in use"),
             }),
             annotations: {
                 destructiveHint: true,

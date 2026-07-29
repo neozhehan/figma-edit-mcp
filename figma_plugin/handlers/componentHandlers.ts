@@ -5,6 +5,7 @@
 
 import { customBase64Encode, bytesToUtf8 } from '../utils/exportUtils.js';
 import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
+import { createPageLoadCoordinator, PageLoadCoordinator } from '../utils/pageLoad.js';
 
 /**
  * Gets all local styles from the document
@@ -55,7 +56,10 @@ export async function getStyles() {
  * @param {string} params.commandId - Optional command ID for progress updates
  * @returns {Promise<Object>} Object containing component count and list
  */
-export async function getComponents(params: any) {
+export async function getComponents(
+    params: any,
+    pageLoads: PageLoadCoordinator = createPageLoadCoordinator(),
+) {
     const { filter, scope = 'document', pageId, commandId } = params || {};
     // Per spec §get_components rule 2: only the 'document' scope streams.
     // 'page' is a single-pass non-streaming call — no bookends, no yield.
@@ -80,30 +84,32 @@ export async function getComponents(params: any) {
         if (!pageId) {
             throw new Error("pageId is required when scope is 'page'");
         }
-        const pageNode = await figma.getNodeByIdAsync(pageId);
-        if (!pageNode) {
-            throw new Error(`pageId with ID ${pageId} not found`);
+        const pageNode = await pageLoads.require(pageId);
+        try {
+            const components = pageNode.findAllWithCriteria({
+                types: ["COMPONENT", "COMPONENT_SET"]
+            });
+            allComponents.push(...components);
+        } catch (error: any) {
+            const failed = pageLoads.fail(pageNode.id, error);
+            if (!failed.ok) throw failed.error;
         }
-        if (pageNode.type !== 'PAGE') {
-            throw new Error("pageId does not resolve to a PAGE");
-        }
-        // dynamic-page documents require explicit loading before findAllWithCriteria
-        await pageNode.loadAsync();
-        const components = pageNode.findAllWithCriteria({
-            types: ["COMPONENT", "COMPONENT_SET"]
-        });
-        allComponents.push(...components);
     } else {
         // scope === 'document'
         // MANDATORY: Do NOT use loadAllPagesAsync(). Iterate pages instead.
         const pages = figma.root.children;
         for (const [index, page] of pages.entries()) {
-            // dynamic-page documents require explicit loading before findAllWithCriteria
-            await page.loadAsync();
-            const components = page.findAllWithCriteria({
-                types: ["COMPONENT", "COMPONENT_SET"]
-            });
-            allComponents.push(...components);
+            const loaded = await pageLoads.load(page);
+            if (loaded.ok) {
+                try {
+                    const components = page.findAllWithCriteria({
+                        types: ["COMPONENT", "COMPONENT_SET"]
+                    });
+                    allComponents.push(...components);
+                } catch (error: any) {
+                    pageLoads.fail(page.id, error);
+                }
+            }
 
             if (commandId) {
                 await sendProgressUpdate(
@@ -152,7 +158,8 @@ export async function getComponents(params: any) {
     return {
         count: mapped.length,
         scope,
-        components: mapped
+        components: mapped,
+        coverage: pageLoads.coverage(),
     };
 }
 

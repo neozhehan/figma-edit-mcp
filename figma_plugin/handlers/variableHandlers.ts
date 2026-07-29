@@ -1,7 +1,8 @@
 // figma_plugin/handlers/variableHandlers.ts
 import { sendProgressUpdate } from '../utils/progressUtils.js';
-import { REFUSALS, withPartialDisclosure } from '../utils/errors.js';
+import { describeError as describeThrownError, REFUSALS, withPartialDisclosure } from '../utils/errors.js';
 import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
+import { createPageLoadCoordinator, PageLoadCoordinator } from '../utils/pageLoad.js';
 
 
 export interface StyleConsumerEntry {
@@ -330,9 +331,6 @@ async function findVariableConsumers(
             }
         }
 
-        if (node.type === 'PAGE') {
-            await node.loadAsync();
-        }
         if ("children" in node) {
             for (const child of (node as any).children) {
                 await walk(child);
@@ -344,7 +342,10 @@ async function findVariableConsumers(
     return consumerMap;
 }
 
-export async function getVariables(params: any) {
+export async function getVariables(
+    params: any,
+    pageLoads: PageLoadCoordinator = createPageLoadCoordinator(),
+) {
     const { variableId, includeConsumers, pageId, commandId } = params || {};
 
     try {
@@ -406,22 +407,28 @@ export async function getVariables(params: any) {
                     if (!pageId) {
                         throw new Error("pageId is required when includeConsumers is 'page'");
                     }
-                    const pageNode = await figma.getNodeByIdAsync(pageId);
-                    if (!pageNode) {
-                        throw new Error(`pageId with ID ${pageId} not found`);
+                    const pageNode = await pageLoads.require(pageId);
+                    try {
+                        nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, 'get_variables');
+                    } catch (error: any) {
+                        const failed = pageLoads.fail(pageNode.id, error);
+                        if (!failed.ok) throw failed.error;
                     }
-                    if (pageNode.type !== 'PAGE') {
-                        throw new Error("pageId does not resolve to a PAGE");
-                    }
-                    nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, 'get_variables');
                 } else {
                     // includeConsumers === 'document'
                     const pages = figma.root.children;
                     for (const [index, page] of pages.entries()) {
-                        const pageConsumers = await findVariableConsumers(page, idSet, commandId, 'get_variables');
-                        for (const [vid, entries] of pageConsumers) {
-                            const existing = nodeConsumerMap.get(vid) || [];
-                            nodeConsumerMap.set(vid, existing.concat(entries));
+                        const loaded = await pageLoads.load(page);
+                        if (loaded.ok) {
+                            try {
+                                const pageConsumers = await findVariableConsumers(page, idSet, commandId, 'get_variables');
+                                for (const [vid, entries] of pageConsumers) {
+                                    const existing = nodeConsumerMap.get(vid) || [];
+                                    nodeConsumerMap.set(vid, existing.concat(entries));
+                                }
+                            } catch (error: any) {
+                                pageLoads.fail(page.id, error);
+                            }
                         }
                         
                         if (commandId) {
@@ -459,7 +466,9 @@ export async function getVariables(params: any) {
                     `Completed fetching variable information`
                 );
             }
-            return missingIds.length > 0 ? { variables, missingIds } : { variables };
+            return missingIds.length > 0
+                ? { variables, missingIds, coverage: pageLoads.coverage() }
+                : { variables, coverage: pageLoads.coverage() };
         }
 
         // 2. List All Mode (Discovery)
@@ -485,14 +494,30 @@ export async function getVariables(params: any) {
                 valuesByMode: v.valuesByMode,
                 description: v.description,
             })),
+            coverage: pageLoads.coverage(),
         };
     } catch (err: any) {
-        throw new Error(`Error getting variables: ${err.message}`);
+        // Preserve canonical Phase 10 structured errors unchanged while
+        // retaining the legacy wrapper for unrelated uncoded failures.
+        let isStructured = false;
+        try {
+            isStructured =
+                err !== null &&
+                typeof err === 'object' &&
+                typeof err.code === 'string';
+        } catch {
+            // Hostile thrown values remain uncoded and are rendered safely.
+        }
+        if (isStructured) throw err;
+        throw new Error(`Error getting variables: ${describeThrownError(err)}`);
     }
 }
 
 
-export async function deleteVariables(params: any) {
+export async function deleteVariables(
+    params: any,
+    pageLoads: PageLoadCoordinator = createPageLoadCoordinator(),
+) {
     const { variableIds, variableNames, collectionId, collectionName, commandId } = params || {};
 
     // Mutual exclusivity check
@@ -522,12 +547,6 @@ export async function deleteVariables(params: any) {
             throw new Error(`Operation Denied: '${collection.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
         }
         idsToCheck = collection.variableIds || [];
-
-        // Empty collection — safe to delete immediately
-        if (idsToCheck.length === 0) {
-            collection.remove();
-            return { success: true, deleted: [], deletedCollection: collectionId };
-        }
     } else {
         // Variable IDs mode
         if (!Array.isArray(variableIds) || variableIds.length === 0) {
@@ -562,13 +581,30 @@ export async function deleteVariables(params: any) {
     // Concurrent scanning
     const stylePromise = findStyleConsumers(idSet);
     const aliasPromise = findAliasConsumers(idSet);
-    const nodeMapsPromises = figma.root.children.map(page => findVariableConsumers(page, idSet, commandId, 'variable_delete'));
+    const nodeMapsPromises = figma.root.children.map(async (page) => {
+        const loaded = await pageLoads.load(page);
+        if (!loaded.ok) return new Map<string, any[]>();
+        try {
+            return await findVariableConsumers(page, idSet, commandId, 'variable_delete');
+        } catch (error: any) {
+            pageLoads.fail(page.id, error);
+            return new Map<string, any[]>();
+        }
+    });
     
     const [styleConsumerMap, _aliasConsumerMap, ..._nodeMaps] = await Promise.all([
         stylePromise,
         aliasPromise,
         ...nodeMapsPromises
     ]);
+
+    const coverage = pageLoads.coverage();
+    if (!coverage.complete) {
+        // This gate precedes every variable/collection remove(), including the
+        // apparently-empty collection path. A page failure is never evidence
+        // that the target has zero consumers.
+        throw REFUSALS.DOCUMENT_SCAN_INCOMPLETE(coverage.pageErrors);
+    }
 
     const nodeConsumerMap = new Map<string, any[]>();
     for (const pageResults of _nodeMaps) {

@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput } from "./_result.js";
+import { toolResult, looseOutput, pageCoverage } from "./_result.js";
 
 export function registerComponentTools(server: McpServer) {
     // 1. List Components Tool
@@ -9,7 +9,7 @@ export function registerComponentTools(server: McpServer) {
         "component_list",
         {
             title: "List Components",
-            description: "List components in the document, with filtering and scope options.",
+            description: "List components in the document, with filtering and scope options. Document scans isolate page failures and report them in `coverage`; page-scoped failures return their structured error directly.",
             inputSchema: z.object({
                 filter: z
                     .enum(["local", "remote"])
@@ -28,6 +28,7 @@ export function registerComponentTools(server: McpServer) {
             outputSchema: looseOutput({
                 count: z.number().describe("Total count of components"),
                 components: z.array(z.any()).describe("List of component objects"),
+                coverage: pageCoverage,
             }),
             annotations: {
                 readOnlyHint: true,
