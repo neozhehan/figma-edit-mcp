@@ -733,7 +733,7 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       const cached = pageResolutions.get(pageId);
       if (cached) return cached;
       const resolution = (async () => {
-        var _a, _b;
+        var _a;
         attemptedPages.add(pageId);
         let node;
         try {
@@ -761,11 +761,31 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
         }
         let documentRootId;
         try {
-          documentRootId = (_a = figma.root) == null ? void 0 : _a.id;
-        } catch (e) {
-          documentRootId = void 0;
+          documentRootId = figma.root.id;
+        } catch (error) {
+          return recordError(
+            pageId,
+            REFUSALS.PAGE_LOAD_FAILED(
+              pageId,
+              `document root identity could not be verified: ${describeError(error)}`
+            ),
+            "load_failed"
+          );
         }
-        if (documentRootId !== void 0 && ((_b = node.parent) == null ? void 0 : _b.id) !== documentRootId) {
+        let parentId;
+        try {
+          parentId = (_a = node.parent) == null ? void 0 : _a.id;
+        } catch (error) {
+          return recordError(
+            pageId,
+            REFUSALS.PAGE_LOAD_FAILED(
+              pageId,
+              `direct document parent could not be verified: ${describeError(error)}`
+            ),
+            "load_failed"
+          );
+        }
+        if (parentId !== documentRootId) {
           return recordError(
             pageId,
             REFUSALS.TARGET_NOT_PAGE(
@@ -6592,7 +6612,13 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             return {
               errorCode: loaded.error.code,
               errorMessage: loaded.error.message,
-              errorDetails: loaded.error.details
+              // Change 9 (C9-F1): get_connect_payload is a private
+              // plugin result consumed by channel.ts, which reads the
+              // canonical structured-error key `details`. The public
+              // channel_join result renames it to `errorDetails`.
+              // Using that public name here dropped pageId,
+              // timeoutMs, and cause at the layer seam.
+              details: loaded.error.details
             };
           }
           const children = ("children" in scopeNode ? scopeNode.children : []).map((child) => ({

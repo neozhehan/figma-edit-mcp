@@ -55,7 +55,13 @@ export async function getConnectPayload(
                     return {
                         errorCode: loaded.error.code,
                         errorMessage: loaded.error.message,
-                        errorDetails: loaded.error.details,
+                        // Change 9 (C9-F1): get_connect_payload is a private
+                        // plugin result consumed by channel.ts, which reads the
+                        // canonical structured-error key `details`. The public
+                        // channel_join result renames it to `errorDetails`.
+                        // Using that public name here dropped pageId,
+                        // timeoutMs, and cause at the layer seam.
+                        details: loaded.error.details,
                     };
                 }
 

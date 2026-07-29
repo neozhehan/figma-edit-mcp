@@ -43,14 +43,23 @@ describe("getAnnotations Handler", () => {
     });
 
     it("returns annotations for a valid pageId", async () => {
+        const mockDocument: any = {
+            id: "doc-1",
+            name: "Document",
+            type: "DOCUMENT",
+            children: [],
+        };
         const mockPage = {
             id: "page-1",
             name: "Page",
             type: "PAGE",
+            parent: mockDocument,
             annotations: [{ labelMarkdown: "Page note" }],
             children: [],
             loadAsync: async () => { },
         };
+        mockDocument.children = [mockPage];
+        (globalThis as any).figma.root = mockDocument;
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockPage);
         const result = await getAnnotations({ pageId: "page-1", includeCategories: false });
         expect(result.annotatedNodes).toEqual([

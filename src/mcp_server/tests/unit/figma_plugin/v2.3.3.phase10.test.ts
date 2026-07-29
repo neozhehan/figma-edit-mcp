@@ -369,6 +369,62 @@ describe("v2.3.3 Phase 10 — shared page coverage", () => {
         expect(result.coverage.pageErrors[0].error.details.actualType)
             .toContain("not a direct child of the document root");
     });
+
+    it("Change 9 (C9-F2): an unreadable document root fails closed as structured page coverage", async () => {
+        const detached = makePage("page-detached", async () => { }, []);
+        (detached as any).parent = { id: "not-the-root" };
+        (globalThis as any).figma = {
+            getNodeByIdAsync: mock(async () => detached),
+            get root() {
+                throw new Error("root id unreadable");
+            },
+        };
+
+        const pageLoads = createPageLoadCoordinator();
+        const result = await pageLoads.resolve(detached.id);
+
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error("unreachable");
+        expect(result.error.code).toBe("PAGE_LOAD_FAILED");
+        expect(result.error.details).toMatchObject({
+            pageId: detached.id,
+        });
+        expect(result.error.details.cause).toContain("document root");
+        expect(detached.loadAsync).not.toHaveBeenCalled();
+        expect(pageLoads.coverage()).toEqual({
+            complete: false,
+            pagesAttempted: 1,
+            pageErrors: [{ pageId: detached.id, error: result.error }],
+        });
+    });
+
+    it("Change 9 (C9-F2): an unreadable PAGE parent cannot escape without structured coverage", async () => {
+        const page = makePage("page-hostile-parent", async () => { }, []);
+        Object.defineProperty(page, "parent", {
+            configurable: true,
+            get() {
+                throw new Error("parent id unreadable");
+            },
+        });
+        (globalThis as any).figma = {
+            root: { id: "doc-1" },
+            getNodeByIdAsync: mock(async () => page),
+        };
+
+        const pageLoads = createPageLoadCoordinator();
+        const result = await pageLoads.resolve(page.id);
+
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error("unreachable");
+        expect(result.error.code).toBe("PAGE_LOAD_FAILED");
+        expect(result.error.details).toMatchObject({
+            pageId: page.id,
+        });
+        expect(result.error.details.cause).toContain("direct document parent");
+        expect(page.loadAsync).not.toHaveBeenCalled();
+        expect(pageLoads.coverage().complete).toBe(false);
+        expect(pageLoads.coverage().pageErrors).toHaveLength(1);
+    });
 });
 
 describe("v2.3.3 Phase 10 — destructive scan protection", () => {
@@ -611,18 +667,25 @@ describe("v2.3.3 Change 8 — Phase 10 review remediation", () => {
         expect(document.children[0].descendantCount).toBe(1);
     });
 
-    it("F7: a hostile thrown value cannot make getNodesInfo's own reporting throw", async () => {
-        installFigma([makePage("page-1", async () => { }, [])]);
+    it("Change 9 (C9-T1): a hostile thrown value cannot break getNodesInfo's outer catch", async () => {
         const hostile = new Proxy({}, {
             get: () => { throw new Error("hostile getter"); },
             ownKeys: () => { throw new Error("hostile enumeration"); },
         });
-        (figma as any).getNodeByIdAsync = mock(async () => { throw hostile; });
+        const pageLoads = createPageLoadCoordinator();
+        pageLoads.coverage = () => { throw hostile; };
 
-        // The per-node catch swallows it into missingNodeIds; the point is that
-        // neither catch crashes while trying to render the value.
-        const result = await getNodesInfo({ nodeIds: ["anything"] });
-        expect(result.missingNodeIds).toEqual(["anything"]);
+        // An empty node list reaches the final coverage read directly. The
+        // hostile value therefore enters getNodesInfo's OUTER catch — the line
+        // Change 8 changed — rather than being swallowed by the inner per-node
+        // catch as the previous test was.
+        let caught: unknown;
+        try {
+            await getNodesInfo({ nodeIds: [] }, pageLoads);
+        } catch (error) {
+            caught = error;
+        }
+        expect(caught).toBe(hostile);
     });
 
     it("C1: an in-use target is a coded refusal carrying its consumers, not a bare string", async () => {

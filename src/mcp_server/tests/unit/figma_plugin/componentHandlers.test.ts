@@ -311,8 +311,11 @@ describe("Component Handlers", () => {
                 loadAsync: mock(async () => {}),
                 findAllWithCriteria: null as any
             };
+            const mockDocument = { id: "doc-1", type: "DOCUMENT", children: [mockPageNode] };
+            (mockPageNode as any).parent = mockDocument;
             const mockComp = { id: "comp-1", name: "Button", type: "COMPONENT", key: "k1", remote: false, parent: mockPageNode };
             mockPageNode.findAllWithCriteria = mock(() => [mockComp]);
+            (globalThis as any).figma.root = mockDocument;
             (globalThis as any).figma.getNodeByIdAsync = mock(async (id: string) => {
                 if (id === "page-1") return mockPageNode;
                 if (id === "comp-1") return mockComp;

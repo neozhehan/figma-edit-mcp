@@ -85,6 +85,13 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
         // unbounded load wedged the join itself.
         expect(src).toMatch(/await\s+pageLoads\.load\(scopeNode\s+as\s+PageNode\)/);
         expect(src, "no unbounded direct loadAsync may remain").not.toMatch(/scopeNode\s*(as\s+PageNode\s*)?\)?\.loadAsync\(\)/);
+        // Change 9 (C9-F1): the private get_connect_payload result uses the
+        // canonical structured-error key. channel.ts consumes `payload.details`
+        // and only its public channel_join result renames that field to
+        // `errorDetails`; using the public name here silently dropped the
+        // coordinator's pageId/timeoutMs/cause at the layer seam.
+        expect(src).toMatch(/details:\s*loaded\.error\.details/);
+        expect(src).not.toMatch(/errorDetails:\s*loaded\.error\.details/);
     });
 
     it("node-scope branch includes path array and descendantCount", () => {

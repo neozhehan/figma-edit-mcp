@@ -175,17 +175,40 @@ export function createPageLoadCoordinator(
                     "not_page",
                 );
             }
-            // The root read is guarded for the same reason every other read in
-            // this release is: a check that throws would replace the answer with
-            // a crash. If the root is unreadable we cannot prove detachment, so
-            // we do not claim it — the type check above already stands.
-            let documentRootId: string | undefined;
+            // Change 9 (C9-F2): direct-root membership is a fail-closed target
+            // predicate. The Change 8 guard prevented a crash but skipped the
+            // predicate when figma.root.id was unreadable, accepting a detached
+            // PAGE. Read both operands defensively; an unreadable relationship
+            // is a structured resolution failure, never permission to load.
+            let documentRootId: string;
             try {
-                documentRootId = figma.root?.id;
-            } catch {
-                documentRootId = undefined;
+                documentRootId = figma.root.id;
+            } catch (error: any) {
+                return recordError(
+                    pageId,
+                    REFUSALS.PAGE_LOAD_FAILED(
+                        pageId,
+                        `document root identity could not be verified: ${describeError(error)}`,
+                    ),
+                    "load_failed",
+                );
             }
-            if (documentRootId !== undefined && node.parent?.id !== documentRootId) {
+
+            let parentId: string | undefined;
+            try {
+                parentId = node.parent?.id;
+            } catch (error: any) {
+                return recordError(
+                    pageId,
+                    REFUSALS.PAGE_LOAD_FAILED(
+                        pageId,
+                        `direct document parent could not be verified: ${describeError(error)}`,
+                    ),
+                    "load_failed",
+                );
+            }
+
+            if (parentId !== documentRootId) {
                 return recordError(
                     pageId,
                     REFUSALS.TARGET_NOT_PAGE(
