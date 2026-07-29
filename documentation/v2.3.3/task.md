@@ -2,7 +2,7 @@
 
 This document tracks the tasks required to fulfill the requirements in the [v2.3.3 PRD](file:///Users/neozhehan/Git/figma-edit-mcp/documentation/v2.3.3/prd.md). It is divided into 14 phases, covering both Track 1 (Type-check restoration) and Track 2 (Safety-contract gap closure).
 
-> Release decision status, review outcomes, verification history, and current findings are maintained in [Change 9 of the v2.3.3 release changelog](release-changelog.md#change-9-change-8-closure-verification-and-remediation-rev-65). The 14 implementation phases remain below.
+> Release decision status, review outcomes, verification history, and current findings are maintained in [Change 10 of the v2.3.3 release changelog](release-changelog.md#change-10-change-9-verification-and-seam-guard-closure-rev-66). The 14 implementation phases remain below.
 
 ---
 

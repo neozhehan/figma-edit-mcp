@@ -683,6 +683,13 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
 
   // figma_plugin/utils/pageLoad.ts
   var PAGE_LOAD_TIMEOUT_MS = 1e4;
+  function toConnectPayloadError(error) {
+    return {
+      errorCode: error.code,
+      errorMessage: error.message,
+      ...error.details !== void 0 ? { details: error.details } : {}
+    };
+  }
   function createPageLoadCoordinator(timeoutMs = PAGE_LOAD_TIMEOUT_MS) {
     const boundedTimeoutMs = Math.max(1, timeoutMs);
     const pageLoads = /* @__PURE__ */ new Map();
@@ -6609,17 +6616,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
         if (state2.allowEditNode === "page") {
           const loaded = await pageLoads.load(scopeNode);
           if (!loaded.ok) {
-            return {
-              errorCode: loaded.error.code,
-              errorMessage: loaded.error.message,
-              // Change 9 (C9-F1): get_connect_payload is a private
-              // plugin result consumed by channel.ts, which reads the
-              // canonical structured-error key `details`. The public
-              // channel_join result renames it to `errorDetails`.
-              // Using that public name here dropped pageId,
-              // timeoutMs, and cause at the layer seam.
-              details: loaded.error.details
-            };
+            return toConnectPayloadError(loaded.error);
           }
           const children = ("children" in scopeNode ? scopeNode.children : []).map((child) => ({
             id: child.id,

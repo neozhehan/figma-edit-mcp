@@ -54,6 +54,33 @@ export type PageLoadResult =
     | { ok: true; page: PageNode }
     | PageLoadFailure;
 
+/**
+ * Projects a structured page failure into the private connect-payload error
+ * shape that `channel.ts` consumes on `channel_join`'s second leg.
+ *
+ * Change 10 (C10-T1): this exists so the field names are decided in exactly one
+ * place. Q27 forbids the plugin bundle importing `src/shared`, so producer and
+ * consumer cannot share a constant — which is precisely how C9-F1 happened, the
+ * producer emitting `errorDetails` while the consumer read `details`. Change 9
+ * fixed the key but guarded it with a regex over handler source, which pins
+ * spelling rather than behaviour and never crosses the seam. A test can import
+ * this helper without dragging in `main.js`, so the real producer shape can be
+ * driven through the real registered tool instead.
+ *
+ * `channel_join` alone renames `details` to the public `errorDetails`.
+ */
+export function toConnectPayloadError(error: StructuredPageError): {
+    errorCode: string;
+    errorMessage: string;
+    details?: any;
+} {
+    return {
+        errorCode: error.code,
+        errorMessage: error.message,
+        ...(error.details !== undefined ? { details: error.details } : {}),
+    };
+}
+
 export interface PageLoadCoordinator {
     load(page: PageNode): Promise<PageLoadResult>;
     resolve(pageId: string): Promise<PageLoadResult>;

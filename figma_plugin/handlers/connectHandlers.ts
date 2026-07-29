@@ -1,7 +1,7 @@
 import { getPluginState } from '../src/main.js';
 import { buildPathArray, countDescendants } from '../utils/nodeUtils.js';
 import { UNKNOWN_ERROR } from '../utils/errors.js';
-import { createPageLoadCoordinator, PageLoadCoordinator } from '../utils/pageLoad.js';
+import { createPageLoadCoordinator, PageLoadCoordinator, toConnectPayloadError } from '../utils/pageLoad.js';
 
 export async function getConnectPayload(
     pageLoads: PageLoadCoordinator = createPageLoadCoordinator(),
@@ -52,17 +52,15 @@ export async function getConnectPayload(
                 // and therefore could never earn a playbook entry.
                 const loaded = await pageLoads.load(scopeNode as PageNode);
                 if (!loaded.ok) {
-                    return {
-                        errorCode: loaded.error.code,
-                        errorMessage: loaded.error.message,
-                        // Change 9 (C9-F1): get_connect_payload is a private
-                        // plugin result consumed by channel.ts, which reads the
-                        // canonical structured-error key `details`. The public
-                        // channel_join result renames it to `errorDetails`.
-                        // Using that public name here dropped pageId,
-                        // timeoutMs, and cause at the layer seam.
-                        details: loaded.error.details,
-                    };
+                    // Change 9 (C9-F1): get_connect_payload is a private plugin
+                    // result consumed by channel.ts, which reads the canonical
+                    // structured-error key `details`; only the public
+                    // channel_join result renames it to `errorDetails`. Using
+                    // the public name here dropped pageId, timeoutMs, and cause
+                    // at the layer seam. Change 10 (C10-T1) moves the shape into
+                    // the shared projector so the key is decided once and a test
+                    // can drive the real shape through the real consumer.
+                    return toConnectPayloadError(loaded.error);
                 }
 
                 const children = ('children' in scopeNode ? scopeNode.children : []).map((child: any) => ({

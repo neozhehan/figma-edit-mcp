@@ -60,7 +60,9 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
         // so could never earn a playbook entry. It goes through the bounded
         // Phase 10 coordinator and forwards whichever ratified code it raised.
         expect(src, "the scope page load must use the bounded coordinator").toMatch(/pageLoads\.load\(/);
-        expect(src, "the load branch must forward the coordinator's ratified code").toMatch(/errorCode:\s*loaded\.error\.code/);
+        // Change 10 (C10-T1): the code is forwarded through the shared projector
+        // rather than an inline literal — asserted behaviourally by the seam
+        // tests below, and structurally by the delegation check further down.
         expect(src, "DOCUMENT_LOAD_FAILED is retired").not.toMatch(/["']DOCUMENT_LOAD_FAILED["']/);
         // UNKNOWN_ERROR must be the imported CONSTANT, not a re-hardcoded
         // literal (P4-5 dedup, 2026-07-24): require the identifier form and
@@ -85,13 +87,15 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
         // unbounded load wedged the join itself.
         expect(src).toMatch(/await\s+pageLoads\.load\(scopeNode\s+as\s+PageNode\)/);
         expect(src, "no unbounded direct loadAsync may remain").not.toMatch(/scopeNode\s*(as\s+PageNode\s*)?\)?\.loadAsync\(\)/);
-        // Change 9 (C9-F1): the private get_connect_payload result uses the
-        // canonical structured-error key. channel.ts consumes `payload.details`
-        // and only its public channel_join result renames that field to
-        // `errorDetails`; using the public name here silently dropped the
-        // coordinator's pageId/timeoutMs/cause at the layer seam.
-        expect(src).toMatch(/details:\s*loaded\.error\.details/);
-        expect(src).not.toMatch(/errorDetails:\s*loaded\.error\.details/);
+        // Change 10 (C10-T1): the failure shape comes from the shared projector
+        // rather than a hand-built literal, so the key that C9-F1 got wrong is
+        // decided in exactly one place. This asserts the handler DELEGATES; the
+        // behavioural seam test below proves the resulting shape survives the
+        // plugin -> channel_join boundary. The previous assertion pinned the
+        // literal spelling `details: loaded.error.details`, which a routine
+        // refactor could satisfy or break without changing behaviour either way.
+        expect(src).toMatch(/return\s+toConnectPayloadError\(loaded\.error\)/);
+        expect(src, "the connect-payload error shape must not be rebuilt inline").not.toMatch(/errorCode:\s*loaded\.error\.code/);
     });
 
     it("node-scope branch includes path array and descendantCount", () => {
@@ -399,6 +403,91 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect(parsed.status).toBe("error");
         expect(parsed.errorCode).toBe("SCOPE_INVALID");
         expect(parsed.errorDetails).toEqual({ reportedScope: "node", scopeRootId: null });
+    });
+
+    // Change 10 (C10-T1): the real seam. C9-F1 was a producer/consumer key
+    // mismatch that every existing test missed, because the producer side was
+    // only ever asserted by reading handler source and the consumer side was
+    // only ever fed a hand-written payload. Q27 forbids the plugin bundle
+    // importing `src/shared`, so the two sides cannot share a constant and a
+    // test is the only possible guard. This drives a REAL coordinator failure
+    // through the REAL projector into the REAL registered tool. Red-proof: with
+    // the pre-C9 `errorDetails` key on the producer, `payload.details` is
+    // undefined and the public `errorDetails` assertion below fails.
+    it("C10-T1 seam: a real page-load failure's diagnostics survive plugin -> channel_join", async () => {
+        const { createPageLoadCoordinator, toConnectPayloadError } =
+            await import("../../../../../figma_plugin/utils/pageLoad.js");
+
+        const previousFigma = (globalThis as any).figma;
+        const scopePage: any = {
+            id: "page-scope",
+            name: "Scope Page",
+            type: "PAGE",
+            children: [],
+            loadAsync: async () => { throw new Error("scope page unavailable"); },
+        };
+        (globalThis as any).figma = { root: { id: "doc-1", name: "Doc", children: [scopePage] } };
+
+        try {
+            // The producer half, built exactly as connectHandlers builds it.
+            const pageLoads = createPageLoadCoordinator();
+            const loaded = await pageLoads.load(scopePage);
+            expect(loaded.ok).toBe(false);
+            if (loaded.ok) throw new Error("unreachable");
+            const payload = toConnectPayloadError(loaded.error);
+
+            // The consumer half: the real registered channel_join.
+            (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+                cmd === "get_connect_payload"
+                    ? Promise.resolve(payload)
+                    : Promise.resolve({}),
+            );
+            const r = await registeredTools["join_channel"]({ channel: "ch1" });
+            const parsed = JSON.parse(r.content[0].text);
+
+            expect(parsed.status).toBe("error");
+            expect(parsed.errorCode).toBe("PAGE_LOAD_FAILED");
+            // The diagnostics C9-F1 silently dropped must reach the caller.
+            expect(parsed.errorDetails.pageId).toBe("page-scope");
+            expect(parsed.errorDetails.cause).toContain("scope page unavailable");
+        } finally {
+            (globalThis as any).figma = previousFigma;
+        }
+    });
+
+    it("C10-T1 seam: a timed-out scope page carries its timeoutMs across the same boundary", async () => {
+        const { createPageLoadCoordinator, toConnectPayloadError } =
+            await import("../../../../../figma_plugin/utils/pageLoad.js");
+
+        const previousFigma = (globalThis as any).figma;
+        const scopePage: any = {
+            id: "page-slow",
+            name: "Slow Page",
+            type: "PAGE",
+            children: [],
+            loadAsync: () => new Promise<void>(() => { }),
+        };
+        (globalThis as any).figma = { root: { id: "doc-1", name: "Doc", children: [scopePage] } };
+
+        try {
+            const pageLoads = createPageLoadCoordinator(5);
+            const loaded = await pageLoads.load(scopePage);
+            if (loaded.ok) throw new Error("unreachable");
+            const payload = toConnectPayloadError(loaded.error);
+
+            (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+                cmd === "get_connect_payload"
+                    ? Promise.resolve(payload)
+                    : Promise.resolve({}),
+            );
+            const r = await registeredTools["join_channel"]({ channel: "ch1" });
+            const parsed = JSON.parse(r.content[0].text);
+
+            expect(parsed.errorCode).toBe("PAGE_LOAD_TIMEOUT");
+            expect(parsed.errorDetails).toEqual({ pageId: "page-slow", timeoutMs: 5 });
+        } finally {
+            (globalThis as any).figma = previousFigma;
+        }
     });
 
     it("P4-4 follow-up: no details field on the payload means no errorDetails key at all", async () => {
