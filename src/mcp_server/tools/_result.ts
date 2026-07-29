@@ -91,30 +91,56 @@ export const errorEnvelope = z.object({
     details: z.any().optional().describe("Optional structured context (e.g. partialMutation, before-values)"),
 });
 
+const pageErrorEntry = z.object({
+    pageId: z.string().describe("ID of the page that could not be loaded, resolved, or read"),
+    error: errorEnvelope.describe("Structured per-page failure"),
+});
+
+const pagesAttempted = z
+    .number()
+    .int()
+    .min(0)
+    .describe(
+        "Distinct pages this call tried to resolve, load, or read. 0 means the result required no page access at all — it does NOT mean the document was checked and found clean.",
+    );
+
 /**
  * D14's shared page-coverage contract. `complete` is derived, never advisory:
- * it is true exactly when every requested/scanned page completed successfully.
+ * it is true exactly when every attempted page completed successfully.
+ *
+ * Change 8 (D1) expresses that invariant as a two-branch union rather than a
+ * `.superRefine()`. The refinement enforced it in the server-side Zod parse but
+ * vanished in the zod→JSON-Schema conversion, so the schema an MCP client
+ * validates against — and the schema a model reads to learn the contract — said
+ * only "a boolean and an array". The union survives conversion as `anyOf` with
+ * `const` + `maxItems`/`minItems`, so the invariant is now advertised, not just
+ * privately checked. Enforcement is unchanged in strength and strictly wider in
+ * reach; `pageCoverageInvariant` below is the machine-checkable statement of it.
  */
 export const pageCoverage = z
-    .object({
-        complete: z.boolean().describe("True exactly when pageErrors is empty"),
-        pageErrors: z.array(
-            z.object({
-                pageId: z.string().describe("ID of the page that could not be loaded or scanned"),
-                error: errorEnvelope.describe("Structured per-page failure"),
-            }),
-        ).describe("Structured failures for pages omitted from this result"),
-    })
-    .superRefine((coverage, ctx) => {
-        if (coverage.complete !== (coverage.pageErrors.length === 0)) {
-            ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                path: ["complete"],
-                message: "coverage.complete must be true exactly when coverage.pageErrors is empty.",
-            });
-        }
-    })
+    .union([
+        z.object({
+            complete: z.literal(true).describe("Every attempted page succeeded"),
+            pagesAttempted,
+            pageErrors: z.array(pageErrorEntry).max(0)
+                .describe("Empty: no page failed"),
+        }),
+        z.object({
+            complete: z.literal(false).describe("At least one attempted page failed"),
+            pagesAttempted,
+            pageErrors: z.array(pageErrorEntry).min(1)
+                .describe("Structured failures for pages omitted from this result; successful pages are still returned"),
+        }),
+    ])
     .describe("Page-scan coverage; partial read data remains usable when complete is false");
+
+/**
+ * The invariant `pageCoverage` encodes, stated once so tests and reviewers do
+ * not have to re-derive it from the union's branches.
+ */
+export function pageCoverageInvariant(coverage: { complete: boolean; pageErrors: unknown[] }) {
+    return coverage.complete === (coverage.pageErrors.length === 0);
+}
 
 export function toolResult(result: unknown) {
     const payload: Record<string, unknown> =

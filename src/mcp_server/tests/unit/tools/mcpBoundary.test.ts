@@ -148,23 +148,32 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
         expect(result.structuredContent.name).toBe("Body");
     });
 
-    it("Phase 10: variable_delete in-use refusal crosses the official SDK boundary without -32602", async () => {
-        commandBehavior = async () => ({
-            success: false,
-            error: "Cannot delete: variable(s) are still in use.",
-            variablesInUse: {
-                "VariableID:1": {
-                    nodeConsumers: [{
-                        nodeId: "1:2",
-                        nodeName: "Card",
-                        nodeType: "FRAME",
-                        fields: ["fills"],
-                    }],
-                    styleConsumers: [],
-                    aliasConsumers: [],
-                },
+    // Change 8 (C1): the in-use refusal is now a coded D9 error like its sibling
+    // DOCUMENT_SCAN_INCOMPLETE, not a non-error result carrying a bare `error`
+    // string. This is the one place `error` had two possible types across the
+    // whole tool surface, so a caller had to branch on the type of a field
+    // before it could read it. The consumer evidence is unchanged in shape and
+    // now lives where every other structured refusal keeps its evidence.
+    it("Phase 10/Change 8: variable_delete in-use refusal is a coded refusal with structured consumers, not a bare string", async () => {
+        const variablesInUse = {
+            "VariableID:1": {
+                nodeConsumers: [{
+                    nodeId: "1:2",
+                    nodeName: "Card",
+                    nodeType: "FRAME",
+                    fields: ["fills"],
+                }],
+                styleConsumers: [],
+                aliasConsumers: [],
             },
-        });
+        };
+        commandBehavior = async () => {
+            throw new FigmaError({
+                code: "VARIABLE_IN_USE",
+                message: "Operation Denied: Cannot delete: variable(s) are still in use. Nothing was deleted. Read each listed consumer's current state with node_info ...",
+                details: { variablesInUse },
+            });
+        };
 
         const result = await client.callTool({
             name: "variable_delete",
@@ -174,10 +183,12 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
             },
         });
 
-        expect(result.isError).toBeFalsy();
-        expect(result.structuredContent.success).toBe(false);
-        expect(result.structuredContent.error).toContain("still in use");
-        expect(result.structuredContent.variablesInUse["VariableID:1"]).toBeDefined();
+        // Resolves in-band (no -32602) and carries the code machine-readably.
+        expect(result.isError).toBe(true);
+        expect(result.structuredContent.error.code).toBe("VARIABLE_IN_USE");
+        expect(result.structuredContent.error.details.variablesInUse["VariableID:1"].nodeConsumers[0].nodeId)
+            .toBe("1:2");
+        expect(result.content[0].text).toContain("VARIABLE_IN_USE");
     });
 
     it("Phase 10: partial page_info coverage survives the official SDK boundary", async () => {
@@ -186,9 +197,10 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
             documentName: "Document",
             pageCount: 2,
             pages: [{ pageId: "page-good", pageName: "Good" }],
-            missingPageIds: [],
+            missingPageIds: ["page-bad"],
             coverage: {
                 complete: false,
+                pagesAttempted: 2,
                 pageErrors: [{
                     pageId: "page-bad",
                     error: {
@@ -209,8 +221,12 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
         expect(result.structuredContent.pages).toEqual([
             { pageId: "page-good", pageName: "Good" },
         ]);
+        // Change 8 (D5): the failed page is named in `missingPageIds` too, so a
+        // caller can diff requested-vs-returned from one field regardless of why.
+        expect(result.structuredContent.missingPageIds).toEqual(["page-bad"]);
         expect(result.structuredContent.coverage).toEqual({
             complete: false,
+            pagesAttempted: 2,
             pageErrors: [{
                 pageId: "page-bad",
                 error: {
@@ -220,6 +236,34 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
                 },
             }],
         });
+    });
+
+    // Change 8 (D1): the coverage invariant is now advertised, not just checked
+    // privately. A payload that violates it must be rejected by the schema the
+    // client validates against, so the model can trust `complete` as derived.
+    it("Change 8: an incoherent coverage payload is refused by the advertised schema", async () => {
+        commandBehavior = async () => ({
+            documentId: "doc-1",
+            documentName: "Document",
+            pageCount: 1,
+            pages: [],
+            coverage: { complete: true, pagesAttempted: 1, pageErrors: [{
+                pageId: "page-bad",
+                error: { code: "PAGE_LOAD_FAILED", message: "failed" },
+            }] },
+        });
+
+        // McpServer catches its own internal -32602 and surfaces it in band, so
+        // the observable proof is the validation failure itself, on the exact
+        // path the invariant lives: coverage.pageErrors.
+        const result: any = await client.callTool({
+            name: "page_info",
+            arguments: { pageIds: ["page-bad"] },
+        });
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain("Output validation error");
+        expect(result.content[0].text).toContain("coverage");
+        expect(result.content[0].text).toContain("pageErrors");
     });
 
     it("Phase 10: a single-page load timeout arrives as the direct structured refusal", async () => {

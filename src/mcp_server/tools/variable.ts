@@ -236,7 +236,7 @@ export function registerVariableTools(server: McpServer) {
         "variable_delete",
         {
             title: "Delete Variables",
-            description: "Delete specific variables or an entire collection. Runs a full-document consumer check first and rejects the whole operation with DOCUMENT_SCAN_INCOMPLETE before any removal if any page cannot be loaded and scanned; a page error can never mean zero consumers.",
+            description: "Delete specific variables or an entire collection. Runs a full-document consumer check first, before any removal: if a target is still in use the call is refused with VARIABLE_IN_USE, whose `details.variablesInUse` lists every consumer; if any page cannot be loaded and read it is refused with DOCUMENT_SCAN_INCOMPLETE, because a page error can never mean zero consumers.",
             inputSchema: z.object({
                 variableIds: z
                     .array(z.string())
@@ -258,7 +258,6 @@ export function registerVariableTools(server: McpServer) {
             outputSchema: looseOutput({
                 success: z.boolean().optional().describe("Whether variables were deleted successfully"),
                 message: z.string().optional().describe("Status message"),
-                error: z.string().optional().describe("Human-readable refusal when a complete consumer scan finds the target variable in use"),
             }),
             annotations: {
                 destructiveHint: true,

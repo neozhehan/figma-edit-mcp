@@ -48,20 +48,37 @@ export const CLIENT_OPERATIONAL_CODES = [
     "CHANNEL_NOT_BOUND",
 ] as const;
 
-/** Operational codes thrown by the plugin itself (Phases 10–11). */
+/**
+ * Operational codes thrown by the plugin itself (Phases 10–11).
+ *
+ * Change 8 adds two on D9's "adds or edits" rule, the same precedent that added
+ * `VARIABLE_SCOPES_MISSING` (Rev 27), the D6 parent pair (Rev 31), and
+ * `ANNOTATION_CATEGORY_NOT_FOUND` (Rev 46):
+ *
+ * - `PAGE_SCAN_FAILED` — a page that loaded and then failed while being READ is
+ *   a distinct cause with distinct recovery from a page that would not load.
+ *   Both were reported as `PAGE_LOAD_FAILED`, whose message tells the agent to
+ *   retry, which is the wrong instruction for a deterministic read failure.
+ * - `VARIABLE_IN_USE` — the sibling outcome of the `DOCUMENT_SCAN_INCOMPLETE`
+ *   gate. It was the one refusal returned as a NON-error result carrying a bare
+ *   `error` string, so `error` had two possible types across the tool surface.
+ */
 export const PLUGIN_OPERATIONAL_CODES = [
     "PAGE_LOAD_FAILED",
+    "PAGE_SCAN_FAILED",
     "PAGE_NOT_FOUND",
     "TARGET_NOT_PAGE",
     "PAGE_LOAD_TIMEOUT",
     "DOCUMENT_SCAN_INCOMPLETE",
+    "VARIABLE_IN_USE",
     "CONNECTOR_TEMPLATE_REQUIRED",
 ] as const;
 
 /**
  * The operational codes of the ratified contract (Q16), grouped by origin.
  * The Change 5 split did not change membership; the Rev 57 addition of
- * `CHANNEL_NOT_BOUND` does, taking the inventory from ten to eleven.
+ * `CHANNEL_NOT_BOUND` took the inventory from ten to eleven, and Change 8's
+ * `PAGE_SCAN_FAILED` / `VARIABLE_IN_USE` take it from eleven to thirteen.
  */
 export const OPERATIONAL_CODES = [
     ...SOCKET_OPERATIONAL_CODES,
@@ -117,7 +134,7 @@ export const JOIN_CODES = [
     "PLUGIN_DISCONNECTED",
 ] as const;
 
-/** The full ratified v2.3.3 inventory: twenty-one codes plus the fallback (Rev 57). */
+/** The full ratified v2.3.3 inventory: twenty-three codes plus the fallback (Change 8). */
 export const RATIFIED_CODES = [
     ...OPERATIONAL_CODES,
     ...VERIFICATION_CODES,

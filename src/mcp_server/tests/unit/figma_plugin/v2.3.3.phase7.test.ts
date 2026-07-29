@@ -925,7 +925,7 @@ describe("Phase 7 D10: real append/list behavior", () => {
                 { nodeId: root.id, name: root.name, annotations: root.annotations },
                 { nodeId: child.id, name: child.name, annotations: child.annotations },
             ],
-            coverage: { complete: true, pageErrors: [] },
+            coverage: { complete: true, pagesAttempted: 0, pageErrors: [] },
         });
         expect(TOOLS.annotation_set.outputSchema.safeParse(result).success).toBe(true);
         expect(TOOLS.annotation_list.outputSchema.safeParse(listed).success).toBe(true);
@@ -953,7 +953,7 @@ describe("Phase 7 D10: real append/list behavior", () => {
                 name: annotatedChild.name,
                 annotations: annotatedChild.annotations,
             }],
-            coverage: { complete: true, pageErrors: [] },
+            coverage: { complete: true, pagesAttempted: 0, pageErrors: [] },
         };
         expect(await getAnnotations({
             nodeId: group.id,

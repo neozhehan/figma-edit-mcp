@@ -419,11 +419,16 @@ describe("v2.3.3 Phase 4: Dispatcher emits structured errors (real main.ts)", ()
 // =============================================================================
 
 describe("v2.3.3 Phase 4: Error-code inventory parity", () => {
-    it("the ratified inventory is exact: twenty-one codes plus the fallback, no duplicates", () => {
+    it("the ratified inventory is exact: twenty-three codes plus the fallback, no duplicates", () => {
         // Rev 46 (Q30): ANNOTATION_CATEGORY_NOT_FOUND joins the inventory.
         // Rev 57: CHANNEL_NOT_BOUND joins it on the same "adds or edits" rule,
         // because P9-F2 made "no binding" a state a failed join can create.
-        expect(RATIFIED_CODES.length).toBe(22);
+        // Change 8: PAGE_SCAN_FAILED (a loaded page that fails while being READ
+        // is a distinct cause with distinct recovery from one that will not
+        // load) and VARIABLE_IN_USE (the sibling outcome of the
+        // DOCUMENT_SCAN_INCOMPLETE gate, previously the one refusal returned as
+        // a non-error result carrying a bare `error` string).
+        expect(RATIFIED_CODES.length).toBe(24);
         expect(new Set(RATIFIED_CODES).size).toBe(RATIFIED_CODES.length);
         expect(RATIFIED_CODES).toContain(UNKNOWN_ERROR);
     });

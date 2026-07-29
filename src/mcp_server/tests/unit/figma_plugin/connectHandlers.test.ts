@@ -52,9 +52,16 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
 
     it("all error code branches use return, not throw", () => {
         // Legacy connect-payload codes are quoted literals in this handler.
-        for (const code of ["SCOPE_DELETED", "SCOPE_INVALID", "DOCUMENT_LOAD_FAILED"]) {
+        for (const code of ["SCOPE_DELETED", "SCOPE_INVALID"]) {
             expect(src).toMatch(new RegExp(`errorCode:\\s*["']${code}["']`));
         }
+        // Change 8 (F3): the scope-page load branch no longer mints its own
+        // `DOCUMENT_LOAD_FAILED` — a code that was never in the D9 inventory and
+        // so could never earn a playbook entry. It goes through the bounded
+        // Phase 10 coordinator and forwards whichever ratified code it raised.
+        expect(src, "the scope page load must use the bounded coordinator").toMatch(/pageLoads\.load\(/);
+        expect(src, "the load branch must forward the coordinator's ratified code").toMatch(/errorCode:\s*loaded\.error\.code/);
+        expect(src, "DOCUMENT_LOAD_FAILED is retired").not.toMatch(/["']DOCUMENT_LOAD_FAILED["']/);
         // UNKNOWN_ERROR must be the imported CONSTANT, not a re-hardcoded
         // literal (P4-5 dedup, 2026-07-24): require the identifier form and
         // reject a quoted literal, so the fix cannot silently regress.
@@ -63,7 +70,6 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
         // No throw statements with error codes
         expect(src).not.toMatch(/throw\s+new\s+Error\([^)]*SCOPE_DELETED/);
         expect(src).not.toMatch(/throw\s+new\s+Error\([^)]*SCOPE_INVALID/);
-        expect(src).not.toMatch(/throw\s+new\s+Error\([^)]*DOCUMENT_LOAD_FAILED/);
     });
 
     it("readonly branch does not call loadAsync", () => {
@@ -72,8 +78,13 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
         expect(beforePageScope).not.toMatch(/\.loadAsync\(/);
     });
 
-    it("page-scope branch calls loadAsync on the resolved PAGE node", () => {
-        expect(src).toMatch(/await\s+(\(scopeNode\s+as\s+PageNode\)|scopeNode)\.loadAsync\(\)/);
+    it("page-scope branch loads the resolved PAGE node through the bounded coordinator", () => {
+        // Change 8 (F3): the load is no longer a bare `scopeNode.loadAsync()`.
+        // It goes through the Phase 10 coordinator so it inherits the Q12
+        // per-page timeout — this sits on channel_join's second leg, where an
+        // unbounded load wedged the join itself.
+        expect(src).toMatch(/await\s+pageLoads\.load\(scopeNode\s+as\s+PageNode\)/);
+        expect(src, "no unbounded direct loadAsync may remain").not.toMatch(/scopeNode\s*(as\s+PageNode\s*)?\)?\.loadAsync\(\)/);
     });
 
     it("node-scope branch includes path array and descendantCount", () => {
@@ -353,16 +364,16 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect((resetChannel as any).mock.calls.length).toBe(1);
     });
 
-    it("DOCUMENT_LOAD_FAILED: structured error + resetChannel", async () => {
+    it("PAGE_LOAD_FAILED: structured error + resetChannel", async () => {
         (sendCommandToFigma as any).mockImplementation((cmd: string) =>
             cmd === "get_connect_payload"
-                ? Promise.resolve({ errorCode: "DOCUMENT_LOAD_FAILED", errorMessage: "load fail" })
+                ? Promise.resolve({ errorCode: "PAGE_LOAD_FAILED", errorMessage: "load fail" })
                 : Promise.resolve({}),
         );
         const r = await registeredTools["join_channel"]({ channel: "ch1" });
         const parsed = JSON.parse(r.content[0].text);
         expect(parsed.status).toBe("error");
-        expect(parsed.errorCode).toBe("DOCUMENT_LOAD_FAILED");
+        expect(parsed.errorCode).toBe("PAGE_LOAD_FAILED");
         expect((resetChannel as any).mock.calls.length).toBe(1);
     });
 
@@ -738,7 +749,7 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
                     : Promise.resolve({})),
             () => (sendCommandToFigma as any).mockImplementation((cmd: string) =>
                 cmd === "get_connect_payload"
-                    ? Promise.resolve({ errorCode: "DOCUMENT_LOAD_FAILED", errorMessage: "fail" })
+                    ? Promise.resolve({ errorCode: "PAGE_LOAD_FAILED", errorMessage: "fail" })
                     : Promise.resolve({})),
         ];
         for (const setup of failureSetups) {

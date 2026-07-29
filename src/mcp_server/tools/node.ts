@@ -55,7 +55,7 @@ export function registerNodeTools(server: McpServer) {
         "node_info",
         {
             title: "Get Node Info",
-            description: "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. Inspect `coverage`: a failed containing page is omitted with a structured `pageErrors` row while other pages still return. The workhorse read; start here before any write.",
+            description: "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. A node whose containing page could not be read is listed in `pageFailedNodes` with that page's ID, and the page's structured reason is in `coverage.pageErrors` — other pages still return normally. The workhorse read; start here before any write.",
             inputSchema: z.object({
                 nodeIds: z
                     .array(z.string())
@@ -85,6 +85,10 @@ export function registerNodeTools(server: McpServer) {
             outputSchema: looseOutput({
                 nodes: z.array(nodeInfoEntry).describe("Node entries (id/name/type + optional properties/children/path/descendantCount)"),
                 missingNodeIds: z.array(z.string()).optional().describe("Requested IDs that weren't found"),
+                pageFailedNodes: z.array(z.object({
+                    nodeId: z.string().describe("Requested node ID that could not be read"),
+                    pageId: z.string().describe("Its containing page — match this against `coverage.pageErrors` for the reason and the recovery"),
+                })).optional().describe("Requested nodes that exist but could not be read because their containing page failed; omitted when none"),
                 coverage: pageCoverage,
             }),
             annotations: {

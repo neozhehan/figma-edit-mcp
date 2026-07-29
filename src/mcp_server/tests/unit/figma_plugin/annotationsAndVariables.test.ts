@@ -83,7 +83,7 @@ describe("getAnnotations Handler", () => {
                 { nodeId: root.id, name: root.name, annotations: root.annotations },
                 { nodeId: child.id, name: child.name, annotations: child.annotations },
             ],
-            coverage: { complete: true, pageErrors: [] },
+            coverage: { complete: true, pagesAttempted: 0, pageErrors: [] },
         });
         expect(result.annotations).toBeUndefined();
     });

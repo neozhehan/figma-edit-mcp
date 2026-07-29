@@ -23,22 +23,47 @@ export interface PageErrorEntry {
 
 export interface PageCoverage {
     complete: boolean;
+    /**
+     * Change 8 (F4): distinct pages this command tried to resolve, load, or
+     * read. `complete: true` alone was ambiguous — it was returned both by a
+     * document-wide scan in which every page succeeded and by a call that never
+     * touched a page at all (`page_info` with no args, `variable_list` without
+     * `includeConsumers`, `annotation_list` in node mode). Those are different
+     * epistemic states, and a caller deciding whether it has seen the whole
+     * document must be able to tell them apart. `pagesAttempted: 0` means no
+     * page access was required, never "all pages checked out fine".
+     */
+    pagesAttempted: number;
     pageErrors: PageErrorEntry[];
+}
+
+export type PageFailureReason =
+    | "not_found"
+    | "not_page"
+    | "load_failed"
+    | "timeout"
+    | "scan_failed";
+
+export interface PageLoadFailure {
+    ok: false;
+    error: StructuredPageError;
+    reason: PageFailureReason;
 }
 
 export type PageLoadResult =
     | { ok: true; page: PageNode }
-    | {
-        ok: false;
-        error: StructuredPageError;
-        reason: "not_found" | "not_page" | "load_failed" | "timeout";
-    };
+    | PageLoadFailure;
 
 export interface PageLoadCoordinator {
     load(page: PageNode): Promise<PageLoadResult>;
     resolve(pageId: string): Promise<PageLoadResult>;
     require(pageId: string): Promise<PageNode>;
-    fail(pageId: string, cause: any): PageLoadResult;
+    /**
+     * Records a post-load read failure. It can only ever produce a failure, and
+     * the type says so — callers used to guard it with `if (!failed.ok)`, a
+     * branch that could never be false and read as a fallback that never ran.
+     */
+    fail(pageId: string, cause: any): PageLoadFailure;
     coverage(): PageCoverage;
 }
 
@@ -56,12 +81,14 @@ export function createPageLoadCoordinator(
     const pageLoads = new Map<string, Promise<PageLoadResult>>();
     const pageResolutions = new Map<string, Promise<PageLoadResult>>();
     const pageErrors = new Map<string, PageErrorEntry>();
+    const attemptedPages = new Set<string>();
 
     const recordError = (
         pageId: string,
         error: StructuredPageError,
-        reason: "not_found" | "not_page" | "load_failed" | "timeout",
-    ): PageLoadResult => {
+        reason: PageFailureReason,
+    ): PageLoadFailure => {
+        attemptedPages.add(pageId);
         if (!pageErrors.has(pageId)) {
             pageErrors.set(pageId, { pageId, error });
         }
@@ -69,6 +96,7 @@ export function createPageLoadCoordinator(
     };
 
     const load = (page: PageNode): Promise<PageLoadResult> => {
+        attemptedPages.add(page.id);
         const cached = pageLoads.get(page.id);
         if (cached) return cached;
 
@@ -116,6 +144,7 @@ export function createPageLoadCoordinator(
         if (cached) return cached;
 
         const resolution = (async (): Promise<PageLoadResult> => {
+            attemptedPages.add(pageId);
             let node: BaseNode | null;
             try {
                 node = await figma.getNodeByIdAsync(pageId);
@@ -134,10 +163,35 @@ export function createPageLoadCoordinator(
                     "not_found",
                 );
             }
+            // Change 8 (F6): a document page is a PAGE parented directly to the
+            // document root. The second half of that test was dropped when page
+            // resolution moved here; it is restored as deliberate defense in
+            // depth, and the reported `actualType` stays honest about which
+            // half failed rather than emitting "is not a PAGE (type: PAGE)".
             if (node.type !== "PAGE") {
                 return recordError(
                     pageId,
                     REFUSALS.TARGET_NOT_PAGE(pageId, node.type),
+                    "not_page",
+                );
+            }
+            // The root read is guarded for the same reason every other read in
+            // this release is: a check that throws would replace the answer with
+            // a crash. If the root is unreadable we cannot prove detachment, so
+            // we do not claim it — the type check above already stands.
+            let documentRootId: string | undefined;
+            try {
+                documentRootId = figma.root?.id;
+            } catch {
+                documentRootId = undefined;
+            }
+            if (documentRootId !== undefined && node.parent?.id !== documentRootId) {
+                return recordError(
+                    pageId,
+                    REFUSALS.TARGET_NOT_PAGE(
+                        pageId,
+                        "PAGE, but not a direct child of the document root",
+                    ),
                     "not_page",
                 );
             }
@@ -160,17 +214,22 @@ export function createPageLoadCoordinator(
             }
             return result.page;
         },
+        // Every caller of `fail` has already loaded the page successfully and
+        // then failed while READING it, so this is PAGE_SCAN_FAILED, not
+        // PAGE_LOAD_FAILED (Change 8, F2). The originating cause is preserved
+        // in `details.cause` either way.
         fail(pageId: string, cause: any) {
             return recordError(
                 pageId,
-                REFUSALS.PAGE_LOAD_FAILED(pageId, describeError(cause)),
-                "load_failed",
+                REFUSALS.PAGE_SCAN_FAILED(pageId, describeError(cause)),
+                "scan_failed",
             );
         },
         coverage() {
             const errors = Array.from(pageErrors.values());
             return {
                 complete: errors.length === 0,
+                pagesAttempted: attemptedPages.size,
                 pageErrors: errors,
             };
         },

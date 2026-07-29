@@ -194,6 +194,7 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 const schema = TOOLS[name];
                 const coverage = {
                     complete: false,
+                    pagesAttempted: 2,
                     pageErrors: [{
                         pageId: "page-bad",
                         error: {
@@ -208,13 +209,33 @@ describe("Phase 4: outputSchema Validation Tests", () => {
 
                 const advertised: any = toJsonSchemaCompat(schema, { target: "draft-7" });
                 expect(advertised.properties.coverage).toBeDefined();
+                // Change 8 (D1): the invariant is now carried BY the advertised
+                // schema, not only by the server-side Zod parse. A `.superRefine`
+                // is dropped in the zod -> JSON Schema conversion, so the schema
+                // a client validates against — and a model reads — used to state
+                // only "a boolean and an array".
+                const branches = advertised.properties.coverage.anyOf
+                    ?? advertised.properties.coverage.oneOf;
+                expect(branches, `${name} must advertise the coverage invariant`).toBeDefined();
+                expect(branches).toHaveLength(2);
+                expect(branches.find((b: any) => b.properties.complete.const === true)
+                    .properties.pageErrors.maxItems).toBe(0);
+                expect(branches.find((b: any) => b.properties.complete.const === false)
+                    .properties.pageErrors.minItems).toBe(1);
+
                 expect(schema.safeParse({
                     ...base,
                     coverage: { ...coverage, complete: true },
                 }).success).toBe(false);
                 expect(schema.safeParse({
                     ...base,
-                    coverage: { complete: false, pageErrors: [] },
+                    coverage: { complete: false, pagesAttempted: 2, pageErrors: [] },
+                }).success).toBe(false);
+                // F4: pagesAttempted is required, so "nothing scanned" can never
+                // be read as "everything scanned clean".
+                expect(schema.safeParse({
+                    ...base,
+                    coverage: { complete: true, pageErrors: [] },
                 }).success).toBe(false);
             });
         }
@@ -237,12 +258,12 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 pageCount: 1,
                 pages: [{ pageId: "1:1", pageName: "Page" }],
                 missingPageIds: ["9:9"],
-                coverage: { complete: true, pageErrors: [] }
+                coverage: { complete: true, pagesAttempted: 1, pageErrors: [] }
             },
             node_info: {
                 nodes: [{ id: "1:2", name: "Node", type: "FRAME" }],
                 missingNodeIds: ["9:9"],
-                coverage: { complete: true, pageErrors: [] }
+                coverage: { complete: true, pagesAttempted: 1, pageErrors: [] }
             },
             node_transform: {
                 id: "1:2",
@@ -463,7 +484,7 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 count: 0,
                 scope: "document",
                 components: [],
-                coverage: { complete: true, pageErrors: [] }
+                coverage: { complete: true, pagesAttempted: 1, pageErrors: [] }
             },
             component_manage_property: {
                 id: "1:14",
@@ -514,7 +535,7 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             variable_list: {
                 variables: [],
                 collections: [],
-                coverage: { complete: true, pageErrors: [] }
+                coverage: { complete: true, pagesAttempted: 1, pageErrors: [] }
             },
             variable_manage: {
                 id: "v1",
@@ -528,7 +549,7 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             annotation_list: {
                 annotatedNodes: [],
                 categories: [],
-                coverage: { complete: true, pageErrors: [] }
+                coverage: { complete: true, pagesAttempted: 1, pageErrors: [] }
             },
             annotation_set: {
                 success: true,
@@ -551,30 +572,29 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             });
         }
 
-        it("variable_delete advertises both its in-use refusal string and the D9 error envelope", () => {
-            assertPayloadValidates("variable_delete(in-use)", TOOLS.variable_delete, {
-                success: false,
-                error: "Cannot delete: variable(s) are still in use.",
-                variablesInUse: {
-                    "VariableID:1": {
-                        nodeConsumers: [{ nodeId: "1:2", nodeName: "Card" }],
-                        styleConsumers: [],
-                        aliasConsumers: [],
+        // Change 8 (C1): variable_delete's in-use refusal is a coded D9 error
+        // like its sibling DOCUMENT_SCAN_INCOMPLETE, so top-level `error` is the
+        // {code, message, details} envelope on EVERY tool. The bare string that
+        // forced a union here is retired; nothing may reintroduce a second type
+        // for `error`, because a model would then have to test the type of a
+        // field before it could read it.
+        it("variable_delete's refusals both use the single D9 error envelope", () => {
+            for (const code of ["VARIABLE_IN_USE", "DOCUMENT_SCAN_INCOMPLETE"]) {
+                assertPayloadValidates(`variable_delete(${code})`, TOOLS.variable_delete, {
+                    error: {
+                        code,
+                        message: "Operation Denied: ...",
+                        details: { variablesInUse: {} },
                     },
-                },
-            });
-            assertPayloadValidates("variable_delete(D9)", TOOLS.variable_delete, {
-                error: {
-                    code: "DOCUMENT_SCAN_INCOMPLETE",
-                    message: "The document scan was incomplete.",
-                    details: {
-                        coverage: {
-                            complete: false,
-                            pageErrors: [],
-                        },
-                    },
-                },
-            });
+                });
+            }
+            expect(
+                TOOLS.variable_delete.safeParse({
+                    success: false,
+                    error: "Cannot delete: variable(s) are still in use.",
+                }).success,
+                "a bare string `error` must no longer validate",
+            ).toBe(false);
         });
 
         // Q26 (review P6-8/P6-11): the four batch tools advertise ONLY the shared

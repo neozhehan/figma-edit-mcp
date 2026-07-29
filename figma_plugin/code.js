@@ -54,6 +54,17 @@
       message: `Figma page${pageId ? ` "${pageId}"` : ""} did not load within the bounded per-page timeout. Retry the call; if the page keeps timing out, continue with the other pages and report the failing page to the user.`,
       ...pageId || timeoutMs ? { details: { ...pageId ? { pageId } : {}, ...timeoutMs ? { timeoutMs } : {} } } : {}
     }),
+    // Change 8 (F2): a page that LOADED and then failed while being read is a
+    // different cause from a page that would not load, and D9 requires distinct
+    // causes to carry distinct codes and distinct recovery (the rule that split
+    // PARENT_NAME_MISSING from PARENT_NAME_MISMATCH). Reusing PAGE_LOAD_FAILED
+    // here told the agent to retry a page that had already loaded fine, which
+    // is the wrong retry for a deterministic read failure.
+    PAGE_SCAN_FAILED: (pageId, cause) => ({
+      code: "PAGE_SCAN_FAILED",
+      message: `Figma page${pageId ? ` "${pageId}"` : ""} loaded but could not be read to completion${cause ? ` (${cause})` : ""}. This is a read failure, not a load failure: retrying the identical call usually reproduces it. Narrow the request (a single page, a specific nodeId, or fewer properties) and report the failing page to the user if it persists.`,
+      ...pageId || cause ? { details: { ...pageId ? { pageId } : {}, ...cause ? { cause } : {} } } : {}
+    }),
     DOCUMENT_SCAN_INCOMPLETE: (pageErrors) => ({
       code: "DOCUMENT_SCAN_INCOMPLETE",
       message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded \u2014 a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first.",
@@ -65,6 +76,23 @@
           }
         }
       } : {}
+    }),
+    // Change 8 (C1): the sibling outcome of the DOCUMENT_SCAN_INCOMPLETE gate.
+    // "The scan completed and found consumers" was the one refusal on this tool
+    // that returned a NON-error result carrying a bare `error` string, so the
+    // model had to key on two different shapes for `error` and parse prose to
+    // learn which nodes to unbind. It is a policy refusal like every other
+    // "Operation Denied", so it is coded, thrown, and carries its consumer
+    // evidence in `details` where the model can read it structurally.
+    // The summary is a multi-line consumer listing that does not end in
+    // punctuation, so the recovery gets its own line — live output on channel
+    // 8mvc read "...on fields: fills Nothing was deleted."
+    VARIABLE_IN_USE: (summary, variablesInUse) => ({
+      code: "VARIABLE_IN_USE",
+      message: `Operation Denied: ${summary}
+
+Nothing was deleted. Read each listed consumer's current state with node_info (nodes), style_list (styles), or variable_list (aliasing variables), clear or rebind that reference, then retry this exact call. details.variablesInUse lists every consumer by variable ID.`,
+      details: { variablesInUse }
     }),
     CONNECTOR_TEMPLATE_REQUIRED: () => ({
       code: "CONNECTOR_TEMPLATE_REQUIRED",
@@ -660,13 +688,16 @@
     const pageLoads = /* @__PURE__ */ new Map();
     const pageResolutions = /* @__PURE__ */ new Map();
     const pageErrors = /* @__PURE__ */ new Map();
+    const attemptedPages = /* @__PURE__ */ new Set();
     const recordError = (pageId, error, reason) => {
+      attemptedPages.add(pageId);
       if (!pageErrors.has(pageId)) {
         pageErrors.set(pageId, { pageId, error });
       }
       return { ok: false, error, reason };
     };
     const load = (page) => {
+      attemptedPages.add(page.id);
       const cached = pageLoads.get(page.id);
       if (cached) return cached;
       const attempt = new Promise((resolve) => {
@@ -702,6 +733,8 @@
       const cached = pageResolutions.get(pageId);
       if (cached) return cached;
       const resolution = (async () => {
+        var _a, _b;
+        attemptedPages.add(pageId);
         let node;
         try {
           node = await figma.getNodeByIdAsync(pageId);
@@ -726,6 +759,22 @@
             "not_page"
           );
         }
+        let documentRootId;
+        try {
+          documentRootId = (_a = figma.root) == null ? void 0 : _a.id;
+        } catch (e) {
+          documentRootId = void 0;
+        }
+        if (documentRootId !== void 0 && ((_b = node.parent) == null ? void 0 : _b.id) !== documentRootId) {
+          return recordError(
+            pageId,
+            REFUSALS.TARGET_NOT_PAGE(
+              pageId,
+              "PAGE, but not a direct child of the document root"
+            ),
+            "not_page"
+          );
+        }
         return load(node);
       })();
       pageResolutions.set(pageId, resolution);
@@ -741,17 +790,22 @@
         }
         return result.page;
       },
+      // Every caller of `fail` has already loaded the page successfully and
+      // then failed while READING it, so this is PAGE_SCAN_FAILED, not
+      // PAGE_LOAD_FAILED (Change 8, F2). The originating cause is preserved
+      // in `details.cause` either way.
       fail(pageId, cause) {
         return recordError(
           pageId,
-          REFUSALS.PAGE_LOAD_FAILED(pageId, describeError(cause)),
-          "load_failed"
+          REFUSALS.PAGE_SCAN_FAILED(pageId, describeError(cause)),
+          "scan_failed"
         );
       },
       coverage() {
         const errors = Array.from(pageErrors.values());
         return {
           complete: errors.length === 0,
+          pagesAttempted: attemptedPages.size,
           pageErrors: errors
         };
       }
@@ -810,8 +864,9 @@
           });
         } catch (error) {
           pageLoads.fail(node.id, error);
+          missingPageIds.push(id);
         }
-      } else if (loaded.reason === "not_found" || loaded.reason === "not_page") {
+      } else {
         missingPageIds.push(id);
       }
       processedItems++;
@@ -869,7 +924,11 @@
             if (containingPage) {
               const loaded = await pageLoads.load(containingPage);
               if (!loaded.ok) {
-                results[index] = { pageFailed: true, id };
+                results[index] = {
+                  pageFailed: true,
+                  id,
+                  pageId: containingPage.id
+                };
                 continue;
               }
             }
@@ -907,7 +966,11 @@
           console.error(`[getNodesInfoParallel] Error processing node ${id}: ${describeError(error)}`);
           if (containingPage) {
             pageLoads.fail(containingPage.id, error);
-            results[index] = { pageFailed: true, id };
+            results[index] = {
+              pageFailed: true,
+              id,
+              pageId: containingPage.id
+            };
           } else {
             results[index] = { missing: true, id };
           }
@@ -939,15 +1002,18 @@
     await Promise.all(workers);
     const nodes = [];
     const missingNodeIds = [];
+    const pageFailedNodes = [];
     for (let i = 0; i < uniqueIds.length; i++) {
       const res = results[i];
       if (res && res.missing) {
         missingNodeIds.push(res.id);
-      } else if (res && !res.pageFailed) {
+      } else if (res && res.pageFailed) {
+        pageFailedNodes.push({ nodeId: res.id, pageId: res.pageId });
+      } else if (res) {
         nodes.push(res);
       }
     }
-    return { nodes, missingNodeIds };
+    return { nodes, missingNodeIds, pageFailedNodes };
   }
   async function getNodesInfo(params, pageLoads = createPageLoadCoordinator()) {
     const {
@@ -977,7 +1043,7 @@
       const exportCache = /* @__PURE__ */ new Map();
       const stats = { processed: 0, commandId };
       const limit = Math.max(1, typeof concurrencyLimit === "number" ? concurrencyLimit : 4);
-      const { nodes, missingNodeIds } = await getNodesInfoParallel(
+      const { nodes, missingNodeIds, pageFailedNodes } = await getNodesInfoParallel(
         uniqueIds,
         properties,
         filter,
@@ -996,16 +1062,17 @@
           100,
           uniqueIds.length,
           uniqueIds.length,
-          `Successfully processed ${nodes.length} nodes (${missingNodeIds.length} missing)`
+          `Successfully processed ${nodes.length} nodes (${missingNodeIds.length} missing, ${pageFailedNodes.length} unreadable)`
         );
       }
       return {
         nodes,
         missingNodeIds: missingNodeIds.length > 0 ? missingNodeIds : void 0,
+        pageFailedNodes: pageFailedNodes.length > 0 ? pageFailedNodes : void 0,
         coverage: pageLoads.coverage()
       };
     } catch (error) {
-      console.error(`[getNodesInfo] Error: ${error.message}`);
+      console.error(`[getNodesInfo] Error: ${describeError(error)}`);
       throw error;
     }
   }
@@ -2765,8 +2832,7 @@
         });
         allComponents.push(...components);
       } catch (error) {
-        const failed = pageLoads.fail(pageNode.id, error);
-        if (!failed.ok) throw failed.error;
+        throw pageLoads.fail(pageNode.id, error).error;
       }
     } else {
       const pages = figma.root.children;
@@ -5031,8 +5097,7 @@
         try {
           await processNode(page);
         } catch (error) {
-          const failed = pageLoads.fail(page.id, error);
-          if (!failed.ok) throw failed.error;
+          throw pageLoads.fail(page.id, error).error;
         }
         const result = {
           annotatedNodes: annotations,
@@ -5071,8 +5136,7 @@
           await collect(node);
         } catch (error) {
           if (containingPage) {
-            const failed = pageLoads.fail(containingPage.id, error);
-            if (!failed.ok) throw failed.error;
+            throw pageLoads.fail(containingPage.id, error).error;
           }
           throw error;
         }
@@ -5683,8 +5747,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
             try {
               nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, "get_variables");
             } catch (error) {
-              const failed = pageLoads.fail(pageNode.id, error);
-              if (!failed.ok) throw failed.error;
+              throw pageLoads.fail(pageNode.id, error).error;
             }
           } else {
             const pages = figma.root.children;
@@ -5820,6 +5883,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     const nodeMapsPromises = figma.root.children.map(async (page) => {
       const loaded = await pageLoads.load(page);
       if (!loaded.ok) return /* @__PURE__ */ new Map();
+      if (idSet.size === 0) return /* @__PURE__ */ new Map();
       try {
         return await findVariableConsumers(page, idSet, commandId, "variable_delete");
       } catch (error) {
@@ -5874,32 +5938,28 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           };
         }
       }
-      let errorMsg = collectionId ? `Cannot delete collection: variable(s) in collection are still in use.
+      let errorMsg = collectionId ? `Cannot delete collection '${collection.name}': variable(s) in it are still in use.
 ` : `Cannot delete: variable(s) are still in use.
 `;
       for (const [vid, consumers] of Object.entries(variablesInUse)) {
         const varName = ((_a = variables.find((v) => v && v.id === vid)) == null ? void 0 : _a.name) || vid;
-        errorMsg += `- Variable '${varName}' is used by:
+        errorMsg += `- Variable '${varName}' (${vid}) is used by:
 `;
         for (const n of consumers.nodeConsumers) {
-          errorMsg += `  - Node '${n.nodeName}' (${n.nodeType}) on fields: ${n.fields.join(", ")}
+          errorMsg += `  - Node '${n.nodeName}' (${n.nodeType}, ${n.nodeId}) on fields: ${n.fields.join(", ")}
 `;
         }
         for (const s of consumers.styleConsumers) {
           const styleTypeName = s.styleType === "PAINT" ? "Paint" : s.styleType === "TEXT" ? "Text" : s.styleType === "EFFECT" ? "Effect" : s.styleType === "GRID" ? "Grid" : "Style";
-          errorMsg += `  - ${styleTypeName} style '${s.styleName}' on fields: ${s.fields.join(", ")}
+          errorMsg += `  - ${styleTypeName} style '${s.styleName}' (${s.styleId}) on fields: ${s.fields.join(", ")}
 `;
         }
         for (const a of consumers.aliasConsumers) {
-          errorMsg += `  - Aliased by variable '${a.variableName}' in modes: ${a.modes.join(", ")}
+          errorMsg += `  - Aliased by variable '${a.variableName}' (${a.variableId}) in modes: ${a.modes.join(", ")}
 `;
         }
       }
-      return {
-        success: false,
-        error: errorMsg.trim(),
-        variablesInUse
-      };
+      throw REFUSALS.VARIABLE_IN_USE(errorMsg.trim(), variablesInUse);
     }
     if (collectionId) {
       collection.remove();
@@ -6497,7 +6557,7 @@ Processing annotation ${i + 1}/${annotations.length}:`,
   }
 
   // figma_plugin/handlers/connectHandlers.ts
-  async function getConnectPayload() {
+  async function getConnectPayload(pageLoads = createPageLoadCoordinator()) {
     try {
       const state2 = getPluginState();
       const basePayload = {
@@ -6527,12 +6587,12 @@ Processing annotation ${i + 1}/${annotations.length}:`,
           };
         }
         if (state2.allowEditNode === "page") {
-          try {
-            await scopeNode.loadAsync();
-          } catch (e) {
+          const loaded = await pageLoads.load(scopeNode);
+          if (!loaded.ok) {
             return {
-              errorCode: "DOCUMENT_LOAD_FAILED",
-              errorMessage: "Failed to load the Figma document's pages. The file may be too large or temporarily unavailable. Retry shortly."
+              errorCode: loaded.error.code,
+              errorMessage: loaded.error.message,
+              errorDetails: loaded.error.details
             };
           }
           const children = ("children" in scopeNode ? scopeNode.children : []).map((child) => ({

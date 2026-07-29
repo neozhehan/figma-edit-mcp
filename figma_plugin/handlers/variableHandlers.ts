@@ -411,8 +411,7 @@ export async function getVariables(
                     try {
                         nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, 'get_variables');
                     } catch (error: any) {
-                        const failed = pageLoads.fail(pageNode.id, error);
-                        if (!failed.ok) throw failed.error;
+                        throw pageLoads.fail(pageNode.id, error).error;
                     }
                 } else {
                     // includeConsumers === 'document'
@@ -584,6 +583,14 @@ export async function deleteVariables(
     const nodeMapsPromises = figma.root.children.map(async (page) => {
         const loaded = await pageLoads.load(page);
         if (!loaded.ok) return new Map<string, any[]>();
+        // Change 8 (D4): an apparently-empty collection has no variable IDs, so
+        // walking every node of every page can only ever find nothing. The
+        // D14/Q12 fail-closed gate still applies in full — every page is still
+        // loaded, and a load failure or timeout still aborts before remove() —
+        // but an O(document) traversal whose result is provably empty is pure
+        // latency on a call that used to be instant, and latency is a
+        // first-call-correctness problem on a large file.
+        if (idSet.size === 0) return new Map<string, any[]>();
         try {
             return await findVariableConsumers(page, idSet, commandId, 'variable_delete');
         } catch (error: any) {
@@ -654,31 +661,42 @@ export async function deleteVariables(
         }
         
         let errorMsg = collectionId
-            ? `Cannot delete collection: variable(s) in collection are still in use.\n`
+            ? `Cannot delete collection '${collection.name}': variable(s) in it are still in use.\n`
             : `Cannot delete: variable(s) are still in use.\n`;
-            
-        // Build readable descriptions
+
+        // Build readable descriptions.
+        //
+        // Change 8 (C8-F9, found live on channel zhfj): every consumer line
+        // carries its ID. Layer, style, and variable names are not unique — the
+        // live refusal listed two different nodes on two different pages as an
+        // identical "Node 'Rectangle 2' (RECTANGLE) on fields: fills", so the
+        // message told the agent to rebind a reference it had no way to
+        // address. D9's acceptance check is that the correct next call is
+        // derivable from the error text alone, and the IDs are already in hand.
         for (const [vid, consumers] of Object.entries(variablesInUse)) {
             const varName = variables.find(v => v && v.id === vid)?.name || vid;
-            errorMsg += `- Variable '${varName}' is used by:\n`;
-            
+            errorMsg += `- Variable '${varName}' (${vid}) is used by:\n`;
+
             for (const n of consumers.nodeConsumers) {
-                errorMsg += `  - Node '${n.nodeName}' (${n.nodeType}) on fields: ${n.fields.join(", ")}\n`;
+                errorMsg += `  - Node '${n.nodeName}' (${n.nodeType}, ${n.nodeId}) on fields: ${n.fields.join(", ")}\n`;
             }
             for (const s of consumers.styleConsumers) {
                 const styleTypeName = s.styleType === 'PAINT' ? 'Paint' : s.styleType === 'TEXT' ? 'Text' : s.styleType === 'EFFECT' ? 'Effect' : s.styleType === 'GRID' ? 'Grid' : 'Style';
-                errorMsg += `  - ${styleTypeName} style '${s.styleName}' on fields: ${s.fields.join(", ")}\n`;
+                errorMsg += `  - ${styleTypeName} style '${s.styleName}' (${s.styleId}) on fields: ${s.fields.join(", ")}\n`;
             }
             for (const a of consumers.aliasConsumers) {
-                errorMsg += `  - Aliased by variable '${a.variableName}' in modes: ${a.modes.join(", ")}\n`;
+                errorMsg += `  - Aliased by variable '${a.variableName}' (${a.variableId}) in modes: ${a.modes.join(", ")}\n`;
             }
         }
 
-        return {
-            success: false,
-            error: errorMsg.trim(),
-            variablesInUse,
-        };
+        // Change 8 (C1): this is a policy refusal, so it is thrown as a coded
+        // D9 error like its sibling DOCUMENT_SCAN_INCOMPLETE, not returned as a
+        // non-error result carrying a bare `error` string. That string was the
+        // only place in the tool surface where top-level `error` was not the
+        // {code, message, details} envelope, so a caller had to branch on the
+        // TYPE of `error` before it could read it. The consumer evidence moves
+        // into `details.variablesInUse`, unchanged in shape.
+        throw REFUSALS.VARIABLE_IN_USE(errorMsg.trim(), variablesInUse);
     }
 
     // Safe to delete

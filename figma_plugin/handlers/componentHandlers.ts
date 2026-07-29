@@ -91,8 +91,7 @@ export async function getComponents(
             });
             allComponents.push(...components);
         } catch (error: any) {
-            const failed = pageLoads.fail(pageNode.id, error);
-            if (!failed.ok) throw failed.error;
+            throw pageLoads.fail(pageNode.id, error).error;
         }
     } else {
         // scope === 'document'

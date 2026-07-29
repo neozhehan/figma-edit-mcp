@@ -77,10 +77,15 @@ export async function getPagesInfo(
                 });
             } catch (error: any) {
                 pageLoads.fail(node.id, error);
+                missingPageIds.push(id);
             }
-        } else if (loaded.reason === "not_found" || loaded.reason === "not_page") {
-            // Retain the legacy summary additively; `coverage.pageErrors` is
-            // the authoritative structured reason for every failed page.
+        } else {
+            // Change 8 (D5): `missingPageIds` is every requested ID absent from
+            // `pages`, whatever the reason. It previously listed only not-found
+            // and non-page IDs, so a load failure or timeout left the caller
+            // with no way to diff requested against returned without also
+            // reading `coverage` — and the two lists disagreed about the same
+            // question. `coverage.pageErrors` remains the authoritative reason.
             missingPageIds.push(id);
         }
 
@@ -141,7 +146,11 @@ async function getNodesInfoParallel(
     exportCache: Map<string, any>,
     stats: { processed: number; commandId?: string },
     pageLoads: PageLoadCoordinator,
-): Promise<{ nodes: NodeEntry[]; missingNodeIds: string[] }> {
+): Promise<{
+    nodes: NodeEntry[];
+    missingNodeIds: string[];
+    pageFailedNodes: { nodeId: string; pageId: string }[];
+}> {
     const results = new Array(uniqueIds.length);
     let nextIndex = 0;
     let completedCount = 0;
@@ -164,7 +173,11 @@ async function getNodesInfoParallel(
                     if (containingPage) {
                         const loaded = await pageLoads.load(containingPage);
                         if (!loaded.ok) {
-                            results[index] = { pageFailed: true, id };
+                            results[index] = {
+                                pageFailed: true,
+                                id,
+                                pageId: containingPage.id,
+                            };
                             continue;
                         }
                     }
@@ -207,7 +220,11 @@ async function getNodesInfoParallel(
                 console.error(`[getNodesInfoParallel] Error processing node ${id}: ${describeError(error)}`);
                 if (containingPage) {
                     pageLoads.fail(containingPage.id, error);
-                    results[index] = { pageFailed: true, id };
+                    results[index] = {
+                        pageFailed: true,
+                        id,
+                        pageId: containingPage.id,
+                    };
                 } else {
                     results[index] = { missing: true, id };
                 }
@@ -242,16 +259,24 @@ async function getNodesInfoParallel(
 
     const nodes: NodeEntry[] = [];
     const missingNodeIds: string[] = [];
+    // Change 8 (F1): a node whose containing page failed is neither returned
+    // nor "missing" — it exists, we just could not read it. It used to vanish
+    // from the response entirely, so the caller could see THAT some page failed
+    // but never WHICH of its requested nodes was dropped. Naming the casualty
+    // and its page is what makes the coverage row actionable in one round trip.
+    const pageFailedNodes: { nodeId: string; pageId: string }[] = [];
     for (let i = 0; i < uniqueIds.length; i++) {
         const res = results[i];
         if (res && res.missing) {
             missingNodeIds.push(res.id);
-        } else if (res && !res.pageFailed) {
+        } else if (res && res.pageFailed) {
+            pageFailedNodes.push({ nodeId: res.id, pageId: res.pageId });
+        } else if (res) {
             nodes.push(res);
         }
     }
 
-    return { nodes, missingNodeIds };
+    return { nodes, missingNodeIds, pageFailedNodes };
 }
 
 export async function getNodesInfo(
@@ -290,7 +315,7 @@ export async function getNodesInfo(
         const stats = { processed: 0, commandId };
         const limit = Math.max(1, typeof concurrencyLimit === 'number' ? concurrencyLimit : 4);
 
-        const { nodes, missingNodeIds } = await getNodesInfoParallel(
+        const { nodes, missingNodeIds, pageFailedNodes } = await getNodesInfoParallel(
             uniqueIds,
             properties,
             filter,
@@ -311,18 +336,22 @@ export async function getNodesInfo(
                 100,
                 uniqueIds.length,
                 uniqueIds.length,
-                `Successfully processed ${nodes.length} nodes (${missingNodeIds.length} missing)`
+                `Successfully processed ${nodes.length} nodes (${missingNodeIds.length} missing, ${pageFailedNodes.length} unreadable)`
             );
         }
 
         return {
             nodes,
             missingNodeIds: missingNodeIds.length > 0 ? missingNodeIds : undefined,
+            pageFailedNodes: pageFailedNodes.length > 0 ? pageFailedNodes : undefined,
             coverage: pageLoads.coverage(),
         };
 
     } catch (error: any) {
-        console.error(`[getNodesInfo] Error: ${error.message}`);
+        // describeError, not `error.message`: a hostile thrown value whose
+        // message getter throws must not replace the initiating failure with a
+        // crash inside the reporting path (the F78-18/R13 totality rule).
+        console.error(`[getNodesInfo] Error: ${describeError(error)}`);
         throw error;
     }
 }

@@ -105,6 +105,19 @@ export const REFUSALS = {
             ? { details: { ...(pageId ? { pageId } : {}), ...(timeoutMs ? { timeoutMs } : {}) } }
             : {}),
     }),
+    // Change 8 (F2): a page that LOADED and then failed while being read is a
+    // different cause from a page that would not load, and D9 requires distinct
+    // causes to carry distinct codes and distinct recovery (the rule that split
+    // PARENT_NAME_MISSING from PARENT_NAME_MISMATCH). Reusing PAGE_LOAD_FAILED
+    // here told the agent to retry a page that had already loaded fine, which
+    // is the wrong retry for a deterministic read failure.
+    PAGE_SCAN_FAILED: (pageId?: string, cause?: string) => ({
+        code: "PAGE_SCAN_FAILED",
+        message: `Figma page${pageId ? ` "${pageId}"` : ""} loaded but could not be read to completion${cause ? ` (${cause})` : ""}. This is a read failure, not a load failure: retrying the identical call usually reproduces it. Narrow the request (a single page, a specific nodeId, or fewer properties) and report the failing page to the user if it persists.`,
+        ...(pageId || cause
+            ? { details: { ...(pageId ? { pageId } : {}), ...(cause ? { cause } : {}) } }
+            : {}),
+    }),
     DOCUMENT_SCAN_INCOMPLETE: (pageErrors?: any[]) => ({
         code: "DOCUMENT_SCAN_INCOMPLETE",
         message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded — a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first.",
@@ -118,6 +131,21 @@ export const REFUSALS = {
                 },
             }
             : {}),
+    }),
+    // Change 8 (C1): the sibling outcome of the DOCUMENT_SCAN_INCOMPLETE gate.
+    // "The scan completed and found consumers" was the one refusal on this tool
+    // that returned a NON-error result carrying a bare `error` string, so the
+    // model had to key on two different shapes for `error` and parse prose to
+    // learn which nodes to unbind. It is a policy refusal like every other
+    // "Operation Denied", so it is coded, thrown, and carries its consumer
+    // evidence in `details` where the model can read it structurally.
+    // The summary is a multi-line consumer listing that does not end in
+    // punctuation, so the recovery gets its own line — live output on channel
+    // 8mvc read "...on fields: fills Nothing was deleted."
+    VARIABLE_IN_USE: (summary: string, variablesInUse: Record<string, any>) => ({
+        code: "VARIABLE_IN_USE",
+        message: `Operation Denied: ${summary}\n\nNothing was deleted. Read each listed consumer's current state with node_info (nodes), style_list (styles), or variable_list (aliasing variables), clear or rebind that reference, then retry this exact call. details.variablesInUse lists every consumer by variable ID.`,
+        details: { variablesInUse },
     }),
     CONNECTOR_TEMPLATE_REQUIRED: () => ({
         code: "CONNECTOR_TEMPLATE_REQUIRED",

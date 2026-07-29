@@ -29,7 +29,7 @@ export function registerPageTools(server: McpServer) {
                         type: z.string().describe("Child node type"),
                     })).optional().describe("Top-level children in the page"),
                 })).describe("List of page objects"),
-                missingPageIds: z.array(z.string()).optional().describe("Page IDs that could not be found"),
+                missingPageIds: z.array(z.string()).optional().describe("Every requested page ID absent from `pages`, whatever the cause; `coverage.pageErrors` carries the structured reason for each"),
                 coverage: pageCoverage,
             }),
             annotations: {

@@ -159,8 +159,7 @@ export async function getAnnotations(
             try {
                 await processNode(page);
             } catch (error: any) {
-                const failed = pageLoads.fail(page.id, error);
-                if (!failed.ok) throw failed.error;
+                throw pageLoads.fail(page.id, error).error;
             }
 
             const result: any = {
@@ -208,9 +207,12 @@ export async function getAnnotations(
             try {
                 await collect(node);
             } catch (error: any) {
+                // Single-node mode has one page, so a traversal failure is the
+                // whole answer: rethrow it as the canonical PAGE_SCAN_FAILED.
+                // Outside a page (a DOCUMENT-rooted node) there is no page to
+                // blame, so the original error is the honest one.
                 if (containingPage) {
-                    const failed = pageLoads.fail(containingPage.id, error);
-                    if (!failed.ok) throw failed.error;
+                    throw pageLoads.fail(containingPage.id, error).error;
                 }
                 throw error;
             }
