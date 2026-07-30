@@ -596,6 +596,92 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect(typeof parsed.errorMessage).toBe("string");
     });
 
+    it("C13-F1: unreadable optional details do not erase a readable explicit code and message", async () => {
+        const origin = {
+            code: "SOME_FUTURE_CODE",
+            message: "authored future failure",
+            get details(): unknown {
+                throw new Error("details getter");
+            },
+        };
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(origin)
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SOME_FUTURE_CODE");
+        expect(parsed.errorMessage).toBe("authored future failure");
+        expect(parsed.errorDetails).toBeUndefined();
+    });
+
+    it("C13-F1: a hostile value thrown by the details getter cannot reject the registered callback", async () => {
+        const nestedHostile = new Proxy({}, {
+            get: () => { throw new Error("nested hostile getter"); },
+            ownKeys: () => { throw new Error("nested hostile enumeration"); },
+        });
+        const origin = {
+            code: "SOME_FUTURE_CODE",
+            message: "authored future failure",
+            get details(): unknown {
+                throw nestedHostile;
+            },
+        };
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(origin)
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SOME_FUTURE_CODE");
+        expect(parsed.errorMessage).toBe("authored future failure");
+        expect(parsed.errorDetails).toBeUndefined();
+    });
+
+    it("C13-F2: an unknown code colliding with Object.prototype passes through verbatim", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject({
+                    code: "toString",
+                    message: "authored future failure",
+                    details: { operand: "future" },
+                })
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("toString");
+        expect(parsed.errorMessage).toBe("authored future failure");
+        expect(parsed.errorDetails).toEqual({ operand: "future" });
+    });
+
+    it("C13-F1: an unreadable leg-1 release marker cannot erase a readable coded failure", async () => {
+        const origin = {
+            code: "SOME_FUTURE_CODE",
+            message: "authored leg-1 failure",
+            details: { operand: "future" },
+            get [Symbol.for("figma-edit-mcp.joinAttemptReleasedChannel")](): unknown {
+                throw new Error("release marker getter");
+            },
+        };
+        (joinChannel as any).mockRejectedValue(origin);
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SOME_FUTURE_CODE");
+        expect(parsed.errorMessage).toBe("authored leg-1 failure");
+        expect(parsed.errorDetails).toEqual({ operand: "future" });
+    });
+
     it("PLUGIN_DISCONNECTED from transport: coded at origin, passed through (Q20)", async () => {
         // Mirrors figma-client's close handler, which now codes the rejection
         // at origin instead of leaving channel.ts to sniff message prose.

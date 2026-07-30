@@ -12,6 +12,11 @@ import {
     JOIN_ATTEMPT_RELEASED_CHANNEL,
     mergeReleasedChannelDetails,
 } from "../../shared/channelProtocol.js";
+import {
+    describeThrownForToolBoundary,
+    readThrownProperty,
+    type DescribedThrownError,
+} from "./_error.js";
 
 // Q20 (resolved 2026-07-18, Option A): join failures pass their structured
 // codes through verbatim — unknown codes included, never collapsed to
@@ -35,21 +40,35 @@ function asSentence(message: unknown): string {
     return /[.!?]$/.test(text) ? text : `${text}.`;
 }
 
-const JOIN_RECOVERY: Record<string, (channel: string, error: any) => string> = {
-    CHANNEL_NOT_FOUND: (ch) => `Channel '${ch}' was not found. Verify the channel name and that the Figma plugin is running and connected.`,
-    CHANNEL_JOIN_FAILED: (ch, error) =>
-        error?.details?.phase === "leave-previous-channel"
-            ? `${error.message} The requested join was not sent. This session's local channel binding was cleared, and its socket was closed to release any uncertain bridge reservation. Wait for the automatic bridge reconnect, then call channel_join with '${error.details.previousChannel}' to restore the previous channel or with '${error.details.requestedChannel}' to retry the requested channel.`
-            // Change 12 (C12-F1): the scope-payload leg has its own cause. The
-            // socket join SUCCEEDED and the plugin then failed to return the
-            // editable scope, so the default wording below — "did not
-            // acknowledge the join" — would name the wrong step, which is the
-            // same wrong-cause defect C6-F7/C6-F3 fixed for the leave leg.
-            : error?.details?.phase === "scope-payload"
-                ? `${asSentence(error.message)} The channel was joined, but the Figma plugin did not return the editable scope in time, so no binding was established and this session currently holds none. Call channel_join with '${ch}' again; if it keeps failing, reopen the plugin in Figma and retry.`
-                : `Failed to join channel '${ch}'. The Figma plugin did not acknowledge the join within the expected time. Try reconnecting the plugin.`,
-    PLUGIN_DISCONNECTED: () => "The Figma plugin disconnected before the editable scope could be read. Reopen the plugin and try again.",
-};
+type JoinRecovery = (channel: string, error: DescribedThrownError) => string;
+
+// Change 13 (C13-F2): a Map makes the recovery inventory own-key-only.
+// A future structured code such as `toString` must pass through as unknown,
+// never resolve an inherited Object.prototype member and invoke it as guidance.
+const JOIN_RECOVERY = new Map<string, JoinRecovery>([
+    [
+        "CHANNEL_NOT_FOUND",
+        (ch) => `Channel '${ch}' was not found. Verify the channel name and that the Figma plugin is running and connected.`,
+    ],
+    [
+        "CHANNEL_JOIN_FAILED",
+        (ch, error) =>
+            error?.details?.phase === "leave-previous-channel"
+                ? `${error.message} The requested join was not sent. This session's local channel binding was cleared, and its socket was closed to release any uncertain bridge reservation. Wait for the automatic bridge reconnect, then call channel_join with '${error.details.previousChannel}' to restore the previous channel or with '${error.details.requestedChannel}' to retry the requested channel.`
+                // Change 12 (C12-F1): the scope-payload leg has its own cause.
+                // The socket join SUCCEEDED and the plugin then failed to return
+                // the editable scope, so the default wording below — "did not
+                // acknowledge the join" — would name the wrong step, which is
+                // the same wrong-cause defect C6-F7/C6-F3 fixed for the leave leg.
+                : error?.details?.phase === "scope-payload"
+                    ? `${asSentence(error.message)} The channel was joined, but the Figma plugin did not return the editable scope in time, so no binding was established and this session currently holds none. Call channel_join with '${ch}' again; if it keeps failing, reopen the plugin in Figma and retry.`
+                    : `Failed to join channel '${ch}'. The Figma plugin did not acknowledge the join within the expected time. Try reconnecting the plugin.`,
+    ],
+    [
+        "PLUGIN_DISCONNECTED",
+        () => "The Figma plugin disconnected before the editable scope could be read. Reopen the plugin and try again.",
+    ],
+]);
 
 interface ChannelToolDependencies {
     joinChannel: typeof defaultJoinChannel;
@@ -66,26 +85,23 @@ function joinFailure(
     error: any,
     releaseContext: ReleasedChannelContext,
 ) {
-    const hasExplicitCode =
-        error !== null
-        && typeof error === "object"
-        && typeof error.code === "string";
-    const errorCode = hasExplicitCode
-        ? error.code
-        : UNKNOWN_ERROR;
-    const guidance = JOIN_RECOVERY[errorCode];
-    const originMessage =
-        error !== null
-        && typeof error === "object"
-        && typeof error.message === "string"
-            ? error.message
-            : String(error);
+    // Change 13 (C13-F1): take one safe snapshot. A readable code/message must
+    // not be lost merely because optional details are hostile, and no later
+    // recovery/guidance step may re-read the untrusted origin object.
+    const described = describeThrownForToolBoundary(error);
+    const {
+        hasExplicitCode,
+        code: errorCode,
+        message: originMessage,
+        details: originDetails,
+    } = described;
+    const guidance = JOIN_RECOVERY.get(errorCode);
     // Codes without local guidance keep their originating message verbatim —
     // a D9 message already embeds its own recovery. This includes an explicit
     // UNKNOWN_ERROR from the plugin: only a code-less value gets the generic
     // fallback wrapper.
     const baseMessage = guidance
-        ? guidance(channel, error)
+        ? guidance(channel, described)
         : hasExplicitCode
             ? originMessage
             : `An unexpected error occurred while joining the channel: ${originMessage}.`;
@@ -105,9 +121,6 @@ function joinFailure(
     const errorMessage = typeof released === "string" && released.length > 0
         ? `${baseMessage} This attempt also disconnected the previously joined channel '${released}'; call channel_join with '${released}' to restore it.`
         : baseMessage;
-    const originDetails = error !== null && typeof error === "object"
-        ? error.details
-        : undefined;
     const errorDetails = typeof released === "string" && released.length > 0
         ? releaseContext.source === "client-join"
             // joinChannel already merged and provenance-marked these details.
@@ -144,30 +157,17 @@ function joinFailure(
  * message rather than being reclassified.
  */
 function codeScopePayloadFailure(error: any) {
-    let code: unknown;
-    try {
-        code = error !== null && typeof error === "object"
-            ? (error as any).code
-            : undefined;
-    } catch {
-        // A hostile thrown value must not make the coding path itself throw.
-        code = undefined;
-    }
-    if (typeof code === "string") return error;
-
-    let message: string;
-    try {
-        message = error !== null
-            && typeof error === "object"
-            && typeof (error as any).message === "string"
-            ? (error as any).message
-            : String(error);
-    } catch {
-        message = "Error executing command";
+    const described = describeThrownForToolBoundary(error);
+    if (described.hasExplicitCode) {
+        const {
+            hasExplicitCode: _hasExplicitCode,
+            ...safeOrigin
+        } = described;
+        return safeOrigin;
     }
     return {
         code: "CHANNEL_JOIN_FAILED",
-        message,
+        message: described.message,
         details: { phase: "scope-payload" },
     };
 }
@@ -279,11 +279,17 @@ export function registerChannelTools(
                     };
                     releasedChannel = joined.releasedChannel;
                 } catch (error: any) {
+                    const releasedChannelRead =
+                        error !== null && typeof error === "object"
+                            ? readThrownProperty(
+                                error,
+                                JOIN_ATTEMPT_RELEASED_CHANNEL,
+                            )
+                            : { readable: false };
                     const releasedChannel =
-                        error !== null
-                        && typeof error === "object"
-                        && typeof error[JOIN_ATTEMPT_RELEASED_CHANNEL] === "string"
-                            ? error[JOIN_ATTEMPT_RELEASED_CHANNEL]
+                        releasedChannelRead.readable
+                        && typeof releasedChannelRead.value === "string"
+                            ? releasedChannelRead.value
                             : undefined;
                     return toolResult(joinFailure(channel, error, {
                         source: "client-join",
@@ -334,11 +340,12 @@ export function registerChannelTools(
                     ...versions,
                 });
             } catch (error: any) {
+                const described = describeThrownForToolBoundary(error);
                 return toolResult({
                     status: "error",
                     channel,
                     errorCode: UNKNOWN_ERROR,
-                    errorMessage: `An unexpected error occurred while joining the channel: ${error.message || String(error)}.`
+                    errorMessage: `An unexpected error occurred while joining the channel: ${described.message}.`
                 });
             }
         }

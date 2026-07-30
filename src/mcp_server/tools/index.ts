@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { errorEnvelope } from "./_result.js";
-import { UNKNOWN_ERROR } from "../../shared/errorCodes.js";
+import { describeThrownForToolBoundary } from "./_error.js";
 import { registerPageTools } from "./page.js";
 import { registerNodeTools } from "./node.js";
 import { registerCreateTools } from "./create.js";
@@ -294,81 +294,6 @@ export function recursivelyStrictInputSchema<T>(schema: T, toolName: string): T 
     };
 
     return visit(schema, []) as T;
-}
-
-type SafeErrorPropertyRead = {
-    readable: boolean;
-    value?: any;
-};
-
-function readThrownProperty(value: any, property: string): SafeErrorPropertyRead {
-    try {
-        return {
-            readable: true,
-            value: value[property],
-        };
-    } catch {
-        return { readable: false };
-    }
-}
-
-function renderThrownValue(value: any): string {
-    if (typeof value === "string") return value || "Error executing command";
-    try {
-        const rendered = String(value);
-        return rendered || "Error executing command";
-    } catch {
-        return "Error executing command";
-    }
-}
-
-function copyReadableThrownDetails(value: any): any {
-    if (value === undefined) return undefined;
-    if (value === null || typeof value !== "object") return value;
-    try {
-        if (Array.isArray(value)) return [...value];
-        return { ...value };
-    } catch {
-        return undefined;
-    }
-}
-
-function describeThrownForToolBoundary(error: any): {
-    code: string;
-    message: string;
-    details?: any;
-} {
-    const isObj = error !== null && typeof error === "object";
-    const codeRead: SafeErrorPropertyRead = isObj
-        ? readThrownProperty(error, "code")
-        : { readable: false };
-    const messageRead: SafeErrorPropertyRead = isObj
-        ? readThrownProperty(error, "message")
-        : { readable: false };
-    const detailsRead: SafeErrorPropertyRead = isObj
-        ? readThrownProperty(error, "details")
-        : { readable: false };
-    const result: {
-        code: string;
-        message: string;
-        details?: any;
-    } = {
-        code:
-            codeRead.readable && typeof codeRead.value === "string"
-                ? codeRead.value
-                : UNKNOWN_ERROR,
-        message:
-            messageRead.readable &&
-            typeof messageRead.value === "string" &&
-            messageRead.value.length > 0
-                ? messageRead.value
-                : renderThrownValue(error),
-    };
-    if (detailsRead.readable) {
-        const details = copyReadableThrownDetails(detailsRead.value);
-        if (details !== undefined) result.details = details;
-    }
-    return result;
 }
 
 /**

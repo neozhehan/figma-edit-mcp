@@ -94,6 +94,12 @@ describe("WS2 - Resources Handler (R2.2, R5.1h)", () => {
     expect(guideText["error-playbook"]).toContain(
       "Never omit a required field merely because another tool has a default",
     );
+    expect(guideText["error-playbook"]).toContain(
+      'errorDetails.phase: "scope-payload"',
+    );
+    expect(guideText["error-playbook"]).toContain(
+      "the socket join succeeded but the editable-scope payload failed",
+    );
     expect(guideText.workflows).toContain("GROUP/FRAME roots are valid");
     expect(guideText.workflows).toContain("required parent:");
     expect(guideText.workflows).toContain("afterCountVerified");
