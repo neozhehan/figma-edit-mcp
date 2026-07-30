@@ -22,12 +22,32 @@ import {
 // Guidance receives the originating error so a code with more than one cause
 // can name the right one (Change 5, P9-F7): a failure to LEAVE the previous
 // channel used to be reported as a join-acknowledgement timeout.
+/**
+ * Terminates a borrowed origin message so appended recovery reads as its own
+ * sentence. Transport errors are not authored for concatenation — a raw
+ * `Request timed out after 30000ms` ran straight into the next clause. This is
+ * the same run-on Change 8 fixed in `VARIABLE_IN_USE`; here the operand comes
+ * from outside, so the join is what has to normalize it.
+ */
+function asSentence(message: unknown): string {
+    const text = typeof message === "string" ? message.trim() : String(message ?? "");
+    if (text.length === 0) return text;
+    return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
 const JOIN_RECOVERY: Record<string, (channel: string, error: any) => string> = {
     CHANNEL_NOT_FOUND: (ch) => `Channel '${ch}' was not found. Verify the channel name and that the Figma plugin is running and connected.`,
     CHANNEL_JOIN_FAILED: (ch, error) =>
         error?.details?.phase === "leave-previous-channel"
             ? `${error.message} The requested join was not sent. This session's local channel binding was cleared, and its socket was closed to release any uncertain bridge reservation. Wait for the automatic bridge reconnect, then call channel_join with '${error.details.previousChannel}' to restore the previous channel or with '${error.details.requestedChannel}' to retry the requested channel.`
-            : `Failed to join channel '${ch}'. The Figma plugin did not acknowledge the join within the expected time. Try reconnecting the plugin.`,
+            // Change 12 (C12-F1): the scope-payload leg has its own cause. The
+            // socket join SUCCEEDED and the plugin then failed to return the
+            // editable scope, so the default wording below — "did not
+            // acknowledge the join" — would name the wrong step, which is the
+            // same wrong-cause defect C6-F7/C6-F3 fixed for the leave leg.
+            : error?.details?.phase === "scope-payload"
+                ? `${asSentence(error.message)} The channel was joined, but the Figma plugin did not return the editable scope in time, so no binding was established and this session currently holds none. Call channel_join with '${ch}' again; if it keeps failing, reopen the plugin in Figma and retry.`
+                : `Failed to join channel '${ch}'. The Figma plugin did not acknowledge the join within the expected time. Try reconnecting the plugin.`,
     PLUGIN_DISCONNECTED: () => "The Figma plugin disconnected before the editable scope could be read. Reopen the plugin and try again.",
 };
 
@@ -101,6 +121,54 @@ function joinFailure(
         errorCode,
         errorMessage,
         ...(errorDetails !== undefined ? { errorDetails } : {}),
+    };
+}
+
+/**
+ * Codes an uncoded scope-payload (leg 2) failure as `CHANNEL_JOIN_FAILED`.
+ *
+ * Change 12 (C12-F1). `joinChannel` already codes leg 1's locally-generated
+ * failures at origin (Q20), but leg 2 goes through the generic
+ * `sendCommandToFigma` path, whose request timeout rejects with a plain `Error`.
+ * The identical agent-visible outcome — the join failed, any previous binding
+ * was released, and a rejoin is required — was therefore coded on leg 1 and
+ * `UNKNOWN_ERROR` on leg 2. Live-reproduced on channel `gt93`.
+ *
+ * This is not coded at origin because `sendCommandToFigma` serves every tool;
+ * a timeout there is not a join failure in general. Leg 2 is the layer that
+ * knows the command was part of a join attempt.
+ *
+ * Q20 is preserved exactly: the test is the structural ABSENCE of a code, never
+ * message prose, and any explicit code passes through untouched — including an
+ * explicit `UNKNOWN_ERROR`, which C6-F4 established must keep its authored
+ * message rather than being reclassified.
+ */
+function codeScopePayloadFailure(error: any) {
+    let code: unknown;
+    try {
+        code = error !== null && typeof error === "object"
+            ? (error as any).code
+            : undefined;
+    } catch {
+        // A hostile thrown value must not make the coding path itself throw.
+        code = undefined;
+    }
+    if (typeof code === "string") return error;
+
+    let message: string;
+    try {
+        message = error !== null
+            && typeof error === "object"
+            && typeof (error as any).message === "string"
+            ? (error as any).message
+            : String(error);
+    } catch {
+        message = "Error executing command";
+    }
+    return {
+        code: "CHANNEL_JOIN_FAILED",
+        message,
+        details: { phase: "scope-payload" },
     };
 }
 
@@ -229,7 +297,9 @@ export function registerChannelTools(
                     payload = await sendCommandToFigma("get_connect_payload");
                 } catch (error: any) {
                     await detachAfterJoinFailure(resetChannel, releasedChannel);
-                    return toolResult(joinFailure(channel, error, {
+                    // C12-F1: an uncoded failure on this leg becomes
+                    // CHANNEL_JOIN_FAILED with its own phase, matching leg 1.
+                    return toolResult(joinFailure(channel, codeScopePayloadFailure(error), {
                         source: "join-attempt",
                         releasedChannel,
                     }));

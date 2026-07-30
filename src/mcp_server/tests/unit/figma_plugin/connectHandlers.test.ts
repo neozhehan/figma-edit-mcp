@@ -494,7 +494,12 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect("errorDetails" in parsed).toBe(false);
     });
 
-    it("UNKNOWN_ERROR from transport: message appended + resetChannel", async () => {
+    // Change 12 (C12-F1): this case used to assert UNKNOWN_ERROR. Leg 1 codes
+    // its uncoded local failures as CHANNEL_JOIN_FAILED at origin (Q20), but
+    // leg 2 rides the generic sendCommandToFigma path whose timeout rejects with
+    // a plain Error — so one agent-visible outcome had two codes depending on
+    // which leg produced it. Live-reproduced on channel `gt93`.
+    it("C12-F1: an uncoded scope-payload failure is CHANNEL_JOIN_FAILED, not UNKNOWN_ERROR", async () => {
         (sendCommandToFigma as any).mockImplementation((cmd: string) =>
             cmd === "get_connect_payload"
                 ? Promise.reject(new Error("Request timed out after 30000ms"))
@@ -503,9 +508,92 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         const r = await registeredTools["join_channel"]({ channel: "ch1" });
         const parsed = JSON.parse(r.content[0].text);
         expect(parsed.status).toBe("error");
-        expect(parsed.errorCode).toBe("UNKNOWN_ERROR");
-        expect(parsed.errorMessage).toMatch(/timed out/);
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        expect(parsed.errorDetails).toEqual({ phase: "scope-payload" });
+        // The origin message survives, and the recovery names the RIGHT step:
+        // the join succeeded and the scope read failed. Naming the leg-1 cause
+        // here would repeat the C6-F3/P9-F7 wrong-cause defect.
+        // The borrowed transport message is terminated before the recovery is
+        // appended, so it does not run into the next clause.
+        expect(parsed.errorMessage).toContain("Request timed out after 30000ms. The channel was joined");
+        expect(parsed.errorMessage).toContain("did not return the editable scope");
+        expect(parsed.errorMessage).toContain("Call channel_join with 'ch1' again");
+        expect(parsed.errorMessage).not.toContain("did not acknowledge the join");
         expect((resetChannel as any).mock.calls.length).toBe(1);
+    });
+
+    it("C12-F1: leg 1's uncoded failure keeps its own distinct cause, unchanged", async () => {
+        // The join-acknowledgement wording must stay on leg 1 only, so the two
+        // phases remain distinguishable from the message alone.
+        (joinChannel as any).mockRejectedValue(
+            Object.assign(new Error("Request to Figma timed out"), {
+                code: "CHANNEL_JOIN_FAILED",
+            }),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        expect(parsed.errorMessage).toContain("did not acknowledge the join");
+        expect(parsed.errorMessage).not.toContain("The channel was joined");
+    });
+
+    it("C12-F1: an uncoded scope-payload failure still discloses a released predecessor", async () => {
+        (joinChannel as any).mockResolvedValue({
+            ...PHASE9_JOIN_VERSIONS,
+            releasedChannel: "good",
+        });
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(new Error("Request to Figma timed out"))
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "wanted" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        // Coding the leg must not cost the P9-F2 recovery evidence: the phase
+        // and the authoritative released channel coexist in one plain record.
+        expect(parsed.errorDetails).toEqual({
+            phase: "scope-payload",
+            releasedChannel: "good",
+        });
+        expect(parsed.errorMessage).toContain("Call channel_join with 'wanted' again");
+        expect(parsed.errorMessage).toContain(
+            "disconnected the previously joined channel 'good'",
+        );
+    });
+
+    it("C12-F1: an explicit code on leg 2 passes through untouched (Q20), including UNKNOWN_ERROR", async () => {
+        for (const code of ["PLUGIN_DISCONNECTED", "UNKNOWN_ERROR", "SOME_FUTURE_CODE"]) {
+            (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+                cmd === "get_connect_payload"
+                    ? Promise.reject(Object.assign(new Error(`origin ${code}`), { code }))
+                    : Promise.resolve({}),
+            );
+            const r = await registeredTools["join_channel"]({ channel: "ch1" });
+            const parsed = JSON.parse(r.content[0].text);
+            expect(parsed.errorCode, `${code} must not be reclassified`).toBe(code);
+            // No phase is injected onto an error that already carried a code.
+            expect(parsed.errorDetails?.phase).toBeUndefined();
+        }
+    });
+
+    it("C12-F1: a hostile thrown value cannot make the coding path throw", async () => {
+        const hostile = new Proxy({}, {
+            get: () => { throw new Error("hostile getter"); },
+            ownKeys: () => { throw new Error("hostile enumeration"); },
+        });
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(hostile)
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        // It resolves in band rather than escaping; the code is not required to
+        // be CHANNEL_JOIN_FAILED here, only that reporting stayed total.
+        expect(typeof parsed.errorCode).toBe("string");
+        expect(typeof parsed.errorMessage).toBe("string");
     });
 
     it("PLUGIN_DISCONNECTED from transport: coded at origin, passed through (Q20)", async () => {

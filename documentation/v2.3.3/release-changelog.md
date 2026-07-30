@@ -2,6 +2,76 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 12: Change 11 verification and leg-2 join-failure coding (Rev 68)
+
+### Author: Claude Opus 5 (Ultracode) @ 2026-07-30 2:20pm PT
+
+**Release status (Rev 68, 2026-07-30): Change 11's two findings are independently confirmed, its central red-proof reproduced exactly, and all three of its verification totals reproduce. One new functional gap — found live, not by inspection — is recorded and fixed: `channel_join`'s two legs gave the same agent-visible outcome two different codes.** The live matrix on channel `gt93` otherwise passed the full Phase 10 surface and closed at the established baseline.
+
+C11-T1 was a real gap in Change 10's work, and I reproduced its mutation myself: inserting `loaded.error.details = undefined` immediately before the handler's projector return yields **31 pass / 2 fail / 185 assertions**, restoring gives **33/33 with 191** — while the Phase 10 file stays green at 21/21 throughout. That last part is the finding: Change 10's seam test drove the coordinator and the projector but never called `getConnectPayload()`, so a handler-local edit between them was unguarded. C11-D1 was also mine — I inserted Rev 66 before Rev 65, reintroducing the chronology defect C9-D4 had corrected one change earlier.
+
+| ID | Classification | Status | Finding and correction |
+| :- | :- | :- | :- |
+| C12-F1 | Functional gap | **Resolved — repository verified, red-proofed both halves** | `channel_join` has two legs. Leg 1 (`joinChannel`) codes its uncoded local failures as `CHANNEL_JOIN_FAILED` at origin per Q20. Leg 2 (`sendCommandToFigma("get_connect_payload")`) rides the generic command path, whose request timeout rejects with a plain `Error`, so `joinFailure` fell through to `UNKNOWN_ERROR` plus a generic wrapper. One agent-visible outcome — the join failed, any previous binding was released, a rejoin is required — therefore carried two different codes depending on which leg produced it. Leg 2 now codes an uncoded failure as `CHANNEL_JOIN_FAILED` with `details.phase: "scope-payload"`, and `JOIN_RECOVERY` gains a branch naming that cause accurately. No new inventory: `CHANNEL_JOIN_FAILED` is pre-existing `JOIN_CODES`, so the release stays at twenty-three codes plus the fallback. |
+
+### How this was found
+
+Not by reading code. The first `channel_join` of the `gt93` live session hit a transient host timeout on leg 2 and returned:
+
+```
+Error [UNKNOWN_ERROR]: An unexpected error occurred while joining the channel:
+Request to Figma timed out. This attempt also disconnected the previously
+joined channel 'gt93'; call channel_join with 'gt93' to restore it.
+```
+
+The recovery worked — rejoining as instructed restored everything, which incidentally live-confirmed Change 6's P9-F2 disclosure end to end. But the code was wrong for the situation, and it is the same shape as C6-F1 one level down: leg 1 had the treatment and leg 2 did not.
+
+This satisfied the letter of Q16 — `UNKNOWN_ERROR` is the ratified fallback when the message carries its own recovery, and this message did. It is fixed anyway, on the reasoning Rev 57 used to mint `CHANNEL_NOT_BOUND`: *a state an agent must recover from earns a stable code*. An agent cannot branch on a code that means "something, somewhere", and the leg-1 equivalent of this exact state already has one.
+
+### Exact implementation contract
+
+- **Coded at the layer that knows the context, not at origin.** `sendCommandToFigma` serves every tool; a timeout there is not a join failure in general, and the generic command surface stays on the legacy `UNKNOWN_ERROR` fallback pending the [v2.3.4 PRD](../v2.3.4/prd.md). Leg 2 is the layer that knows the command was part of a join attempt, so the coding lives there.
+- **Q20 is preserved exactly.** The test is the structural **absence** of a code, never message prose. Any explicit code passes through untouched — including an explicit `UNKNOWN_ERROR`, which C6-F4 established must keep its authored message rather than be reclassified, and including unknown future codes. No phase is injected onto an error that already carried a code.
+- **The phase discriminator prevents a wrong-cause message.** `CHANNEL_JOIN_FAILED`'s default guidance says the plugin "did not acknowledge the join within the expected time" — true for leg 1, false for leg 2, where the join *succeeded* and the scope read failed. Reusing it unqualified would have reproduced the C6-F3/P9-F7 defect verbatim. Leg 2 gets its own branch, following the `details.phase` pattern C6-F3 established; `"scope-payload"` is the phase name already used for this leg in the Change 6 regressions.
+- **Recovery evidence survives the coding.** The synthesized error's `details` is a plain record without a reserved-key collision, so an authoritative `releasedChannel` merges into it directly under the C6-F5 rule. A failed leg-2 join now carries both `phase` and the released predecessor.
+- **A borrowed message is terminated before recovery is appended.** Transport errors are not authored for concatenation: raw `Request timed out after 30000ms` ran straight into the next clause. This is the run-on Change 8 fixed inside `VARIABLE_IN_USE`; here the operand arrives from outside, so the join normalizes it.
+- **Totality holds.** A hostile thrown value cannot make the coding path itself throw — both the code probe and the message read are guarded, per the F78-18/R13 rule.
+
+### Verification
+
+- **Red-proof, both halves.** Reverting the leg-2 coding fails 2 tests; keeping the coding but deleting the phase branch — the wrong-cause regression — also fails 2. Restoring returns **37/37 with 211 assertions**.
+- **Focused connect seam:** `connectHandlers.test.ts` **37/37** (Change 11 baseline: 33/33). Five new regressions cover the coded leg-2 timeout, leg 1's cause staying distinct, predecessor disclosure surviving the coding, explicit-code pass-through across three codes including `UNKNOWN_ERROR`, and hostile-value totality.
+- **Full repository suite:** **1,028/1,028 tests with 5,557 assertions across 51 files** (Change 11 baseline: 1,024/5,537).
+- **Build and static gates:** `build:all`, `check:types:plugin`, `check:suppressions`, `check:generated`, `check:versions`, `check:plugin`, and `git diff --check` pass at synchronized `2.3.2`.
+
+### Change 11 verification results
+
+Reproduced before any change was made.
+
+| Change 11 claim | Result |
+| :- | :- |
+| `connectHandlers.test.ts` **33/33, 191 assertions** | Exact |
+| Phase 10 + connect seam **54/54, 286 assertions** | Exact |
+| Full suite **1,024/1,024, 5,537 assertions, 51 files** | Exact |
+| Handler-level red-proof **31 pass / 2 fail, 185 assertions** | Exact, reproduced independently |
+| C11-T1 — Change 10's seam test skipped the real handler | **Confirmed real.** The mutation is invisible to the Phase 10 file (21/21 green throughout), which is precisely why the projector-only test could not catch it. The subprocess harness is the right fix; isolating `main.js`'s UI bindings is justified, not incidental. |
+| C11-D1 — revision chronology | **Confirmed real and corrected.** Revs 61–67 are monotonic. |
+
+### Live evidence — channel `gt93`, dedicated *MCP Test* file
+
+Ran the live matrix **first** and every build **after** it closed, per the rule corrected in Change 10.
+
+| Probe | Live result |
+| :- | :- |
+| Mixed `page_info` (3 valid, 1 missing, 1 non-page) | `pagesAttempted: 5`, `complete: false`, both failures in `missingPageIds` and `coverage.pageErrors` with correct codes. |
+| `node_info` on the DOCUMENT root | `descendantCount` omitted on the document, retained on its PAGE children, `pagesAttempted: 3`. |
+| `variable_delete` on an in-use variable | `VARIABLE_IN_USE` listing both same-named `Rectangle 2` consumers with addressable IDs (`2:15`, `2:18`). |
+| `create_frame` → `node_delete` | Routed and returned truthfully; one-row D7 envelope. |
+| Transient leg-2 timeout, then rejoin | Surfaced **C12-F1**. The prescribed recovery worked, confirming Change 6's released-channel disclosure live. |
+| Closing baseline | **59 / 31 / 2** descendants, no artifact. |
+
+- **Evidence boundary:** C12-F1's *pre-fix* behaviour is live-reproduced; its fix is repository-verified and red-proofed, with no post-fix live replay, because the plugin was reloaded after the session and reproducing a host timeout on demand is not possible. C11-T1 and C11-D1 need no live evidence — one is an injected handler fault, the other documentary.
+
 ## Change 11: Change 10 verification and real-handler seam closure (Rev 67)
 
 ### Author: GPT-5.6 Sol (Extra High) @ 2026-07-30 12:50am PT
@@ -943,4 +1013,5 @@ The moved history initially preserved two entries numbered Rev 28 and the final 
 - **Rev 64, 2026-07-29** — a fourth live pass (channel `r3yk`) closed **C8-F9** against the real host across all three consumer kinds: node lines now carry their node ID, style lines their style ID, and alias lines the aliasing variable's ID. Following the refusal's own recovery with the printed IDs resolved both previously indistinguishable nodes and showed they sit in entirely different subtrees on different pages, so the fix restores a real distinction rather than only adding text. The session deliberately rebuilt nothing, confirming the Rev 63 diagnosis that `bun run build:all` drops the bound peer, and closed with a full baseline read at **59 / 31 / 2** descendants, **12** collections, and **10** variables. Eight of the sixteen findings are now live-verified; the remaining five functional gaps need injected faults and stay repository-verified.
 - **Rev 65, 2026-07-29** — [Change 9](#change-9-change-8-closure-verification-and-remediation-rev-65) independently verified Change 8, then found and fixed **two functional boundary gaps, one testing gap, and four documentation errors**. The private `get_connect_payload` producer now sends coordinator diagnostics under the `details` key consumed by `channel_join`, preserving public `errorDetails`; direct-root page validation fails closed with coded `PAGE_LOAD_FAILED` coverage when either root identity is unreadable; and the hostile-value regression reaches `getNodesInfo`'s real outer catch. Focused Phase 10 verification was **21/21 with 95 assertions**; the two-file matrix was **52/52 with 279 assertions**; and the full suite was **1,022/1,022 with 5,530 assertions across 51 files**. Channel `sfr5` is the pre-fix successful-host baseline, while `h480` later live-verified C9-F2's hot path and closed at **59 / 31 / 2** descendants, **12** collections, and **10** variables. C9-F1's cross-layer test follow-up was carried into Revs 66–67.
 - **Rev 66, 2026-07-29** — [Change 10](#change-10-change-9-verification-and-seam-guard-closure-rev-66) independently reproduced Change 9's totals and correctly centralized the private failure shape in `toConnectPayloadError()`. Its two regressions drove rejected-load and bounded-timeout coordinator results through the real projector and registered `channel_join`, red-proofing the original `details`/`errorDetails` key mismatch. Change 11 later narrowed the closure claim: those tests reconstructed the producer half instead of invoking `getConnectPayload()`, so they guarded projector/consumer drift but not handler-local field loss. The original full suite remained **1,024/1,024 with 5,536 assertions across 51 files** and all gates green. Rev 66's insertion before Rev 65 also reintroduced the chronology defect corrected in Rev 67.
+- **Rev 68, 2026-07-30** — [Change 12](#change-12-change-11-verification-and-leg-2-join-failure-coding-rev-68) reproduced every Change 11 total and its handler-level red-proof independently, confirming both C11-T1 and C11-D1 as real gaps in Change 10's work. It then recorded and fixed **one functional gap found live rather than by inspection**: `channel_join`'s two legs gave one agent-visible outcome two codes. Leg 1 codes its uncoded local failures as `CHANNEL_JOIN_FAILED` at origin (Q20); leg 2 rides the generic command path whose timeout rejects with a plain `Error`, so it fell through to `UNKNOWN_ERROR`. Leg 2 now codes an uncoded failure as `CHANNEL_JOIN_FAILED` with `details.phase: "scope-payload"`, and `JOIN_RECOVERY` gains a branch naming that cause — reusing the default would have repeated C6-F3's wrong-cause defect, since the join actually succeeded and the scope read failed. Coding sits at leg 2 rather than at origin because `sendCommandToFigma` serves every tool. Q20 is preserved structurally: any explicit code, `UNKNOWN_ERROR` included, passes through untouched, and released-predecessor evidence survives the coding. A borrowed transport message is now terminated before recovery is appended. No inventory change — `CHANNEL_JOIN_FAILED` is pre-existing. Both halves red-proofed; connect seam **37/37 with 211 assertions**; full suite **1,028/1,028 with 5,557 assertions across 51 files**; all gates green at synchronized `2.3.2`. Live `gt93` reproduced the pre-fix behaviour and closed at **59 / 31 / 2** descendants.
 - **Rev 67, 2026-07-30** — [Change 11](#change-11-change-10-verification-and-real-handler-seam-closure-rev-67) found and fixed **one testing gap and one documentation error**. A subprocess harness now imports the real plugin entrypoint, configures the real module-owned page scope, invokes the actual `getConnectPayload()` with rejected and timed-out coordinators, and feeds its exact return through the registered `channel_join`; temporarily stripping `loaded.error.details` inside the handler fails both regressions. Revs 61–67 are ordered chronologically and Change 10's historical claims are narrowed to their actual evidence. Focused connect is **33/33 with 191 assertions**; Phase 10 plus connect is **54/54 with 286 assertions**; full suite is **1,024/1,024 with 5,537 assertions across 51 files**; all build/static/bundle/diff gates pass at synchronized `2.3.2`. No fresh live channel is required because production behavior did not change.
