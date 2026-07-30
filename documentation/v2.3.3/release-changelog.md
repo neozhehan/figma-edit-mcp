@@ -2,6 +2,65 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 14: Change 13 verification and leg-1 guard coverage (Rev 70)
+
+### Author: Claude Opus 5 (Ultracode) @ 2026-07-30 4:05pm PT
+
+**Release status (Rev 70, 2026-07-30): Change 13's two functional fixes are confirmed correct, all four of its verification totals reproduce, and its documentation corrections verify — including C13-D1 against the actually served MCP resource rather than the source file. One testing gap is recorded and fixed: the guard C13-F1 added is real and load-bearing, but no committed regression covered the path where it does its work.** Live testing on channel `j75a` additionally closed two Phase 6 Layer-1 batch contracts that had never been live-verified in this series.
+
+C13-F1 and C13-F2 were both genuine defects in Change 12. My `codeScopePayloadFailure()` guarded its first `code` read and then handed the coded error back to `joinFailure()` unchanged, which re-read `details`, `message`, and the release Symbol without guards — so an unreadable optional property could erase a readable code. And `JOIN_RECOVERY` as a plain object meant a structured code named `toString` resolved `Object.prototype.toString` and invoked it as recovery, replacing the authored message. C13-D2 was mine too.
+
+| ID | Classification | Status | Finding and correction |
+| :- | :- | :- | :- |
+| C14-T1 | Testing gap | **Resolved — repository verified, red-proofed** | C13-F1's guard inside `joinFailure()` is not load-bearing on leg 2, because `codeScopePayloadFailure()` normalizes *before* calling it — the hostile origin never arrives. Leg 1 passes `joinChannel`'s raw error straight through, so leg 1 is the only path where that guard does work, and the committed leg-1 regression makes only the **Symbol** marker throw while leaving `details` readable. Deleting the guard therefore broke nothing. Proven by mutation: re-reading `(error as any).details` in `joinFailure` leaves all 41 committed tests green. Two regressions now cover leg 1 with an unreadable `details` getter, and with an unreadable `details` getter **and** release marker together; both fail under that mutation. |
+
+### Why this gap is the recurring shape, not a one-off
+
+This is the third consecutive review in which a correct fix shipped with a regression that does not enter the line it protects — C10-T1 (producer asserted by source regex), C11-T1 (seam test skipped the real handler), now C14-T1 (guard covered only on the leg where it is inert). Each was found the same way: by mutating the production line and observing the suite stay green, rather than by reading the test.
+
+The pattern is worth naming because the fixes themselves were all correct. What repeatedly fell short was the evidence that they would *stay* correct. A regression that passes both before and after a fix is not a guard; the cheap check is to break the line on purpose and confirm something fails.
+
+### Exact implementation contract
+
+- **No production source changed.** Change 14 is tests and documentation only. `figma_plugin/code.js` is untouched and no plugin reload is required.
+- **Leg-1 hostile-read matrix is now complete.** Marker unreadable (committed by Change 13), `details` unreadable, and both unreadable together. Each asserts that a readable `code` and `message` stay authoritative, that the unreadable optional field is omitted rather than failing the report or downgrading to `UNKNOWN_ERROR`, and — in the compound case — that an unreadable marker is authoritative *absence* and can never fabricate a released-predecessor suffix.
+
+### Verification
+
+- **Red-proof:** reverting `joinFailure`'s guarded details read to a direct re-read fails **exactly the two new regressions** (41 pass / 2 fail) and nothing else. Restoring returns **43/43 with 236 assertions**.
+- **Focused connect seam:** **43/43** (Change 13 baseline: 41/41).
+- **Full repository suite:** **1,034/1,034 tests with 5,584 assertions across 51 files** (Change 13 baseline: 1,032/5,575).
+- **Build and static gates:** `build:all`, `check:types:plugin`, `check:suppressions`, `check:generated`, `check:versions`, `check:plugin`, and `git diff --check` pass at synchronized `2.3.2`.
+
+### Change 13 verification results
+
+Reproduced before any change was made.
+
+| Change 13 claim | Result |
+| :- | :- |
+| Connect seam **41/41, 227 assertions** | Exact |
+| Guide resources **3/3, 66 assertions** | Exact |
+| Official SDK boundary **22/22, 313 assertions** | Exact |
+| Full suite **1,032/1,032, 5,575 assertions, 51 files** | Exact |
+| C13-F1 — unguarded re-reads could erase a readable code | **Confirmed real**; the fix is correct, and its own coverage is the C14-T1 gap above. |
+| C13-F2 — `Object.prototype` collision in recovery lookup | **Confirmed real and independently red-proofed.** Restoring a prototype-bearing lookup fails the colliding-code regression; the `Map` is own-key only. |
+| C13-D1 — stale `CHANNEL_JOIN_FAILED` playbook row | **Confirmed corrected, verified against the served resource.** Reading `figma-edit://guide/error-playbook` through MCP shows all three causes documented, including `errorDetails.phase: "scope-payload"`. |
+| C13-D2 — revision chronology | **Confirmed corrected.** Revs 61–69 monotonic. This defect has now appeared three times (C9-D4, C11-D1, C13-D2), introduced by a different author each time, because nothing checks ordering. |
+
+### Live evidence — channel `j75a`, dedicated *MCP Test* file
+
+Ran the matrix first and every build after it closed. Two Phase 6 Layer-1 contracts were live-verified for the first time in this series.
+
+| Probe | Live result |
+| :- | :- |
+| `node_delete` with `[]` | MCP `-32602` at path `nodes`, `too_small, minimum: 1` — a schema rejection with **no execution envelope**, exactly the D7 Layer-1 contract. |
+| `node_delete` with the same node in both ID spellings (`1472:60` and `1472-60`) | Refused at Layer 1 with the authored message naming the offending ID, the normalized-spelling rule, and the recovery. **Q23's cross-spelling normalization confirmed against the live host.** |
+| Zero mutation after the duplicate refusal | The disposable node was still present and readable; deleted deliberately afterwards. |
+| Phase 10 surface | `pagesAttempted: 5`, `complete: false`, both failure codes, `missingPageIds` covering both. |
+| Closing baseline | **59 / 31 / 2** descendants, no artifact. |
+
+- **Evidence boundary:** C14-T1 is an injected-fault regression over hostile accessors and needs no live evidence. The live pass is a regression sweep plus the two new Layer-1 confirmations; it is not presented as evidence for the hostile-read paths.
+
 ## Change 13: Change 12 verification and join-error totality closure (Rev 69)
 
 ### Author: GPT-5.6 Sol (Extra High) @ 2026-07-30 9:15am PT
@@ -1059,4 +1118,5 @@ The moved history initially preserved two entries numbered Rev 28 and the final 
 - **Rev 66, 2026-07-29** — [Change 10](#change-10-change-9-verification-and-seam-guard-closure-rev-66) independently reproduced Change 9's totals and correctly centralized the private failure shape in `toConnectPayloadError()`. Its two regressions drove rejected-load and bounded-timeout coordinator results through the real projector and registered `channel_join`, red-proofing the original `details`/`errorDetails` key mismatch. Change 11 later narrowed the closure claim: those tests reconstructed the producer half instead of invoking `getConnectPayload()`, so they guarded projector/consumer drift but not handler-local field loss. The original full suite remained **1,024/1,024 with 5,536 assertions across 51 files** and all gates green. Rev 66's insertion before Rev 65 also reintroduced the chronology defect corrected in Rev 67.
 - **Rev 67, 2026-07-30** — [Change 11](#change-11-change-10-verification-and-real-handler-seam-closure-rev-67) found and fixed **one testing gap and one documentation error**. A subprocess harness now imports the real plugin entrypoint, configures the real module-owned page scope, invokes the actual `getConnectPayload()` with rejected and timed-out coordinators, and feeds its exact return through the registered `channel_join`; temporarily stripping `loaded.error.details` inside the handler fails both regressions. Revs 61–67 are ordered chronologically and Change 10's historical claims are narrowed to their actual evidence. Focused connect is **33/33 with 191 assertions**; Phase 10 plus connect is **54/54 with 286 assertions**; full suite is **1,024/1,024 with 5,537 assertions across 51 files**; all build/static/bundle/diff gates pass at synchronized `2.3.2`. No fresh live channel is required because production behavior did not change.
 - **Rev 68, 2026-07-30** — [Change 12](#change-12-change-11-verification-and-leg-2-join-failure-coding-rev-68) reproduced every Change 11 total and its handler-level red-proof independently, confirming both C11-T1 and C11-D1 as real gaps in Change 10's work. It then recorded and fixed **one functional gap found live rather than by inspection**: `channel_join`'s two legs gave one agent-visible outcome two codes. Leg 1 codes its uncoded local failures as `CHANNEL_JOIN_FAILED` at origin (Q20); leg 2 rides the generic command path whose timeout rejects with a plain `Error`, so it fell through to `UNKNOWN_ERROR`. Leg 2 now codes an uncoded failure as `CHANNEL_JOIN_FAILED` with `details.phase: "scope-payload"`, and `JOIN_RECOVERY` gains a branch naming that cause — reusing the default would have repeated C6-F3's wrong-cause defect, since the join actually succeeded and the scope read failed. Coding sits at leg 2 rather than at origin because `sendCommandToFigma` serves every tool. Q20 is preserved structurally: any explicit code, `UNKNOWN_ERROR` included, passes through untouched, and released-predecessor evidence survives the coding. A borrowed transport message is now terminated before recovery is appended. No inventory change — `CHANNEL_JOIN_FAILED` is pre-existing. Both halves red-proofed; connect seam **37/37 with 211 assertions**; full suite **1,028/1,028 with 5,557 assertions across 51 files**; all gates green at synchronized `2.3.2`. Live `gt93` reproduced the pre-fix behaviour and closed at **59 / 31 / 2** descendants.
+- **Rev 70, 2026-07-30** — [Change 14](#change-14-change-13-verification-and-leg-1-guard-coverage-rev-70) reproduced all four Change 13 totals, independently red-proofed C13-F2, and verified C13-D1 against the **served** `figma-edit://guide/error-playbook` resource rather than the source file. It recorded and fixed **one testing gap**: C13-F1's guard inside `joinFailure` is inert on leg 2 — `codeScopePayloadFailure` normalizes before calling it — so leg 1 is the only path where it works, and the committed leg-1 regression made only the Symbol marker throw. Deleting the guard broke nothing. Two regressions now cover an unreadable leg-1 `details` getter alone and together with an unreadable release marker, both red-proofed. No production source changed. This is the third consecutive review where a correct fix shipped with a regression that never enters the line it protects (C10-T1, C11-T1, C14-T1), each found by mutating the line rather than reading the test. Connect seam **43/43 with 236 assertions**; full suite **1,034/1,034 with 5,584 assertions across 51 files**; all gates green at synchronized `2.3.2`. Live `j75a` additionally confirmed two Phase 6 Layer-1 batch contracts for the first time — `[]` rejection and cross-spelling duplicate rejection with zero mutation — closing at **59 / 31 / 2** descendants.
 - **Rev 69, 2026-07-30** — [Change 13](#change-13-change-12-verification-and-join-error-totality-closure-rev-69) independently reproduced Change 12's focused/full totals and both red-proofs, then found and fixed **two functional gaps and two documentation errors**. Join failures now take one guarded reusable snapshot so unreadable optional details or internal release metadata cannot erase a readable code/message, reject the callback, or hide trusted predecessor recovery. Recovery guidance uses an own-key-only `Map`, so Object-prototype-colliding future codes pass through under Q20. The playbook documents the third `scope-payload` cause and recovery, and Revs 61–69 are chronological. Four injected regressions are red-proofed; focused connect is **41/41 with 227 assertions**; resources are **3/3 with 66 assertions**; the official SDK boundary is **22/22 with 313 assertions**; and the full suite is **1,032/1,032 with 5,575 assertions across 51 files**, with every build/static/bundle/diff gate green at synchronized `2.3.2`. Dedicated live channel `2po5` verified Change 12's public Phase 10 and rejoin surface and closed at 59 descendants before the plugin reload; the hostile C13 paths remain honestly repository-verified.

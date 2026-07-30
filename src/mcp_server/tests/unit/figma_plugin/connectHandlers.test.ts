@@ -682,6 +682,69 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect(parsed.errorDetails).toEqual({ operand: "future" });
     });
 
+    // Change 14 (C14-T1): the leg-1 case C13-F1's own text describes.
+    //
+    // C13-F1 reported that joinFailure "reread optional `details` without a
+    // guard" and guarded it. On leg 2 that guard is not load-bearing, because
+    // codeScopePayloadFailure normalizes BEFORE calling joinFailure, so the
+    // hostile origin never arrives. Leg 1 hands joinFailure the raw error from
+    // joinChannel, so leg 1 is the only path where the details guard does work
+    // — and the committed leg-1 regression makes only the Symbol marker throw
+    // while leaving `details` readable. Deleting the guard therefore broke no
+    // test. Verified by mutation: re-reading `(error as any).details` keeps all
+    // 41 committed tests green and fails only the two below.
+    it("C14-T1: an unreadable leg-1 details getter cannot erase a readable coded failure", async () => {
+        const origin = {
+            code: "SOME_FUTURE_CODE",
+            message: "authored leg-1 failure",
+            get details(): unknown {
+                throw new Error("details getter");
+            },
+        };
+        (joinChannel as any).mockRejectedValue(origin);
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        // A readable code and message stay authoritative; the unreadable
+        // OPTIONAL field is omitted rather than being allowed to fail the
+        // report or downgrade a real code to UNKNOWN_ERROR.
+        expect(parsed.errorCode).toBe("SOME_FUTURE_CODE");
+        expect(parsed.errorMessage).toBe("authored leg-1 failure");
+        expect(parsed.errorDetails).toBeUndefined();
+    });
+
+    it("C14-T1: leg 1 survives an unreadable details getter and release marker together", async () => {
+        // The compound case: the committed regression covers the marker alone
+        // and the test above covers details alone. Neither proves the snapshot
+        // holds when both hostile reads occur in one value.
+        const nestedHostile = new Proxy({}, {
+            get: () => { throw new Error("nested hostile getter"); },
+            ownKeys: () => { throw new Error("nested hostile enumeration"); },
+        });
+        const origin = {
+            code: "SOME_FUTURE_CODE",
+            message: "authored leg-1 failure",
+            get details(): unknown {
+                throw nestedHostile;
+            },
+            get [Symbol.for("figma-edit-mcp.joinAttemptReleasedChannel")](): unknown {
+                throw new Error("release marker getter");
+            },
+        };
+        (joinChannel as any).mockRejectedValue(origin);
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SOME_FUTURE_CODE");
+        expect(parsed.errorMessage).toBe("authored leg-1 failure");
+        expect(parsed.errorDetails).toBeUndefined();
+        // An unreadable marker is authoritative absence, never a fabricated
+        // predecessor: no released-channel suffix may appear.
+        expect(parsed.errorMessage).not.toContain("disconnected the previously joined channel");
+    });
+
     it("PLUGIN_DISCONNECTED from transport: coded at origin, passed through (Q20)", async () => {
         // Mirrors figma-client's close handler, which now codes the rejection
         // at origin instead of leaving channel.ts to sniff message prose.
