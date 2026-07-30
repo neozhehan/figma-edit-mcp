@@ -57,11 +57,11 @@
   "tools": [
     {
       "name": "page_info",
-      "description": "List the document's pages; no args → all pages (no children), or pass `pageIds` → those pages with their top-level children. Batch ≤25 ids/call."
+      "description": "List the document's pages; no args → all pages (no children), or pass `pageIds` → those pages with their top-level children. Batch ≤25 ids/call. Inspect `coverage`: a failed page is omitted with a structured `pageErrors` row while other pages still return."
     },
     {
       "name": "node_info",
-      "description": "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. The workhorse read; start here before any write."
+      "description": "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. A node whose containing page could not be read is listed in `pageFailedNodes` with that page's ID, and the page's structured reason is in `coverage.pageErrors` — other pages still return normally. The workhorse read; start here before any write."
     },
     {
       "name": "node_transform",
@@ -73,7 +73,7 @@
     },
     {
       "name": "node_delete",
-      "description": "Delete one or more nodes in a single batched, per-item-validated call. No API undo."
+      "description": "Delete one or more nodes in a single batched, per-item-validated call. No API undo. If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped)."
     },
     {
       "name": "node_clone",
@@ -160,16 +160,12 @@
       "description": "Combine components into a component set (variants) with property definitions."
     },
     {
-      "name": "create_connection",
-      "description": "Create connector lines between nodes, or set/check the default connector template. Pass `connectorId` to set a default, `connections` to draw lines, or nothing to check the current default."
-    },
-    {
       "name": "style_list",
       "description": "List all local styles (paint/text/effect/grid) in the document."
     },
     {
       "name": "style_manage",
-      "description": "Create a named style (paint/text/effect/grid), or update an existing one when `styleId` is given."
+      "description": "Create a named style (paint/text/effect/grid), or update an existing one when `styleId` is given. UPDATE requires currentStyleName."
     },
     {
       "name": "style_delete",
@@ -177,7 +173,7 @@
     },
     {
       "name": "text_set_content",
-      "description": "Set the text of one or more text nodes in a single batched, per-item-validated call."
+      "description": "Set the text of one or more text nodes in a single batched, per-item-validated call. If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped)."
     },
     {
       "name": "text_set_style",
@@ -185,7 +181,7 @@
     },
     {
       "name": "component_list",
-      "description": "List components in the document, with filtering and scope options."
+      "description": "List components in the document, with filtering and scope options. Document scans isolate page failures and report them in `coverage`; page-scoped failures return their structured error directly."
     },
     {
       "name": "component_manage_property",
@@ -205,31 +201,31 @@
     },
     {
       "name": "instance_set_overrides",
-      "description": "Apply previously-read overrides to target instances; targets are swapped to the source component and all overrides applied."
+      "description": "Apply previously-read overrides to target instances; targets are swapped to the source component and all overrides applied. If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped)."
     },
     {
       "name": "variable_list",
-      "description": "List local variables/collections, or detailed info for specific variable ids; optionally scan for consumers."
+      "description": "List local variables/collections, or detailed info for specific variable ids; optionally scan for consumers. Document consumer scans isolate page failures and report them in `coverage`; page-scoped failures return their structured error directly."
     },
     {
       "name": "variable_manage",
-      "description": "Create collections and variables and set their values/aliases (create/update router)."
+      "description": "Create collections and variables and set their values/aliases (create/update router). UPDATE_VARIABLE requires `currentVariableName`. CREATE_VARIABLE requires `collectionName` and `scopes`."
     },
     {
       "name": "variable_delete",
-      "description": "Delete specific variables or an entire collection. Runs a full-document consumer check first and rejects the whole operation if any target is still in use."
+      "description": "Delete specific variables or an entire collection. Runs a full-document consumer check first, before any removal: if a target is still in use the call is refused with VARIABLE_IN_USE, whose `details.variablesInUse` lists every consumer; if any page cannot be loaded and read it is refused with DOCUMENT_SCAN_INCOMPLETE, because a page error can never mean zero consumers."
     },
     {
       "name": "annotation_list",
-      "description": "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. Optionally include the file's annotation categories."
+      "description": "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. Optionally include the file's annotation categories. Page loading is bounded; a page-scoped failure returns its structured error directly and successful reads include `coverage`."
     },
     {
       "name": "annotation_set",
-      "description": "Create or update native annotations on one or more nodes in a batched call (per item: `annotationId` present = update, absent = create)."
+      "description": "Append native annotations to one or more nodes in a batched call. If the status is 'partial_success', treat it as an incomplete operation and report the failed and skipped items to the user. Appending is NOT idempotent and a 'failed' row may already have appended its annotation (verified counts differ, or outcomeUnknown is true when post-state is unreadable; both carry partialMutation: true) — before retrying any non-success item, call annotation_list and compare the labels already on the node, or you will create a duplicate."
     },
     {
       "name": "reaction_list",
-      "description": "Read prototype reactions from one or more nodes. Process the output with the `reaction_to_connector_strategy` prompt to build `create_connection` parameters."
+      "description": "Read prototype reactions from one or more nodes and their descendants."
     },
     {
       "name": "reaction_update",

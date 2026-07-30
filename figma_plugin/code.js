@@ -28,9 +28,8 @@
     // frame reaches Figma, so the plugin has no throw site for them and a
     // bundle-side copy would be dead weight in `code.js`. They live only in
     // `src/shared/channelProtocol.ts`; a regression asserts their absence here.
-    // Phase 10's page-load entries are raised through pageLoad.ts. Phase 11's
-    // connector entry remains a placeholder until that phase lands; both are
-    // plugin-thrown and therefore belong in this registry.
+    // Phase 10's page-load entries are raised through pageLoad.ts and belong in
+    // this plugin-origin registry.
     //
     // Page codes are operational failures, not safety refusals — no "Operation
     // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
@@ -93,10 +92,6 @@
 
 Nothing was deleted. Read each listed consumer's current state with node_info (nodes), style_list (styles), or variable_list (aliasing variables), clear or rebind that reference, then retry this exact call. details.variablesInUse lists every consumer by variable ID.`,
       details: { variablesInUse }
-    }),
-    CONNECTOR_TEMPLATE_REQUIRED: () => ({
-      code: "CONNECTOR_TEMPLATE_REQUIRED",
-      message: "Operation Denied: No valid connector template was found in the document. Find a connector with page_info/node_info (pasting one from FigJam if the file has none) and pass its ID and exact current name."
     }),
     VARIABLE_NAME_MISSING: () => ({
       code: "VARIABLE_NAME_MISSING",
@@ -4344,7 +4339,7 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
     }
   }
 
-  // figma_plugin/handlers/connectorHandlers.ts
+  // figma_plugin/handlers/prototypingHandlers.ts
   async function getReactions(nodeIds) {
     try {
       let getNodePath2 = function(node) {
@@ -4374,16 +4369,19 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
         processedNodes.add(node.id);
         let filteredReactions = [];
         if (node.reactions && node.reactions.length > 0) {
-          filteredReactions = node.reactions.filter((r) => {
-            if (r.action && r.action.navigation === "CHANGE_TO") return false;
-            if (Array.isArray(r.actions)) {
-              return !r.actions.some((a) => a.navigation === "CHANGE_TO");
+          filteredReactions = node.reactions.filter((reaction) => {
+            if (reaction.action && reaction.action.navigation === "CHANGE_TO") {
+              return false;
+            }
+            if (Array.isArray(reaction.actions)) {
+              return !reaction.actions.some(
+                (action) => action.navigation === "CHANGE_TO"
+              );
             }
             return true;
           });
         }
-        const hasFilteredReactions = filteredReactions.length > 0;
-        if (hasFilteredReactions) {
+        if (filteredReactions.length > 0) {
           results.push({
             id: node.id,
             name: node.name,
@@ -4396,7 +4394,12 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
         }
         if (node.children) {
           for (const child of node.children) {
-            await findNodesWithReactions(child, processedNodes, depth + 1, results);
+            await findNodesWithReactions(
+              child,
+              processedNodes,
+              depth + 1,
+              results
+            );
           }
         }
         return results;
@@ -4422,7 +4425,10 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
             continue;
           }
           const processedNodes = /* @__PURE__ */ new Set();
-          const nodeResults = await findNodesWithReactions(node, processedNodes);
+          const nodeResults = await findNodesWithReactions(
+            node,
+            processedNodes
+          );
           allResults = allResults.concat(nodeResults);
           processedCount++;
           await sendProgressUpdate(
@@ -4465,321 +4471,6 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       throw new Error(`Failed to get reactions: ${error.message}`);
     }
   }
-  async function activeSetDefaultConnector(params) {
-    const { connectorId } = params || {};
-    if (connectorId) {
-      const node = await figma.getNodeByIdAsync(connectorId);
-      if (!node) {
-        throw new Error(`Connector node not found with ID: ${connectorId}`);
-      }
-      if (node.type !== "CONNECTOR") {
-        throw new Error(`Node is not a connector: ${connectorId}`);
-      }
-      await figma.clientStorage.setAsync("defaultConnectorId", connectorId);
-      return {
-        success: true,
-        message: `Default connector set to: ${connectorId}`,
-        connectorId
-      };
-    } else {
-      try {
-        const existingConnectorId = await figma.clientStorage.getAsync("defaultConnectorId");
-        if (existingConnectorId) {
-          try {
-            const existingConnector = await figma.getNodeByIdAsync(existingConnectorId);
-            if (existingConnector && existingConnector.type === "CONNECTOR") {
-              return {
-                success: true,
-                message: `Default connector is already set to: ${existingConnectorId}`,
-                connectorId: existingConnectorId,
-                exists: true
-              };
-            } else {
-              console.log(`Stored connector ID ${existingConnectorId} is no longer valid, finding a new connector...`);
-            }
-          } catch (error) {
-            console.log(`Error finding stored connector: ${error.message}. Will try to set a new one.`);
-          }
-        }
-      } catch (error) {
-        console.log(`Error checking for existing connector: ${error.message}`);
-      }
-      try {
-        const currentPageConnectors = figma.currentPage.findAllWithCriteria({ types: ["CONNECTOR"] });
-        if (currentPageConnectors && currentPageConnectors.length > 0) {
-          const foundConnector = currentPageConnectors[0];
-          const autoFoundId = foundConnector.id;
-          await figma.clientStorage.setAsync("defaultConnectorId", autoFoundId);
-          return {
-            success: true,
-            message: `Automatically found and set default connector to: ${autoFoundId}`,
-            connectorId: autoFoundId,
-            autoSelected: true
-          };
-        } else {
-          return {
-            success: false,
-            message: "No default connector set and none found on current page.",
-            exists: false
-          };
-        }
-      } catch (error) {
-        throw new Error(`Failed to find a connector: ${error.message}`);
-      }
-    }
-  }
-  async function createCursorNode(targetNodeId) {
-    const svgString = `<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M16 8V35.2419L22 28.4315L27 39.7823C27 39.7823 28.3526 40.2722 29 39.7823C29.6474 39.2924 30.2913 38.3057 30 37.5121C28.6247 33.7654 25 26.1613 25 26.1613H32L16 8Z" fill="#202125" />
-  </svg>`;
-    try {
-      const targetNode = await figma.getNodeByIdAsync(targetNodeId);
-      if (!targetNode) throw new Error("Target node not found");
-      let parentNodeId = targetNodeId.includes(";") ? targetNodeId.split(";")[0] : targetNodeId;
-      if (!parentNodeId) throw new Error("Could not determine parent node ID");
-      let parentNode = await figma.getNodeByIdAsync(parentNodeId);
-      if (!parentNode) throw new Error("Parent node not found");
-      if (parentNode.type === "INSTANCE" || parentNode.type === "COMPONENT" || parentNode.type === "COMPONENT_SET") {
-        parentNode = parentNode.parent;
-        if (!parentNode) throw new Error("Parent node not found");
-      }
-      const importedNode = await figma.createNodeFromSvg(svgString);
-      if (!importedNode || !importedNode.id) {
-        throw new Error("Failed to create imported cursor node");
-      }
-      importedNode.name = "TTF_Connector / Mouse Cursor";
-      importedNode.resize(48, 48);
-      const cursorNode = importedNode.findOne((node) => node.type === "VECTOR");
-      if (cursorNode) {
-        cursorNode.fills = [{
-          type: "SOLID",
-          color: { r: 0, g: 0, b: 0 },
-          opacity: 1
-        }];
-        cursorNode.strokes = [{
-          type: "SOLID",
-          color: { r: 1, g: 1, b: 1 },
-          opacity: 1
-        }];
-        cursorNode.strokeWeight = 2;
-        cursorNode.strokeAlign = "OUTSIDE";
-        cursorNode.effects = [{
-          type: "DROP_SHADOW",
-          color: { r: 0, g: 0, b: 0, a: 0.3 },
-          offset: { x: 1, y: 1 },
-          radius: 2,
-          spread: 0,
-          visible: true,
-          blendMode: "NORMAL"
-        }];
-      }
-      parentNode.appendChild(importedNode);
-      if ("layoutMode" in parentNode && parentNode.layoutMode !== "NONE") {
-        importedNode.layoutPositioning = "ABSOLUTE";
-      }
-      if (
-        // @ts-expect-error TS2339: Property 'absoluteBoundingBox' does not exist on type 'BaseNode'.
-        targetNode.absoluteBoundingBox && // @ts-expect-error TS2339: 'absoluteBoundingBox' does not exist on every member of the narrowed node union
-        parentNode.absoluteBoundingBox
-      ) {
-        console.log("targetNode.absoluteBoundingBox", targetNode.absoluteBoundingBox);
-        console.log("parentNode.absoluteBoundingBox", parentNode.absoluteBoundingBox);
-        importedNode.x = targetNode.absoluteBoundingBox.x - parentNode.absoluteBoundingBox.x + targetNode.absoluteBoundingBox.width / 2 - 48 / 2;
-        importedNode.y = targetNode.absoluteBoundingBox.y - parentNode.absoluteBoundingBox.y + targetNode.absoluteBoundingBox.height / 2 - 48 / 2;
-      } else if ("x" in targetNode && "y" in targetNode && "width" in targetNode && "height" in targetNode) {
-        console.log("targetNode.x/y/width/height", targetNode.x, targetNode.y, targetNode.width, targetNode.height);
-        importedNode.x = targetNode.x + targetNode.width / 2 - 48 / 2;
-        importedNode.y = targetNode.y + targetNode.height / 2 - 48 / 2;
-      } else {
-        if ("x" in targetNode && "y" in targetNode) {
-          console.log("Fallback to targetNode x/y");
-          importedNode.x = targetNode.x;
-          importedNode.y = targetNode.y;
-        } else {
-          console.log("Fallback to (0,0)");
-          importedNode.x = 0;
-          importedNode.y = 0;
-        }
-      }
-      console.log("importedNode", importedNode);
-      return { id: importedNode.id, node: importedNode };
-    } catch (error) {
-      console.error("Error creating cursor from SVG:", error);
-      return { id: null, node: null, error: error.message };
-    }
-  }
-  async function createConnections(params) {
-    if (!params) {
-      throw new Error("Missing params");
-    }
-    const { connections, connectorId, checkDefault } = params;
-    if (connectorId !== void 0 || checkDefault) {
-      const result = await activeSetDefaultConnector({ connectorId });
-      if (!connections || connections.length === 0) {
-        return result;
-      }
-      if (connectorId && !result.success) {
-        throw new Error(`Failed to set default connector: ${result.message}`);
-      }
-    }
-    if (!connections || !Array.isArray(connections) || connections.length === 0) {
-      if (connectorId === void 0 && !checkDefault) {
-        throw new Error("No connections provided and no connectorId specified.");
-      }
-      return { success: true, count: 0, message: "No connections specified." };
-    }
-    const commandId = generateCommandId();
-    await sendProgressUpdate(
-      commandId,
-      "create_connections",
-      "started",
-      0,
-      connections.length,
-      0,
-      `Starting to create ${connections.length} connections`
-    );
-    const defaultConnectorId = await figma.clientStorage.getAsync("defaultConnectorId");
-    if (!defaultConnectorId) {
-      const autoResult = await activeSetDefaultConnector();
-      if (!autoResult.success) {
-        throw new Error('No default connector set. Please create a connector in FigJam/Figma and copy it to the current page, then run "create_connections" with "connectorId".');
-      }
-    }
-    const currentDefaultId = await figma.clientStorage.getAsync("defaultConnectorId");
-    const defaultConnector = await figma.getNodeByIdAsync(currentDefaultId);
-    if (!defaultConnector) {
-      throw new Error(`Default connector node not found (ID: ${currentDefaultId})`);
-    }
-    if (defaultConnector.type !== "CONNECTOR") {
-      throw new Error(`Stored default node is not a connector: ${currentDefaultId}`);
-    }
-    const results = [];
-    let processedCount = 0;
-    const totalCount = connections.length;
-    for (let i = 0; i < connections.length; i++) {
-      try {
-        const { startNodeId: originalStartId, endNodeId: originalEndId, text } = connections[i];
-        let startId = originalStartId;
-        let endId = originalEndId;
-        if (startId.includes(";")) {
-          console.log(`Nested start node detected: ${startId}. Creating cursor node.`);
-          const cursorResult = await createCursorNode(startId);
-          if (!cursorResult || !cursorResult.id) {
-            throw new Error(`Failed to create cursor node for nested start node: ${startId}`);
-          }
-          startId = cursorResult.id;
-        }
-        const startNode = await figma.getNodeByIdAsync(startId);
-        if (!startNode) throw new Error(`Start node not found with ID: ${startId}`);
-        if (endId.includes(";")) {
-          console.log(`Nested end node detected: ${endId}. Creating cursor node.`);
-          const cursorResult = await createCursorNode(endId);
-          if (!cursorResult || !cursorResult.id) {
-            throw new Error(`Failed to create cursor node for nested end node: ${endId}`);
-          }
-          endId = cursorResult.id;
-        }
-        const endNode = await figma.getNodeByIdAsync(endId);
-        if (!endNode) throw new Error(`End node not found with ID: ${endId}`);
-        const clonedConnector = defaultConnector.clone();
-        clonedConnector.name = `TTF_Connector/${startNode.id}/${endNode.id}`;
-        clonedConnector.connectorStart = {
-          endpointNodeId: startId,
-          magnet: "AUTO"
-        };
-        clonedConnector.connectorEnd = {
-          endpointNodeId: endId,
-          magnet: "AUTO"
-        };
-        if (text) {
-          try {
-            try {
-              if (defaultConnector.text && defaultConnector.text.fontName) {
-                const fontName = defaultConnector.text.fontName;
-                await figma.loadFontAsync(fontName);
-                clonedConnector.text.fontName = fontName;
-              } else {
-                await figma.loadFontAsync({ family: "Inter", style: "Regular" });
-              }
-            } catch (fontError) {
-              try {
-                await figma.loadFontAsync({ family: "Inter", style: "Medium" });
-              } catch (mediumFontError) {
-                try {
-                  await figma.loadFontAsync({ family: "System", style: "Regular" });
-                } catch (systemFontError) {
-                  throw new Error(`Failed to load any font: ${fontError.message}`);
-                }
-              }
-            }
-            clonedConnector.text.characters = text;
-          } catch (textError) {
-            console.error("Error setting text:", textError);
-            results.push({
-              id: clonedConnector.id,
-              startNodeId: originalStartId,
-              endNodeId: originalEndId,
-              text: "",
-              textError: textError.message
-            });
-            continue;
-          }
-        }
-        results.push({
-          id: clonedConnector.id,
-          originalStartNodeId: originalStartId,
-          originalEndNodeId: originalEndId,
-          usedStartNodeId: startId,
-          // ID actually used for connection
-          usedEndNodeId: endId,
-          // ID actually used for connection
-          text: text || ""
-        });
-        processedCount++;
-        await sendProgressUpdate(
-          commandId,
-          "create_connections",
-          "in_progress",
-          processedCount / totalCount,
-          totalCount,
-          processedCount,
-          `Created connection ${processedCount}/${totalCount}`
-        );
-      } catch (error) {
-        console.error("Error creating connection", error);
-        processedCount++;
-        await sendProgressUpdate(
-          commandId,
-          "create_connections",
-          "in_progress",
-          processedCount / totalCount,
-          totalCount,
-          processedCount,
-          `Error creating connection: ${error.message}`
-        );
-        results.push({
-          error: error.message,
-          connectionInfo: connections[i]
-        });
-      }
-    }
-    await sendProgressUpdate(
-      commandId,
-      "create_connections",
-      "completed",
-      1,
-      totalCount,
-      totalCount,
-      `Completed creating ${results.length} connections`
-    );
-    return {
-      success: true,
-      count: results.length,
-      connections: results
-    };
-  }
-
-  // figma_plugin/handlers/prototypingHandlers.ts
   async function updateReactions(params) {
     const { nodeId, reactions } = params || {};
     if (!nodeId) {
@@ -6964,24 +6655,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
       case "create_instance":
         await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
         return await createComponentInstance(params);
-      case "create_connection":
-        if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-        if (params && params.connectorId) {
-          if (!await checkScopeAccess(params.connectorId)) throw new Error(formatScopeError2(`Operation denied: Connector node ${params.connectorId} outside editable scope`));
-        }
-        if (params && params.connections && Array.isArray(params.connections)) {
-          for (const conn of params.connections) {
-            if (!await checkScopeAccess(conn.startNodeId)) throw new Error(formatScopeError2(`Operation denied: Start node ${conn.startNodeId} outside editable scope`));
-            if (!await verifyNodeName(conn.startNodeId, conn.startNodeName)) throw new Error(ERRORS.NAME_MISMATCH);
-            const startNode = await figma.getNodeByIdAsync(conn.startNodeId);
-            if (startNode) assertNotLocked(startNode);
-            if (!await checkScopeAccess(conn.endNodeId)) throw new Error(formatScopeError2(`Operation denied: End node ${conn.endNodeId} outside editable scope`));
-            if (!await verifyNodeName(conn.endNodeId, conn.endNodeName)) throw new Error(ERRORS.NAME_MISMATCH);
-            const endNode = await figma.getNodeByIdAsync(conn.endNodeId);
-            if (endNode) assertNotLocked(endNode);
-          }
-        }
-        return await createConnections(params);
       case "text_set_content":
         if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
         if (!params || !params.text || !Array.isArray(params.text)) throw new Error("Missing or Invalid text parameter");

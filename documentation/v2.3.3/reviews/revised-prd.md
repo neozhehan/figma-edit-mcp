@@ -1,6 +1,9 @@
 # v2.3.3 PRD: Plugin Type-Check Restoration & Contract-Integrity Closure
 
-This document is the product / implementation spec for the **v2.3.3** release of `figma-edit-mcp`. It follows v2.3.2 (Safety Contract Conformance & Atomicity Hardening) and has two tracks:
+> [!CAUTION]
+> **Historical adversarial-review draft; superseded.** This is not the current implementation contract. The authoritative v2.3.3 specification is [`../prd.md`](../prd.md), whose Rev 73 removes `create_connection` and `reaction_to_connector_strategy`. Connector requirements below are retained only as evidence of the discarded design.
+
+This document was a proposed product / implementation spec for the **v2.3.3** release of `figma-edit-mcp`. It follows v2.3.2 (Safety Contract Conformance & Atomicity Hardening) and has two tracks:
 
 1. **Type-check restoration (developer infrastructure).** Restore TypeScript type-checking for the Figma plugin source, which is currently silently disabled by a misconfigured `figma_plugin/tsconfig.json`, and add a CI gate so it cannot regress.
 2. **Contract-integrity closure.** Close the original code-level Gaps 1, 3, and 5 from [`figma-edit-mcp-gap-details.md`](figma-edit-mcp-gap-details.md), plus the follow-up gaps exposed by the 2026-07-10 adversarial source review and live MCP run on channel `pn68`: an unusable annotation contract, shallow-only strict input validation, incoherent batch envelopes and hidden partial mutation, implicit-parent scope escapes, unsafe connector defaults/clones, unbound plugin/server peers, and unstructured dynamic-page load failures. Gaps 2 and 4 from the original review remain documentation-only; their README correction stays outside this PRD.

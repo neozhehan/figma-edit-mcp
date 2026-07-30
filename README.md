@@ -242,7 +242,6 @@ Tools are grouped into a two-level, underscore-separated namespace (`group_actio
 | `create_component` | Convert an existing frame into a main component |
 | `create_instance` | Instantiate a component at a position |
 | `create_component_set` | Combine components into a component set (variants) |
-| `create_connection` | Draw connector lines between nodes, or set/check the default connector |
 
 ### `style` — shared styles
 
@@ -311,7 +310,6 @@ Built-in prompts guide complex multi-step design tasks:
 
 | Prompt | Description |
 |---|---|
-| `reaction_to_connector_strategy` | Convert prototype reaction flows into visual FigJam connector lines |
 | `swap_overrides_instances` | Transfer component instance overrides from a source to multiple targets |
 
 ---

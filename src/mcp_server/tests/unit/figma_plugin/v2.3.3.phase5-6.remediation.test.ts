@@ -89,7 +89,7 @@ describe("One name-verification description form across every tool", () => {
     // fields, only one of which named the read tool or said "verbatim" — the
     // guides state the rule but load on demand, while descriptions are always in
     // context, so a drifting phrasing is a first-call-correctness leak.
-    const VERIFICATION_FIELD = /^(nodeName|parentNodeName|childNodeName|startNodeName|endNodeName|styleName)$/;
+    const VERIFICATION_FIELD = /^(nodeName|parentNodeName|childNodeName|styleName)$/;
     const EXPECTED_READ_TOOLS: Record<string, "node_info" | "style_list"> = {
         "annotation_set.annotations.nodeName": "node_info",
         "component_delete_property.nodeName": "node_info",
@@ -97,8 +97,6 @@ describe("One name-verification description form across every tool", () => {
         "create_component.nodeName": "node_info",
         "create_component_set.components.nodeName": "node_info",
         "create_component_set.parentNodeName": "node_info",
-        "create_connection.connections.endNodeName": "node_info",
-        "create_connection.connections.startNodeName": "node_info",
         "create_frame.parentNodeName": "node_info",
         "create_instance.parentNodeName": "node_info",
         "create_shape.parentNodeName": "node_info",
@@ -147,7 +145,7 @@ describe("One name-verification description form across every tool", () => {
         return found;
     };
 
-    it("pins all 35 field paths to the correct read tool and shared semantic form", () => {
+    it("pins all 36 field paths to the correct read tool and shared semantic form", () => {
         const collected: Array<[string, string]> = [];
         for (const [tool, schema] of Object.entries<any>(INPUTS)) {
             collected.push(...collect(schema, [tool]));

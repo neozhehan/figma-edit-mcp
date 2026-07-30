@@ -129,8 +129,6 @@ const EXPECTED_CONTRACTS: Record<string, string[]> = {
     create_instance: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
     create_component: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "scopeRootPreservation", "handlerPrevalidationBeforeMutation"],
     node_insert_child: ["nodePerm", "parentScope", "parentName", "scope", "name", "lockedParent", "lockedTarget", "instanceInteriorParent", "instanceInteriorTarget"],
-    create_connection: ["nodePerm", "lockedTarget"],
-
     variable_manage: ["remoteAsset", "explicitNameNonEmpty"],
     variable_delete: ["name", "remoteAsset"],
     style_manage: ["remoteAsset", "explicitNameNonEmpty"],
@@ -203,8 +201,6 @@ const IGNORE_TOKENS = new Set<string>([
     "opacity normalized, no NaN",
     "self/cyclic-parent",
     "index bounds",
-    "connector scope",
-    "per-connection start/end scope+name",
     "var-perm",
     "style-perm",
     "ids-xor-collection",

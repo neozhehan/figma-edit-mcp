@@ -33,8 +33,7 @@ import {
     deleteComponentProperty
 } from '../handlers/componentHandlers.js';
 
-import { getReactions, createConnections } from '../handlers/connectorHandlers.js';
-import { updateReactions } from '../handlers/prototypingHandlers.js';
+import { getReactions, updateReactions } from '../handlers/prototypingHandlers.js';
 import { setMultipleTextContents, setTextStyle } from '../handlers/textHandlers.js';
 import { getAnnotations, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
 import { getVariables, setBoundVariable, handleVariableRequest, deleteVariables } from '../handlers/variableHandlers.js';
@@ -459,30 +458,6 @@ async function handleCommand(command: any, params: any) {
         case "create_instance":
             await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
             return await createComponentInstance(params);
-
-        case "create_connection":
-            if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-
-            // Validate connectorId if setting default
-            if (params && params.connectorId) {
-                if (!(await checkScopeAccess(params.connectorId))) throw new Error(formatScopeError(`Operation denied: Connector node ${params.connectorId} outside editable scope`));
-            }
-
-            // Validate connections if creating lines
-            if (params && params.connections && Array.isArray(params.connections)) {
-                for (const conn of params.connections) {
-                    if (!(await checkScopeAccess(conn.startNodeId))) throw new Error(formatScopeError(`Operation denied: Start node ${conn.startNodeId} outside editable scope`));
-                    if (!(await verifyNodeName(conn.startNodeId, conn.startNodeName))) throw new Error(ERRORS.NAME_MISMATCH);
-                    const startNode = await figma.getNodeByIdAsync(conn.startNodeId);
-                    if (startNode) assertNotLocked(startNode);
-
-                    if (!(await checkScopeAccess(conn.endNodeId))) throw new Error(formatScopeError(`Operation denied: End node ${conn.endNodeId} outside editable scope`));
-                    if (!(await verifyNodeName(conn.endNodeId, conn.endNodeName))) throw new Error(ERRORS.NAME_MISMATCH);
-                    const endNode = await figma.getNodeByIdAsync(conn.endNodeId);
-                    if (endNode) assertNotLocked(endNode);
-                }
-            }
-            return await createConnections(params);
 
         case "text_set_content":
             if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);

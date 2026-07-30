@@ -443,10 +443,6 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 childCount: 2,
                 variantProperties: { "Size": { values: ["S", "L"] } }
             },
-            create_connection: {
-                success: true,
-                message: "Connections created"
-            },
             style_list: {
                 colors: [],
                 texts: [],

@@ -109,7 +109,7 @@ describe("Phase 1.1a: callers await sendProgressUpdate", () => {
         const fs = await import("node:fs/promises");
         const files = [
             "figma_plugin/handlers/annotationHandlers.ts",
-            "figma_plugin/handlers/connectorHandlers.ts",
+            "figma_plugin/handlers/prototypingHandlers.ts",
             "figma_plugin/handlers/nodeModifiers.ts",
             "figma_plugin/handlers/textHandlers.ts",
         ];

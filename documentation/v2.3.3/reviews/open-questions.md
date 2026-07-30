@@ -1,8 +1,12 @@
 # v2.3.3 Open Questions
 
+> **Historical record through PRD Rev 72.** The long status paragraph immediately below records the decision sequence before Rev 73 resolved Q13 by removal. Its revised-hybrid statement is superseded and is not the current product contract.
+>
 > **Status.** Q1–Q8 (resolved 2026-07-09) are recorded in [`prd.md`](prd.md) (Q1 → D5; Q2 → D6; Q3 → D8; Q4 → D9; Q5 → Release identity; Q6 → D3; Q7 → D7; Q8 → Compatibility posture); their entries keep the options, pros and cons, and adopted resolutions. **Reopened 2026-07-10:** the follow-up adversarial review ([`revised-prd.md`](revised-prd.md)) made prescriptions that PRD Rev 11 deliberately did **not** adopt; each is tracked as Q9–Q15 below. Q9–Q14 were resolved the same day (PRD Revs 12–18; Q13 via a revised hybrid after live verification on channel `90vr`; Q14 reaffirming Q1 against the reversal); Q15 (release sizing) was resolved 2026-07-10 as **Option C** — a single v2.3.3 release containing every phase of the PRD (PRD Rev 19). **All fifteen questions are resolved; implementation is unblocked.** Rev 11 also corrected Q7's factual premise — see the note on that entry. **Reopened 2026-07-17:** the adversarial review of the Phase 3–4 *implementation* (working tree, pre-commit) found four gaps where the PRD under-specifies the fix; they are tracked as **Q16–Q19 below**. **All four were resolved 2026-07-18** (Q16: Option A; Q17: Option B; Q18: Option A; Q19: Option A) — Q16 in `prd.md` D9's code-inventory note (Rev 23) and the task-list header, with the legacy-error conversion it defers now specified by the [v2.3.4 PRD](../../v2.3.4/prd.md); Q17 in `prd.md` D5's pre-check-scope bullet (Rev 24); Q18 in `prd.md` D5's partial-disclosure bullet and D7's shared-vocabulary note (Rev 25); Q19 in `prd.md` D5's font-loading-order bullet (Rev 26). **Reopened again 2026-07-18:** the follow-up adversarial review of the Phase 3–4 implementation ([Phase-3-&-4-review.md](Phase-3-&-4-review.md)) raised two findings that need decisions rather than direct fixes — its P4-4 (`channel_join` envelope vs. the recorded v2.3.4 Q1 deferral) and P4-8 (an internal PRD contradiction on the dual-description marker) — tracked as **Q20–Q21 below**. The review's remaining findings are remediation work under the already-resolved decisions, not new questions. **Both were resolved 2026-07-18** — Q20 (Option A) in `prd.md` D9's `channel_join` pass-through note (Rev 28), with the split recorded in the [v2.3.4 PRD](../../v2.3.4/prd.md)'s Q1 context; Q21 (Option B) as the in-place correction of D5's Q14 sentence (Rev 29), with the marker tests upgraded to assert the emitted `tools/list`. **All twenty-one questions are resolved; Phase 4 closes when the review's remediation findings land.** They gate the finalization of Phase 4 (and Q16 gated the Phase 12 playbook), not the start of any other phase. A set of one-line ratifications from the same review is recorded at the end of this file. **Reopened 2026-07-18** by the Phase 5–6 implementation review ([Phase-5-&-6-review.md](Phase-5-&-6-review.md)): five of its findings need decisions rather than direct fixes — tracked as **Q22–Q26 below** (Q22: the parent-name refusal's code regime; Q23: the duplicate-target refusal's layer and code; Q24: correcting Q9's text before-value; Q25: batch row vocabulary; Q26: legacy count aliases). The review's remaining findings are remediation work under recorded decisions. Q22–Q26 gate the closure of Phases 5–6 (Q22 and Q23 also gate the Phase 12 playbook; Q25 and Q26 feed the Phase 13 CHANGELOG); a second ratifications list from that review follows the first at the end of this file. **Q22 was resolved 2026-07-18** (Option A) — recorded in `prd.md` D6 (the merged-wording prescription corrected in place to the coded `PARENT_NAME_MISSING`/`PARENT_NAME_MISMATCH` pair) and D9's code inventory (Rev 31); the reopened Phase 5 handler task carries the remediation. **Q23 was resolved 2026-07-18** (Option B) — recorded in `prd.md` D7 (Rev 32): duplicate rejection moves to Layer 1 as a schema `.superRefine()`, no new D9 code, the plugin dispatcher check retained as uncoded defense in depth; the reopened Phase 6 duplicate task carries the remediation. **Q24 was resolved 2026-07-18** (Option A) — recorded in `prd.md` D7's Q9 bullet (Rev 33): the text failure row carries `before: {fontName}` and `whatChanged`, the flag set only when the font fallback applied, superseding Q9's `characters` before-value; the reopened Phase 6 disclosure task carries the remediation. **Q25 was resolved 2026-07-18** (Option A) — recorded in `prd.md` D7 (Rev 34): the four batch aggregators' per-item rows converge on `nodeId`/`status`/`error`, renaming `instance_set_overrides`' rows; the reopened Phase 6 task carries the remediation and the Phase 13 CHANGELOG names the rename. **Q26 was resolved 2026-07-18** (Option B) — recorded in `prd.md` D7 (Rev 35): the batch handlers expose only the shared envelope counts, every tool-specific duplicate dropped (no marked aliases), on the "do not accrue legacy" principle. **All of Q22–Q26 are resolved.** **Reopened 2026-07-23:** a spot-check follow-up on the Phase 3–4 review's P4-5 finding surfaced one further gap needing a decision rather than a direct fix — tracked as **Q27** (how centralized the error registry must be, given the plugin-bundle boundary that stops the plugin from importing `src/shared` at runtime). **Q27 was resolved 2026-07-23** (Option B) — recorded in `figma_plugin/utils/errors.ts`'s header comments and `prd.md` D9 (Rev 36): the ten operational codes migrate from the legacy `ERRORS` string table into the `REFUSALS` factory registry alongside the D5/D6 codes, `ERRORS` is re-scoped to the closed legacy-only surface, and `UNKNOWN_ERROR` becomes a named local constant on each side of the (deliberately unimported) bundle boundary. **Reopened again 2026-07-23:** a second spot-check on the same review found the P3-4 and P4-5 remediations each undersold — most of both was mechanical (a suppression-checker multiline masking pass, the `channel_join` `details` loss, the operational-code migration; all fixed on 2026-07-23), but two residues are genuine decisions, tracked as **Q28–Q29 below**: Q28 (the suppression checker's comment-detection approach — the regex-desync false negative it carried) and Q29 (whether D5's server-side `.superRefine()` messages must be centralized per D9's letter, or legitimately co-locate with their schemas). The mechanical fixes from the same spot-check (the checker's directive *anchoring* false positive, and the two hardcoded `UNKNOWN_ERROR` literals) are done and need no decision. **Q28 was resolved 2026-07-23** (Option C) — recorded in `scripts/check-suppressions.ts`'s header and `prd.md` D3/Rev 37: the checker is rewritten onto the TypeScript parser (`ts.createSourceFile` comment enumeration), deleting the hand-rolled masking lexer and closing the regex-desync false negative. **Q29 was resolved 2026-07-23** (Option B) — recorded in `prd.md` D9 (Rev 38): D9's central-registry rule is scoped to the coded plugin refusals; the server-side `.superRefine()` messages are a schema layer that legitimately co-locates with its schema and is held to D9's content bar (a new Phase 4 test asserts the name-verification refinements meet it). **All twenty-nine open questions are resolved.**
 
-This file records the unresolved decisions in [`prd.md`](prd.md) Track 2 (safety-contract gap closure). Each question lists the viable options with pros and cons, and a recommendation. The questions come from an adversarial re-review of the PRD against the source and against live plugin behavior (2026-07-09). Resolve each one by recording the decision in the PRD (new D-note or an edit to D5–D8) and deleting or checking off the entry here.
+> **Current status (2026-07-30, PRD Rev 73).** Q13 is resolved: remove `create_connection` and `reaction_to_connector_strategy`, retain the native `reaction_list` and `reaction_update` tools, and do not ship a connector-artifact replacement in v2.3.3. All recorded questions are resolved.
+
+This file is the decision record for questions raised against [`prd.md`](prd.md) Track 2. Every question is resolved; each entry retains its viable options, pros and cons, recommendation, and final disposition as historical evidence.
 
 All recommendations apply one shared criterion: the primary consumer of this contract is an LLM. Prefer the option that maximizes **first-call correctness** (the model composes a correct call from the schema and guides alone) and **one-round-trip recovery** (when a call fails, the error itself tells the model how to fix it in one step). Q1 defines the criterion in full; the other recommendations apply it.
 
@@ -22,7 +26,7 @@ All recommendations apply one shared criterion: the primary consumer of this con
 | Q10 | Annotation retry identity: JCS/SHA-256 payload digests? | future D10 scope | ✅ **Resolved: Option B** (2026-07-10) — counts + list-before-retry confirmed in `prd.md` D10; digests rejected |
 | Q11 | Channel identity: protocol digests, nonces, scope fingerprints? | future D13 scope | ✅ **Resolved: Option B** (2026-07-10) — D13 lite confirmed; digests rejected until evidence; race check → Phase 9 |
 | Q12 | Page scans: pinned scheduler constants and heartbeat cadence? | future D14 scope | ✅ **Resolved: Option B** (2026-07-10) — bounded per-page timeout adopted in `prd.md` D14/Phase 10; constants rejected |
-| Q13 | Connectors (Gap 9): verify-and-fix, full redesign, or leave as is? | Phase 11 | ✅ **Resolved: revised hybrid** (2026-07-10) — explicit-template core adopted, FigJam-only rejected; recorded in `prd.md` D12/Phase 11 |
+| Q13 | Keep, replace, or remove the connector-visualization surface after the real Design host rejected it? | **Phase 11 closure** | ✅ **Resolved: remove tool + prompt** (2026-07-30, PRD Rev 73) — retain native reaction tools; no connector fallback |
 | Q14 | Does the emitted-`tools/list` argument overturn Q1's Option B? | **Phase 4** | ✅ **Resolved: Option A** (2026-07-10) — Q1 reaffirmed, reversal rejected; recorded in `prd.md` D5 |
 | Q15 | One release or two, and under which version number? | **before implementation** | ✅ **Resolved: Option C** (2026-07-10) — Single v2.3.3 release |
 | Q16 | Which error codes exist? Inventory and granularity for the D5 refusals and fallbacks | **Phase 4 finalization, Phase 12** | ✅ **Resolved: Option A** (2026-07-18) — recorded in `prd.md` D9 (Rev 23); legacy conversion deferred to the [v2.3.4 PRD](../../v2.3.4/prd.md) |
@@ -321,9 +325,101 @@ Gap 3's lesson is that the schema is what teaches the model what to supply. Whic
 
 ---
 
-## Q13 — Connectors (Gap 9): verify-and-fix, full redesign, or leave as is?
+## Q13 — Connector visualization (Gap 9): keep, replace, or remove?
 
-**Status: ✅ resolved, 2026-07-10 — revised hybrid adopted (PRD Rev 17).** Neither original option as written: verification (Rev 16) shifted the recommendation to a hybrid, adopted in [`prd.md`](prd.md) D12 and new Phase 11 — Option A's frame (tool keeps its purpose and Design-file support; FigJam-only explicitly rejected because the flagship reaction-flow use case lives in Design) with Option B's explicit-template core (creation-only; required name-verified `connectorId` + `connectorName` per call; cache and auto-adoption removed; `CONNECTOR_TEMPLATE_REQUIRED` bootstrap error; D7 envelope; D11 cleanup). Deciding evidence: the bootstrap dead-end means template discovery happens at least once regardless, so the hidden default bought nothing while costing first-call correctness on every call; and fixing the cross-file cache in place converges to the same cost as removing it. The options and rationale below are kept for the record.
+**Status: ✅ resolved, 2026-07-30 — remove the public tool and prompt (PRD Rev 73).** Rev 71 implemented the explicit-template, D7 accounting, and D11 cleanup core chosen in Rev 17. Live channel `76js` then supplied three real FigJam-pasted connectors in Figma Design. A two-item call reached `ConnectorNode.clone()` and returned two ordered failures: `Cloning CONNECTOR nodes is not supported in the current editor`. The page reconciled to the exact opening 62 descendants and the same three fixture IDs, so containment held but Design creation did not. This matches [Figma's current plugin guidance](https://developers.figma.com/docs/plugins/working-in-figjam/): `ConnectorNode` is FigJam-specific; plugins may read and modify a pasted connector in Design but cannot create one there.
+
+**Decision.** Remove `create_connection` and `reaction_to_connector_strategy` in v2.3.3. Keep `reaction_list` and `reaction_update` as the native Design prototype-metadata surface. Do not add a FigJam-only successor, a Design-native diagram fallback, or a dual-artifact tool in this release.
+
+The Golden Rule here is the file-wide criterion: maximize **first-call correctness** (the agent can select and compose the right operation from machine-readable contract plus fresh reads) and **one-round-trip recovery** (a refusal identifies the cause and the exact next valid call). A visually plausible but semantically different success is worse than a coded failure: it prevents recovery by hiding that the requested artifact was never created.
+
+**Why removal wins.**
+
+- Pros:
+  - The advertised tool list contains no operation that is impossible in the connected Figma Design file.
+  - Native prototypes keep one source of truth: reaction metadata in Design, without a generated FigJam diagram that can drift.
+  - It removes the hidden-template, clone/cursor, cross-editor, batch-accounting, and connector-only refusal surface instead of maintaining it for a secondary diagramming workflow.
+  - The two reaction tools remain focused on the actual design-system/prototyping value: auditing and editing interactions.
+- Cons:
+  - Existing callers lose the FigJam connector convenience and must migrate.
+  - No automatic visual flow-map artifact is provided in v2.3.3.
+  - `reaction_list` completeness and `reaction_update` overwrite safety still require the separate v2.3.4 repair.
+- Golden Rule impact:
+  - **First-call correctness: highest of the available v2.3.3 choices.** An agent cannot select a non-runnable or wrong-artifact workflow because it is absent from machine-readable discovery.
+  - **One-round-trip recovery: improved by prevention.** There is no doomed connector call to recover from; native reaction failures stay on the tools that can operate on the connected file. The v2.3.4 reaction repair adds lossless reads and state-bound updates.
+
+### Rev 72 options considered (historical)
+
+**Option A — make `create_connection` FigJam-only and fail Design closed.**
+
+Keep the Rev 71 explicit-template contract for FigJam, live-verify it in an actual FigJam file, and add an editor preflight before any template resolution or mutation. In Design, return a dedicated coded refusal such as `CONNECTOR_EDITOR_UNSUPPORTED`, naming the detected editor and explaining that native connector creation is FigJam-only. Expose `editorType` through `channel_join` or a standard discovery read so the agent can avoid the bad call before invoking the tool.
+
+- Pros:
+  - Preserves native `ConnectorNode` attachment, routing, styling, and label semantics where Figma actually supports them.
+  - Smallest implementation and verification surface; Rev 71's explicit-template, D7, and D11 work remains directly useful.
+  - No semantic downgrade, no new pseudo-node ownership model, and no risk of calling a line or group a connector.
+  - Strongest fail-closed interpretation of the Golden Rule.
+- Cons:
+  - Removes the flagship reaction-visualization write path from Figma Design.
+  - A static MCP tool list still exposes the tool in Design; without machine-readable `editorType`, an agent can only learn the limitation by failing once.
+  - The refusal is actionable but cannot fulfill the same-file Design request in one follow-up call; recovery requires moving the workflow to FigJam or choosing a different capability.
+- Golden Rule impact:
+  - **First-call correctness: high only if editor type is exposed before the call; otherwise medium.** The contract becomes truthful and deterministic, but prose alone cannot tell an agent which editor is currently connected.
+  - **One-round-trip recovery: diagnostically strong, operationally limited.** The error can give one exact next step, but no next `create_connection` call can produce the requested artifact in Design.
+
+**Option B — keep native FigJam connectors and add a separately named Design visual-flow tool.**
+
+Keep `create_connection` native and FigJam-only. Add a distinct Design-only tool—for example `create_flow_visual`—whose name, schema, and output state that it creates a visual annotation composed from Design-native nodes, not a `ConnectorNode`. Its contract must explicitly decide geometry, arrowheads, label behavior, parenting, nested endpoints, movement/staleness, regeneration or update ownership, cleanup, and result identity. At minimum, every success should disclose an unambiguous artifact discriminator such as `artifactType: "DESIGN_FLOW_VISUAL"` and a capability flag such as `tracksEndpoints: false`.
+
+- Pros:
+  - Preserves the reaction-visualization use case in Design without misrepresenting Figma's runtime capabilities.
+  - Separate tool names and result types make the semantic boundary visible before and after the call.
+  - Each editor path can have a smaller, stricter schema and its own tests instead of one conditional contract.
+  - Wrong-editor refusals can name the exact alternate tool, enabling a one-call correction.
+- Cons:
+  - The Design artifact is not a native connector: it will not inherit native endpoint attachment or routing unless those behaviors are separately implemented and maintained.
+  - Adds a substantial product contract: visual geometry, endpoint movement, stale-artifact handling, update/delete ownership, and accessibility all need decisions before implementation.
+  - Adds another public tool and result type, with new D11 containment, D7 accounting, guide, schema, and live-test obligations.
+  - Users may still assume native behavior unless the tool name and success envelope make the limitations conspicuous.
+- Golden Rule impact:
+  - **First-call correctness: highest if Design support is required.** Editor type plus two semantically honest tool contracts lets the agent choose the right operation without guessing or accepting a hidden downgrade.
+  - **One-round-trip recovery: high.** A wrong-editor or wrong-artifact refusal can point directly to the alternate tool and its required fields; per-item failures can retain the existing D7/D11 recovery model.
+
+**Option C — one tool with a required, explicit artifact discriminator.**
+
+Keep one public tool but require a machine-readable choice such as `artifactKind: "FIGJAM_CONNECTOR" | "DESIGN_FLOW_VISUAL"`. Use strict per-kind input and output unions, fail on editor/artifact mismatches, and never select a fallback from `figma.editorType` implicitly. The Design branch still requires every semantic decision listed under Option B.
+
+- Pros:
+  - One discoverable workflow for the user's high-level intent.
+  - Makes the artifact choice explicit rather than silently inferring it from the editor.
+  - Can share endpoint, label, D7, and D11 vocabulary across branches.
+- Cons:
+  - The same tool name still covers fundamentally different node types and attachment behavior.
+  - Conditional schemas and output unions increase composition and interpretation burden; a consumer must reason about both editor and artifact kind.
+  - More opportunities for branch drift, misleading shared fields, and recovery text that points to the wrong variant.
+  - Offers less contract clarity than two tools without avoiding Option B's Design-artifact implementation cost.
+- Golden Rule impact:
+  - **First-call correctness: medium to high, but below Option B.** A required discriminator prevents silent fallback, yet the wider union makes a correct first composition harder and makes semantic assumptions easier to miss.
+  - **One-round-trip recovery: high if every mismatch is coded and names the valid discriminator/editor pair.** Recovery quality is achievable, but it requires more invariant tests than separate tools.
+
+**Option D — silently create a line/vector/group in Design from the existing `create_connection` call.**
+
+- Pros:
+  - Smallest apparent API change and the fewest user-visible steps.
+  - Keeps existing reaction-flow prompts superficially working in both editors.
+- Cons:
+  - A successful response would claim one concept while creating another, with different attachment, routing, update, and selection semantics.
+  - Existing callers cannot tell whether `createdConnectorId` identifies a real `ConnectorNode`, one Design node, or a composite root.
+  - Silent fallback makes test success depend on visual resemblance rather than contract truth and would conceal downstream staleness when endpoints move.
+- Golden Rule impact:
+  - **First-call correctness: fails.** The call can be syntactically correct while producing an artifact the caller did not request or understand.
+  - **One-round-trip recovery: fails by construction.** A silent “success” emits no failure signal from which to recover.
+
+**Historical Rev 72 recommendation (superseded by the Rev 73 removal decision).** If Design reaction visualization had remained a release requirement, Option B was preferred; Option A was the safe minimum, Option C was viable only under a strong tool-count constraint, and Option D was rejected. Rev 73 instead removes this secondary visualization workflow entirely.
+
+### Historical Rev 16–17 record
+
+**Prior status: ✅ resolved, 2026-07-10 — revised hybrid adopted (PRD Rev 17), superseded by Revs 72–73.** Neither original option as written: verification (Rev 16) shifted the recommendation to a hybrid, adopted in [`prd.md`](prd.md) D12 and new Phase 11 — Option A's frame (tool keeps its purpose and Design-file support; FigJam-only explicitly rejected because the flagship reaction-flow use case lives in Design) with Option B's explicit-template core (creation-only; required name-verified `connectorId` + `connectorName` per call; cache and auto-adoption removed; `CONNECTOR_TEMPLATE_REQUIRED` bootstrap error; D7 envelope; D11 cleanup). Deciding evidence: the bootstrap dead-end means template discovery happens at least once regardless, so the hidden default bought nothing while costing first-call correctness on every call; and fixing the cross-file cache in place converges to the same cost as removing it. The options and rationale below are kept for the record.
 
 **Context.** The follow-up review reports five connector defects (unscoped `currentPage` template discovery, a cross-file `clientStorage` cache, no name verification for `connectorId`, per-item failures without cleanup, and an unconditionally `success: true` aggregate) and prescribes a redesign: remove default-template management and the cache entirely, require an explicit template and page parent on every call, and restrict creation to FigJam.
 

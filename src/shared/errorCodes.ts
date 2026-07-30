@@ -1,6 +1,6 @@
 /**
  * Ratified error-code inventory for v2.3.3 (open-questions Q16, Option A;
- * amended through PRD Rev 58). This is the authoritative membership list.
+ * amended through PRD Rev 73). This is the authoritative membership list.
  * Message factories are origin-scoped: socket admission uses
  * `CHANNEL_REFUSALS`, pre-wire MCP-client state uses `CLIENT_REFUSALS`, and
  * plugin-origin refusals use `figma_plugin/utils/errors.ts`. Inventory tests
@@ -49,7 +49,7 @@ export const CLIENT_OPERATIONAL_CODES = [
 ] as const;
 
 /**
- * Operational codes thrown by the plugin itself (Phases 10–11).
+ * Operational codes thrown by the plugin itself (Phase 10).
  *
  * Change 8 adds two on D9's "adds or edits" rule, the same precedent that added
  * `VARIABLE_SCOPES_MISSING` (Rev 27), the D6 parent pair (Rev 31), and
@@ -71,14 +71,14 @@ export const PLUGIN_OPERATIONAL_CODES = [
     "PAGE_LOAD_TIMEOUT",
     "DOCUMENT_SCAN_INCOMPLETE",
     "VARIABLE_IN_USE",
-    "CONNECTOR_TEMPLATE_REQUIRED",
 ] as const;
 
 /**
  * The operational codes of the ratified contract (Q16), grouped by origin.
  * The Change 5 split did not change membership; the Rev 57 addition of
  * `CHANNEL_NOT_BOUND` took the inventory from ten to eleven, and Change 8's
- * `PAGE_SCAN_FAILED` / `VARIABLE_IN_USE` take it from eleven to thirteen.
+ * `PAGE_SCAN_FAILED` / `VARIABLE_IN_USE` take it from ten to twelve after the
+ * Phase 11 connector surface and its dedicated refusal were removed.
  */
 export const OPERATIONAL_CODES = [
     ...SOCKET_OPERATIONAL_CODES,
@@ -134,7 +134,7 @@ export const JOIN_CODES = [
     "PLUGIN_DISCONNECTED",
 ] as const;
 
-/** The full ratified v2.3.3 inventory: twenty-three codes plus the fallback (Change 8). */
+/** The full ratified v2.3.3 inventory: twenty-two codes plus the fallback. */
 export const RATIFIED_CODES = [
     ...OPERATIONAL_CODES,
     ...VERIFICATION_CODES,

@@ -22,7 +22,7 @@ export const UNKNOWN_ERROR = "UNKNOWN_ERROR";
  * ratified `UNKNOWN_ERROR` fallback (converted to coded factories only as
  * each is touched, per the v2.3.4 burn-down). Every code this release adds
  * that can originate inside the plugin — D5/D6/D10 verification refusals and
- * the Phase 10–11 operational codes — lives in the `REFUSALS` factory registry
+ * the Phase 10 operational codes — lives in the `REFUSALS` factory registry
  * below, not here. Socket-admission and MCP-client state codes live at their
  * actual origins under `src/shared`. Do not add new entries.
  */
@@ -52,9 +52,8 @@ export const ERRORS: any = {
 /**
  * The plugin-origin v2.3.3 coded-refusal registry (Q16; scope corrected by
  * Q27 and Change 5 P9-F3): design-system verification (D5), parent/category
- * verification (D6/D10), Phase 10's live page-load codes, and Phase 11's
- * connector placeholder live here as message factories, not as plain strings
- * in `ERRORS`. "Every
+ * verification (D6/D10), and Phase 10's live page-load codes live here as
+ * message factories, not as plain strings in `ERRORS`. "Every
  * coded refusal originates from the central registry of message factories"
  * means the registry at the layer that can actually raise it: this table for
  * plugin-origin codes, `CHANNEL_REFUSALS` for socket admission, and
@@ -73,9 +72,8 @@ export const REFUSALS = {
     // frame reaches Figma, so the plugin has no throw site for them and a
     // bundle-side copy would be dead weight in `code.js`. They live only in
     // `src/shared/channelProtocol.ts`; a regression asserts their absence here.
-    // Phase 10's page-load entries are raised through pageLoad.ts. Phase 11's
-    // connector entry remains a placeholder until that phase lands; both are
-    // plugin-thrown and therefore belong in this registry.
+    // Phase 10's page-load entries are raised through pageLoad.ts and belong in
+    // this plugin-origin registry.
     //
     // Page codes are operational failures, not safety refusals — no "Operation
     // Denied:" prefix (D9 reserves the prefix for policy/verification refusals).
@@ -146,10 +144,6 @@ export const REFUSALS = {
         code: "VARIABLE_IN_USE",
         message: `Operation Denied: ${summary}\n\nNothing was deleted. Read each listed consumer's current state with node_info (nodes), style_list (styles), or variable_list (aliasing variables), clear or rebind that reference, then retry this exact call. details.variablesInUse lists every consumer by variable ID.`,
         details: { variablesInUse },
-    }),
-    CONNECTOR_TEMPLATE_REQUIRED: () => ({
-        code: "CONNECTOR_TEMPLATE_REQUIRED",
-        message: "Operation Denied: No valid connector template was found in the document. Find a connector with page_info/node_info (pasting one from FigJam if the file has none) and pass its ID and exact current name.",
     }),
     VARIABLE_NAME_MISSING: () => ({
         code: "VARIABLE_NAME_MISSING",

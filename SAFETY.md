@@ -197,7 +197,6 @@ Gate order in the dispatcher (most-specific error wins): **permission → scope 
 | `create_instance` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **handler-prevalidation-before-mutation** |
 | `create_component` | node-perm · scope · name · locked · **instance-interior (§4)** · **scope-root self-destruction (§1)** · **handler-prevalidation-before-mutation** |
 | `node_insert_child` | node-perm · parent scope+name · child scope+name · **locked(parent & child)** · **self/cyclic-parent (§3)** · **instance-interior, both ids (§4)** · **index bounds (§13)** |
-| `create_connection` | node-perm · connector scope (if set) · per-connection start/end scope+name · locked |
 
 For the implicit creator and `node_clone` paths, handler prevalidation resolves the destination before construction and insertion is the immediate next synchronous operation. Later failures trigger best-effort cleanup. A failed cleanup preserves the initiating error and discloses the survivor's ID/name/type, `survivingParentState: "located" | "detached" | "unknown"`, nullable `survivingParentId`, and `verifiedParentId`. `located` carries the exact readable ID, `detached` requires an observed null parent, and `unknown` means the parent or its ID could not be read safely. `create_component` uses the analogous `survivingComponentParentState`/`survivingComponentParentId`, attempts every eligible child restoration independently, and removes its new component only after positive proof that the source is live, every original child is back, and the component is empty; its evidence separates restored, still-owned, unknown-parent, and relocated children plus restoration failures.
 
@@ -234,7 +233,7 @@ For the implicit creator and `node_clone` paths, handler prevalidation resolves 
 These run in the MCP server before the plugin and reject malformed input early (not a control — see A1/AS6). Notable ones:
 
 - **Color channels** `r,g,b,a` constrained `0–1` on `create_shape`/`create_frame`/`create_text` and `style_manage` paints (`min(0).max(1)`). (Plugin-side, `create_frame`/`create_text` also normalize alpha so a missing `a` never yields `NaN` opacity — §12.)
-- **Mutual Exclusivity:** `node_set_fill` requires exactly one of a solid color (`r,g,b`), an image payload (`url` or `bytesBase64`) (v2.3.0 §1), or `clear:true` (v2.3.1 §4); `variable_delete` ids-xor-collection; `create_connection` connector-vs-connections.
+- **Mutual Exclusivity:** `node_set_fill` requires exactly one of a solid color (`r,g,b`), an image payload (`url` or `bytesBase64`) (v2.3.0 §1), or `clear:true` (v2.3.1 §4); `variable_delete` requires variable IDs xor a collection ID.
 - **Enums** for layout (`layoutMode`, `primaryAxisAlignItems`, `counterAxisAlignItems`, `layoutSizingHorizontal/Vertical`), `textCase`, `textDecoration`, shape `type`, paint `type`, grid `pattern`.
 - **Bindable Fields Allowlist:** `node_bind_variable` constrains `bindVariables` keys to a strict typings-derived allowlist `BINDABLE_FIELDS` instead of an open record (v2.3.1 §2).
 - **Shape params:** `pointCount ≥ 3`, `innerRadius`/`arcData.innerRadius` `0–1`, `strokeWeight` positive.

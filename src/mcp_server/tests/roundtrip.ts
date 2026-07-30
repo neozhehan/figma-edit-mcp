@@ -1,10 +1,13 @@
 import { spawn } from "child_process";
+import { readFileSync } from "fs";
 import { resolve } from "path";
 
 async function runRoundtrip() {
     console.log("Starting MCP-protocol round-trip verification...");
 
     const serverPath = resolve(__dirname, "../../../dist/server.js");
+    const packagePath = resolve(__dirname, "../../../package.json");
+    const expectedVersion = JSON.parse(readFileSync(packagePath, "utf8")).version;
     const child = spawn("node", [serverPath], {
         stdio: ["pipe", "pipe", "inherit"],
     });
@@ -84,8 +87,10 @@ async function runRoundtrip() {
         if (serverInfo.name !== "figma-edit-mcp") {
             throw new Error(`Expected server name "figma-edit-mcp", got "${serverInfo.name}"`);
         }
-        if (serverInfo.version !== "2.0.0") {
-            throw new Error(`Expected server version "2.0.0", got "${serverInfo.version}"`);
+        if (serverInfo.version !== expectedVersion) {
+            throw new Error(
+                `Expected server version "${expectedVersion}", got "${serverInfo.version}"`,
+            );
         }
         if (!instructions || !instructions.includes("figma-edit://guide/")) {
             throw new Error(`Expected eager instructions breadcrumb, got "${instructions}"`);
@@ -134,10 +139,34 @@ async function runRoundtrip() {
         const toolsResponse = await sendRequest("tools/list", {}, 4);
         console.log("Verifying tools/list response...");
         const tools = toolsResponse.result.tools;
-        if (!tools || tools.length !== 46) {
-            throw new Error(`Expected 46 registered tools, got ${tools?.length}`);
+        if (!tools || tools.length !== 45) {
+            throw new Error(`Expected 45 registered tools, got ${tools?.length}`);
         }
-        console.log("✅ Tools list verified successfully (46 tools registered).");
+        const toolNames = tools.map((tool: any) => tool.name);
+        if (toolNames.includes("create_connection")) {
+            throw new Error("Removed tool create_connection is still registered");
+        }
+        for (const name of ["reaction_list", "reaction_update"]) {
+            if (!toolNames.includes(name)) {
+                throw new Error(`Missing retained reaction tool: ${name}`);
+            }
+        }
+        console.log("✅ Tools list verified successfully (45 tools registered).");
+
+        // 5. Prompts List
+        const promptsResponse = await sendRequest("prompts/list", {}, 5);
+        console.log("Verifying prompts/list response...");
+        const prompts = promptsResponse.result.prompts;
+        const promptNames = prompts.map((prompt: any) => prompt.name);
+        if (promptNames.includes("reaction_to_connector_strategy")) {
+            throw new Error(
+                "Removed prompt reaction_to_connector_strategy is still registered",
+            );
+        }
+        if (!promptNames.includes("swap_overrides_instances")) {
+            throw new Error("Missing retained prompt: swap_overrides_instances");
+        }
+        console.log("✅ Prompts list verified successfully.");
 
         console.log("All round-trip checks passed successfully! 🎉");
         child.kill();

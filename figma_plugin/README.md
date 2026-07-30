@@ -17,11 +17,11 @@ figma_plugin/
 │   ├── index.js        # Central export for all handlers
 │   ├── annotationHandlers.js
 │   ├── componentHandlers.js
-│   ├── connectorHandlers.js
 │   ├── layoutHandlers.js
 │   ├── nodeCreators.js
 │   ├── nodeModifiers.js
 │   ├── nodeReaders.js
+│   ├── prototypingHandlers.js
 │   ├── stylingHandlers.js
 │   └── textHandlers.js
 └── utils/              # Utility modules
@@ -59,7 +59,7 @@ npm run build:all
 | `stylingHandlers.js` | Fill color, stroke color, corner radius |
 | `layoutHandlers.js` | Auto-layout (mode, padding, alignment, sizing, spacing) |
 | `componentHandlers.js` | Styles, components, instances, exports, overrides |
-| `connectorHandlers.js` | Reactions, connectors, connections |
+| `prototypingHandlers.js` | Prototype reaction discovery and updates |
 | `textHandlers.js` | Text scanning and modification |
 | `annotationHandlers.js` | Annotations and node type scanning |
 

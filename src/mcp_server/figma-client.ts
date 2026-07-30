@@ -170,7 +170,6 @@ export type FigmaCommand =
     | "create_component"
     | "create_instance"
     | "create_component_set"
-    | "create_connection"
     // style
     | "style_list"
     | "style_manage"
@@ -779,15 +778,6 @@ export function sendCommandToFigma(
         // Handle parentId parameter
         if (normalizedParams.parentId) {
             normalizedParams.parentId = normalizeNodeId(normalizedParams.parentId);
-        }
-
-        // Handle connections array (used in create_connections)
-        if (normalizedParams.connections && Array.isArray(normalizedParams.connections)) {
-            normalizedParams.connections = normalizedParams.connections.map((conn: any) => ({
-                ...conn,
-                startNodeId: normalizeNodeId(conn.startNodeId) || conn.startNodeId,
-                endNodeId: normalizeNodeId(conn.endNodeId) || conn.endNodeId
-            }));
         }
 
         // Handle text array for set_multiple_text_contents

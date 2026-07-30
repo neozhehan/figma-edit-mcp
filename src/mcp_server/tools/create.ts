@@ -276,48 +276,4 @@ export function registerCreateTools(server: McpServer) {
             return toolResult(result);
         }
     );
-
-    // 8. Create Connections Tool
-    server.registerTool(
-        "create_connection",
-        {
-            title: "Create Connections",
-            description: "Create connector lines between nodes, or set/check the default connector template. Pass `connectorId` to set a default, `connections` to draw lines, or nothing to check the current default.",
-            inputSchema: z.object({
-                connectorId: z
-                    .string()
-                    .optional()
-                    .describe("Optional: The ID of the connector node to set as default template"),
-                connections: z
-                    .array(
-                        z.object({
-                            startNodeId: z.string().describe("ID of the starting node"),
-                            startNodeName: z.string().describe("The start node's current exact name, passed back verbatim from `node_info`."),
-                            endNodeId: z.string().describe("ID of the ending node"),
-                            endNodeName: z.string().describe("The end node's current exact name, passed back verbatim from `node_info`."),
-                            text: z.string().optional().describe("Optional text to display on the connector"),
-                        })
-                    )
-                    .optional()
-                    .describe("Optional: Array of node connections to create"),
-            }),
-            outputSchema: looseOutput({
-                success: z.boolean().optional().describe("Whether the connection command succeeded"),
-                message: z.string().optional().describe("Status message"),
-                defaultConnectorId: z.string().optional().describe("The ID of the default connector style"),
-                results: z.any().optional().describe("Execution details"),
-            }),
-            annotations: {
-                openWorldHint: true
-            }
-        },
-        async ({ connectorId, connections }: any) => {
-            const result = await sendCommandToFigma("create_connection", {
-                connectorId,
-                connections,
-                checkDefault: !connectorId && !connections
-            });
-            return toolResult(result);
-        }
-    );
 }

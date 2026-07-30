@@ -13,6 +13,8 @@ let createInstanceCalled = false;
 let createComponentCalled = false;
 let appendChildCalledOnParent = false;
 let insertChildCalledOnParent = false;
+let connectorNameReadCount = 0;
+const gateNodeLookups: string[] = [];
 
 const gateFigma = {
     showUI: () => { },
@@ -30,7 +32,10 @@ const gateFigma = {
     notify: () => { },
     closePlugin: () => { },
     clientStorage: { setAsync: async () => { } },
-    getNodeByIdAsync: async (id: string) => gateNodeMap.get(id) || null,
+    getNodeByIdAsync: async (id: string) => {
+        gateNodeLookups.push(id);
+        return gateNodeMap.get(id) || null;
+    },
     root: { id: "doc", name: "Doc", children: [] as any[] },
     mixed: Symbol("mixed"),
     loadFontAsync: async () => {},
@@ -90,6 +95,8 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
         createComponentCalled = false;
         appendChildCalledOnParent = false;
         insertChildCalledOnParent = false;
+        connectorNameReadCount = 0;
+        gateNodeLookups.length = 0;
     });
 
     function setupEnvironment() {
@@ -416,6 +423,165 @@ describe("Phase 1: Dispatcher Guard Parity & Parent-Is-Instance Closure", () => 
             });
             expect(survivor.removed).toBe(false);
             expect(survivor.parent).toBe(implicitPage);
+        });
+    });
+
+    describe("removed create_connection dispatcher surface", () => {
+        function setupConnectorEnvironment(outsideScope = false) {
+            const { scopeRoot, parentNode, targetNode, sourceNode } =
+                setupEnvironment();
+            const designPage: any = {
+                id: "design-page",
+                name: "Design Page",
+                type: "PAGE",
+                parent: { id: "document", type: "DOCUMENT" },
+                children: [scopeRoot],
+                appendChild: () => {},
+            };
+            scopeRoot.parent = designPage;
+            gateNodeMap.set(designPage.id, designPage);
+
+            const outsidePage: any = {
+                id: "outside-page",
+                name: "Outside Page",
+                type: "PAGE",
+                parent: { id: "document", type: "DOCUMENT" },
+                children: [],
+                appendChild: () => {},
+            };
+            const destination = outsideScope ? outsidePage : parentNode;
+            const connector: any = {
+                id: "connector-template",
+                type: "CONNECTOR",
+                parent: destination,
+                text: {
+                    fontName: { family: "Inter", style: "Regular" },
+                },
+                get name() {
+                    connectorNameReadCount++;
+                    return "Flow Connector";
+                },
+                clone: () => {
+                    cloneCalled = true;
+                    return {
+                        id: "connector-clone",
+                        name: "Flow Connector",
+                        type: "CONNECTOR",
+                        parent: designPage,
+                        removed: false,
+                        text: {
+                            fontName: { family: "Inter", style: "Regular" },
+                            characters: "",
+                        },
+                        remove() {
+                            this.removed = true;
+                            this.parent = null;
+                        },
+                    };
+                },
+            };
+            destination.children?.push(connector);
+            gateNodeMap.set(connector.id, connector);
+
+            return { connector, targetNode, sourceNode };
+        }
+
+        function connectorParams(connectorName = "Flow Connector") {
+            return {
+                connectorId: "connector-template",
+                connectorName,
+                connections: [{
+                    startNodeId: "target-id",
+                    startNodeName: "Target Node",
+                    endNodeId: "source-id",
+                    endNodeName: "Source Node",
+                }],
+            };
+        }
+
+        it("rejects the removed command before inspecting an out-of-scope template", async () => {
+            setupConnectorEnvironment(true);
+            const res = await sendCommand(
+                "create_connection",
+                connectorParams(),
+            );
+
+            expect(res.type).toBe("command-error");
+            expect(res.error.code).toBe("UNKNOWN_ERROR");
+            expect(res.error.message).toContain("Unknown command: create_connection");
+            expect(cloneCalled).toBe(false);
+            expect(gateNodeLookups).not.toContain("connector-template");
+            expect(connectorNameReadCount).toBe(0);
+        });
+
+        it("rejects the removed command without resolving a stale template name", async () => {
+            setupConnectorEnvironment();
+            const res = await sendCommand(
+                "create_connection",
+                connectorParams("Stale Connector Name"),
+            );
+
+            expect(res.type).toBe("command-error");
+            expect(res.error.code).toBe("UNKNOWN_ERROR");
+            expect(res.error.message).toContain("Unknown command: create_connection");
+            expect(cloneCalled).toBe(false);
+            expect(gateNodeLookups).not.toContain("connector-template");
+            expect(connectorNameReadCount).toBe(0);
+        });
+
+        it("does not retain a hidden raw-command path", async () => {
+            setupConnectorEnvironment();
+            const res = await sendCommand(
+                "create_connection",
+                connectorParams(),
+            );
+
+            expect(res.type).toBe("command-error");
+            expect(res.error.code).toBe("UNKNOWN_ERROR");
+            expect(res.error.message).toContain("Unknown command: create_connection");
+            expect(cloneCalled).toBe(false);
+            expect(gateNodeLookups).not.toContain("connector-template");
+            expect(connectorNameReadCount).toBe(0);
+        });
+    });
+
+    describe("retained reaction_list dispatcher surface", () => {
+        it("executes the moved reader and returns a non-CHANGE_TO reaction", async () => {
+            const { targetNode } = setupEnvironment();
+            const reaction = {
+                trigger: { type: "ON_CLICK" },
+                action: {
+                    type: "NODE",
+                    navigation: "NAVIGATE",
+                    destinationId: "source-id",
+                },
+            };
+            const prototypeChild = {
+                id: "prototype-child",
+                name: "Prototype Child",
+                type: "FRAME",
+                parent: targetNode,
+                reactions: [reaction],
+                children: [],
+            };
+            targetNode.reactions = [];
+            targetNode.children = [prototypeChild];
+
+            const res = await sendCommand("reaction_list", {
+                nodeIds: ["target-id"],
+            });
+
+            expect(res.type).toBe("command-result");
+            expect(res.result.nodesCount).toBe(1);
+            expect(res.result.nodesWithReactions).toBe(1);
+            expect(res.result.nodes).toHaveLength(1);
+            expect(res.result.nodes[0]).toMatchObject({
+                id: "prototype-child",
+                name: "Prototype Child",
+                depth: 1,
+                path: "Scope Root > Parent Node > Target Node > Prototype Child",
+                reactions: [reaction],
+            });
         });
     });
 

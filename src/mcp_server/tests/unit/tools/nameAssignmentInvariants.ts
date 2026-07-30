@@ -53,14 +53,6 @@ export const EXPECTED_NAME_ASSIGNMENT_SINKS: readonly ExpectedNameAssignmentSink
         contract: "component_manage_property.newPropertyName@EDIT",
     },
     {
-        sink: "connectorHandlers.ts:createConnections:name=`TTF_Connector/${startNode.id}/${endNode.id}`",
-        contract: null,
-    },
-    {
-        sink: 'connectorHandlers.ts:createCursorNode:name="TTF_Connector / Mouse Cursor"',
-        contract: null,
-    },
-    {
         sink: "nodeCreators.ts:createFrame:name=name",
         contract: "create_frame.name",
     },

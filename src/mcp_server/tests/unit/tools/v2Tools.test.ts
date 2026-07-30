@@ -20,9 +20,9 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
         (sendCommandToFigma as any).mockClear();
     });
 
-    it("should register all 46 tools in correct groups", () => {
+    it("should register all 45 tools in correct groups", () => {
         const registered = (server as any)._registeredTools;
-        expect(Object.keys(registered).length).toBe(46);
+        expect(Object.keys(registered).length).toBe(45);
 
         // Verification of presence of expected tools
         const expectedTools = [
@@ -35,7 +35,7 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             "node_set_effects", "node_apply_style", "node_bind_variable", "node_export_visual",
             // create
             "create_shape", "create_frame", "create_text", "create_svg", "create_component",
-            "create_instance", "create_component_set", "create_connection",
+            "create_instance", "create_component_set",
             // style
             "style_list", "style_manage", "style_delete",
             // text
@@ -79,6 +79,7 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
         for (const legacyName of legacyNames) {
             expect(legacyName in registered).toBe(false);
         }
+        expect("create_connection" in registered).toBe(false);
 
         // Regression guard for the Antigravity / function-calling failure: every
         // tool name (and thus `mcp_<server>_<name>`) must satisfy the LLM
