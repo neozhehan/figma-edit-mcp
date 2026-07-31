@@ -2,9 +2,73 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 17: Change 16 corrections and `b05y` live closure
+
+### Author: OpenAI Codex (GPT-5) @ 2026-07-30
+
+**No new v2.3.3 product decision or PRD revision.** Phase 11's removal remains functionally correct. This section corrects Change 16's remaining measurements and evidence language, records the first independent live pass performed for that review, and revises the future v2.3.4 reaction contract where the live host disproved its comparator. The v2.3.4 specification change is recorded there as Rev 7. Change 16 and every earlier change remain unedited historical records; this section supersedes them only where stated.
+
+### Outcome
+
+- **Phase 11 removal remains verified.** Against the audited Change 16 baseline, the full suite reproduced at **1,037/1,037 tests, 5,595 assertions across 52 files**; the official stdio inventory exposed 45 tools, omitted `create_connection`, retained both reaction tools, omitted `reaction_to_connector_strategy`, and retained `swap_overrides_instances`; and the generated/version/type/suppression/bundle gates passed. After the Change 17 documentation edits, the focused removal/retained-reader matrix again passed **47/47 tests with 173 assertions across 2 files**, `check:generated` and `check:versions` passed, and `git diff --check` passed for every Change 17-owned path. No clean-tree repository-wide diff claim is made because unrelated pre-existing working-tree edits were preserved.
+- **No production code changed in Change 17.** The corrections are documentation and implementation-plan changes. The live probes exercised the already-loaded plugin and cleaned up every disposable artifact.
+- **Golden Rule result.** Removal still improves first-call correctness by hiding an unrunnable Design-file connector workflow. The retained reaction path is usable for a normal top-level prototype flow, but its current read coverage, whole-array update, diagnostic, and normalization limits must be stated until v2.3.4 implements their replacement.
+
+### C17-F1 — central-table baseline is 47, not 49
+
+Change 16 counted every `throw new Error(formatScopeError(...))` call as central-table-backed. There are 17 such calls, but two pass handler-local template strings rather than an `ERRORS` value: the `node_group` scope denial in `main.ts:401` and the instance-override target denial in `main.ts:591`. The mechanically convertible central-table set is therefore:
+
+- 26 direct `throw new Error(ERRORS...)` sites;
+- 15 `formatScopeError(ERRORS...)` sites; and
+- 6 template literals interpolating `ERRORS.SCOPE_DELETED`.
+
+That totals **47**, leaving **266** ad-hoc sites from the 313-site baseline. The v2.3.4 problem statement, D2, scope, Phase 2, provenance, and ratchet are corrected. Rev 6 remains unchanged as the historical record of the superseded 49/264 measurement; Rev 7 carries the correction.
+
+### C17-F2 — the v2.3.4 problem statement retained the pre-correction table shape
+
+Change 16 corrected the v2.3.4 provenance row to 29 defined keys — 12 legacy `ERRORS` strings plus 17 `REFUSALS` factories — with 11 legacy keys referenced. The problem statement still said 28 keys, 13 legacy plus 15 added, with 12 legacy keys referenced. The current statement now matches the measured provenance; dead `INVALID_TARGET_NODE_IDS` remains delete-don't-convert.
+
+### C17-F3 — migration disclosure was incomplete and future work was written as complete
+
+The root `CHANGELOG.md` said two `reaction_list` limits “are repaired in v2.3.4,” although v2.3.4 is a specification, not an implementation. It also directed callers to `reaction_update` without disclosing that the current tool replaces the whole reactions array with no state token or authoritative read-back and can collapse arbitrary setter failures to `Failed to update reactions: undefined`. The migration note now names the lossy filter, missing/read-failed-root omission, misleading count, and overlapping-root duplication separately from the `reaction_update` hazards, and says all are **scheduled for repair** in v2.3.4 Track 3.
+
+### C17-F4 — the Phase 11 ledger omitted the manifest gate
+
+Change 16 added `manifest.json` to `check:generated`, but the Phase 11 ledger did not record that deliverable. The ledger now names the registration-derived regenerate-and-diff gate and its distinct recovery command. Its evidence boundary is explicit: the gate was manually red-proofed and is operational, but no committed self-test currently mutates a registered description and asserts the negative path.
+
+### C17-F5 — `b05y` disproved v2.3.4's narrow reaction comparator
+
+The v2.3.4 D10 comparator allowed one Figma normalization only: synthesis of deprecated `reaction.action` from `actions[0]`, with every other key required to stay exact. A successful `b05y` actions-only `ON_CLICK` → `NODE/NAVIGATE` write supplied `preserveScrollPosition:false`; authoritative read-back:
+
+- synthesized the matching deprecated `action`;
+- removed `preserveScrollPosition:false`;
+- added `resetScrollPosition:true`; and
+- added `resetVideoPosition:false`.
+
+The destination and navigation semantics were preserved, and the reaction cleared successfully. A comparator that permits only the synthesized `action` would classify this verified success as a failed or unknown write, inviting an unnecessary retry and violating the Golden Rule. v2.3.4 Rev 7 therefore retains `compatibilityActionIndexes` for synthesized deprecated projections and adds deterministic `nodeActionNormalizationPaths` for one separately disclosed atomic NODE-action normalization. The comparator permits exactly two normalization classes: a synthesized deprecated `action`, and—only when the intended action owns `preserveScrollPosition:false` and owns neither modern reset field—the indivisible replacement of that field with exactly `resetScrollPosition:true` plus `resetVideoPosition:false`. The two classes may compose; partial rewrites and every other delta remain non-equivalent.
+
+### C17-D1 — evidence wording is now bounded to what Git can prove
+
+Change 16 states that Rev 71 “existed only in a working tree.” The repository proves the narrower claim: no committed evidence for that candidate or its reported totals was found in the inspected history, so those totals are not reproducible repository evidence. Git cannot prove the complete prior contents of every ephemeral working tree. Current v2.3.3 PRD, task, and Q13 wording now use the provable formulation; Change 16 remains unedited.
+
+Two other Change 16 statements are narrowed here rather than rewritten in place. The `figma-edit` guides' clean end state was literally true; what was false was the implication that Change 15 edited two “affected” guides. And moving `getReactions` preserved its observable reader behavior, but “line for line” overstates a relocation whose module/import context necessarily changed. Change 16's files-changed list also omitted `release-changelog.md` itself; this section supplies the corrective record.
+
+### Live evidence — channel `b05y`, dedicated *MCP Test* Design file
+
+- The loaded pair self-reported synchronized server/plugin `2.3.2`; Page 1 (`0:1`) was page-scoped with 62 descendants, 22 top-level nodes, complete read coverage, and zero reactions.
+- The five detached IDs left by the earlier `j52u` session all resolved missing after the plugin restart, and no earlier Codex wrapper remained in the page tree.
+- `reaction_list([pageId, provenMissingId])` returned `nodesCount:2`, `nodesWithReactions:0`, and no coverage or missing-ID evidence, live-confirming C16-F4's deferred count/coverage defect.
+- On a nested disposable frame, a deprecated single-action URL write and an empty-array clear each returned `UNKNOWN_ERROR: Failed to update reactions: undefined`; immediate `node_info` and `reaction_list` reads proved the intended reaction absent both times. No retry was issued.
+- On two top-level disposable frames — the normal human prototype topology — an actions-only `ON_CLICK` → `NODE/NAVIGATE` write succeeded, read back the exact destination plus the four normalization observations above, cleared successfully, and read back empty.
+- A stale raw `create_connection` command returned `UNKNOWN_ERROR: Unknown command: create_connection`; Page 1 remained 62→62. All disposable nodes were deleted, the closing page remained 62 descendants / 22 top-level / zero reactions, and the channel leave was acknowledged.
+
+### Files changed by Change 17
+
+`documentation/v2.3.3/release-changelog.md` (this corrective record); `CHANGELOG.md` (accurate migration status and reaction caveats); `documentation/v2.3.3/prd.md`, `task.md`, and `reviews/open-questions.md` (provable Rev 71 wording, manifest-gate ledger, and `b05y` evidence); `documentation/v2.3.4/prd.md` (Rev 7 counts, table shape, comparator, tests, risks, live matrix, and provenance).
+
 ## Change 16: Change 15 adversarial review and record corrections
 
-### Author: Claude Opus 5 @ 2026-07-30
+### Author: Claude Opus 5 (Ultracode) @ 2026-07-30 5:30pm PT
 
 **No new v2.3.3 PRD revision.** Unlike Changes 9–15, this section introduces no decision and therefore takes no Rev number: it corrects Rev 73's own record where that record misstates what the repository contains. The one substantive specification change it makes is to the v2.3.4 PRD, logged there as Rev 6.
 
