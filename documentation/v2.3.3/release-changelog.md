@@ -2,6 +2,62 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 16: Change 15 adversarial review and record corrections
+
+### Author: Claude Opus 5 @ 2026-07-30
+
+**No new v2.3.3 PRD revision.** Unlike Changes 9–15, this section introduces no decision and therefore takes no Rev number: it corrects Rev 73's own record where that record misstates what the repository contains. The one substantive specification change it makes is to the v2.3.4 PRD, logged there as Rev 6.
+
+**Change 15's removal is functionally correct and is not modified.** The review reproduced its verification independently, red-proofed its two new guards by mutating production lines, and found no functional defect in the removal. What it did find was four record-accuracy problems and one missing gate, all corrected here. Change 15 stands as authored; this section supersedes it where the two disagree.
+
+### Verification reproduced
+
+- **Full repository suite: 1,037/1,037 tests, 5,595 assertions across 52 files** — matches Change 15 exactly.
+- **Focused removal and retained-reader matrix: 47/47 tests, 173 assertions across 2 files** — matches exactly.
+- **Official stdio MCP round trip:** `tools/list` returns 45 tools with no `create_connection`; `prompts/list` omits `reaction_to_connector_strategy` and retains `swap_overrides_instances`.
+- `bun run gen:manifest` reproduces the committed manifest with zero drift at 45 tools. `check:versions`, `check:types:plugin`, `check:suppressions`, `check:generated`, `check:plugin`, and `git diff --check` all pass.
+- **Both new guards red-proofed.** Re-adding a `case "create_connection"` branch to `main.ts` fails four tests; disabling descendant traversal in the moved `getReactions` fails the retained-reader test. Neither guard is inert.
+- The removal leaves no orphan: no reference to `connectorHandlers`, `setDefaultConnector`, `createCursorNode`, `checkDefault`, or `connectorId` survives outside negative tests, and the `getReactions` move into `prototypingHandlers.ts` is behaviour-preserving line for line.
+- **Not reproduced:** Change 15's "374/374 tests, 2,937 assertions across 11 files" broader matrix — the eleven files are not enumerated, so that total remains unchecked. No live Figma verification was performed; `mksu` and `76js` are taken on Change 15's record.
+
+### C16-F1 — Rev 71 was never committed
+
+Change 15's Rev 71 entry claims it "completed the first repository implementation of Phase 11" and reports **54/54 with 211 assertions** and **1,048/1,048 with 5,674 assertions across 52 files**. The repository contradicts this. `HEAD` before Change 15 still carried the original connector implementation: `create.ts` contained no `connectorName`, `connectorHandlers.ts` still held six `clientStorage` references, and `CONNECTOR_TEMPLATE_REQUIRED` had no throw site. `git log -S connectorName -- src/mcp_server/tools/create.ts` returns nothing across the entire history.
+
+Rev 71 therefore existed only in a working tree and was superseded by Revs 72–73 before it could land. Its totals and gate results are **not reproducible from this repository and are withdrawn**. The Rev 71 entry below is retained unedited as the historical record and is superseded by this finding.
+
+This matters because the removal rationale leaned on it: the Phase 11 decision evidence called Rev 71 "repository-correct", the Gap 9 problem statement and provenance row said it "repaired those mechanics", and Q13's status said it "implemented" the explicit-template core. Those four statements now describe an uncommitted candidate. **The decision itself is unaffected** — removal rests on Rev 72's live `76js` evidence that the Design host rejects `ConnectorNode.clone()`, which is independent of whether Rev 71 was ever merged.
+
+### C16-F2 — the `figma-edit` reference guides were never affected
+
+Change 15 reports that "both affected `figma-edit` references" no longer advertise the removed surface, and the Phase 11 ledger checked off removing references from `skills/figma-edit/references/workflows.md` and `tool-selection.md`. Neither file was modified by Change 15, and neither has ever contained `create_connection` or `reaction_to_connector_strategy` — `git grep` at the preceding commit finds nothing. The claim asserts work that had no subject. The ledger now records the two guides as audited-clean, with the negative assertions in `v2.3.3.phase11.test.ts` retained as forward guards so a future guide cannot reintroduce the names.
+
+### C16-F3 — `manifest.json` had no regeneration gate
+
+Change 15's manifest diff removed the connector entry and also rewrote descriptions for twelve unrelated tools — `page_info`, `node_info`, `node_delete`, `style_manage`, `text_set_content`, `component_list`, `instance_set_overrides`, `variable_list`, `variable_manage`, `variable_delete`, `annotation_list`, and `annotation_set` — drift accumulated across Phases 4–10 that no gate had ever detected. `gen:manifest` is not part of `build:all`, and `check:generated` covered only the typings-derived files, so the published MCPB manifest could advertise descriptions the server no longer serves. A count-based test cannot catch this: the tool count never moved.
+
+`check:generated` now covers `manifest.json` as a second, registration-derived generator group. The two groups drift for unrelated reasons, so each reports its own source and its own regenerate command rather than a shared message that would send a contributor to the wrong script. Red-proofed by adding a sentence to a tool's registered description without regenerating: the gate exits 1 and names both the registered MCP tools and `bun run gen:manifest`. Note that this detects a stale *commit*, not a dirty working tree — regeneration overwrites a hand-edited output before the diff runs, so perturbing the generated file proves nothing.
+
+### C16-F4 — `reaction_list`'s known limits were undisclosed on the migration path
+
+Change 15 promotes `reaction_list` and `reaction_update` to the sole prototype surface and directs migrating callers to them. The v2.3.4 PRD simultaneously records that `reaction_list` drops any reaction containing a `CHANGE_TO` action and reports `nodesCount` as the requested-ID count rather than the number successfully inspected — a node that is missing or whose read throws is still counted. The registered output schema describes `nodesCount` as "Number of inspected nodes" and leaves the row shape as `z.array(z.any())`, masked by `looseOutput`. This is the same defect class as Gap 6's read side, which D10 treated as release-blocking for `annotation_list`.
+
+**Decision: the fix stays deferred to v2.3.4 Track 3**, which rewrites both contracts under D9–D11 and already names the `nodesCount` semantics. The root `CHANGELOG.md` migration note now discloses both limits and points at v2.3.4, so v2.3.3 ships the gap stated rather than silent.
+
+### C16-D1 — three text corrections
+
+- `src/shared/errorCodes.ts`'s inventory comment restarted its arithmetic at ten mid-sentence. It now reads 10 → 11 (Rev 57) → 13 (Change 8) → 12 (Rev 73), matching the membership list it annotates.
+- The name-verification conformance test was titled "pins all 36 field paths" after two entries were removed; the map holds 33. The assertion compares against the map, so the suite was green and only the human-readable claim was wrong.
+- The v2.3.4 `ERRORS`-table provenance row read "28 keys (13 legacy + 15 from v2.3.3)". Re-measured: **29 keys — 12 legacy plus 17 `REFUSALS`** (7 Phase 10 operational + 10 verification). The stale reading predates the Rev 27 migration, Change 8's two additions, and Rev 73's removal of `CONNECTOR_TEMPLATE_REQUIRED`. Eleven of the twelve legacy keys are referenced by handlers; `INVALID_TARGET_NODE_IDS` is dead and is now marked delete-don't-convert for v2.3.4 Phase 2.
+
+### C16-D2 — v2.3.4's central-table baseline was 43, corrected to 49
+
+Recorded in full as [v2.3.4 PRD](../v2.3.4/prd.md) Rev 6. The original method summed only the literal prefixes `throw new Error(ERRORS` (26) and `throw new Error(formatScopeError` (17), missing six sites that interpolate `ERRORS.SCOPE_DELETED` into a template literal. Those six are not an edge case for D2 — their appended operand is exactly the factory argument the conversion introduces — so they belong in Phase 2's mechanical batch. D2, scope item 2, Phase 2 (ratchet 270 → **264**), and the provenance row are corrected. The 313-site total and the per-file table were reproduced independently and are unchanged.
+
+### Files changed by this review
+
+`CHANGELOG.md` (C16-F4 disclosure); `scripts/check-generated.ts` (C16-F3 gate); `src/shared/errorCodes.ts` and one test title (C16-D1); `documentation/v2.3.3/prd.md`, `task.md`, and `reviews/open-questions.md` (C16-F1 and C16-F2 wording in the living specs); `documentation/v2.3.4/prd.md` (C16-D1, C16-D2, Rev 6). Change 15's own section and the Rev 71 entry are unedited and superseded from here.
+
 ## Change 15: Phase 11 connector-visualization surface removal (Rev 73)
 
 ### Author: OpenAI Codex (GPT-5) @ 2026-07-30

@@ -145,7 +145,7 @@ describe("One name-verification description form across every tool", () => {
         return found;
     };
 
-    it("pins all 36 field paths to the correct read tool and shared semantic form", () => {
+    it("pins all 33 field paths to the correct read tool and shared semantic form", () => {
         const collected: Array<[string, string]> = [];
         for (const [tool, schema] of Object.entries<any>(INPUTS)) {
             collected.push(...collect(schema, [tool]));

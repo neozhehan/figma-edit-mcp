@@ -76,9 +76,10 @@ export const PLUGIN_OPERATIONAL_CODES = [
 /**
  * The operational codes of the ratified contract (Q16), grouped by origin.
  * The Change 5 split did not change membership; the Rev 57 addition of
- * `CHANNEL_NOT_BOUND` took the inventory from ten to eleven, and Change 8's
- * `PAGE_SCAN_FAILED` / `VARIABLE_IN_USE` take it from ten to twelve after the
- * Phase 11 connector surface and its dedicated refusal were removed.
+ * `CHANNEL_NOT_BOUND` took the inventory from ten to eleven, Change 8's
+ * `PAGE_SCAN_FAILED` / `VARIABLE_IN_USE` took it from eleven to thirteen, and
+ * Rev 73 brought it to twelve by removing the Phase 11 connector surface with
+ * its dedicated refusal.
  */
 export const OPERATIONAL_CODES = [
     ...SOCKET_OPERATIONAL_CODES,
