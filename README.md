@@ -1,5 +1,7 @@
 # Figma Edit MCP
 
+[![MCP Toplist](https://mcptoplist.com/badge/io.github.neozhehan%2Ffigma-edit-mcp.svg)](https://mcptoplist.com/server/io.github.neozhehan%2Ffigma-edit-mcp)
+
 [![npm version](https://img.shields.io/npm/v/figma-edit-mcp.svg)](https://www.npmjs.com/package/figma-edit-mcp)
 [![npm downloads](https://img.shields.io/npm/dm/figma-edit-mcp.svg)](https://www.npmjs.com/package/figma-edit-mcp)
 [![CI](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/neozhehan/figma-edit-mcp/actions/workflows/ci.yml)
