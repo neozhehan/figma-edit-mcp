@@ -289,22 +289,22 @@ The guarantee is an **observable success boundary**: no successful command may a
 ---
 
 ## Phase 12: Contract Sync (D8)
-- [ ] **SAFETY.md**
-  - [ ] Revise G2 to the universal existing-object rule (Q3 wording): *"No write against an existing object proceeds unless the caller-supplied current name matches the resolved object's actual name — nodes, variables, styles, and collections alike. Creation verifies the identified parent or collection instead."*
-  - [ ] **Publish gate:** before publishing the revised G2, audit every write tool against the rule (the `safetyContract` mechanical diff provides most of it; the Part B matrix stays the per-tool proof).
-  - [ ] Update A3, the "Name fields" bullet, and the Part B matrix rows for every changed tool (`variable_manage`, `style_manage`, the five creators, `create_component_set`, `node_flatten`, `node_clone`, `annotation_set`, the surviving batch tools, and the channel-binding surface); remove the deleted connector row.
+- [x] **SAFETY.md**
+  - [x] Revise G2 to the universal existing-object rule (Q3 wording): *"No write against an existing object proceeds unless the caller-supplied current name matches the resolved object's actual name — nodes, variables, styles, and collections alike. Creation verifies the identified parent or collection instead."*
+  - [x] **Publish gate:** before publishing the revised G2, audit every write tool against the rule (the `safetyContract` mechanical diff provides most of it; the Part B matrix stays the per-tool proof).
+  - [x] Update A3, the "Name fields" bullet, and the Part B matrix rows for every changed tool (`variable_manage`, `style_manage`, the five creators, `create_component_set`, `node_flatten`, `node_clone`, `annotation_set`, the surviving batch tools, and the channel-binding surface); remove the deleted connector row.
   - [x] **From Phase 8 (D11), corrected by Rev 50:** G1 is an observable **success** boundary. A successful command never returns with its created node outside the verified destination; a failed cleanup may terminate with a survivor only when the initiating error carries mandatory partial-mutation and location evidence. The absolute “creation failures never leave orphan nodes” claim is withdrawn.
-  - [ ] **From Phase 8 (D11) — residual risk 1:** the unavoidable same-stack micro-transient (an implicit Figma creator constructs on `currentPage` for part of one synchronous stack, before the append that contains it).
-  - [ ] **From Phase 8 (Q33, Rev 46) — residual risk 2:** destination freshness. Every creator now resolves its parent as the last `await` before creation, so nothing yields between the destination read and the placement — but the scope/name/lock predicates were verified by the dispatcher one read earlier, so a rename or reparent in that dispatcher-to-handler hop is not re-detected. Record the deferred full synchronous parent-predicate re-assert and its escalation trigger (a reported or reproduced creation landing outside its verified destination).
-  - [ ] Add the D13 claim ("peer-bound, self-reported version check — not cryptographic attestation").
-- [ ] **Agent guides** ([skills/figma-edit/references/](file:///Users/neozhehan/Git/figma-edit-mcp/skills/figma-edit/references/): constraints, error-playbook, tool-selection, workflows)
-  - [ ] State the G2 rule in exactly **one sentence** in the guides.
-  - [ ] `error-playbook.md`: add an entry for every D9 code — the full header inventory plus every changed refusal (including the Q22 `PARENT_NAME_MISSING`/`PARENT_NAME_MISMATCH` pair, Rev 31, and Change 8's `PAGE_SCAN_FAILED`/`VARIABLE_IN_USE`, Rev 61). Retire the `DOCUMENT_LOAD_FAILED` row: that code no longer exists (C8-F3). No Phase 10 code has a row yet.
-  - [ ] Teach the new batch `status` semantics (treat `partial_success` as incomplete; retry every non-success row — `failed` and `skipped`), the one shared row vocabulary in one sentence (every row carries `nodeId`/`status`/`error`, Q25), the annotation list-before-retry guidance (Q10), and D12's connector-surface removal: native prototype work uses the retained reaction tools, with no connector-template discovery workflow and the lossless/state-safe repair deferred explicitly to v2.3.4.
-  - [ ] D9 acceptance review per new or changed message: the correct retry is derivable from the error text and the tool list alone.
-  - [ ] Mirror all guide changes to the `figma-edit://guide/*` server resources.
-- [ ] **Unit Tests**
-  - [ ] The `safetyContract.test.ts` mechanical diff passes in both directions after the `SAFETY.md` matrix updates.
+  - [x] **From Phase 8 (D11) — residual risk 1:** the unavoidable same-stack micro-transient (an implicit Figma creator constructs on `currentPage` for part of one synchronous stack, before the append that contains it).
+  - [x] **From Phase 8 (Q33, Rev 46) — residual risk 2:** destination freshness. Every creator now resolves its parent as the last `await` before creation, so nothing yields between the destination read and the placement — but the scope/name/lock predicates were verified by the dispatcher one read earlier, so a rename or reparent in that dispatcher-to-handler hop is not re-detected. Record the deferred full synchronous parent-predicate re-assert and its escalation trigger (a reported or reproduced creation landing outside its verified destination).
+  - [x] Add the D13 claim ("peer-bound, self-reported version check — not cryptographic attestation").
+- [x] **Agent guides** ([skills/figma-edit/references/](file:///Users/neozhehan/Git/figma-edit-mcp/skills/figma-edit/references/): constraints, error-playbook, tool-selection, workflows)
+  - [x] State the G2 rule in exactly **one sentence** in the guides.
+  - [x] `error-playbook.md`: add an entry for every D9 code — the full header inventory plus every changed refusal (including the Q22 `PARENT_NAME_MISSING`/`PARENT_NAME_MISMATCH` pair, Rev 31, and Change 8's `PAGE_SCAN_FAILED`/`VARIABLE_IN_USE`, Rev 61). Retire the `DOCUMENT_LOAD_FAILED` row: that code no longer exists (C8-F3). No Phase 10 code has a row yet.
+  - [x] Teach the new batch `status` semantics (treat `partial_success` as incomplete; retry every non-success row — `failed` and `skipped`), the one shared row vocabulary in one sentence (every row carries `nodeId`/`status`/`error`, Q25), the annotation list-before-retry guidance (Q10), and D12's connector-surface removal: native prototype work uses the retained reaction tools, with no connector-template discovery workflow and the lossless/state-safe repair deferred explicitly to v2.3.4.
+  - [x] D9 acceptance review per new or changed message: the correct retry is derivable from the error text and the tool list alone.
+  - [x] Mirror all guide changes to the `figma-edit://guide/*` server resources.
+- [x] **Unit Tests**
+  - [x] The `safetyContract.test.ts` mechanical diff passes in both directions after the `SAFETY.md` matrix updates.
 
 ---
 

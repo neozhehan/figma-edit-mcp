@@ -2,6 +2,8 @@
 
 Heuristics for picking the right tool when several overlap.
 
+No write against an existing object proceeds unless the caller-supplied current name matches the resolved object's actual name — nodes, variables, styles, and collections alike; creation verifies the identified parent or collection instead.
+
 ## `node_info` — the workhorse read
 
 `node_info` is the one read tool for node data (it subsumes the old separate scan tools and the per-node variable read). Use its parameters to scope the read tightly:
@@ -51,6 +53,8 @@ When you only need to know *whether* something is bound, request the raw ID fiel
 | Convert a frame into a component | `create_component` after reading the source frame and its parent | Never target the scope root or a frame inside an instance |
 | Combine variants | `create_component_set` with required `parentId` + `parentNodeName`; omit `componentSetName` for Figma's default or supply a non-empty name | Do not pass `componentSetName: ""`, omit the parent, or place the set inside one of its input components |
 
+For native prototype metadata, use `reaction_list` to inspect and `reaction_update` to replace a node's reactions. v2.3.3 has no connector-template discovery or automatic connector-diagram workflow; complete/lossless reads and state-safe localized reaction updates are deferred to v2.3.4.
+
 ### Name assignment vs. name lookup
 
 An explicit `""` is never valid for a field that assigns a user-visible name, but omission is not universally valid:
@@ -93,6 +97,8 @@ Use a **batch** tool (`text_set_content`, `node_delete`, `annotation_set`, `inst
 - Prevalidation atomicity is desired (all targets are checked for existence, scope, name, and node type before any write starts).
 
 Use a **single-item** path when you have one item, later operations depend on earlier results, or you want per-item failure isolation.
+
+Treat `status: "partial_success"` as incomplete and retry every non-success row (`failed` and `skipped`) after accounting for successful rows; every batch result row carries the shared `nodeId`/`status`/`error` vocabulary, with `error` required on failed and skipped rows.
 
 Prevalidation atomicity is not a runtime transaction. After execution starts, tool-specific best-effort cleanup/restoration may run. If an error carries `details.partialMutation: true`, reconcile its `whatChanged` and `before` evidence before retrying. Creator evidence includes the located/detached/unknown survivor state and child states. Component-set evidence includes `appliedComponents`, `restoredComponents`, `unrestoredComponents`, `removedComponents`, `unknownRemovalComponents`, `reparentedComponents`, `unverifiedPlacementComponents`, `survivingComponentSets`, `retainedVariantComponents`, and `unconfirmedVariantComponents`. Confirmed surviving-set members keep their computed `Property=Value` names; unknown removal/placement and unconfirmed names remain partial and never authorize an optimistic write.
 

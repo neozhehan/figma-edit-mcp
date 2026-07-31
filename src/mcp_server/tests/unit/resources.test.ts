@@ -117,6 +117,24 @@ describe("WS2 - Resources Handler (R2.2, R5.1h)", () => {
     expect(guideText["tool-selection"]).toContain(
       "A dual-role field such as component-property `propertyName` is classified by action",
     );
+
+    // Phase 12: the served resources must carry the synchronized universal
+    // name rule, ratified-code playbook, truthful batch interpretation, and
+    // current native-prototype migration guidance — not merely mirror bytes.
+    const guideG2 =
+      "No write against an existing object proceeds unless the caller-supplied current name matches the resolved object's actual name — nodes, variables, styles, and collections alike; creation verifies the identified parent or collection instead.";
+    for (const id of GUIDE_IDS) {
+      expect(guideText[id].split(guideG2).length - 1).toBe(1);
+      expect(guideText[id]).toContain("connector-template discovery");
+    }
+    expect(guideText["error-playbook"]).toContain("`PAGE_LOAD_FAILED`");
+    expect(guideText["error-playbook"]).toContain("`PAGE_SCAN_FAILED`");
+    expect(guideText["error-playbook"]).toContain("`VARIABLE_IN_USE`");
+    expect(guideText["error-playbook"]).not.toContain("DOCUMENT_LOAD_FAILED");
+    expect(guideText.constraints).toContain('status: "partial_success"');
+    expect(guideText.constraints).toContain("`nodeId`/`status`/`error`");
+    expect(guideText.workflows).toContain("append is not idempotent");
+    expect(guideText.workflows).toContain("reaction_update");
   });
 
   it("should fail soft on a missing file (return error markdown instead of crashing)", async () => {

@@ -24,6 +24,8 @@ Beyond the top-level scope, the plugin enforces strict structural boundaries:
 
 ## 3. Every write requires name verification
 
+No write against an existing object proceeds unless the caller-supplied current name matches the resolved object's actual name — nodes, variables, styles, and collections alike; creation verifies the identified parent or collection instead.
+
 Node modification tools require a `nodeName`. Parent-targeted creators require `parentNodeName`; `create_component` verifies the source `nodeName`, while `create_component_set` verifies every component `nodeName` plus its `parentNodeName`. Batch tools require a name on each item in the array. The plugin resolves the actual name by ID and rejects the operation if it does not match.
 
 **The only correct way to obtain a name:** read it from `node_info` or `page_info` and pass it back verbatim. Do not guess, abbreviate, normalize, translate, or "clean up" the name. Whitespace and casing must match exactly. This catches the most common failure: confidently operating on a stale or fabricated node ID.
@@ -57,6 +59,8 @@ Once execution begins:
 
 *Note:* `node_delete` (`deleteMultipleNodes`) is excluded from the stop-on-first-failure rule, keeping its parallel chunked deletions resilient.
 
+For accepted batch execution, `status: "partial_success"` is incomplete: account for and retry every non-success row (`failed` and `skipped`), except that `annotation_set` requires the list-before-retry check below because append is not idempotent. Every batch result row carries the shared `nodeId`/`status`/`error` vocabulary, with `error` required on failed and skipped rows.
+
 `annotation_set` count fields are verified observations. `beforeCount`/`afterCount` may be null and are paired with required `beforeCountVerified`/`afterCountVerified`. If an append was attempted but post-state could not be read, the row fails safe with `partialMutation: true` and `outcomeUnknown: true` (plus optional secondary `postStateError`). Do not interpret null as zero or matching numbers as verified unless their flags are true; call `annotation_list` before any retry.
 
 For `create_component_set`, failed-combine recovery inspects each member's placement before writing a recovery name. Ordinary members confirmed at their original placement are restored best-effort, continuing after individual recovery failures. Members confirmed inside a surviving `COMPONENT_SET` retain or best-effort confirm their computed variant names; a changed parent with unreadable type blocks original-name restoration. Its error evidence separates `appliedComponents`, `restoredComponents`, `unrestoredComponents`, `removedComponents`, `unknownRemovalComponents`, `reparentedComponents`, `unverifiedPlacementComponents`, `survivingComponentSets`, `retainedVariantComponents`, and `unconfirmedVariantComponents`. Removal is `live | removed | unknown`; unknown never authorizes optimistic recovery. Once a component set exists, member names remain valid variant names, the set's required identity/location is snapshotted and verified, and optional projection-read failures become success warnings.
@@ -72,6 +76,10 @@ When creating a new variable with `variable_manage` (`action: "CREATE_VARIABLE"`
 ## 10. Error reporting is total
 
 JavaScript may throw hostile values whose `code`, nested `error`, `message`, `details`, or string conversion also throws. The plugin and registered MCP boundary guard those reads, optional-details copying, and fallback rendering. A readable coded error keeps its structural fields; an unreadable thrown value becomes the canonical `UNKNOWN_ERROR` envelope and unreadable optional details are omitted. If the error still carries `details.partialMutation: true`, its independently constructed recovery evidence remains authoritative: reconcile it before retrying even though the initiating code is `UNKNOWN_ERROR`.
+
+## 11. Native prototype metadata is the supported surface
+
+Use `reaction_list` and `reaction_update` for native prototype work in the connected Design file. v2.3.3 has no connector-template discovery or automatic connector-diagram workflow; lossless reaction reads and state-safe localized updates are explicitly deferred to v2.3.4.
 
 ---
 

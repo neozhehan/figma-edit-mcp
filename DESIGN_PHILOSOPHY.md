@@ -83,7 +83,7 @@ Stated precisely: Cleaner leads to Faster as an expected lifecycle effect. The e
 The first insight explains why a programmatic check is more reliable than an instruction once a condition can be evaluated. Cleaner leads back to Safer by determining which conditions are available to evaluate:
 **A safeguard can reliably enforce only the relationships the file makes observable.**
 
-Any design or engineering document can hold a decision in one of two forms. The decision can be recorded as structure that the software stores and can read back — a stated link from one thing to another. Or it can exist only as a convention: the author knows two things are meant to match, but nothing in the file says so. The two forms can produce the same visible result. They are not the same to a checker. A check can read a recorded relationship and act on it, but it cannot read an intention that was never written down. 
+Any design or engineering document can hold a decision in one of two forms. The decision can be recorded as structure that the software stores and can read back — a stated link from one thing to another. Or it can exist only as a convention: the author knows two things are meant to match, but nothing in the file says so. The two forms can produce the same visible result, but they are not the same to a checker. A check can read a recorded relationship and act on it, but it cannot read an intention that was never written down. 
 
 So the more of the author's intent a file records as structure, the more of it a check can protect. A file that has been cleaned up in this sense — decisions written down rather than left implied — is a file in which more can be verified.
 
@@ -97,14 +97,14 @@ A cleaner file records more of that intent, through three mechanisms. Each is a 
 
 The same pattern appears well outside design tools, which is the reason to trust it rather than treat it as a quirk of Figma:
 
-- **Engineering CAD software** — the programs engineers use to model physical parts — can record how the pieces of a model depend on one another. In a study that compared modelling styles, the models that recorded those dependencies showed an error pointing straight at the piece that broke when a designer changed something it relied on. A style that left the dependencies out instead produced broken geometry that still looked finished, so the mistake could pass unnoticed.
+- **Engineering CAD software** (programs that engineers use to model physical parts) — can record how the pieces of a model depend on one another. In a study that compared modelling styles, the models that recorded those dependencies showed an error pointing straight at the piece that broke when a designer changed something it relied on. A style that left the dependencies out instead produced broken geometry that still looked finished, so the mistake could pass unnoticed.
 - **Databases** can be told that one record depends on another. Once that link is declared, the database refuses to delete a record that other records still point to. Without the declared link, the same deletion goes through and leaves broken references behind.
 - **Copied code.** When programmers duplicate a block of code instead of sharing a single copy, a bug in the original is carried into every duplicate, and a later fix often reaches only some of them — the cost of not having one authoritative version.
 - **Hospital patient names.** Units caring for newborns that gave babies near-identical temporary names, such as "Babyboy Smith," had staff place orders on the wrong baby. Giving each newborn a more distinctive name reduced those wrong-patient orders.
 
-These are different fields, but each shows the same thing: a safeguard helps when the relationship it depends on is recorded, and cannot help when that relationship exists only by convention. They support the mechanisms, not a measured number for this project; the size of the effect for an AI editing Figma has not been measured. ([Quotes, methods, limitations, and sources](EVIDENCE.md#cleaner-leads-to-safer).)
+These are different fields, but each shows the same thing: a safeguard helps when the relationship it depends on is recorded, and cannot help when that relationship exists only by convention. ([Quotes, methods, limitations, and sources](EVIDENCE.md#cleaner-leads-to-safer).)
 
-Stated precisely: Cleaner leads to Safer when cleanup replaces duplicated or unstated decisions with recorded objects and explicit links, or removes obsolete choices that could still be selected. A smaller layer count, visual neatness, or meaningful-sounding names on their own do not establish the connection.
+Stated precisely: Cleaner leads to Safer when cleanup replaces duplicated or unstated decisions with recorded objects and explicit links, or removes obsolete choices that could still be selected.
 
 Two caveats keep the claim bounded:
 

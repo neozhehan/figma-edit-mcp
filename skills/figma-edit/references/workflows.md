@@ -4,6 +4,8 @@
 
 Every workflow that touches a node should start with a read. There is no exception worth memorizing.
 
+No write against an existing object proceeds unless the caller-supplied current name matches the resolved object's actual name — nodes, variables, styles, and collections alike; creation verifies the identified parent or collection instead.
+
 1. **Discover pages** with `page_info` to learn the page structure.
 2. **Discover nodes** with `node_info({ nodeIds, filter, properties, maxDepth })` to get IDs, names, types, and any properties you need.
 3. **Plan** the operation using the IDs and names from the read — verbatim, no transformation.
@@ -178,6 +180,19 @@ When applying variables, certain properties require the node to be in a specific
 Pass exactly one of `nodeId` or `pageId`. The `annotation_set` mixin restriction applies to the node being written, not to an `annotation_list` traversal root.
 
 After `annotation_set`, treat counts as verified only when their matching flags are true. A failed row with `outcomeUnknown: true` means the append was attempted but post-state could not be read (`afterCount` is null and `afterCountVerified` is false); preserve the initiating `error`, treat `postStateError` as secondary evidence, and run `annotation_list` before retrying so an already-committed annotation is not duplicated.
+
+For every accepted batch, treat `status: "partial_success"` as incomplete and handle every non-success row (`failed` and `skipped`); rows share `nodeId`/`status`/`error`, with `error` required on failed and skipped rows. The annotation list-before-retry rule above overrides an immediate retry because append is not idempotent.
+
+### Inspect or update native prototype reactions
+
+```
+1. node_info({ nodeIds: [nodeId], maxDepth: 0 })       → verify the node and exact current name
+2. reaction_list({ nodeIds: [nodeId] })                → inspect current native reaction metadata
+3. reaction_update({ nodeId, nodeName, reactions })    → replace the node's reaction array
+4. reaction_list({ nodeIds: [nodeId] })                → verify the resulting metadata
+```
+
+v2.3.3 provides no connector-template discovery or automatic connector-diagram workflow. Native reaction reads and whole-array updates are the supported same-file surface; lossless read coverage and state-safe localized updates are deferred to v2.3.4.
 
 ### Set effects without silent field loss
 

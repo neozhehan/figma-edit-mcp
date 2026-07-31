@@ -83,7 +83,7 @@ const mainMod: any = await import("../../../../../figma_plugin/src/main.js?scope
 const pluginState = mainMod.getPluginState();
 const gateOnMessage = gateFigma.ui.onmessage as (msg: any) => Promise<void> | void;
 
-// Expected tool-to-gate mapping (14 generic gate categories)
+// Expected tool-to-gate mapping (15 generic gate categories)
 // 1. nodePerm
 // 2. scope
 // 3. name
@@ -98,6 +98,7 @@ const gateOnMessage = gateFigma.ui.onmessage as (msg: any) => Promise<void> | vo
 // 12. batchPrevalidation
 // 13. handlerPrevalidationBeforeMutation
 // 14. explicitNameNonEmpty
+// 15. collectionName
 const EXPECTED_CONTRACTS: Record<string, string[]> = {
     node_set_fill: ["nodePerm", "scope", "name", "lockedTarget"],
     node_set_stroke: ["nodePerm", "scope", "name", "lockedTarget"],
@@ -108,8 +109,8 @@ const EXPECTED_CONTRACTS: Record<string, string[]> = {
     node_transform: ["nodePerm", "scope", "name", "lockedTarget"],
     node_bind_variable: ["nodePerm", "scope", "name", "lockedTarget"],
     node_apply_style: ["nodePerm", "scope", "name", "lockedTarget"],
-    node_clone: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "parentScope", "lockedParent", "instanceInteriorParent"],
-    node_flatten: ["nodePerm", "scope", "name", "lockedTarget", "scopeRootPreservation"],
+    node_clone: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "parentScope", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
+    node_flatten: ["nodePerm", "scope", "name", "lockedTarget", "scopeRootPreservation", "handlerPrevalidationBeforeMutation"],
     node_ungroup: ["nodePerm", "scope", "name", "lockedTarget", "scopeRootPreservation", "instanceInteriorTarget"],
     text_set_style: ["nodePerm", "scope", "name", "lockedTarget"],
     instance_set_property: ["nodePerm", "scope", "name", "lockedTarget"],
@@ -129,9 +130,9 @@ const EXPECTED_CONTRACTS: Record<string, string[]> = {
     create_instance: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
     create_component: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "scopeRootPreservation", "handlerPrevalidationBeforeMutation"],
     node_insert_child: ["nodePerm", "parentScope", "parentName", "scope", "name", "lockedParent", "lockedTarget", "instanceInteriorParent", "instanceInteriorTarget"],
-    variable_manage: ["remoteAsset", "explicitNameNonEmpty"],
+    variable_manage: ["name", "collectionName", "remoteAsset", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
     variable_delete: ["name", "remoteAsset"],
-    style_manage: ["remoteAsset", "explicitNameNonEmpty"],
+    style_manage: ["name", "remoteAsset", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
     style_delete: ["name", "remoteAsset"],
     component_manage_property: ["nodePerm", "scope", "name", "lockedTarget", "remoteAsset", "explicitNameNonEmpty"],
     component_delete_property: ["nodePerm", "scope", "name", "lockedTarget", "remoteAsset"],
@@ -147,6 +148,8 @@ const TOKEN_TO_GATE: Record<string, string> = {
     "locked(source)": "lockedTarget",
     "parent scope": "parentScope",
     "parent name": "parentName",
+    "current-name on UPDATE": "name",
+    "collection-name on CREATE_VARIABLE": "collectionName",
     "parent locked": "lockedParent",
     "locked(parent)": "lockedParent",
     "locked(parent & child)": "lockedParent",
@@ -164,6 +167,7 @@ const TOKEN_TO_GATE: Record<string, string> = {
     "handler-prevalidation-before-mutation": "handlerPrevalidationBeforeMutation",
     "parent-first + cleanup": "handlerPrevalidationBeforeMutation",
     "plan/mutate two-phase": "handlerPrevalidationBeforeMutation",
+    "validate-before-mutate": "handlerPrevalidationBeforeMutation",
     "explicit name non-empty when supplied": "explicitNameNonEmpty",
     "explicit set name non-empty when supplied": "explicitNameNonEmpty",
     "styleName verification": "name",
@@ -191,6 +195,15 @@ const IGNORE_TOKENS = new Set<string>([
     "not remote-gated (local override)",
     "same-parent",
     "correct characters contract",
+    "D7 status envelope",
+    "D7 status envelope with guarded retry",
+    "category verified before mutation",
+    "use-time predicate recheck",
+    "destination resolved last",
+    "immediate destination insertion",
+    "parent+index passed to flatten",
+    "verified parent passed directly to combine",
+    "scopes required on CREATE_VARIABLE",
     "supports-annotations",
     "source exists+INSTANCE",
     "per-target exists+scope+name+INSTANCE+locked",

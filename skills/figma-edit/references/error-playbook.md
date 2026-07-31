@@ -4,7 +4,13 @@ Every structured error you may receive, what it means, and the correct recovery.
 
 **General principle:** structured error codes are deterministic — the plugin made a decision based on a hard rule. Retrying without changing inputs produces the same result. Either change inputs (refresh names/IDs) or stop and inform the user.
 
+No write against an existing object proceeds unless the caller-supplied current name matches the resolved object's actual name — nodes, variables, styles, and collections alike; creation verifies the identified parent or collection instead.
+
 **Partial-mutation exception:** if an error carries `details.partialMutation: true`, do not retry yet. Read `details.whatChanged` and `details.before`, inspect the disclosed survivor/set/component IDs with `node_info`, and deliberately reconcile the durable change first. Cleanup/restoration failures preserve the initiating error; the evidence describes what survived, not a second error to retry around. This rule also applies when a hostile initiating thrown value was safely normalized to `UNKNOWN_ERROR`.
+
+## Batch result recovery
+
+Treat `status: "partial_success"` as incomplete and retry every non-success row (`failed` and `skipped`) after accounting for what already succeeded; every batch result row carries the shared `nodeId`/`status`/`error` vocabulary, with `error` required on failed and skipped rows. `annotation_set` is the exception to immediate retry: append is not idempotent, so call `annotation_list`, compare labels with the attempted payload, and retry a non-success row only after confirming the intended annotation is absent; identical-text duplicates remain ambiguous.
 
 ## Scope errors
 
@@ -25,7 +31,16 @@ Every structured error you may receive, what it means, and the correct recovery.
 | Code / Message | Meaning | Recovery |
 |---|---|---|
 | `NAME_MISMATCH` | `nodeName` does not match the actual name of `nodeId`. | Your context is stale or the ID is wrong. Call `node_info({ nodeIds: [<id>] })` to refresh, then retry with the actual name. |
-| `PARENT_NAME_MISMATCH` | `parentNodeName` does not match the actual name of `parentId`. | Refresh via `node_info` and retry. |
+| `PARENT_NAME_MISSING` | A non-conforming caller omitted the required `parentNodeName`. | Read the parent with `node_info` and pass its current exact name back verbatim. Conforming MCP calls normally fail earlier at schema validation. |
+| `PARENT_NAME_MISMATCH` | `parentNodeName` does not match the actual name of `parentId`. | Read the parent with `node_info` and pass its current exact name back verbatim; do not replace a correct `parentId` merely because its name changed. |
+| `VARIABLE_NAME_MISSING` | `UPDATE_VARIABLE` omitted `currentVariableName`. | Read the variable's current exact name with `variable_list` and pass it back verbatim. |
+| `VARIABLE_NAME_MISMATCH` | `currentVariableName` does not match the resolved variable's stored name. | Refresh with `variable_list` and pass the returned current name back verbatim. |
+| `COLLECTION_NAME_MISSING` | An operation identifying an existing collection omitted `collectionName`. | Read the collection's current exact name with `variable_list` and pass it back verbatim. |
+| `COLLECTION_NAME_MISMATCH` | `collectionName` does not match the resolved collection's stored name. | Refresh with `variable_list` and pass the returned collection name back verbatim. |
+| `STYLE_NAME_MISSING` | A `style_manage` update omitted `currentStyleName`. | Read the style's current exact name with `style_list` and pass it back verbatim. |
+| `STYLE_NAME_MISMATCH` | `currentStyleName` does not match the resolved style's stored name. | Refresh with `style_list` and pass the returned current name back verbatim. |
+| `VARIABLE_SCOPES_MISSING` | `CREATE_VARIABLE` omitted the explicit `scopes` decision. | Supply the advertised allowed scopes; use `[]` only when deliberately assigning no scopes. Omission is not a default. |
+| `ANNOTATION_CATEGORY_NOT_FOUND` | `annotation_set.categoryId` does not resolve to a category in this document. | Call `annotation_list` with `includeCategories: true` and pass a returned category ID back verbatim, or omit `categoryId`. |
 
 These are lookup/verification errors, not name-assignment rules. C9's present-empty exactness applies to the protected `parentNodeName` paths; do not assume every name-looking lookup field shares that edge behavior.
 
@@ -66,6 +81,20 @@ These are lookup/verification errors, not name-assignment rules. C9's present-em
 | `pageId with ID <id> not found` | The supplied `pageId` does not resolve to any node. | Refresh page IDs via `page_info` and pass a valid one. |
 | `pageId does not resolve to a PAGE` | The supplied `pageId` resolves to a node that is not a `PAGE`. | Pass the ID of an actual page (from `page_info`), not a frame/layer. |
 | `Exactly one of pageId or nodeId is required` | `annotation_list` was called with neither or both of `pageId` / `nodeId`. | Pass exactly one — a `pageId` to scan a whole page, or a `nodeId` to scan a node and its subtree. The node root may be a traversable container such as a `GROUP`; it does not need to support annotations itself. |
+
+## Page-load, scan-coverage, and destructive-scan errors
+
+Multi-page reads return these codes inside `coverage.pageErrors` while preserving successful pages; direct single-page operations raise the same structured error. `coverage.complete: false` means the response is partial, and `coverage.pagesAttempted` states how many pages were actually attempted.
+
+| Code | Meaning | Recovery |
+|---|---|---|
+| `PAGE_LOAD_FAILED` | A specific page rejected its load attempt. | Retry once. If it persists, use `page_info` to identify the page, continue only with data from pages that loaded, and report the failing page to the user. |
+| `PAGE_SCAN_FAILED` | The page loaded, but reading its requested data failed before the scan completed. | Do not loop on the identical broad request. Narrow to one page, a specific `nodeId`, or fewer properties; report the page if the focused read still fails. |
+| `PAGE_NOT_FOUND` | The requested ID does not exist in this document. | Refresh page IDs with `page_info` and pass a returned page ID back verbatim. |
+| `TARGET_NOT_PAGE` | The requested `pageId` resolved to another node type. | Use `page_info` and pass a PAGE ID, not a frame or layer ID. |
+| `PAGE_LOAD_TIMEOUT` | A page did not settle within the bounded per-page timeout. | Retry once; if it keeps timing out, continue only with other pages and report the timed-out page. Multiple failing pages are bounded individually, not by one total command deadline. |
+| `DOCUMENT_SCAN_INCOMPLETE` | A destructive document-wide variable/collection scan could not inspect every page, so zero consumers cannot be proven and no removal starts. | Resolve the listed `coverage.pageErrors` in Figma or retry when every page loads; do not infer that omitted pages contain no consumers. |
+| `VARIABLE_IN_USE` | A complete scan found consumers, so deletion was refused before `remove()`. | Read every consumer in `details.variablesInUse` with `node_info`, `style_list`, or `variable_list`, clear or rebind each reference, then retry the exact deletion call. |
 
 ## Variable Binding & Auto-layout Guardrails
 
@@ -132,8 +161,9 @@ These are lookup/verification errors, not name-assignment rules. C9's present-em
 | `CHANNEL_NOT_BOUND` | This session holds no channel. Either you have not joined one yet, or a **failed `channel_join` released the healthy binding you had** — including a same-channel rejoin or a failure while reading scope after the socket admitted the new channel. | Call `channel_join`. When `details.releasedChannel` is present the message names the exact channel to pass back — that restores the connection the failed attempt cost you. Otherwise ask the user for the code in the plugin's status bar. |
 | `CHANNEL_NOT_FOUND` | **Retired.** A current socket no longer emits this; a channel with no plugin now returns `PLUGIN_PEER_UNAVAILABLE`. Only an outdated socket build can still produce it. | Treat exactly as `PLUGIN_PEER_UNAVAILABLE`, and mention that the server may need updating. |
 | `CHANNEL_JOIN_FAILED` | The join did not complete. Three causes: the plugin did not acknowledge in time; this session could not confirm leaving its previous channel (`errorDetails.phase: "leave-previous-channel"`); or the socket join succeeded but the editable-scope payload failed (`errorDetails.phase: "scope-payload"`). On the leave-failure path the client has already cleared its local binding and closed its bridge socket so any uncertain reservation is released by teardown; the requested join was never sent. On the scope-payload path the socket admitted the channel, cleanup removed the unusable binding, and the session currently holds none. | Read `errorDetails.phase`. For `leave-previous-channel`, wait for the MCP client's automatic bridge reconnect, then call `channel_join` again—use `errorDetails.previousChannel` to restore the prior channel or `errorDetails.requestedChannel` to retry the switch. For `scope-payload`, call `channel_join` with the requested channel again immediately; if it keeps failing, reopen the plugin in Figma and retry. For an ordinary join timeout, ask the user to reopen/reconnect the Figma plugin before retrying. |
-| `DOCUMENT_LOAD_FAILED` | The Figma document could not be loaded by the plugin. | Inform the user. Often a Figma client-side issue. |
 | `UNKNOWN_ERROR` | An unstructured or unreadable failure inside the plugin/server boundary. Hostile thrown values whose error getters or stringification throw are safely reduced to this canonical envelope; unreadable optional details are omitted rather than allowing reporting to fail. | Report the readable message when present and do not silently retry. If `details.partialMutation: true` is present, reconcile its `whatChanged`/`before` evidence first—the fallback code does not make the durable outcome clean or unknown evidence safe to ignore. |
 
 > [!NOTE]
 > **A channel binds exactly one plugin to one MCP session.** Two consequences you will hit in practice. First, `channel_join` releases a healthy binding before its socket-join and scope-read legs complete—even when rejoining the same channel—so a later failure **disconnects your working session**; both the join failure and following `CHANNEL_NOT_BOUND` name the released channel, and rejoining it is one call. An already invalidated binding is not mislabeled as something the attempt released. Second, `channel_join` never returns `PLUGIN_PEER_AMBIGUOUS` — a second plugin is refused at its own join and the refusal appears in that plugin's UI, so a user with the plugin open in two Figma tabs sees it there, not through you.
+>
+> Native prototype work uses `reaction_list` and `reaction_update`. There is no connector-template discovery workflow in v2.3.3; lossless reads and state-safe localized updates remain explicit v2.3.4 follow-up work.

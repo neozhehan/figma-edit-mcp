@@ -2,9 +2,50 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 18: Phase 12 contract synchronization
+
+### Author: GPT-5.6 Sol (Extra High) @ 2026-07-30 10:35pm PT
+
+**No new v2.3.3 product decision or PRD revision.** This change implements Phase 12/D8 by synchronizing the already-implemented D5–D14 behavior into the canonical safety manual, all four operational agent guides and their served MCP resources, and executable contract checks. Phase 13's version bump and release `CHANGELOG.md` work and Phase 14's live matrix remain intentionally unimplemented.
+
+### Safety-manual publish gate
+
+- **G2 is now the universal existing-object rule.** Existing node writes verify `nodeName`; variable updates verify `currentVariableName`; style updates verify `currentStyleName`; variable creation verifies its identified `collectionName`; variable/style deletion keeps its action-specific current-name checks; caller-placed creation verifies the identified parent; and batch targets carry per-item names. The audit covered every dispatcher write branch and the action routers in `variableHandlers.ts` and `styleHandlers.ts` before publishing the broader claim.
+- `SAFETY.md` now distinguishes right-object verification from name assignment, expands AS3/operator guidance to `variable_list` and `style_list`, and updates the input-validation name-field inventory. The Part B matrix records the variable/style current-name gates, `CREATE_VARIABLE` collection/scopes gate, validate-before-mutate ordering, contained clone/flatten/creator/component-set placement, annotation category verification, D7 batch envelopes, instance use-time rechecks, and the channel-binding surface. The removed connector surface has no row.
+- G4 now promises prevalidation atomicity plus truthful post-start reporting, not transactional all-or-nothing execution. A5 records the tri-state batch status, ordered one-row-per-input contract, shared counts, shared `nodeId`/`status`/`error` row vocabulary, and the non-idempotent annotation retry carve-out.
+- The containment contract now names both required residuals: the unavoidable same-stack implicit-creator micro-transient and the bounded dispatcher-to-handler destination-freshness gap, including the escalation trigger of a reported or reproduced creation outside its verified destination.
+- G9/A10 state the D13 boundary precisely: one admitted plugin peer plus one MCP session with pair-only routing and a **peer-bound, self-reported version check — not cryptographic attestation**. Part D now identifies the three origin-scoped coded-error registries and the complete twenty-two-code-plus-`UNKNOWN_ERROR` inventory.
+
+### Agent guides and served resources
+
+- `constraints.md`, `error-playbook.md`, `tool-selection.md`, and `workflows.md` each state G2 once as one sentence. The MCP resources remain byte-for-byte mirrors by reading those files directly; resource tests now pin the Phase 12 semantics as well as mirror identity.
+- `error-playbook.md` now has a recovery row for every ratified D9 code, including both parent-name codes, all seven Phase 10 plugin operational codes, `PAGE_SCAN_FAILED`, `VARIABLE_IN_USE`, and the operator-facing `PLUGIN_PEER_AMBIGUOUS` boundary. The retired `DOCUMENT_LOAD_FAILED` row is removed.
+- The guides teach `partial_success` as incomplete, require handling both `failed` and `skipped` rows, use the shared `nodeId`/`status`/`error` vocabulary, and require `annotation_list` label comparison before retrying append failures; identical-text duplicates remain explicitly ambiguous.
+- Native prototype work is directed to `reaction_list`/`reaction_update`. The guides advertise no connector-template discovery or automatic connector-diagram workflow and state that lossless reads/state-safe localized reaction updates are deferred to v2.3.4.
+- The D9 acceptance review reproduced the existing factory/message checks: ratified operational refusals carry an actionable recovery verb, missing/mismatched verification messages name the supplying read tool and verbatim pass-back, codes originate from their one allowed registry, and the structured boundary preserves them without prose reconstruction.
+
+### Executable contract changes
+
+- `safetyContract.test.ts` expands its generic gate vocabulary from fourteen to fifteen with a distinct collection-name gate. The bidirectional manual/table diff now pins the newly documented variable/style verification and validate-before-mutate gates plus clone/flatten containment, while retaining executable node-permission sweeps and pre-mutation regression probes.
+- New `v2.3.3.phase12.test.ts` pins exactly-one G2 publication in each guide, complete ratified playbook coverage, retirement of `DOCUMENT_LOAD_FAILED`, batch/annotation retry semantics, the current native prototype direction, the two containment residuals, the D13 claim, and continued absence of the removed public names.
+- `resources.test.ts` proves the served resources carry those semantics and remain exact mirrors of the four repository sources.
+- Every Phase 12 task and subtask is checked complete in `task.md`.
+
+### Verification
+
+- **Focused Phase 4/10/11/12 + safety/resource matrix:** **124/124 tests, 716 assertions across 6 files**.
+- **Full repository suite with loopback access:** **1,042/1,042 tests, 5,674 assertions across 53 files**. The first sandboxed run reached **1,033 pass / 9 fail**; all nine were localhost-binding failures (`EADDRINUSE` in `socketPeerBinding` and `socket server did not start` in `figmaClientTransport`). The unrestricted loopback rerun passed all nine and supersedes that environment-only result.
+- `bun run build:all`, `check:plugin`, `check:generated`, `check:versions`, `check:types:plugin`, and `check:suppressions` pass. Generated node fields, bind fields, the 45-tool manifest, and the plugin bundle remain synchronized; version surfaces remain intentionally synchronized at **v2.3.2** pending Phase 13.
+- Phase 12-owned paths pass `git diff --check`. A repository-wide clean diff claim is not made: a concurrent, unrelated `DESIGN_PHILOSOPHY.md` edit retains pre-existing trailing whitespace and is preserved untouched.
+- No live Figma probe was performed or required for this documentation/resource synchronization phase; no runtime production path changed.
+
+### Files changed by Change 18
+
+`SAFETY.md`; the four files under `skills/figma-edit/references/`; `safetyContract.test.ts`; `resources.test.ts`; new `v2.3.3.phase12.test.ts`; `documentation/v2.3.3/task.md`; and this `release-changelog.md` section.
+
 ## Change 17: Change 16 corrections and `b05y` live closure
 
-### Author: OpenAI Codex (GPT-5) @ 2026-07-30
+### Author: GPT-5.6 Sol (Extra High) @ 2026-07-30
 
 **No new v2.3.3 product decision or PRD revision.** Phase 11's removal remains functionally correct. This section corrects Change 16's remaining measurements and evidence language, records the first independent live pass performed for that review, and revises the future v2.3.4 reaction contract where the live host disproved its comparator. The v2.3.4 specification change is recorded there as Rev 7. Change 16 and every earlier change remain unedited historical records; this section supersedes them only where stated.
 
