@@ -2,6 +2,37 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 22: Phase 13 version and release-documentation closure
+
+### Author: GPT-5.6 Sol (Extra High) @ 2026-08-02 12:00am PT
+
+**No new v2.3.3 product decision or PRD revision.** This change implements and closes Phase 13 only: every enforced version surface moves from `2.3.2` to `2.3.3`, the plugin bundle is rebuilt so the About/join handshake embeds `2.3.3`, and the root `CHANGELOG.md` gains the release entry and migration examples required by the PRD's complete Compatibility posture. Phase 14 remains open; no live-Figma or manual-IDE verification is claimed here.
+
+### Implemented
+
+- **Release identity is synchronized at `2.3.3`.** Updated `package.json`; both root `package-lock.json` version fields; both `server.json` version fields; the versioned root `manifest.json`; and the package-derived plugin bundle constant. `figma_plugin/manifest.json` remains intentionally unversioned. `bun run build:all` rebuilt the server/socket outputs, generated node/bind-field artifacts, and `figma_plugin/code.js`; the About UI and plugin join payload both consume that rebuilt constant.
+- **The public release migration is complete.** The new root `CHANGELOG.md` `[2.3.3]` entry gives explicit before/after request or response examples for: required `currentVariableName`, `currentStyleName`, `collectionName`, and `scopes`; explicit parent IDs/names on all six caller-placed creators; `annotation_set`'s repaired field set and `annotation_list`'s grouped node-mode result; recursive nested strictness; per-variant strict effects; empty/duplicate batch rejection; shared batch counts/status and the renamed instance-row vocabulary; verified annotation-count evidence; the mandatory role/version peer handshake and admission refusals; connector tool/prompt removal and native-reaction migration; empty assigned-name and typography bounds; coded `VARIABLE_IN_USE`; corrected page/missing/coverage semantics; and the additive `create_instance.componentId` response.
+- **Phase 13 has an executable release-boundary check.** `v2.3.3.phase13.test.ts` pins all six descriptor fields plus the built handshake, checks the required migration inventory and before/after coverage inside the `[2.3.3]` entry, and regression-tests generated-file freshness semantics.
+- **The generated-file gate now measures freshness, not commit state.** Phase 13 exposed a pre-existing contradiction in `check:generated`: after regenerating the correct 45-tool manifest, it compared the intentional `manifest.json` version change with `HEAD` and declared it stale. That made an uncommitted release bump impossible to verify even when regeneration reproduced it byte-for-byte. The gate now snapshots each current output, regenerates, compares contents, and restores an actually stale existing output before failing—the same distinction already documented and implemented by `check:plugin`. A generated output may be current and uncommitted; whether it is committed is not a source-freshness question.
+- **The Phase 13 task ledger is closed.** Every Phase 13 checkbox is checked only after the build, migration-entry audit, full-suite pass, and static/generated gates below completed.
+
+### Verification
+
+- `bun run build:all` passes: 192 node fields (178 data, 10 node-reference), 36 bind fields, successful server/socket builds, and a successful plugin bundle rebuild.
+- Focused Phase 13 regression: **3/3 tests, 40 assertions, 1 file**.
+- Full repository suite with localhost loopback available: **1,047/1,047 tests, 5,743 assertions across 54 files**.
+- `bun run check:versions` passes at **v2.3.3**.
+- `bun run check:plugin`, `check:generated` (45-tool manifest), `check:types:plugin`, `check:suppressions`, and `git diff --check` pass.
+- The first sandboxed full-suite attempt produced **1,035 pass / 9 fail** solely at localhost listeners (`EADDRINUSE` in eight `socketPeerBinding` tests and `socket server did not start` in `figmaClientTransport`). The required loopback-enabled rerun above passed all 1,047 tests; the sandbox result is not classified as a product failure.
+
+### Evidence boundary
+
+This is repository verification of the Phase 13 version/docs/build boundary. The user requested a stop after Phase 13, so the Phase 14 live Figma matrix, manual plugin-UI `URL` probe, IDE diagnostic check, and historical Track 1 rebuild-diff audit were not started and remain unchecked in `task.md`.
+
+### Files changed by Change 22
+
+`package.json`; root `package-lock.json`; `server.json`; root `manifest.json`; rebuilt `figma_plugin/code.js`; root `CHANGELOG.md`; `scripts/check-generated.ts`; `src/mcp_server/tests/unit/v2.3.3.phase13.test.ts`; `documentation/v2.3.3/task.md`; and this new top section in `documentation/v2.3.3/release-changelog.md`.
+
 ## Change 21: Change 20 verification and boundary-test tightening
 
 ### Author: Claude Opus 5 (Ultracode) @ 2026-08-01 11:30pm PT
