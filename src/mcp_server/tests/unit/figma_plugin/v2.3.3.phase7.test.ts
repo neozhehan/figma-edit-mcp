@@ -613,7 +613,7 @@ describe("Phase 7 D8: recursive strictness", () => {
             lightIntensity: 2,
             lightAngle: 45,
             refraction: 0.5,
-            depth: 0,
+            depth: 1,
             dispersion: 0.5,
             radius: 1,
         }).success).toBe(false);
@@ -622,7 +622,7 @@ describe("Phase 7 D8: recursive strictness", () => {
             lightIntensity: 0.5,
             lightAngle: 45,
             refraction: 2,
-            depth: 0,
+            depth: 1,
             dispersion: 0.5,
             radius: 1,
         }).success).toBe(false);
@@ -631,7 +631,7 @@ describe("Phase 7 D8: recursive strictness", () => {
             lightIntensity: 0.5,
             lightAngle: 45,
             refraction: 0.5,
-            depth: 0,
+            depth: 1,
             dispersion: 2,
             radius: 1,
         }).success).toBe(false);
@@ -640,20 +640,29 @@ describe("Phase 7 D8: recursive strictness", () => {
             lightIntensity: 0.5,
             lightAngle: 45,
             refraction: 0.5,
-            depth: 0,
+            depth: 1,
             dispersion: 0.5,
             radius: -1,
         }).success).toBe(false);
 
-        // Both ends of each confirmed closed interval are valid. In
-        // particular, depth: 0 was accepted live and must not inherit the
-        // stale typings comment that suggested a minimum of one.
+        // Both ends of each confirmed closed interval are valid. A setter-only
+        // probe previously accepted depth: 0, but live read-back on 4b9u proved
+        // Figma normalizes it to 1. Reject zero rather than claim exact success.
+        expect(parseEffect({
+            type: "GLASS",
+            lightIntensity: 0.5,
+            lightAngle: 45,
+            refraction: 0.5,
+            depth: 0,
+            dispersion: 0.5,
+            radius: 0,
+        }).success).toBe(false);
         expect(parseEffect({
             type: "GLASS",
             lightIntensity: 0,
             lightAngle: 45,
             refraction: 1,
-            depth: 0,
+            depth: 1,
             dispersion: 0,
             radius: 0,
         }).success).toBe(true);
@@ -662,7 +671,7 @@ describe("Phase 7 D8: recursive strictness", () => {
             lightIntensity: 1,
             lightAngle: 45,
             refraction: 0,
-            depth: 0,
+            depth: 1,
             dispersion: 1,
             radius: 0,
         }).success).toBe(true);

@@ -90,7 +90,7 @@ This release restores type-checking for the Figma plugin and closes the v2.3.3 s
 
   The original v2.3.2 request is now rejected with MCP `-32602` at `text[0].charcters` instead of running with altered intent.
 
-- **Effect-style payloads are strict per Figma effect variant.** `style_manage.properties.effects[]` now enumerates `DROP_SHADOW`, `INNER_SHADOW`, `LAYER_BLUR`, `BACKGROUND_BLUR`, `NOISE`, `TEXTURE`, and `GLASS` with variant-specific fields and the exact 19-literal `BlendMode` inventory. Cross-variant or undeclared keys are rejected rather than accepted and discarded; progressive blur fields and NOISE/TEXTURE/GLASS fields now survive end to end.
+- **Effect-style payloads are strict per Figma effect variant.** `style_manage.properties.effects[]` now enumerates `DROP_SHADOW`, `INNER_SHADOW`, `LAYER_BLUR`, `BACKGROUND_BLUR`, `NOISE`, `TEXTURE`, and `GLASS` with variant-specific fields and the exact 19-literal `BlendMode` inventory. Cross-variant or undeclared keys are rejected rather than accepted and discarded; validated progressive-blur and NOISE/TEXTURE/GLASS fields are forwarded without handler-side field loss.
 
   Before:
 
@@ -104,7 +104,7 @@ This release restores type-checking for the Figma plugin and closes the v2.3.3 s
   {"type":"EFFECT","name":"Blur","properties":{"effects":[{"type":"LAYER_BLUR","radius":12}]}}
   ```
 
-  The old cross-variant request now fails validation; the migration is to drop `showShadowBehindNode`, which only ever applied to `DROP_SHADOW` and was silently discarded here. Separately — and independently of that migration — progressive blurs and the NOISE/TEXTURE/GLASS variants now work end to end, because the handler no longer rebuilds effects from a four-type field list. Their fields are optional, not newly required; a progressive blur is written as:
+  The old cross-variant request now fails validation; the migration is to drop `showShadowBehindNode`, which only ever applied to `DROP_SHADOW` and was silently discarded here. Separately — and independently of that migration — the handler no longer rebuilds effects from a four-type field list, so validated progressive-blur and NOISE/TEXTURE/GLASS fields reach Figma. Requiredness remains variant-specific: NOISE/TEXTURE/GLASS base fields are required, while the progressive ramp is required as a set only when `blurType` is `PROGRESSIVE`. GLASS `depth` must be at least `1`; a live `depth: 0` write was accepted by the setter but normalized to `1` on read-back. A progressive blur is written as:
 
   ```json
   {"type":"EFFECT","name":"Blur","properties":{"effects":[{"type":"LAYER_BLUR","radius":12,"blurType":"PROGRESSIVE","startRadius":2,"startOffset":{"x":0,"y":0},"endOffset":{"x":0,"y":100}}]}}
@@ -264,6 +264,7 @@ This release restores type-checking for the Figma plugin and closes the v2.3.3 s
 - Batch progress and notifications are best-effort telemetry and cannot replace or erase the mutation result envelope.
 - The registered MCP inventory contains 45 tools and retains `reaction_list`, `reaction_update`, and `swap_overrides_instances`.
 - Two advertised descriptions now match observed behavior, with no behavior change: `annotation_list.includeCategories` documents its real default of `true` (categories are returned unless you pass `false`) instead of reading as an opt-in, and `style_manage.properties.effects[]` lists every required field per variant, adding NOISE `color` and GLASS `lightAngle`.
+- GLASS effect writes now require `depth >= 1`. A prior setter-only probe showed that Figma accepted `depth: 0`; a complete write/read probe on channel `4b9u` showed that Figma silently normalizes it to `1`, so the MCP boundary now rejects zero instead of reporting success for a value it cannot preserve.
 
 ## [2.3.2]
 This release makes the documented safety contract match the implementation and prevents future drift: dispatcher guard parity, `create_component_set` atomicity, no-orphan creation handlers, an executable safety matrix, output-schema conformance, and version synchronization across every surface.

@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 
 /**
@@ -116,6 +116,10 @@ export function runGeneratedCheck(
         try {
             regenerate(command);
         } catch {
+            // A generator can write one or more outputs before throwing. Restore
+            // every output that existed before the attempt so a failed check is
+            // observational rather than a working-tree mutation.
+            restoreGeneratedFiles(snapshots);
             console.error(`Error: ${command} failed.`);
             return 1;
         }
@@ -125,7 +129,10 @@ export function runGeneratedCheck(
         // intentionally left in place so it can be reviewed and committed.
         const missing = missingGeneratedFiles(snapshots);
         if (missing.length > 0) {
-            restoreGeneratedFiles(missing);
+            // The missing-output condition and a changed sibling can occur in
+            // the same group. Restore the whole pre-existing snapshot, not only
+            // the missing subset, before moving on to the next group.
+            restoreGeneratedFiles(snapshots);
             console.error(`Error: expected generated output missing after "bun run ${command}".`);
             console.error(`Missing outputs: ${missing.map(({ file }) => file).join(", ")}`);
             console.error(
@@ -156,12 +163,33 @@ export function runGeneratedCheck(
  * `check-plugin-build.ts` makes. Uncommitted-but-current is the normal state of
  * a version bump in progress and is not a staleness failure.
  */
-function reportCommitState(groups: readonly GeneratedGroup[]): void {
+export function generatedOutputsHaveUncommittedChanges(
+    groups: readonly GeneratedGroup[],
+    cwd: string = process.cwd(),
+): boolean {
     const files = groups.flatMap(({ files: groupFiles }) => groupFiles);
+    if (files.length === 0) return false;
+
+    // Unlike `git diff`, porcelain status includes staged and untracked files.
+    // execFileSync also keeps generated pathspecs out of shell interpolation.
+    const status = execFileSync(
+        "git",
+        ["status", "--porcelain=v1", "--untracked-files=all", "--", ...files],
+        { cwd, encoding: "utf8" },
+    );
+    return status.trim().length > 0;
+}
+
+export function reportCommitState(
+    groups: readonly GeneratedGroup[],
+    cwd: string = process.cwd(),
+): void {
     try {
-        execSync(`git diff --quiet -- ${files.join(" ")}`, { stdio: "ignore" });
+        if (generatedOutputsHaveUncommittedChanges(groups, cwd)) {
+            console.log("Note: some generated outputs are current but not yet committed.");
+        }
     } catch {
-        console.log("Note: some generated outputs are current but not yet committed.");
+        console.log("Note: unable to determine whether generated outputs are committed.");
     }
 }
 

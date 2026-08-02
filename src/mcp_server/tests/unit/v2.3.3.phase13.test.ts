@@ -12,12 +12,14 @@
  * red on a partial bump and green on a complete one.
  */
 import { describe, expect, it } from "bun:test";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import {
     changedGeneratedFiles,
     missingGeneratedFiles,
+    reportCommitState,
     restoreGeneratedFiles,
     runGeneratedCheck,
     snapshotGeneratedFiles,
@@ -162,6 +164,12 @@ describe("v2.3.3 Phase 13 release boundary", () => {
                 );
             }
         });
+
+        it("states effect requiredness and the GLASS depth boundary truthfully", () => {
+            expect(entry).not.toContain("Their fields are optional, not newly required");
+            expect(entry).not.toContain("fields now survive end to end");
+            expect(entry).toContain("GLASS `depth` must be at least `1`");
+        });
     });
 
     describe("the generated-file freshness gate", () => {
@@ -221,7 +229,30 @@ describe("v2.3.3 Phase 13 release boundary", () => {
             });
         });
 
-        it("fails when the generator itself fails", () => {
+        it("restores changed siblings when another declared output remains missing", () => {
+            withTempDir((dir) => {
+                const present = path.join(dir, "present.txt");
+                const absent = path.join(dir, "never-produced.txt");
+                fs.writeFileSync(present, "working-version\n");
+
+                const exitCode = quietly(() =>
+                    runGeneratedCheck(
+                        [{
+                            command: "gen:fixture",
+                            source: "the fixture source",
+                            files: [present, absent],
+                        }],
+                        () => fs.writeFileSync(present, "generator-version\n"),
+                    ),
+                );
+
+                expect(exitCode).toBe(1);
+                expect(fs.readFileSync(present, "utf8")).toBe("working-version\n");
+                expect(fs.existsSync(absent)).toBe(false);
+            });
+        });
+
+        it("fails and restores the working state when the generator writes then throws", () => {
             withTempDir((dir) => {
                 const file = path.join(dir, "generated.txt");
                 fs.writeFileSync(file, "working-version\n");
@@ -230,12 +261,41 @@ describe("v2.3.3 Phase 13 release boundary", () => {
                     runGeneratedCheck(
                         [{ command: "gen:fixture", source: "the fixture source", files: [file] }],
                         () => {
+                            fs.writeFileSync(file, "partial-generator-version\n");
                             throw new Error("generator exploded");
                         },
                     ),
                 );
 
                 expect(exitCode).toBe(1);
+                expect(fs.readFileSync(file, "utf8")).toBe("working-version\n");
+            });
+        });
+
+        it("reports an untracked generated output as uncommitted", () => {
+            withTempDir((dir) => {
+                execFileSync("git", ["init", "--quiet"], { cwd: dir });
+                fs.writeFileSync(path.join(dir, "new-generated.txt"), "current\n");
+
+                const messages: string[] = [];
+                const originalLog = console.log;
+                console.log = (...args: unknown[]) => messages.push(args.join(" "));
+                try {
+                    reportCommitState(
+                        [{
+                            command: "gen:fixture",
+                            source: "the fixture source",
+                            files: ["new-generated.txt"],
+                        }],
+                        dir,
+                    );
+                } finally {
+                    console.log = originalLog;
+                }
+
+                expect(messages).toEqual([
+                    "Note: some generated outputs are current but not yet committed.",
+                ]);
             });
         });
 
@@ -321,6 +381,12 @@ describe("v2.3.3 Phase 13 release boundary", () => {
                     ).toContain(field);
                 }
             }
+
+            const glass = effectsSchema.items.oneOf.find(
+                (candidate: any) => candidate.properties?.type?.const === "GLASS",
+            );
+            expect(glass.properties.depth.minimum).toBe(1);
+            expect(glass.properties.depth.description).toContain("must be ≥ 1");
         });
     });
 });

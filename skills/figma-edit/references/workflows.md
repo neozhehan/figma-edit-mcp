@@ -203,7 +203,7 @@ v2.3.3 provides no connector-template discovery or automatic connector-diagram w
    OR style_manage({ type: "EFFECT", ... })                 → those four plus NOISE, TEXTURE, GLASS
 ```
 
-Effect objects are strict per `type`: cross-variant keys are errors, not ignored hints, and `blendMode` must be one of the advertised Figma enum literals. `showShadowBehindNode` is DROP_SHADOW-only; progressive blur ramp fields must be supplied together with `blurType: "PROGRESSIVE"`. Supplied colors require complete RGBA channels in `0–1`; shadow/blur and GLASS radii are non-negative; GLASS `lightIntensity`, `refraction`, and `dispersion` are `0–1`, while `depth: 0` is valid.
+Effect objects are strict per `type`: cross-variant keys are errors, not ignored hints, and `blendMode` must be one of the advertised Figma enum literals. `showShadowBehindNode` is DROP_SHADOW-only; progressive blur ramp fields must be supplied together with `blurType: "PROGRESSIVE"`. Supplied colors require complete RGBA channels in `0–1`; shadow/blur and GLASS radii are non-negative; GLASS `lightIntensity`, `refraction`, and `dispersion` are `0–1`, while GLASS `depth` must be at least `1` because Figma normalizes zero to one.
 
 ### Bulk text replacement (large designs)
 

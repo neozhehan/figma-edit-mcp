@@ -245,7 +245,7 @@ const glassEffect = z.object({
     lightIntensity: z.number().min(0).max(1).describe("Light intensity, 0–1"),
     lightAngle: z.number().describe("Light angle, degrees"),
     refraction: z.number().min(0).max(1).describe("Refraction amount, 0–1"),
-    depth: z.number().describe("Glass depth (0 is accepted by Figma)"),
+    depth: z.number().min(1).describe("Glass depth; must be ≥ 1"),
     dispersion: z.number().min(0).max(1).describe("Chromatic dispersion, 0–1"),
     radius: z.number().nonnegative().describe("Corner/blur radius; must be ≥ 0"),
     visible: z.boolean().optional().describe("default true"),

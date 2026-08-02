@@ -81,7 +81,7 @@ All implicit creator/clone partial failures disclose a three-state survivor loca
 
 Use `node_set_effects` for a literal effect array on one node; it accepts exactly `DROP_SHADOW`, `INNER_SHADOW`, `LAYER_BLUR`, and `BACKGROUND_BLUR`. Use `style_manage({type:"EFFECT", …})` to create/update a shared effect style; it accepts those four plus `NOISE`, `TEXTURE`, and `GLASS`.
 
-Both surfaces are strict per variant. Unknown and cross-variant keys are rejected rather than silently stripped, and `blendMode` must be one of the 19 literals advertised from Figma's pinned enum. In particular, `showShadowBehindNode` is DROP_SHADOW-only, and `startRadius`/`startOffset`/`endOffset` must all be present only when `blurType` is `"PROGRESSIVE"`. Supplied effect colors require full RGBA with channels in `0–1`; shadow/blur and GLASS radii are non-negative; GLASS `lightIntensity`, `refraction`, and `dispersion` are `0–1`, and `depth: 0` is valid.
+Both surfaces are strict per variant. Unknown and cross-variant keys are rejected rather than silently stripped, and `blendMode` must be one of the 19 literals advertised from Figma's pinned enum. In particular, `showShadowBehindNode` is DROP_SHADOW-only, and `startRadius`/`startOffset`/`endOffset` must all be present only when `blurType` is `"PROGRESSIVE"`. Supplied effect colors require full RGBA with channels in `0–1`; shadow/blur and GLASS radii are non-negative; GLASS `lightIntensity`, `refraction`, and `dispersion` are `0–1`, and GLASS `depth` must be at least `1` because Figma normalizes zero to one.
 
 ## Solid, Image, and Clear Fills (`node_set_fill`)
 
