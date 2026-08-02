@@ -28,7 +28,13 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
  *   Rev 73 found the committed manifest stale for twelve tool descriptions
  *   accumulated across Phases 4–10, which no existing gate detected.
  */
-export const GENERATED_GROUPS = [
+export interface GeneratedGroup {
+    command: string;
+    source: string;
+    files: string[];
+}
+
+export const GENERATED_GROUPS: GeneratedGroup[] = [
     {
         command: "gen:node-fields",
         source: "@figma/plugin-typings",
@@ -77,24 +83,61 @@ export function restoreGeneratedFiles(snapshots: GeneratedFileSnapshot[]): void 
     }
 }
 
-export function runGeneratedCheck(): number {
+/**
+ * Declared outputs that do not exist after their generator ran.
+ *
+ * Snapshot comparison alone cannot see this case: a file that was absent BEFORE
+ * regeneration and is still absent AFTER it compares equal, so the group would
+ * pass while an advertised generated output does not exist at all. The
+ * `git diff --exit-code` this check replaced failed on it implicitly (a deleted
+ * tracked path is a diff), and `check-plugin-build.ts` fails closed on it
+ * explicitly. Realistic trigger: a generator's output path is renamed and the
+ * `GENERATED_GROUPS` entry is not updated, silently retiring the gate.
+ */
+export function missingGeneratedFiles(snapshots: GeneratedFileSnapshot[]): GeneratedFileSnapshot[] {
+    return snapshots.filter(({ file }) => !existsSync(file));
+}
+
+/**
+ * `groups` and `regenerate` are injectable so the boundary tests can drive this
+ * exact loop over a disposable fixture group instead of asserting the helpers in
+ * isolation — a helper-only test stays green if the loop reverts to comparing
+ * against HEAD, which is the behaviour this function exists to get right.
+ */
+export function runGeneratedCheck(
+    groups: readonly GeneratedGroup[] = GENERATED_GROUPS,
+    regenerate: (command: string) => void = (command) =>
+        execSync(`bun run ${command}`, { stdio: "inherit" }),
+): number {
     let stale = false;
 
-    for (const { command, source, files } of GENERATED_GROUPS) {
+    for (const { command, source, files } of groups) {
         const snapshots = snapshotGeneratedFiles(files);
         try {
-            execSync(`bun run ${command}`, { stdio: "inherit" });
+            regenerate(command);
         } catch {
             console.error(`Error: ${command} failed.`);
             return 1;
         }
 
-        const changed = changedGeneratedFiles(snapshots);
-        if (changed.length === 0) continue;
-
         // Do not silently replace a contributor's working state during a check.
         // Existing outputs are restored; a newly generated missing output is
         // intentionally left in place so it can be reviewed and committed.
+        const missing = missingGeneratedFiles(snapshots);
+        if (missing.length > 0) {
+            restoreGeneratedFiles(missing);
+            console.error(`Error: expected generated output missing after "bun run ${command}".`);
+            console.error(`Missing outputs: ${missing.map(({ file }) => file).join(", ")}`);
+            console.error(
+                `Either ${command} no longer produces that path, or its GENERATED_GROUPS entry is stale — fix whichever is wrong; do not delete the entry to make this pass.`,
+            );
+            stale = true;
+            continue;
+        }
+
+        const changed = changedGeneratedFiles(snapshots);
+        if (changed.length === 0) continue;
+
         restoreGeneratedFiles(changed);
         console.error(`Error: generated files are out of date relative to ${source}.`);
         console.error(`Changed outputs: ${changed.map(({ file }) => file).join(", ")}`);
@@ -108,6 +151,22 @@ export function runGeneratedCheck(): number {
     return 0;
 }
 
+/**
+ * Commit state is reported separately, as information — the same split
+ * `check-plugin-build.ts` makes. Uncommitted-but-current is the normal state of
+ * a version bump in progress and is not a staleness failure.
+ */
+function reportCommitState(groups: readonly GeneratedGroup[]): void {
+    const files = groups.flatMap(({ files: groupFiles }) => groupFiles);
+    try {
+        execSync(`git diff --quiet -- ${files.join(" ")}`, { stdio: "ignore" });
+    } catch {
+        console.log("Note: some generated outputs are current but not yet committed.");
+    }
+}
+
 if (import.meta.main) {
-    process.exit(runGeneratedCheck());
+    const exitCode = runGeneratedCheck();
+    if (exitCode === 0) reportCommitState(GENERATED_GROUPS);
+    process.exit(exitCode);
 }

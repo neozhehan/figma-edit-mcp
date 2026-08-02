@@ -292,7 +292,10 @@ const styleProperties = z.object({
     paints: z.array(paint).optional()
         .describe("PAINT: array of paints (SOLID typed; GRADIENT_*/IMAGE pass through)"),
     effects: z.array(effect).optional()
-        .describe("EFFECT: array of Figma Effect objects, one shape per `type` — DROP_SHADOW/INNER_SHADOW (color, offset, radius, spread), LAYER_BLUR/BACKGROUND_BLUR (radius, blurType), NOISE (noiseType, noiseSize, density), TEXTURE (noiseSize, radius, clipToShape), GLASS (lightIntensity, refraction, depth, dispersion, radius)."),
+        // Required fields per variant must be listed here in full: this sentence is
+        // the first-call contract, and omitting one (NOISE `color`, GLASS
+        // `lightAngle`) guarantees a -32602 the model cannot predict from the prose.
+        .describe("EFFECT: array of Figma Effect objects, one shape per `type` — DROP_SHADOW/INNER_SHADOW (color, offset, radius, spread), LAYER_BLUR/BACKGROUND_BLUR (radius, blurType), NOISE (noiseType, color, noiseSize, density), TEXTURE (noiseSize, radius, clipToShape), GLASS (lightIntensity, lightAngle, refraction, depth, dispersion, radius). Required-vs-optional is authoritative in each variant's schema."),
     layoutGrids: z.array(
         z.object({ pattern: z.enum(["GRID", "ROWS", "COLUMNS"]).describe("Grid pattern") }).catchall(z.any())
     ).optional().describe("GRID: array of Figma LayoutGrid objects, e.g. {pattern:'GRID', sectionSize, visible?} or {pattern:'COLUMNS', count, gutterSize, alignment, …}"),

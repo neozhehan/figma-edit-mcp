@@ -144,11 +144,16 @@ export function registerAnnotationTools(server: McpServer) {
         "annotation_list",
         {
             title: "List Annotations",
-            description: "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. Optionally include the file's annotation categories. Page loading is bounded; a page-scoped failure returns its structured error directly and successful reads include `coverage`.",
+            description: "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. The file's annotation categories are returned by default; pass includeCategories: false to omit them. Page loading is bounded; a page-scoped failure returns its structured error directly and successful reads include `coverage`.",
             inputSchema: z.object({
                 pageId: z.string().optional().describe("The page ID to get annotations from. Exactly one of pageId or nodeId is required."),
                 nodeId: z.string().optional().describe("The node ID to get annotations from. Exactly one of pageId or nodeId is required."),
-                includeCategories: z.boolean().optional().describe("If true, retrieves the list of global annotation categories in the file"),
+                // Defaults to TRUE in the handler (`annotationHandlers.getAnnotations`),
+                // not false. The prior "If true, retrieves…" wording advertised an
+                // opt-in and was contradicted live: categories come back without the
+                // flag. Describing the real default is the truthful fix; flipping the
+                // handler would break every existing reader for no safety gain.
+                includeCategories: z.boolean().optional().describe("Include the file's global annotation categories in the result. Defaults to true; pass false to omit them."),
             }),
             outputSchema: looseOutput({
                 annotatedNodes: z.array(annotatedNode).describe("Grouped annotations, preserving the owning node in page and node modes"),

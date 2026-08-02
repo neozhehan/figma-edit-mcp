@@ -82,12 +82,22 @@ describe("v2.3.3 Phase 11: connector-visualization surface removal", () => {
             );
         }
 
-        expect(read("CHANGELOG.md")).toContain(
-            "v2.3.3 connector-visualization removal (breaking)",
+        // The removal notice used to sit in a standalone block quote above the
+        // `[2.3.3]` heading, written before that entry existed. It now lives
+        // inside the entry as a breaking change with its own migration example,
+        // so assert against the entry rather than the retired notice heading.
+        const changelog = read("CHANGELOG.md");
+        const entry = changelog.slice(
+            changelog.indexOf("## [2.3.3]"),
+            changelog.indexOf("## [2.3.2]"),
         );
-        expect(read("CHANGELOG.md")).toContain(
-            "Use `reaction_list` and `reaction_update`",
+        expect(entry).toContain("The connector-visualization surface is removed.");
+        expect(entry).toContain(
+            "Native prototype metadata remains available through `reaction_list` and `reaction_update`",
         );
+        // The v2.3.4-scheduled reaction caveats must migrate with it, not be lost.
+        expect(entry).toContain("`CHANGE_TO` action");
+        expect(entry).toContain("Failed to update reactions: undefined");
         expect(
             read("documentation/v2.3.3/reviews/revised-prd.md"),
         ).toContain("Historical adversarial-review draft; superseded");

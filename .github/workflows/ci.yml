@@ -27,7 +27,7 @@ jobs:
       - name: Build all
         run: bun run build:all
 
-      - name: Verify plugin bundle is committed up to date
+      - name: Verify plugin bundle is up to date with its sources
         run: bun run check:plugin
 
       - name: Verify plugin type safety
@@ -39,7 +39,7 @@ jobs:
       - name: Verify version synchronization
         run: bun run check:versions
 
-      - name: Verify generated files are committed up to date
+      - name: Verify generated files are up to date with their sources
         run: bun run check:generated
 
       - name: Pack

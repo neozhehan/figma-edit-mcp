@@ -217,7 +217,7 @@
     },
     {
       "name": "annotation_list",
-      "description": "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. Optionally include the file's annotation categories. Page loading is bounded; a page-scoped failure returns its structured error directly and successful reads include `coverage`."
+      "description": "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. The file's annotation categories are returned by default; pass includeCategories: false to omit them. Page loading is bounded; a page-scoped failure returns its structured error directly and successful reads include `coverage`."
     },
     {
       "name": "annotation_set",
