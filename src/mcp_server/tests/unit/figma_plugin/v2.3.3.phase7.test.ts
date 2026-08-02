@@ -684,6 +684,63 @@ describe("Phase 7 D8: recursive strictness", () => {
         expect(parseEffect({ type: "DROP_SHADOW", radius: 0 }).success).toBe(true);
         expect(parseEffect({ type: "INNER_SHADOW", radius: 0 }).success).toBe(true);
         expect(parseEffect({ type: "BACKGROUND_BLUR", radius: -1 }).success).toBe(false);
+
+        // NOISE/TEXTURE grain and radius bounds, measured live on channel f6ux
+        // (2026-08-02). Figma rejects negatives outright and SILENTLY CLAMPS
+        // anything above 100 — `noiseSize: 101` and `100000` both read back as
+        // `100` — so an unbounded schema reported success for a value the
+        // document never held. Same rule that produced Rev 74 for GLASS depth.
+        const noise = (over: Record<string, unknown>) => parseEffect({
+            type: "NOISE",
+            noiseType: "MONOTONE",
+            color: { r: 0.5, g: 0.5, b: 0.5, a: 1 },
+            noiseSize: 2,
+            density: 0.4,
+            ...over,
+        });
+        expect(noise({ noiseSize: -1 }).success).toBe(false);
+        expect(noise({ noiseSize: 101 }).success).toBe(false);
+        expect(noise({ noiseSize: 0 }).success).toBe(true);
+        expect(noise({ noiseSize: 100 }).success).toBe(true);
+        expect(noise({ density: -0.1 }).success).toBe(false);
+        expect(noise({ density: 1.1 }).success).toBe(false);
+        expect(noise({ density: 0 }).success).toBe(true);
+        expect(noise({ density: 1 }).success).toBe(true);
+
+        const texture = (over: Record<string, unknown>) => parseEffect({
+            type: "TEXTURE", noiseSize: 2, radius: 1, clipToShape: true, ...over,
+        });
+        expect(texture({ noiseSize: -1 }).success).toBe(false);
+        expect(texture({ noiseSize: 101 }).success).toBe(false);
+        expect(texture({ radius: -1 }).success).toBe(false);
+        expect(texture({ radius: 101 }).success).toBe(false);
+        expect(texture({ noiseSize: 0, radius: 0 }).success).toBe(true);
+        expect(texture({ noiseSize: 100, radius: 100 }).success).toBe(true);
+    });
+
+    it("F78-06b: rejects a second GLASS effect, which Figma refuses per node", () => {
+        const style = TOOLS.style_manage.inputSchema;
+        const glass = {
+            type: "GLASS", lightIntensity: 0.5, lightAngle: 45, refraction: 0.5,
+            depth: 1, dispersion: 0.5, radius: 0,
+        };
+        const parseEffects = (effects: any[]) => style.safeParse({
+            type: "EFFECT",
+            name: "Glass count probe",
+            properties: { effects },
+        });
+
+        // Live on f6ux: a two-GLASS array is refused by the host with "Only one
+        // glass effect is allowed per node." Rejecting at the MCP boundary turns
+        // an UNKNOWN_ERROR relaying Figma's prose into a predictable refusal.
+        expect(parseEffects([glass]).success).toBe(true);
+        expect(parseEffects([glass, { type: "DROP_SHADOW", radius: 4 }]).success).toBe(true);
+
+        const twoGlass = parseEffects([glass, { ...glass, radius: 8 }]);
+        expect(twoGlass.success).toBe(false);
+        const issue = twoGlass.error!.issues[0];
+        expect(issue.path).toEqual(["properties", "effects", 1, "type"]);
+        expect(issue.message).toContain("Only one GLASS effect is allowed per node");
     });
 
     it("F78-05: node_set_effects rejects cross-variant fields before its registered callback", async () => {

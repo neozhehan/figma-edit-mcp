@@ -2,7 +2,7 @@
 
 This document tracks the tasks required to fulfill the requirements in the [v2.3.3 PRD](file:///Users/neozhehan/Git/figma-edit-mcp/documentation/v2.3.3/prd.md). It is divided into 14 phases, covering both Track 1 (Type-check restoration) and Track 2 (Safety-contract gap closure).
 
-> Release decision status, review outcomes, verification history, and current findings are maintained in the **most recent section** of the [v2.3.3 release changelog](release-changelog.md) — currently [Change 26](release-changelog.md#change-26-close-the-two-carried-over-gaps-record-what-remains-open). Sections are appended at the top, so this pointer names the newest one rather than a fixed change number. The 14 implementation phases remain below.
+> Release decision status, review outcomes, verification history, and current findings are maintained in the **most recent section** of the [v2.3.3 release changelog](release-changelog.md) — currently [Change 27](release-changelog.md#change-27-live-measured-effect-bounds-and-the-one-glass-rule-rev-76). Sections are appended at the top, so this pointer names the newest one rather than a fixed change number. The 14 implementation phases remain below.
 
 ---
 

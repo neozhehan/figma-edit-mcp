@@ -195,8 +195,14 @@ const noiseEffect = z.object({
     type: z.literal("NOISE"),
     noiseType: z.enum(["MONOTONE", "DUOTONE", "MULTITONE"]).describe("Noise variant"),
     color: rgba.describe("Primary noise colour"),
-    noiseSize: z.number().describe("Noise grain size"),
-    density: z.number().describe("Noise density"),
+    // Bounds measured live on channel f6ux (2026-08-02), not inferred: Figma
+    // rejects a negative noiseSize and SILENTLY CLAMPS anything above 100 (101
+    // and 100000 both read back as 100). density is rejected outside 0–1.
+    // Declaring them is the Rev 74 rule — never advertise acceptance of a value
+    // the host will not preserve, because a clamped write reports success and
+    // hands the caller a number the document does not hold.
+    noiseSize: z.number().min(0).max(100).describe("Noise grain size, 0–100 (Figma clamps above 100)"),
+    density: z.number().min(0).max(1).describe("Noise density, 0–1"),
     visible: z.boolean().optional().describe("default true"),
     blendMode: blendMode.optional().describe("Figma BlendMode (default 'NORMAL')"),
     secondaryColor: rgba.optional().describe("DUOTONE only: the second colour"),
@@ -234,8 +240,10 @@ const noiseEffect = z.object({
 
 const textureEffect = z.object({
     type: z.literal("TEXTURE"),
-    noiseSize: z.number().describe("Texture grain size"),
-    radius: z.number().describe("Texture radius"),
+    // Same live measurement as NOISE (channel f6ux): negatives rejected, and
+    // both fields silently clamp to 100 (100000 read back as 100).
+    noiseSize: z.number().min(0).max(100).describe("Texture grain size, 0–100 (Figma clamps above 100)"),
+    radius: z.number().min(0).max(100).describe("Texture radius, 0–100 (Figma clamps above 100)"),
     clipToShape: z.boolean().describe("Clip the texture to the shape"),
     visible: z.boolean().optional().describe("default true"),
 });
@@ -291,11 +299,37 @@ const styleProperties = z.object({
     // PAINT / EFFECT / GRID
     paints: z.array(paint).optional()
         .describe("PAINT: array of paints (SOLID typed; GRADIENT_*/IMAGE pass through)"),
-    effects: z.array(effect).optional()
+    effects: z.array(effect)
+        /**
+         * Figma allows at most one GLASS effect per node — live on channel f6ux
+         * (2026-08-02), a two-GLASS array is refused with "Only one glass effect
+         * is allowed per node."
+         *
+         * This is a `.superRefine()`, which the zod→JSON-Schema conversion DROPS
+         * (the Rev 61 / C8-D1 lesson). The emitted schema therefore cannot carry
+         * the rule, so the array description below is the only place a model can
+         * learn it before its first call — keep the sentence there in step with
+         * this check.
+         */
+        .superRefine((effects, ctx) => {
+            const glassIndexes = effects
+                .map((candidate, index) => (candidate.type === "GLASS" ? index : -1))
+                .filter((index) => index !== -1);
+            for (const index of glassIndexes.slice(1)) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: [index, "type"],
+                    message: `Only one GLASS effect is allowed per node; this is GLASS #${glassIndexes.indexOf(index) + 1}. Remove the extra GLASS entry and resend.`,
+                });
+            }
+        })
+        .optional()
         // Required fields per variant must be listed here in full: this sentence is
         // the first-call contract, and omitting one (NOISE `color`, GLASS
         // `lightAngle`) guarantees a -32602 the model cannot predict from the prose.
-        .describe("EFFECT: array of Figma Effect objects, one shape per `type` — DROP_SHADOW/INNER_SHADOW (color, offset, radius, spread), LAYER_BLUR/BACKGROUND_BLUR (radius, blurType), NOISE (noiseType, color, noiseSize, density), TEXTURE (noiseSize, radius, clipToShape), GLASS (lightIntensity, lightAngle, refraction, depth, dispersion, radius). Required-vs-optional is authoritative in each variant's schema."),
+        // The same applies to the at-most-one-GLASS rule and the numeric bounds,
+        // neither fully visible in the emitted schema.
+        .describe("EFFECT: array of Figma Effect objects, one shape per `type` — DROP_SHADOW/INNER_SHADOW (color, offset, radius, spread), LAYER_BLUR/BACKGROUND_BLUR (radius, blurType), NOISE (noiseType, color, noiseSize, density), TEXTURE (noiseSize, radius, clipToShape), GLASS (lightIntensity, lightAngle, refraction, depth, dispersion, radius). At most one GLASS effect is allowed per node. Required-vs-optional and numeric bounds are authoritative in each variant's schema."),
     layoutGrids: z.array(
         z.object({ pattern: z.enum(["GRID", "ROWS", "COLUMNS"]).describe("Grid pattern") }).catchall(z.any())
     ).optional().describe("GRID: array of Figma LayoutGrid objects, e.g. {pattern:'GRID', sectionSize, visible?} or {pattern:'COLUMNS', count, gutterSize, alignment, …}"),

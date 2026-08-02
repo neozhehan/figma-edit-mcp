@@ -264,6 +264,7 @@ This release restores type-checking for the Figma plugin and closes the v2.3.3 s
 - Batch progress and notifications are best-effort telemetry and cannot replace or erase the mutation result envelope.
 - The registered MCP inventory contains 45 tools and retains `reaction_list`, `reaction_update`, and `swap_overrides_instances`.
 - Two advertised descriptions now match observed behavior, with no behavior change: `annotation_list.includeCategories` documents its real default of `true` (categories are returned unless you pass `false`) instead of reading as an opt-in, and `style_manage.properties.effects[]` lists every required field per variant, adding NOISE `color` and GLASS `lightAngle`.
+- Effect numeric bounds now match what Figma actually preserves, measured by writing each boundary and reading it back. NOISE `density` is `0–1`; NOISE/TEXTURE `noiseSize` and TEXTURE `radius` are `0–100`; and at most one GLASS effect is accepted per node. Figma silently clamps `noiseSize`/`radius` above `100` — `101` and `100000` both store as `100` — so an unbounded schema reported success for a value the document never held; a second GLASS effect was refused by the host as an `UNKNOWN_ERROR` relaying Figma's own prose.
 - GLASS effect writes now require `depth >= 1`. A prior setter-only probe showed that Figma accepted `depth: 0`; a complete write/read probe on channel `4b9u` showed that Figma silently normalizes it to `1`, so the MCP boundary now rejects zero instead of reporting success for a value it cannot preserve.
 
 ## [2.3.2]

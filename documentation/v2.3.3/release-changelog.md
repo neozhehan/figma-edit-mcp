@@ -2,6 +2,51 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 27: Live-measured effect bounds and the one-GLASS rule (Rev 76)
+
+### Author: Claude Opus 5 @ 2026-08-02 5:00pm PT
+
+**Found by live probing on channel `f6ux`, not by inspection.** Four numeric effect fields were declared unbounded while Figma enforces bounds on all four, and three of them are enforced by **silent clamping** rather than refusal — the same defect class as Rev 74's GLASS `depth`, where a successful write reports a value the document does not hold. A fifth host rule, at most one GLASS effect per node, was reachable only as an `UNKNOWN_ERROR` relaying Figma's prose. This is Rev 76 because it narrows accepted input on a public write surface.
+
+### Why the Change 26 test could not find this
+
+Change 26 added a derived check that advertised bounds and enforced bounds agree. It cannot catch any finding below: advertised and enforced agreed perfectly — both said "no bound". Self-consistency is what that test proves; only the host can say whether a bound is *correct*. Recorded because it is a real limit of the guard, not a gap in it.
+
+### Findings
+
+| ID | Type | Status | Detail |
+| :- | :- | :- | :- |
+| C27-F1 | Functional gap | **Resolved — red-proofed** | `NOISE.noiseSize`, `TEXTURE.noiseSize`, and `TEXTURE.radius` were `z.number()` with no bound. Live: Figma rejects negatives and **silently clamps above 100** — `noiseSize: 101` and `noiseSize: 100000` both read back as `100`, and `TEXTURE.radius: 100000` reads back as `100`. The MCP boundary therefore returned success for a value the document never held. All three are now `.min(0).max(100)`. |
+| C27-F2 | Functional gap | **Resolved — red-proofed** | `NOISE.density` was unbounded; Figma refuses anything outside `0–1`. Now `.min(0).max(1)`. Fail-closed before the change, but the refusal arrived as `UNKNOWN_ERROR` carrying Figma's own prose instead of a `-32602` naming the field. |
+| C27-F3 | Functional gap | **Resolved — red-proofed** | `effects: [GLASS, GLASS]` passed the schema and was refused by the host with "Only one glass effect is allowed per node." An array-level `.superRefine()` now rejects the second GLASS with its index and recovery. Because the zod→JSON-Schema conversion drops refinements (the Rev 61 / C8-D1 lesson), the emitted schema cannot carry this rule — the field description is the only place a model can learn it before its first call, so the check and that sentence are annotated as a pair. |
+
+### Confirmed correct, so recorded rather than changed
+
+- **Every GLASS bound is truthful at both ends.** `lightIntensity`/`refraction`/`dispersion` at `0` and `1`, `depth: 1`, `radius: 0`, and maxima `depth: 100` / `radius: 50` / `lightAngle: 360` all round-tripped exactly. Rev 74's `depth >= 1` floor is the correct one.
+- **The fields left deliberately unbounded really are unbounded.** Shadow `spread: -10`, shadow `offset: {x: -999, y: 999}`, and GLASS `lightAngle: -720` round-tripped exactly, so no bound is warranted there.
+
+### Implemented
+
+- Four bounds declared with the measured values in their descriptions, each carrying a comment naming channel `f6ux` and the clamp evidence so a later reader does not "simplify" them away as unmotivated.
+- The at-most-one-GLASS refinement, with its issue path at the offending index.
+- `SAFETY.md`, all three affected agent guides, and the `[2.3.3]` `CHANGELOG.md` entry state the new bounds and the GLASS rule, including *why* the ceilings exist — Figma clamps rather than refuses.
+
+### Verification
+
+- Full repository suite: **1,050/1,050 tests, 5,613 assertions across 53 files** (from 1,049 / 5,578).
+- Change 26's derived bound test picked up all four new bounds with **no edit** — assertions rose by 16 the moment the bounds landed, which is the property that test was built for.
+- New behavioral regressions in `v2.3.3.phase7.test.ts`: both ends of each new bound accepted, just outside rejected, plus a two-GLASS rejection asserting the exact issue path and message.
+- Red-proofed, each reverted individually and restored: removing the four bounds fails `F78-06`; removing the refinement fails `F78-06b`.
+- `check:generated`, `check:plugin`, `check:versions` at **v2.3.3**, `check:types:plugin`, `check:suppressions`, `git diff --check` pass. `manifest.json` and `figma_plugin/code.js` are byte-identical — these are field descriptions, not tool descriptions.
+
+### Live evidence and reconciliation — channel `f6ux`, dedicated *MCP Test* file
+
+Page-scoped, opened at 62 descendants / 22 top-level with server/plugin `2.3.3`. Every probe was a real write, applied to a disposable frame and read back through `node_info`. The clamps above were observed on read-back, not inferred from the setter's return. All six disposable effect styles and the probe frame were deleted; the page closed at **62 descendants / 22 top-level** and styles at **12 paint / 3 effect**, matching the opening state exactly.
+
+### Files changed by Change 27
+
+`src/mcp_server/tools/style.ts`; `src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase7.test.ts`; `SAFETY.md`; `skills/figma-edit/references/error-playbook.md`; `tool-selection.md`; `workflows.md`; root `CHANGELOG.md`; `documentation/v2.3.3/task.md`; and this section.
+
 ## Change 26: Close the two carried-over gaps; record what remains open
 
 ### Author: Claude Opus 5 @ 2026-08-02 4:00pm PT
@@ -1727,4 +1772,5 @@ The moved history initially preserved two entries numbered Rev 28 and the final 
 - **Rev 71, 2026-07-30** — the historical implementation now summarized by [Change 15](#change-15-phase-11-connector-visualization-surface-removal-rev-73) completed the first repository implementation of Phase 11. `create_connection` was creation-only with a required explicit `connectorId`/exact current `connectorName`; default modes, cache, and auto-adoption were removed. Template/type/name/scope and derived-destination checks preceded mutation; invalid templates returned coded `CONNECTOR_TEMPLATE_REQUIRED` with the full discovery/paste/verbatim recovery. Results used the D7 envelope and ordered truth rows. Clone and nested-cursor creators inserted immediately into the derived destination and cleaned every uncommitted artifact on append or later failure, preserving survivor evidence if cleanup could not be confirmed. Focused Phase 11 plus real-dispatcher verification was **54/54 with 211 assertions**; the full suite was **1,048/1,048 with 5,674 assertions across 52 files**; all build/static/bundle/diff gates passed at synchronized `2.3.2`. Revs 72–73 supersede this shipped-direction candidate.
 - **Rev 72, 2026-07-30** — live channel `76js` supplied the missing Design fixture and falsified Rev 71's remaining assumption. Page 1 contained three real pasted `CONNECTOR` nodes and opened at 62 descendants. A two-item explicit-template call returned an honest D7 failed envelope with two ordered rows, each reporting `in clone: Cloning CONNECTOR nodes is not supported in the current editor`; no `createdConnectorId` appeared. Closing reads proved 62 descendants and all three fixture IDs unchanged. Figma's official plugin documentation says FigJam-specific nodes cannot be created in a Figma file, only read/modified there. Phase 11 and Q13 were reopened pending a product choice; Rev 73 resolves that choice by removal.
 - **Rev 73, 2026-07-30** — [Change 15](#change-15-phase-11-connector-visualization-surface-removal-rev-73) resolves Q13 and Phase 11 by removing `create_connection`, `reaction_to_connector_strategy`, their wire/plugin implementation, dedicated refusal, generated inventory entries, and current usage documentation. The release retains `reaction_list` and `reaction_update` as the native same-file Design prototype surface, adds no FigJam/visual fallback, and assigns their independently identified lossless-read/state-safe-update repairs to v2.3.4 Track 3. Removal invariants cover the 45-tool registry, prompt absence, retained unrelated prompt/reaction tools, raw-command unknown path, deleted handler/refusal/bundle code, and synchronized current documentation. Final repository totals and gates are recorded in Change 15 after verification.
+- **Rev 76, 2026-08-02** — [Change 27](#change-27-live-measured-effect-bounds-and-the-one-glass-rule-rev-76) declares four effect bounds Figma enforces but the schema did not, found by live probing on channel `f6ux`. `NOISE.noiseSize`, `TEXTURE.noiseSize`, and `TEXTURE.radius` are `0–100` because the host **silently clamps** above 100 rather than refusing (`101` and `100000` both store as `100`), so an unbounded schema reported success for a value the document never held — the Rev 74 rule applied to three more fields. `NOISE.density` is `0–1`. A second GLASS effect in one array is refused at the boundary rather than by the host as an `UNKNOWN_ERROR`. GLASS's existing bounds were probed at both ends and confirmed truthful.
 - **Rev 74, 2026-08-02** — [Change 24](#change-24-change-23-review-follow-up-and-truthfulness-repair-rev-74) corrects the GLASS write boundary after live channel `4b9u` completed the missing read-back step: Figma accepts `depth: 0` at the setter but stores and returns `1`. The schema now requires `depth >= 1`, matching the pinned typings and preventing successful-but-normalized writes; the PRD, public changelog, safety contract, and agent guides distinguish handler-side field preservation from native-host normalization.
