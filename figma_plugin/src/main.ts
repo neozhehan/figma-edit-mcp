@@ -239,7 +239,7 @@ async function validateCloneWrite(params: any) {
 // Helper: Parse Node ID from URL
 function parseNodeIdFromUrl(url: any) {
     try {
-        // @ts-expect-error TS2552: Cannot find name 'URL'. Did you mean 'url'?
+        // @ts-expect-error TS2552: live Figma UI on 2026-08-02 confirmed the sandbox lacks URL; percent-decoding is deferred to post-release UI polish.
         const urlObj = new URL(url);
         const nodeId = urlObj.searchParams.get("node-id");
         return nodeId ? nodeId.replace(/-/g, ":") : null;

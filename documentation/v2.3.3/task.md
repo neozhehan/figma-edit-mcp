@@ -322,28 +322,28 @@ The guarantee is an **observable success boundary**: no successful command may a
 ---
 
 ## Phase 14: Verification (Automated + Live Figma)
-- [ ] Run and pass: `bun run build:all`, `bun run check:plugin`, `bun run check:versions`, `bun run check:types:plugin`, `bun run test` (full suite green: the 647+ existing tests as of v2.3.2 plus all new D5–D14 tests).
-- [ ] Confirm the IDE opens the plugin source with zero spurious ambient-global diagnostics.
-- [ ] **Track 1 rebuild-diff:** rebuilding `figma_plugin/code.js` after the Phase 1–2 commits produces no functional emitted-JS change (the residual fixes are types/casts/config only, confirmed via `check:plugin` rebuild + `git diff`); every other emitted-JS change must map to a deliberate D5–D14 edit, reviewed explicitly. Per review decision 3 (accepted 2026-07-17), the Track 1 expectation is strengthened from "no functional change" to **no code-line changes at all**: the Track 1 portion of the rebuild diff is comment-text only, machine-distinguishable from the deliberate D5–D14 edits.
-- [ ] **Live Probes Matrix (against a live Figma document)**
-  - [ ] ID-only `UPDATE_VARIABLE` call is refused.
-  - [ ] `style_manage` update by ID without `currentStyleName` is refused.
-  - [ ] Properties-only style update does not rename the style.
-  - [ ] `CREATE_VARIABLE` without `collectionName` or `scopes` is refused.
-  - [ ] `parentNodeName` omission is rejected at the server schema boundary (Phase 5 tests); a live **mismatched** `parentNodeName` returns the structured `PARENT_NAME_MISMATCH` refusal (coded per Q22, Rev 31; Q2 layer split).
-  - [ ] `[]` and duplicate-node `node_delete` batches are refused before any mutation (schema boundary; both `1-2` and `1:2` spellings). Repeat for `text_set_content` and `instance_set_overrides` (P6-10).
-  - [ ] A normal multi-item batch returns exactly one ordered row per input, with explicit `skipped` rows for unattempted items, and every row carries the shared `nodeId`/`status`/`error` vocabulary (Q25).
-  - [ ] `instance_set_overrides` succeeds against a dynamic-page document (regression for P6-1: the main component is read via `getMainComponentAsync`, not the throwing sync getter) and an induced per-item failure returns a `partial_success` row carrying `partialMutation`/`before: {mainComponentId}` (P6-10).
-  - [ ] A `text_set_content` batch with an induced mid-item failure returns truthful rows; a failure on the font-fallback path carries `before: {fontName}` while a clean failure carries no flag (Q24, P6-10).
-  - [ ] Batch outputs carry only the shared envelope counts — no `nodesDeleted`/`replacementsApplied`/`annotationsApplied`/`totalCount` legacy fields (Q26).
-  - [ ] An annotation append via `annotation_set` succeeds and is rediscovered via `annotation_list`.
-  - [ ] A nested `node_flatten` result stays under its original parent.
-  - [ ] `create_component_set` lands under its supplied parent.
-  - [ ] `create_instance`'s response includes `componentId` matching the resolved component (regression for the Phase 8 dead-field fix; baseline: the 2026-07-17 `p28j` probe showed the advertised field absent).
-  - [ ] `channel_join` reports `serverVersion` and `pluginVersion` for one bound peer; an empty channel is refused with `PLUGIN_PEER_UNAVAILABLE`, a second MCP client with `CHANNEL_IN_USE`, and a known version mismatch with `VERSION_MISMATCH`. Separately, a second plugin peer is refused `PLUGIN_PEER_AMBIGUOUS` at its own join, remains unadmitted, and receives no pair traffic; this code cannot reach `channel_join`.
+- [x] Run and pass: `bun run build:all`, `bun run check:plugin`, `bun run check:versions`, `bun run check:types:plugin`, `bun run test` (full suite green: the 647+ existing tests as of v2.3.2 plus all new D5–D14 tests).
+- [x] Confirm the IDE opens the plugin source with zero spurious ambient-global diagnostics.
+- [x] **Track 1 rebuild-diff:** rebuilding `figma_plugin/code.js` after the Phase 1–2 commits produces no functional emitted-JS change (the residual fixes are types/casts/config only, confirmed via `check:plugin` rebuild + `git diff`); every other emitted-JS change must map to a deliberate D5–D14 edit, reviewed explicitly. Per review decision 3 (accepted 2026-07-17), the Track 1 expectation is strengthened from "no functional change" to **no code-line changes at all**: the Track 1 portion of the rebuild diff is comment-text only, machine-distinguishable from the deliberate D5–D14 edits.
+- [x] **Live Probes Matrix (against a live Figma document)**
+  - [x] ID-only `UPDATE_VARIABLE` call is refused.
+  - [x] `style_manage` update by ID without `currentStyleName` is refused.
+  - [x] Properties-only style update does not rename the style.
+  - [x] `CREATE_VARIABLE` without `collectionName` or `scopes` is refused.
+  - [x] `parentNodeName` omission is rejected at the server schema boundary (Phase 5 tests); a live **mismatched** `parentNodeName` returns the structured `PARENT_NAME_MISMATCH` refusal (coded per Q22, Rev 31; Q2 layer split).
+  - [x] `[]` and duplicate-node `node_delete` batches are refused before any mutation (schema boundary; both `1-2` and `1:2` spellings). Repeat for `text_set_content` and `instance_set_overrides` (P6-10).
+  - [x] A normal multi-item batch returns exactly one ordered row per input, with explicit `skipped` rows for unattempted items, and every row carries the shared `nodeId`/`status`/`error` vocabulary (Q25).
+  - [x] `instance_set_overrides` succeeds against a dynamic-page document (regression for P6-1: the main component is read via `getMainComponentAsync`, not the throwing sync getter) and an induced per-item failure returns a `partial_success` row carrying `partialMutation`/`before: {mainComponentId}` (P6-10).
+  - [x] A `text_set_content` batch with an induced mid-item failure returns truthful rows; a failure on the font-fallback path carries `before: {fontName}` while a clean failure carries no flag (Q24, P6-10).
+  - [x] Batch outputs carry only the shared envelope counts — no `nodesDeleted`/`replacementsApplied`/`annotationsApplied`/`totalCount` legacy fields (Q26).
+  - [x] An annotation append via `annotation_set` succeeds and is rediscovered via `annotation_list`.
+  - [x] A nested `node_flatten` result stays under its original parent.
+  - [x] `create_component_set` lands under its supplied parent.
+  - [x] `create_instance`'s response includes `componentId` matching the resolved component (regression for the Phase 8 dead-field fix; baseline: the 2026-07-17 `p28j` probe showed the advertised field absent).
+  - [x] `channel_join` reports `serverVersion` and `pluginVersion` for one bound peer; an empty channel is refused with `PLUGIN_PEER_UNAVAILABLE`, a second MCP client with `CHANNEL_IN_USE`, and a known version mismatch with `VERSION_MISMATCH`. Separately, a second plugin peer is refused `PLUGIN_PEER_AMBIGUOUS` at its own join, remains unadmitted, and receives no pair traffic; this code cannot reach `channel_join`.
   - [x] The official MCP inventories expose 45 tools with no `create_connection`, and no `reaction_to_connector_strategy` prompt; `reaction_list`, `reaction_update`, and `swap_overrides_instances` remain discoverable. This is a registry/boundary check and requires no Figma mutation. Verified by the official stdio SDK round trip; channel `mksu` separately verified the live plugin's generic stale-command refusal and retained reaction dispatcher.
   - [x] Historical decision probe retained: channel `76js` proved the removed Design connector path failed at `ConnectorNode.clone()` with zero mutation and exact 62-descendant/three-fixture reconciliation. It is rationale for removal, not a live acceptance item for v2.3.3.
-  - [ ] **Manual plugin-UI check** (unreachable over MCP — only the UI's `validate-scope-link` path calls `parseNodeIdFromUrl`; MCP traffic is converted dash→colon server-side): paste a scope link using the percent-encoded node-id form (`node-id=1%3A2`) of a real node. If it validates, the sandbox provides `URL`: add a one-line ambient declaration beside `TextDecoder`'s and delete the suppression in `parseNodeIdFromUrl`. If it reports "Node not found" while the dash form validates, `URL` is absent: update the annotation to record the fact and defer the `decodeURIComponent` regex fix to post-release UI polish. Record the outcome in the PRD Provenance table either way.
+  - [x] **Manual plugin-UI check** (unreachable over MCP — only the UI's `validate-scope-link` path calls `parseNodeIdFromUrl`; MCP traffic is converted dash→colon server-side): paste a scope link using the percent-encoded node-id form (`node-id=1%3A2`) of a real node. If it validates, the sandbox provides `URL`: add a one-line ambient declaration beside `TextDecoder`'s and delete the suppression in `parseNodeIdFromUrl`. If it reports "Node not found" while the dash form validates, `URL` is absent: update the annotation to record the fact and defer the `decodeURIComponent` regex fix to post-release UI polish. Record the outcome in the PRD Provenance table either way.
 
 ---
 

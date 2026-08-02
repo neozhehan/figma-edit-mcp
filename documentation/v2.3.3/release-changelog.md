@@ -2,6 +2,44 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 28: Phase 14 verification closure and UI sandbox result (Rev 77)
+
+### Author: GPT-5.6 Sol @ 2026-08-02 4:42pm PT
+
+**Phase 14 is implemented and verified.** This change adds a reproducible official-SDK/raw-peer live verifier, closes every Phase 14 ledger item, records the manual plugin-UI result, and changes no product behavior. The one source edit is an existing `@ts-expect-error` description updated with the measured Figma-sandbox fact.
+
+### Implemented
+
+- Added `scripts/phase14-live-verify.ts`. It exercises the registered MCP boundary for conforming calls, bypasses that schema only for plugin defense-in-depth refusals, and opens isolated raw peers for D13 admission/routing checks. Every disposable artifact carries a unique `p14-*` name; startup rejects stale Phase 14 artifacts and successful completion requires exact page, variable, collection, and style reconciliation.
+- Updated `parseNodeIdFromUrl`'s `TS2552` annotation to record that the live Figma sandbox lacks `URL`. The fallback behavior is unchanged; adding `decodeURIComponent` to that regex path remains post-release UI polish, as pre-decided by Rev 20.
+- Completed the Phase 14 task ledger and updated the PRD Provenance table with the live channel and manual UI outcomes. Injected mid-item failures remain explicitly classified as deterministic repository evidence rather than live-host evidence.
+
+### Repository verification
+
+- Full repository suite: **1,050/1,050 tests, 5,613 assertions across 53 files** with loopback available. An initial sandboxed run had **1,041 pass / 9 fail**; every failure was the environment refusing a port-0 loopback bind, and all nine passed unchanged when rerun with loopback access.
+- `check:versions` reports synchronized **2.3.3**; `check:types:plugin`, `check:suppressions`, `check:generated`, and `git diff --check` pass. The generated inventory is 192 node fields, 36 bind fields, and 45 manifest tools.
+- A TypeScript LanguageService load of the plugin project covered 30 source files and returned **0 syntactic, 0 semantic, and 0 ambient-global diagnostics**, independently satisfying the IDE criterion.
+- To preserve channel `2g4h`, `build:all` and `check:plugin` first ran in a clean clone at the identical `ae9bcf9` tree. Both passed, and the rebuilt `figma_plugin/code.js` remained byte-identical at `943e96dceb6cb3ebf656f311a2450a355792c6f58395b27b763da450890e7864`.
+- Track 1 was reconstructed at parent `96ffaf6` and tip `3f62505`; `check:plugin` passed at both. The raw emitted diff contained suppression-comment text only, and TypeScript AST printing with comments removed produced identical 244,389-byte JavaScript. No executable code line changed.
+
+### Live Figma evidence — channel `2g4h`, dedicated *MCP Test* file
+
+- `channel_join` reported server/plugin **2.3.3**, page edit scope, variable/style permission, and the official **45-tool** inventory. The removed connector tool/prompt were absent; `reaction_list`, `reaction_update`, and `swap_overrides_instances` remained discoverable.
+- Raw non-mutating plugin probes returned `VARIABLE_NAME_MISSING`, `COLLECTION_NAME_MISSING`, `VARIABLE_SCOPES_MISSING`, and `STYLE_NAME_MISSING`. The registered schema refused the corresponding conforming-client omissions, empty batches, and normalized duplicate IDs.
+- A live mismatched parent returned `PARENT_NAME_MISMATCH` with zero child-count drift. A properties-only style update retained its exact name. Normal text, annotation, delete, and instance-override batches returned ordered shared-envelope rows without legacy count fields; the annotations were rediscovered by `annotation_list`.
+- A nested flatten stayed under its original parent, a component set landed under its supplied parent, `create_instance.componentId` matched the resolved component, and `instance_set_overrides` succeeded through the dynamic-page async main-component path.
+- D13 returned `CHANNEL_IN_USE`, `PLUGIN_PEER_UNAVAILABLE`, `PLUGIN_PEER_AMBIGUOUS`, and `VERSION_MISMATCH` at their correct boundaries. The refused plugin peer received zero traffic from the admitted pair.
+- Cleanup reconciled exactly: Page 1 descendants **62→62**, top-level nodes **22→22**, variables **10→10**, collections **12→12**, and styles **12 paint / 0 text / 3 effect / 0 grid** unchanged. Exploratory attempts that encountered Figma's transient command latency are not acceptance evidence; their artifacts were removed, and the final verifier's stale-artifact preflight was clean.
+- The induced text-font-fallback and instance-override failure rows cannot be requested from the real host without fault injection. Their `partial_success`, `skipped`, `partialMutation`, `before.fontName`, and `before.mainComponentId` contracts are established by the deterministic real-dispatcher/registered-boundary tests in the green full suite; this live pass claims only the corresponding host success paths.
+
+### Manual plugin-UI result
+
+After the MCP matrix, the plugin was disconnected so its scope field could be edited. The real Page 2 link with `node-id=1%3A2` displayed **“Node not found in current document”**; replacing only that value with `node-id=1-2` displayed **“Editable Scope: [Page] Page 2.”** This selects Rev 20's no-`URL` branch: retain the suppression, record the sandbox fact, and defer fallback percent-decoding. The test is UI-only by construction and was not represented as MCP evidence.
+
+### Files changed by Change 28
+
+`scripts/phase14-live-verify.ts`; `figma_plugin/src/main.ts`; `documentation/v2.3.3/prd.md`; `documentation/v2.3.3/task.md`; and this section.
+
 ## Change 27: Live-measured effect bounds and the one-GLASS rule (Rev 76)
 
 ### Author: Claude Opus 5 @ 2026-08-02 5:00pm PT
