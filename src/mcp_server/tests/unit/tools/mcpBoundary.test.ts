@@ -73,26 +73,18 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
         toolsList = await client.listTools();
     });
 
-    // Red-proof (2026-08-01): temporarily removing channel.ts's `.min(1)` and
-    // running this exact test produced 0 pass / 1 fail / 22 filtered. This test
-    // was the sole failure, at the expected `validationError` assertion. The
-    // production line was then restored before the green rerun.
+    // Asserted only through the official client. The F78-15 case below needs a
+    // `validateToolInput` probe because it checks many tools' classification at
+    // once, but here the in-band text already carries the `-32602` code AND the
+    // issue path, so a private-method probe would add no coverage — and pinning
+    // the path (which the probe never did) is what proves the rejection came
+    // from `channel`'s own `.min(1)` rather than some other validation failure.
+    //
+    // Red-proof (2026-08-01): removing channel.ts's `.min(1)` and running this
+    // test produced 0 pass / 1 fail / 22 filtered, failing at `isError`. The
+    // production line was restored before the green rerun.
     it("Change 20: channel_join rejects an empty channel at the SDK boundary before its handler runs", async () => {
         const attemptsBefore = joinAttemptCount;
-        const registered = (server as any)._registeredTools.channel_join;
-        let validationError: any;
-        try {
-            await (server as any).validateToolInput(
-                registered,
-                { channel: "" },
-                "channel_join",
-            );
-        } catch (caught) {
-            validationError = caught;
-        }
-
-        expect(validationError).toBeDefined();
-        expect(validationError.code).toBe(-32602);
 
         const result = await client.callTool({
             name: "channel_join",
@@ -100,8 +92,14 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
         });
 
         expect(result.isError).toBe(true);
-        expect(result.content[0].text).toContain("Input validation error");
-        expect(result.content[0].text).toContain("channel is required");
+        const text = (result as any).content[0].text;
+        expect(text).toContain("MCP error -32602");
+        expect(text).toContain("Input validation error");
+        expect(text).toMatch(/"path":\s*\[\s*"channel"\s*\]/);
+        expect(text).toContain("channel is required");
+        // Guards the compound regression only: with `.min(1)` gone, the handler's
+        // retained `if (!channel)` defense still returns MISSING_CHANNEL before
+        // dispatch, so this stays equal unless that defense is removed too.
         expect(joinAttemptCount).toBe(attemptsBefore);
     });
 
