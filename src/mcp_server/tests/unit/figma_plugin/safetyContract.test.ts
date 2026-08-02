@@ -1,6 +1,4 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
-import { readFileSync } from "fs";
-import { join } from "path";
 
 // Mocks for Figma environment
 let cloneCalled = false;
@@ -99,6 +97,11 @@ const gateOnMessage = gateFigma.ui.onmessage as (msg: any) => Promise<void> | vo
 // 13. handlerPrevalidationBeforeMutation
 // 14. explicitNameNonEmpty
 // 15. collectionName
+// This table is the executable gate contract, asserted below by driving the real
+// dispatcher. It was previously ALSO diffed against SAFETY.md Part B in both
+// directions; that diff has been removed along with every other test that read a
+// documentation file. SAFETY.md is now kept in step by hand — see its Maintenance
+// section.
 const EXPECTED_CONTRACTS: Record<string, string[]> = {
     node_set_fill: ["nodePerm", "scope", "name", "lockedTarget"],
     node_set_stroke: ["nodePerm", "scope", "name", "lockedTarget"],
@@ -138,166 +141,6 @@ const EXPECTED_CONTRACTS: Record<string, string[]> = {
     component_delete_property: ["nodePerm", "scope", "name", "lockedTarget", "remoteAsset"],
 };
 
-// Aliases for generic token mapping
-const TOKEN_TO_GATE: Record<string, string> = {
-    "node-perm": "nodePerm",
-    "scope": "scope",
-    "scope(source)": "scope",
-    "name": "name",
-    "locked": "lockedTarget",
-    "locked(source)": "lockedTarget",
-    "parent scope": "parentScope",
-    "parent name": "parentName",
-    "current-name on UPDATE": "name",
-    "collection-name on CREATE_VARIABLE": "collectionName",
-    "parent locked": "lockedParent",
-    "locked(parent)": "lockedParent",
-    "locked(parent & child)": "lockedParent",
-    "instance-interior": "instanceInteriorTarget",
-    "instance-interior(parent)": "instanceInteriorParent",
-    "parent instance-interior": "instanceInteriorParent",
-    "scope-root": "scopeRootPreservation",
-    "remote block": "remoteAsset",
-    "remote block on UPDATE": "remoteAsset",
-    "remote block on edit-existing": "remoteAsset",
-    "per-item pre-validation": "batchPrevalidation",
-    "batch": "batchPrevalidation",
-    "per-component": "batchPrevalidation",
-    "handler-prevalidation": "handlerPrevalidationBeforeMutation",
-    "handler-prevalidation-before-mutation": "handlerPrevalidationBeforeMutation",
-    "parent-first + cleanup": "handlerPrevalidationBeforeMutation",
-    "plan/mutate two-phase": "handlerPrevalidationBeforeMutation",
-    "validate-before-mutate": "handlerPrevalidationBeforeMutation",
-    "explicit name non-empty when supplied": "explicitNameNonEmpty",
-    "explicit set name non-empty when supplied": "explicitNameNonEmpty",
-    "styleName verification": "name",
-    "required name verification, both modes": "name",
-    "scope-root self-destruction": "scopeRootPreservation"
-};
-
-// Ignored/bespoke section tokens to bypass
-const IGNORE_TOKENS = new Set<string>([
-    "enum checks",
-    "FILL needs auto-layout parent",
-    "NONE-frame silent-drop rejected",
-    "BASELINE horizontal-only",
-    "counterAxisSpacing WRAP-only",
-    "layout-controlled x/y hard-reject",
-    "resize-resets-sizing warning",
-    "unsupported node / mixed paint guard",
-    "auto-layout precheck",
-    "SOLID-only paint bind",
-    "type-mismatch guard",
-    "must be GROUP",
-    "mixed-font load via getStyledTextSegments",
-    "full schema↔handler contract incl. fontName + lineHeight AUTO",
-    "value type validation BOOLEAN/TEXT/VARIANT/INSTANCE_SWAP",
-    "not remote-gated (local override)",
-    "same-parent",
-    "correct characters contract",
-    // v2.3.3 bespoke gates — each is asserted by the suite named on its line, NOT
-    // by this diff. Deleting one of these tokens from SAFETY.md leaves this test
-    // green, so the manual's claim rests on those suites alone. Promoting them
-    // into diffed gates is D12 in the v2.3.4 PRD.
-    "D7 status envelope",                         // tri-state status + shared counts + one ordered row per input (v2.3.3.phase5-6.remediation.test.ts, tools/outputSchema.test.ts)
-    "D7 status envelope with guarded retry",      // the same envelope plus Q31's non-idempotent retry carve-out (v2.3.3.phase7.test.ts, tools/mcpBoundary.test.ts)
-    "category verified before mutation",          // ANNOTATION_CATEGORY_NOT_FOUND raised before any append (v2.3.3.phase7.test.ts)
-    "use-time predicate recheck",                 // R2/R11 synchronous target gate in the same turn as the swap (v2.3.3.r2-toctou.test.ts)
-    "destination resolved last",                  // Q33 — parent resolved after the last await (v2.3.3.phase8.test.ts)
-    "immediate destination insertion",            // insertion is the next synchronous call after creation (v2.3.3.phase8.test.ts)
-    "parent+index passed to flatten",             // figma.flatten(nodes, parent, index) (v2.3.3.phase8.test.ts)
-    "verified parent passed directly to combine", // combineAsVariants receives the verified parent (v2.3.3.phase8.test.ts)
-    "scopes required on CREATE_VARIABLE",         // VARIABLE_SCOPES_MISSING handler backstop (v2.3.3.phase4.test.ts)
-    "bounded per-page scan coverage",             // every document page loaded under the Q12 per-page bound (v2.3.3.phase10.test.ts)
-    "fail-closed on incomplete coverage",         // DOCUMENT_SCAN_INCOMPLETE raised before any remove() (v2.3.3.phase10.test.ts)
-    "coded in-use refusal before removal",        // VARIABLE_IN_USE thrown with zero mutation (v2.3.3.phase10.test.ts)
-    "supports-annotations",
-    "source exists+INSTANCE",
-    "per-target exists+scope+name+INSTANCE+locked",
-    "per-component exists+scope+name+propValues-count+COMPONENT-type",
-    "duplicate-variant uniqueness",
-    "shape-param checks",
-    "color 0–1",
-    "opacity normalized, no NaN",
-    "self/cyclic-parent",
-    "index bounds",
-    "var-perm",
-    "style-perm",
-    "ids-xor-collection",
-    "COMPONENT/COMPONENT_SET",
-    "blocks VARIANT add",
-    "variant-member guard",
-    "value type validation",
-    "parent exists",
-    "exists",
-    "scopeRoot present",
-    "scopeRoot",
-    "type TEXT",
-    "type INSTANCE",
-    "type COMPONENT",
-    "gated by node-perm, not style-perm",
-    "gated by node-perm not var-perm",
-    // v2.3.2 bespoke gates — covered by phase1/phase2/phase3 suites:
-    "parent appendable",            // node_clone destination appendability (phase1.test.ts)
-    "parent-cycle",                 // create_component_set cycle precheck (phase2.test.ts)
-    "set-member block",             // create_component_set OQ2 reject (phase2.test.ts)
-    "value separator rules",        // create_component_set OQ1 reject (phase2.test.ts)
-    "duplicate component IDs",      // create_component_set duplicate-id reject (phase2.test.ts)
-]);
-
-const CLEAN_IGNORE_TOKENS = new Set(
-    Array.from(IGNORE_TOKENS).map(tok => 
-        tok.replace(/\*\*/g, "").replace(/\([^\)]*\)/g, "").trim()
-    )
-);
-
-// Helper to expand parent scopes like parent scope+name+locked
-function expandToken(tok: string): string[] {
-    const clean = tok.trim();
-    if (clean.startsWith("parent ") && clean.includes("+")) {
-        const parts = clean.substring("parent ".length).split("+").map(p => p.trim());
-        // Distribute the parent prefix
-        return parts.map(p => {
-            const cleanP = p.replace(/\([^\)]*\)/g, "").trim();
-            if (cleanP === "locked") return "parent locked";
-            if (cleanP === "instance-interior") return "parent instance-interior";
-            if (cleanP.startsWith("scope")) return "parent scope";
-            if (cleanP.startsWith("name")) return "parent name";
-            return `parent ${cleanP}`;
-        });
-    }
-    if (clean.startsWith("child ") && clean.includes("+")) {
-        const parts = clean.substring("child ".length).split("+").map(p => p.trim());
-        return parts.map(p => {
-            const cleanP = p.replace(/\([^\)]*\)/g, "").trim();
-            if (cleanP.startsWith("scope")) return "scope";
-            if (cleanP.startsWith("name")) return "name";
-            return cleanP;
-        });
-    }
-    if (clean === "child scope+name") {
-        return ["scope", "name"];
-    }
-    if (clean === "instance-interior, both ids") {
-        return ["instance-interior", "parent instance-interior"];
-    }
-    if (clean === "per-target exists+scope+name+INSTANCE+locked") {
-        return ["scope", "name", "locked"];
-    }
-    if (clean === "per-component exists+scope+name+propValues-count+COMPONENT-type") {
-        return ["scope", "name"];
-    }
-    if (clean === "locked(parent & child)") {
-        return ["locked", "parent locked"];
-    }
-    if (clean === "locked(source)") {
-        return ["locked"];
-    }
-    if (clean === "locked(parent)") {
-        return ["parent locked"];
-    }
-    return [clean];
-}
 
 async function sendCommand(command: string, params: any) {
     const msg = {
@@ -312,99 +155,6 @@ async function sendCommand(command: string, params: any) {
     await gateOnMessage!(msg);
     return await resultPromise;
 }
-
-describe("Phase 5: SAFETY.md Part B Bidirectional Verification", () => {
-    it("parses SAFETY.md and ensures exact mapping to EXPECTED_CONTRACTS", () => {
-        const safetyPath = join(process.cwd(), "SAFETY.md");
-        const safetyContent = readFileSync(safetyPath, "utf8");
-        const lines = safetyContent.split("\n");
-
-        let inPartB = false;
-        let currentSection = "";
-        const parsedContracts: Record<string, string[]> = {};
-
-        for (const line of lines) {
-            if (line.includes("## Part B")) {
-                inPartB = true;
-            }
-            if (line.includes("## Part C") || line.includes("### B5")) {
-                inPartB = false;
-            }
-            if (!inPartB) continue;
-            const sectionMatch = line.match(/^### (B\d)/);
-            if (sectionMatch) currentSection = sectionMatch[1];
-
-            if (line.startsWith("|") && !line.includes("Tool |") && !line.includes("---|")) {
-                const parts = line.split("|").map(p => p.trim());
-                if (parts.length >= 3) {
-                    const tool = parts[1].replace(/`/g, "").trim();
-                    const rawGates = parts[2];
-                    
-                    // Skip read tools/handshake (which are documented but not writes or are ungated)
-                    if (tool === "node_info" || tool.includes("style_list") || tool.includes("view_navigate") || tool.includes("get_connect_payload") || tool.includes("reaction_list") || tool.includes("instance_get_overrides")) {
-                        continue;
-                    }
-
-                    const tokens = rawGates.split("·").map(t => t.trim()).filter(Boolean);
-                    const gates: string[] = [];
-
-                    for (const rawTok of tokens) {
-                        const cleanedRaw = rawTok.replace(/\*\*/g, "").replace(/\`/g, "").replace(/\((v?\d+\.\d+\.\d+ )?§[^\)]*\)/g, "").trim();
-                        const expanded = expandToken(cleanedRaw);
-                        for (let cleanTok of expanded) {
-                            cleanTok = cleanTok.replace(/\([^\)]*\)/g, "").trim();
-                            
-                            // Bespoke tokens must match the ignore set EXACTLY —
-                            // substring/fuzzy passes would let novel gate claims
-                            // slip past the unknown-token tripwire (OQ4 guardrail).
-                            if (!cleanTok || CLEAN_IGNORE_TOKENS.has(cleanTok)) {
-                                continue;
-                            }
-
-                            const mapped = TOKEN_TO_GATE[cleanTok];
-                            if (!mapped) {
-                                throw new Error(`Unknown safety token in SAFETY.md for tool '${tool}': '${cleanTok}' (original raw: '${rawTok}'). Map it in TOKEN_TO_GATE, add it to IGNORE_TOKENS with a suite pointer, or fix SAFETY.md.`);
-                            }
-                            if (!gates.includes(mapped)) {
-                                gates.push(mapped);
-                            }
-                        }
-                    }
-
-                    // Rows under "### B2. Node batch tools (per-item pre-validation,
-                    // zero-mutation abort)" inherit the section's batch claim; the
-                    // handler-prevalidation claim is carried per-row via explicit
-                    // tokens ("parent-first + cleanup", "plan/mutate two-phase").
-                    if (currentSection === "B2" && !gates.includes("batchPrevalidation")) {
-                        gates.push("batchPrevalidation");
-                    }
-
-                    parsedContracts[tool] = gates;
-                }
-            }
-        }
-
-        for (const [tool, expected] of Object.entries(EXPECTED_CONTRACTS)) {
-            const parsed = parsedContracts[tool] || [];
-            try {
-                expect(parsed.sort()).toEqual(expected.sort());
-            } catch (err) {
-                console.error(`Mismatch for tool '${tool}': expected ${JSON.stringify(expected.sort())}, got ${JSON.stringify(parsed.sort())}`);
-                throw err;
-            }
-        }
-
-        for (const [tool, parsed] of Object.entries(parsedContracts)) {
-            const expected = EXPECTED_CONTRACTS[tool] || [];
-            try {
-                expect(parsed.sort()).toEqual(expected.sort());
-            } catch (err) {
-                console.error(`Mismatch for tool '${tool}': expected ${JSON.stringify(expected.sort())}, got ${JSON.stringify(parsed.sort())}`);
-                throw err;
-            }
-        }
-    });
-});
 
 describe("Phase 5: table-driven nodePerm sweep — every nodePerm-gated write rejects in read-only mode", () => {
     // The permission gate runs before any param handling, so empty params

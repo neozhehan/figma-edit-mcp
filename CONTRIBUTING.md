@@ -101,6 +101,19 @@ Each was found by mutating the production line and watching the suite stay green
 
 When a mutation red-proof is recorded in a review, state which tests failed and how many, so the claim is reproducible.
 
+### Never use code to check non-code files
+
+**No test and no CI script asserts over documentation.** Not `CHANGELOG.md`, not `SAFETY.md`, not the `skills/figma-edit/references/` guides, not a PRD. If you are reaching for `expect(doc).toContain(...)`, stop.
+
+Matching a string proves a word was written, not that a statement is true. v2.3.3 shipped a suite of such guards and they stayed green through four separate factual errors in the very entry they were guarding — an invalid enum value in a migration example, a request missing three required fields, an invented error message, and a claim that required fields were optional. Every one used the right vocabulary. Worse, each review round that fixed the previous round's prose also introduced new prose-and-guard defects, so the guards cost more than they caught. They were all removed on 2026-08-02.
+
+Two clarifications, because both have been argued before:
+
+- **A script is not a loophole.** Rebuilding the check as `check:<something>` wired into CI is the same thing in a different file. v2.3.4's proposed `check:error-codes` playbook-parity gate was withdrawn on exactly this ground.
+- **Testing that a *server* serves a file is fine.** `resources.test.ts` asserts each `figma-edit://guide/*` resource returns its repository source byte-for-byte. That is a property of the server, and it makes no claim about what the document says.
+
+Documentation is kept in step by review. Where that leaves a guarantee unenforced — `SAFETY.md` Part B is no longer verified against the dispatcher, and error-playbook coverage is no longer checked — the affected document says so plainly rather than implying a gate that does not exist.
+
 ### Mocks cannot establish Figma's behaviour
 
 The suite runs on stubs, which makes it fast and hermetic — and means **a mock can only prove what you told it to do.** Where a contract depends on how the Figma host actually behaves, a green test proves the stub, not the product. This repo has repeatedly shipped assertions that encoded a false assumption about Figma:

@@ -58,7 +58,6 @@ describe("WS2 - Resources Handler (R2.2, R5.1h)", () => {
 
     // The MCP resources are mirrors by reference, not copied files: verify every
     // published operational guide is byte-for-byte the repository source.
-    const guideText: Record<(typeof GUIDE_IDS)[number], string> = {} as any;
     for (const id of GUIDE_IDS) {
       const uri = `figma-edit://guide/${id}`;
       const result = await registered[uri].readCallback(new URL(uri), {} as any);
@@ -68,73 +67,13 @@ describe("WS2 - Resources Handler (R2.2, R5.1h)", () => {
 
       const expected = readFileSync(`skills/figma-edit/references/${id}.md`, "utf8");
       expect(result.contents[0].text).toBe(expected);
-      guideText[id] = result.contents[0].text;
     }
 
-    // Concise semantic pins for the Phase 7/8 operational contract. These catch
-    // a source-and-resource edit that remains byte-identical but drops recovery
-    // guidance users need before issuing a second write.
-    expect(guideText.constraints).toContain("actual and verified parent IDs");
-    expect(guideText.constraints).toContain("removedComponents");
-    expect(guideText.constraints).toContain("reparentedComponents");
-    expect(guideText.constraints).toContain("beforeCountVerified");
-    expect(guideText.constraints).toContain("outcomeUnknown");
-    expect(guideText.constraints).toContain(
-      "Name **verification** and name **assignment** are different contracts",
-    );
-    expect(guideText.constraints).toContain("CREATE_COLLECTION.modeName");
-    expect(guideText["error-playbook"]).toContain("before.survivingNodeId");
-    expect(guideText["error-playbook"]).toContain("survivingParentState");
-    expect(guideText["error-playbook"]).toContain("before.removedComponents");
-    expect(guideText["error-playbook"]).toContain("retainedVariantComponents");
-    expect(guideText["error-playbook"]).toContain("postStateError");
-    expect(guideText["error-playbook"]).toContain(
-      "A name-assignment request rejects an explicit empty",
-    );
-    expect(guideText["error-playbook"]).toContain(
-      "Never omit a required field merely because another tool has a default",
-    );
-    expect(guideText["error-playbook"]).toContain(
-      'errorDetails.phase: "scope-payload"',
-    );
-    expect(guideText["error-playbook"]).toContain(
-      "the socket join succeeded but the editable-scope payload failed",
-    );
-    expect(guideText.workflows).toContain("GROUP/FRAME roots are valid");
-    expect(guideText.workflows).toContain("required parent:");
-    expect(guideText.workflows).toContain("afterCountVerified");
-    expect(guideText.workflows).toContain(
-      "Assigned names: omit only when the field permits it",
-    );
-    expect(guideText.workflows).toContain(
-      "C9's present-empty decision is limited to the protected `parentNodeName` paths",
-    );
-    expect(guideText["tool-selection"]).toContain("accepts exactly `DROP_SHADOW`");
-    expect(guideText["tool-selection"]).toContain("`blendMode` must be one of the 19");
-    expect(guideText["tool-selection"]).toContain("Prevalidation atomicity is not a runtime transaction");
-    expect(guideText["tool-selection"]).toContain("canonical `UNKNOWN_ERROR` envelope");
-    expect(guideText["tool-selection"]).toContain("Name assignment vs. name lookup");
-    expect(guideText["tool-selection"]).toContain(
-      "A dual-role field such as component-property `propertyName` is classified by action",
-    );
-
-    // Phase 12: the served resources must carry the synchronized universal
-    // name rule, ratified-code playbook, truthful batch interpretation, and
-    // current native-prototype migration guidance — not merely mirror bytes.
-    const guideG2 =
-      "No write against an existing object proceeds unless the caller-supplied current name matches the resolved object's actual name — nodes, variables, styles, and collections alike; creation verifies the identified parent or collection instead.";
-    for (const id of GUIDE_IDS) {
-      expect(guideText[id].split(guideG2).length - 1).toBe(1);
-      expect(guideText[id]).toContain("connector-template discovery");
-    }
-    expect(guideText["error-playbook"]).toContain("`PAGE_LOAD_FAILED`");
-    expect(guideText["error-playbook"]).toContain("`PAGE_SCAN_FAILED`");
-    expect(guideText["error-playbook"]).toContain("`VARIABLE_IN_USE`");
-    expect(guideText["error-playbook"]).not.toContain("DOCUMENT_LOAD_FAILED");
-    expect(guideText.constraints).toContain('status: "partial_success"');
-    expect(guideText.constraints).toContain("`nodeId`/`status`/`error`");
-    expect(guideText.workflows).toContain("append is not idempotent");
-    expect(guideText.workflows).toContain("reaction_update");
+    // NOTE: this reads the guide files, but it asserts a property of the SERVER —
+    // that each resource serves its repository source byte-for-byte rather than a
+    // stale copy. It makes no claim about what the guides say. The former
+    // semantic pins here (phrases each guide had to contain) were removed with
+    // every other assertion over documentation content.
   });
 
   it("should fail soft on a missing file (return error markdown instead of crashing)", async () => {

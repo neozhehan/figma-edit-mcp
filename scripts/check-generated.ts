@@ -1,5 +1,5 @@
 import { execFileSync, execSync } from "child_process";
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, rmSync, writeFileSync } from "fs";
 
 /**
  * Fails if any generated file is out of date relative to the source it is
@@ -94,6 +94,18 @@ export function restoreGeneratedFiles(snapshots: GeneratedFileSnapshot[]): void 
  * explicitly. Realistic trigger: a generator's output path is renamed and the
  * `GENERATED_GROUPS` entry is not updated, silently retiring the gate.
  */
+/**
+ * Outputs this run created that did not exist before it.
+ *
+ * On the success paths a newly created output is a legitimate new artifact and is
+ * deliberately left in place for review. On the generator-throw path it is a
+ * partial write by definition, so leaving it would make a failed run
+ * indistinguishable from a successful one that produced a new file.
+ */
+export function newlyCreatedGeneratedFiles(snapshots: GeneratedFileSnapshot[]): GeneratedFileSnapshot[] {
+    return snapshots.filter(({ existed, file }) => !existed && existsSync(file));
+}
+
 export function missingGeneratedFiles(snapshots: GeneratedFileSnapshot[]): GeneratedFileSnapshot[] {
     return snapshots.filter(({ file }) => !existsSync(file));
 }
@@ -116,10 +128,14 @@ export function runGeneratedCheck(
         try {
             regenerate(command);
         } catch {
-            // A generator can write one or more outputs before throwing. Restore
-            // every output that existed before the attempt so a failed check is
-            // observational rather than a working-tree mutation.
+            // A generator can write one or more outputs before throwing. Leave the
+            // tree exactly as the check found it: restore every output that existed
+            // beforehand, and discard any this run created, since a file from a
+            // failed generator is partial by definition.
             restoreGeneratedFiles(snapshots);
+            for (const { file } of newlyCreatedGeneratedFiles(snapshots)) {
+                rmSync(file, { force: true });
+            }
             console.error(`Error: ${command} failed.`);
             return 1;
         }

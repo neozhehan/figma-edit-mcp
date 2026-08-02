@@ -1,11 +1,15 @@
 /**
- * Phase 13 release boundary: version synchronization, the public migration
- * entry, and the generated-file freshness gate.
+ * Phase 13 release boundary: version synchronization and the generated-file
+ * freshness gate.
  *
  * This file lives at `tests/unit/` rather than `tests/unit/figma_plugin/` with
  * its sibling `v2.3.3.phase*.test.ts` suites because none of it is plugin-handler
- * behaviour — it asserts repository descriptors, `CHANGELOG.md`, and a build
- * script.
+ * behaviour — it asserts repository descriptors and a build script.
+ *
+ * It deliberately asserts nothing about `CHANGELOG.md`. The removed suite checked
+ * whether a human-facing release note contained or lacked particular sentences —
+ * a completeness checklist, not a correctness check. It stayed green across four
+ * separate factual errors in the entry it was guarding.
  *
  * RELEASE_VERSION is the one place the release number is written. A version bump
  * updates this constant; every other assertion derives from it, so the suite goes
@@ -26,7 +30,6 @@ import {
 } from "../../../../scripts/check-generated.js";
 
 const RELEASE_VERSION = "2.3.3";
-const PREVIOUS_VERSION = "2.3.2";
 
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
@@ -76,100 +79,6 @@ describe("v2.3.3 Phase 13 release boundary", () => {
             read("figma_plugin/code.js"),
         );
         expect(handshake?.[1]).toBe(RELEASE_VERSION);
-    });
-
-    describe("the public migration entry", () => {
-        const changelog = read("CHANGELOG.md");
-        const start = changelog.indexOf(`## [${RELEASE_VERSION}]`);
-        const end = changelog.indexOf(`## [${PREVIOUS_VERSION}]`, start);
-        const entry = changelog.slice(start, end);
-
-        it("exists ahead of the previous release entry", () => {
-            expect(start).toBeGreaterThan(-1);
-            expect(end).toBeGreaterThan(start);
-        });
-
-        it("names every field and repair the Phase 13 checklist requires", () => {
-            for (const required of [
-                // Design-system verification (D5)
-                "currentVariableName",
-                "currentStyleName",
-                "collectionName",
-                '"scopes"',
-                // Explicit placement (D6/D11)
-                "parentNodeName",
-                "create_component_set",
-                // Annotations (D10)
-                "labelMarkdown",
-                "annotationId",
-                "annotatedNodes",
-                "beforeCountVerified",
-                // Strictness (D8)
-                "Nested inputs are strict",
-                "strict per Figma effect variant",
-                // Batch contract (D7) — including every dropped legacy count,
-                // which task.md Phase 13 enumerates by name.
-                "empty and duplicate target sets",
-                "requestedCount",
-                "partial_success",
-                "nodesDeleted",
-                "replacementsApplied",
-                "annotationsApplied",
-                "totalCount",
-                "instanceId",
-                "nodeId`/`status`/`error",
-                // Peer-bound channel (D13) — all four admission refusals.
-                'clientType:"plugin"',
-                "PLUGIN_PEER_UNAVAILABLE",
-                "PLUGIN_PEER_AMBIGUOUS",
-                "CHANNEL_IN_USE",
-                "VERSION_MISMATCH",
-                // Connector removal (D12)
-                "create_connection",
-                "reaction_to_connector_strategy",
-                // Name assignment and typography (Revs 51–54)
-                "node_rename.name",
-                "fontWeight",
-                // Page-load isolation and coded refusals (D9/D14)
-                "VARIABLE_IN_USE",
-                "descendantCount",
-                "missingPageIds",
-                "pageFailedNodes",
-                "pagesAttempted",
-                // Additive repair (Rev 20)
-                "create_instance.componentId",
-            ]) {
-                expect(entry, `missing Phase 13 changelog item: ${required}`).toContain(required);
-            }
-        });
-
-        it("gives every breaking-change bullet its own before/after example", () => {
-            const breaking = entry.slice(
-                entry.indexOf("### Breaking changes and migration examples"),
-                entry.indexOf("### Added"),
-            );
-            const bullets = breaking.split(/\n- \*\*/).slice(1);
-
-            // The PRD's Compatibility posture makes a before/after example the
-            // acceptance criterion for each breaking change, so assert the pairing
-            // per bullet rather than a total count a deleted example could survive.
-            expect(bullets.length).toBeGreaterThanOrEqual(15);
-            for (const bullet of bullets) {
-                const label = bullet.slice(0, bullet.indexOf("**"));
-                expect(bullet, `breaking change without a "Before:" example: ${label}`).toContain(
-                    "Before:",
-                );
-                expect(bullet, `breaking change without an "After:" example: ${label}`).toContain(
-                    "After:",
-                );
-            }
-        });
-
-        it("states effect requiredness and the GLASS depth boundary truthfully", () => {
-            expect(entry).not.toContain("Their fields are optional, not newly required");
-            expect(entry).not.toContain("fields now survive end to end");
-            expect(entry).toContain("GLASS `depth` must be at least `1`");
-        });
     });
 
     describe("the generated-file freshness gate", () => {
@@ -272,6 +181,36 @@ describe("v2.3.3 Phase 13 release boundary", () => {
             });
         });
 
+        it("discards a partial new output when the generator writes it then throws", () => {
+            withTempDir((dir) => {
+                const existing = path.join(dir, "existing.txt");
+                const created = path.join(dir, "created-by-failed-run.txt");
+                fs.writeFileSync(existing, "working-version\n");
+
+                const exitCode = quietly(() =>
+                    runGeneratedCheck(
+                        [{
+                            command: "gen:fixture",
+                            source: "the fixture source",
+                            files: [existing, created],
+                        }],
+                        () => {
+                            fs.writeFileSync(existing, "partial\n");
+                            fs.writeFileSync(created, "partial\n");
+                            throw new Error("generator exploded");
+                        },
+                    ),
+                );
+
+                // The check must leave the tree exactly as it found it: a file that
+                // existed is restored, and one this failed run created is removed
+                // rather than left to look like a legitimate new output.
+                expect(exitCode).toBe(1);
+                expect(fs.readFileSync(existing, "utf8")).toBe("working-version\n");
+                expect(fs.existsSync(created)).toBe(false);
+            });
+        });
+
         it("reports an untracked generated output as uncommitted", () => {
             withTempDir((dir) => {
                 execFileSync("git", ["init", "--quiet"], { cwd: dir });
@@ -340,7 +279,14 @@ describe("v2.3.3 Phase 13 release boundary", () => {
             return (tool: string) => {
                 const def = registered[tool];
                 const json = z.toJSONSchema(def.inputSchema, { io: "input" }) as any;
-                return { description: def.description as string, inputSchema: json };
+                return {
+                    description: def.description as string,
+                    inputSchema: json,
+                    // The registered (recursively strict) zod schema — the real
+                    // validation path, so a bound can be compared against what
+                    // `tools/list` advertises for the same field.
+                    zodSchema: def.inputSchema,
+                };
             };
         };
 
@@ -382,11 +328,96 @@ describe("v2.3.3 Phase 13 release boundary", () => {
                 }
             }
 
-            const glass = effectsSchema.items.oneOf.find(
-                (candidate: any) => candidate.properties?.type?.const === "GLASS",
-            );
-            expect(glass.properties.depth.minimum).toBe(1);
-            expect(glass.properties.depth.description).toContain("must be ≥ 1");
+        });
+
+        /**
+         * Advertised bounds and enforced bounds must agree, in both directions.
+         *
+         * `.superRefine()` is dropped by the zod→JSON-Schema conversion — this
+         * repo already shipped that bug once (Rev 61 / C8-D1, where `coverage`'s
+         * invariant reached callers as no constraint at all). A bound expressed
+         * so that zod enforces it but the emitted schema omits it is invisible to
+         * `v2.3.3.phase7.test.ts`, which only exercises `safeParse`.
+         *
+         * Both sides are derived: the bounds are read from the emitted schema and
+         * probed against the registered schema. Nothing here is hardcoded except
+         * one minimal valid fixture per variant.
+         */
+        it("advertises exactly the numeric effect bounds it enforces", async () => {
+            const { inputSchema, zodSchema } = (await emitted())("style_manage");
+            const effectsSchema = inputSchema.properties.properties.properties.effects;
+
+            const rgba = { r: 0.5, g: 0.5, b: 0.5, a: 1 };
+            const VALID: Record<string, Record<string, unknown>> = {
+                DROP_SHADOW: { type: "DROP_SHADOW" },
+                INNER_SHADOW: { type: "INNER_SHADOW" },
+                LAYER_BLUR: { type: "LAYER_BLUR" },
+                BACKGROUND_BLUR: { type: "BACKGROUND_BLUR" },
+                NOISE: { type: "NOISE", noiseType: "MONOTONE", color: rgba, noiseSize: 2, density: 0.4 },
+                TEXTURE: { type: "TEXTURE", noiseSize: 2, radius: 1, clipToShape: true },
+                GLASS: {
+                    type: "GLASS", lightIntensity: 0.5, lightAngle: 45, refraction: 0.5,
+                    depth: 1, dispersion: 0.5, radius: 1,
+                },
+            };
+
+            const accepts = (effect: Record<string, unknown>) =>
+                zodSchema.safeParse({
+                    type: "EFFECT",
+                    name: "bounds probe",
+                    properties: { effects: [effect] },
+                }).success;
+
+            let checked = 0;
+            for (const variant of effectsSchema.items.oneOf) {
+                const literal = variant.properties.type.const as string;
+                const base = VALID[literal];
+                expect(base, `no fixture for effect variant ${literal}`).toBeDefined();
+                expect(accepts(base), `fixture for ${literal} must be valid`).toBe(true);
+
+                for (const [field, spec] of Object.entries<any>(variant.properties)) {
+                    if (spec.type !== "number" && spec.type !== "integer") continue;
+
+                    // Skip fields this base configuration gates rather than bounds.
+                    // The progressive ramp (`startRadius`, offsets) is refused on a
+                    // normal blur by the secondary-discriminator rule, which is a
+                    // variant gate — reading that refusal as a missing bound is what
+                    // this probe got wrong on its first run.
+                    const inRange = spec.minimum ?? spec.maximum ?? 1;
+                    if (!accepts({ ...base, [field]: inRange })) continue;
+
+                    if (spec.minimum !== undefined) {
+                        expect(
+                            accepts({ ...base, [field]: spec.minimum - 1 }),
+                            `${literal}.${field} advertises minimum ${spec.minimum} but accepts below it`,
+                        ).toBe(false);
+                        checked++;
+                    }
+                    if (spec.maximum !== undefined) {
+                        expect(
+                            accepts({ ...base, [field]: spec.maximum + 1 }),
+                            `${literal}.${field} advertises maximum ${spec.maximum} but accepts above it`,
+                        ).toBe(false);
+                        checked++;
+                    }
+                    if (!accepts({ ...base, [field]: -1e6 })) {
+                        expect(
+                            spec.minimum,
+                            `${literal}.${field} rejects large negatives but advertises no minimum`,
+                        ).toBeDefined();
+                    }
+                    if (!accepts({ ...base, [field]: 1e6 })) {
+                        expect(
+                            spec.maximum,
+                            `${literal}.${field} rejects large positives but advertises no maximum`,
+                        ).toBeDefined();
+                    }
+                }
+            }
+
+            // Guards the guard: a conversion that emitted no bounds at all would
+            // otherwise satisfy every branch above vacuously.
+            expect(checked).toBeGreaterThanOrEqual(12);
         });
     });
 });

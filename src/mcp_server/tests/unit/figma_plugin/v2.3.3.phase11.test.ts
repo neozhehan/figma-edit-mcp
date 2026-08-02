@@ -54,6 +54,9 @@ describe("v2.3.3 Phase 11: connector-visualization surface removal", () => {
         );
     });
 
+    // Prose assertions over README/SAFETY/guides/PRD/CHANGELOG were removed: they
+    // checked that documentation files did not contain a word, which proves
+    // nothing about the registered surface. The registry checks below do.
     it("keeps current public inventories free of actionable references", () => {
         const manifest = JSON.parse(read("manifest.json"));
         const manifestTools = manifest.tools as Array<{
@@ -69,47 +72,5 @@ describe("v2.3.3 Phase 11: connector-visualization surface removal", () => {
                 ?.description,
         ).not.toContain("reaction_to_connector_strategy");
 
-        for (const path of [
-            "README.md",
-            "SAFETY.md",
-            "figma_plugin/README.md",
-            "skills/figma-edit/references/workflows.md",
-            "skills/figma-edit/references/tool-selection.md",
-            "documentation/future/Graph-based Operational Plans/prd.md",
-        ]) {
-            expect(read(path), `${path} advertises a removed surface`).not.toMatch(
-                /\bcreate_connection\b|\breaction_to_connector_strategy\b/,
-            );
-        }
-
-        // The removal notice used to sit in a standalone block quote above the
-        // `[2.3.3]` heading, written before that entry existed. It now lives
-        // inside the entry as a breaking change with its own migration example,
-        // so assert against the entry rather than the retired notice heading.
-        const changelog = read("CHANGELOG.md");
-        const entry = changelog.slice(
-            changelog.indexOf("## [2.3.3]"),
-            changelog.indexOf("## [2.3.2]"),
-        );
-        expect(entry).toContain("The connector-visualization surface is removed.");
-        expect(entry).toContain(
-            "Native prototype metadata remains available through `reaction_list` and `reaction_update`",
-        );
-        // The v2.3.4-scheduled reaction caveats must migrate with it, not be lost.
-        expect(entry).toContain("`CHANGE_TO` action");
-        expect(entry).toContain("Failed to update reactions: undefined");
-        expect(
-            read("documentation/v2.3.3/reviews/revised-prd.md"),
-        ).toContain("Historical adversarial-review draft; superseded");
-        const currentPrd = read("documentation/v2.3.3/prd.md");
-        expect(currentPrd).toContain(
-            "the official MCP registries exposing exactly 45 tools",
-        );
-        expect(currentPrd).not.toContain(
-            "`create_connection` without a valid template returning",
-        );
-        expect(currentPrd).not.toContain(
-            "Rev 73 Phase 14 correction (authoritative)",
-        );
     });
 });

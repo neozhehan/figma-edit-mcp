@@ -2,7 +2,7 @@
 
 This document tracks the tasks required to fulfill the requirements in the [v2.3.3 PRD](file:///Users/neozhehan/Git/figma-edit-mcp/documentation/v2.3.3/prd.md). It is divided into 14 phases, covering both Track 1 (Type-check restoration) and Track 2 (Safety-contract gap closure).
 
-> Release decision status, review outcomes, verification history, and current findings are maintained in the **most recent section** of the [v2.3.3 release changelog](release-changelog.md) — currently [Change 23](release-changelog.md#change-23-change-22-adversarial-review-live-verification-and-gate-remediation). Sections are appended at the top, so this pointer names the newest one rather than a fixed change number. The 14 implementation phases remain below.
+> Release decision status, review outcomes, verification history, and current findings are maintained in the **most recent section** of the [v2.3.3 release changelog](release-changelog.md) — currently [Change 26](release-changelog.md#change-26-close-the-two-carried-over-gaps-record-what-remains-open). Sections are appended at the top, so this pointer names the newest one rather than a fixed change number. The 14 implementation phases remain below.
 
 ---
 
@@ -270,14 +270,14 @@ The guarantee is an **observable success boundary**: no successful command may a
   - [x] Delete the now-dead `CONNECTOR_TEMPLATE_REQUIRED` factory and ratified-code entry; update the inventory to twenty-two codes plus `UNKNOWN_ERROR`.
   - [x] Move reaction discovery into `prototypingHandlers.ts` and delete the connector handler module so no hidden raw-command path survives.
 - [x] **Documentation removal tasks.**
-  - [x] Remove usage/availability references from `README.md`, `SAFETY.md`, and `figma_plugin/README.md`. `skills/figma-edit/references/workflows.md` and `tool-selection.md` were audited and required no edit — neither ever named the removed tool or prompt — and both are pinned by negative assertions so a future guide cannot reintroduce them.
+  - [x] Remove usage/availability references from `README.md`, `SAFETY.md`, and `figma_plugin/README.md`. `skills/figma-edit/references/workflows.md` and `tool-selection.md` were audited and required no edit — neither ever named the removed tool or prompt. *(The negative assertions that pinned them were removed on 2026-08-02 with every other test that read a documentation file; a future guide reintroducing the name is caught by review, not CI.)*
   - [x] Remove the tool from current future-planning inventories that assume the live v2.3.3 surface.
   - [x] Add the breaking removal and migration direction to `CHANGELOG.md`; preserve `documentation/completed/**`, `documentation/legacy/**`, prior revision entries, and adversarial-review evidence as historical records rather than rewriting history.
   - [x] Update this PRD, Q13, and Change 15 so every current reference describes removal or historical evidence—none advertises a callable connector-visualization workflow.
 - [x] **Removal regression tests and generated-artifact gate.**
   - [x] Assert `tools/list`/the registration inventory contains 45 tools, retains both reaction tools, and omits `create_connection`.
   - [x] Assert the prompt registry omits `reaction_to_connector_strategy` while retaining the unrelated prompt surface.
-  - [x] Assert the typed wire union, plugin dispatcher, connector handler module, bundled plugin, refusal registry, manifest, and current public guides contain no live connector-creation surface.
+  - [x] Assert the typed wire union, plugin dispatcher, connector handler module, bundled plugin, refusal registry, and manifest contain no live connector-creation surface. *(The guides/README/PRD prose sweep that accompanied this was removed on 2026-08-02: code does not check non-code files. The registry and source assertions remain and are what actually prove removal.)*
   - [x] Assert a direct stale raw command reaches only the generic unknown-command failure and cannot inspect a template or invoke `clone()`.
   - [x] Execute the retained `reaction_list` through the real plugin dispatcher and prove the reader moved to `prototypingHandlers.ts` still returns native non-`CHANGE_TO` reactions; v2.3.4 owns the documented completeness repair.
   - [x] Add `manifest.json` to `check:generated` as a distinct registration-derived regenerate-and-diff group whose failure names the registered MCP tools and `bun run gen:manifest`; keep its recovery separate from `gen:node-fields`. The gate was manually red-proofed by drifting a registered description, but no committed self-test currently drives that negative path.
@@ -291,7 +291,7 @@ The guarantee is an **observable success boundary**: no successful command may a
 ## Phase 12: Contract Sync (D8)
 - [x] **SAFETY.md**
   - [x] Revise G2 to the universal existing-object rule (Q3 wording): *"No write against an existing object proceeds unless the caller-supplied current name matches the resolved object's actual name — nodes, variables, styles, and collections alike. Creation verifies the identified parent or collection instead."*
-  - [x] **Publish gate:** before publishing the revised G2, audit every write tool against the rule (the `safetyContract` mechanical diff provides most of it; the Part B matrix stays the per-tool proof).
+  - [x] **Publish gate:** before publishing the revised G2, audit every write tool against the rule (a manual audit; the Part B matrix stays the per-tool proof).
   - [x] Update A3, the "Name fields" bullet, and the Part B matrix rows for every changed tool (`variable_manage`, `style_manage`, the five creators, `create_component`, `create_component_set`, `node_flatten`, `node_clone`, `annotation_set`, `variable_delete`, the surviving batch tools, and the channel-binding surface). *(The deleted connector row required no work here: Change 15 removed it from `SAFETY.md` in commit `8c04cd0`. Recorded per the C16-F2 precedent rather than credited to Phase 12.)*
   - [x] **From Phase 8 (D11), corrected by Rev 50:** G1 is an observable **success** boundary. A successful command never returns with its created node outside the verified destination; a failed cleanup may terminate with a survivor only when the initiating error carries mandatory partial-mutation and location evidence. The absolute “creation failures never leave orphan nodes” claim is withdrawn.
   - [x] **From Phase 8 (D11) — residual risk 1:** the unavoidable same-stack micro-transient (an implicit Figma creator constructs on `currentPage` for part of one synchronous stack, before the append that contains it).
@@ -299,12 +299,12 @@ The guarantee is an **observable success boundary**: no successful command may a
   - [x] Add the D13 claim ("peer-bound, self-reported version check — not cryptographic attestation").
 - [x] **Agent guides** ([skills/figma-edit/references/](file:///Users/neozhehan/Git/figma-edit-mcp/skills/figma-edit/references/): constraints, error-playbook, tool-selection, workflows)
   - [x] State the G2 rule in exactly **one sentence** in the guides.
-  - [x] `error-playbook.md`: add an entry for every D9 code — the full header inventory plus every changed refusal (including the Q22 `PARENT_NAME_MISSING`/`PARENT_NAME_MISMATCH` pair, Rev 31, and Change 8's `PAGE_SCAN_FAILED`/`VARIABLE_IN_USE`, Rev 61). Retire the `DOCUMENT_LOAD_FAILED` row: that code no longer exists (C8-F3). *(The trailing "No Phase 10 code has a row yet" was the pre-Phase-12 status, not part of the task; all twelve operational and ten verification codes now have rows, pinned against `RATIFIED_CODES` by `v2.3.3.phase12.test.ts`.)*
+  - [x] `error-playbook.md`: add an entry for every D9 code — the full header inventory plus every changed refusal (including the Q22 `PARENT_NAME_MISSING`/`PARENT_NAME_MISMATCH` pair, Rev 31, and Change 8's `PAGE_SCAN_FAILED`/`VARIABLE_IN_USE`, Rev 61). Retire the `DOCUMENT_LOAD_FAILED` row: that code no longer exists (C8-F3). *(The trailing "No Phase 10 code has a row yet" was the pre-Phase-12 status, not part of the task; all twelve operational and ten verification codes now have rows. The `v2.3.3.phase12.test.ts` suite that pinned them against `RATIFIED_CODES` has been deleted, so playbook coverage is no longer mechanically checked.)*
   - [x] Teach the new batch `status` semantics (treat `partial_success` as incomplete; retry every non-success row — `failed` and `skipped`), the one shared row vocabulary in one sentence (every row carries `nodeId`/`status`/`error`, Q25), the annotation list-before-retry guidance (Q10), and D12's connector-surface removal: native prototype work uses the retained reaction tools, with no connector-template discovery workflow and the lossless/state-safe repair deferred explicitly to v2.3.4.
   - [x] D9 acceptance review per new or changed message: the correct retry is derivable from the error text and the tool list alone.
   - [x] Mirror all guide changes to the `figma-edit://guide/*` server resources.
 - [x] **Unit Tests**
-  - [x] The `safetyContract.test.ts` mechanical diff passes in both directions after the `SAFETY.md` matrix updates.
+  - [x] ~~The `safetyContract.test.ts` mechanical diff passes in both directions after the `SAFETY.md` matrix updates.~~ **Retired 2026-08-02 under the project rule that code never checks non-code files.** The bidirectional diff was removed along with every other test that read a documentation file. `safetyContract.test.ts` keeps its real-dispatcher gate assertions, which is where the enforcement always lived; `SAFETY.md` Part B is now maintained by review. No replacement gate — in this suite or as a CI script — is to be added.
 
 ---
 

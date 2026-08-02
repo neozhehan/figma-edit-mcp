@@ -2,6 +2,87 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 26: Close the two carried-over gaps; record what remains open
+
+### Author: Claude Opus 5 @ 2026-08-02 4:00pm PT
+
+**Closes the last two non-documentation findings from the Change 22 and Change 24 reviews, and states plainly what is still open.** Both fixes are red-proofed. No product behavior changes: one is a build script, one is a test. `documentation/v2.3.3/reviews/revised-prd.md` was deleted outside this change; its dangling links are repaired here.
+
+### Findings
+
+| ID | Type | Status | Detail |
+| :- | :- | :- | :- |
+| C24-F1 | Functional gap | **Resolved — red-proofed** | `runGeneratedCheck`'s generator-throw path restored every output that existed beforehand but left behind any output the failed generator newly created. A partial write from a failed run was therefore indistinguishable from the legitimate new output the success paths deliberately preserve. Carried from Change 22's `existed`-only restore rule (`88a98ab`) through Changes 23–24, each of which fixed a different half. The catch now discards newly created outputs via `newlyCreatedGeneratedFiles`, so the check leaves the tree exactly as it found it. Narrow in practice — it only bites when a newly declared output is added to `GENERATED_GROUPS` — but the rule is now stated once and applied on every failure path. |
+| C24-T1 | Testing gap | **Resolved — red-proofed** | The emitted-schema assertions pinned `glass.properties.depth.minimum` and nothing else, so every other effect bound was covered behaviorally by `v2.3.3.phase7.test.ts` and not at all in what `tools/list` advertises. That gap has a known failure mode in this repo: `.superRefine()` is dropped by the zod→JSON-Schema conversion, which already shipped once as Rev 61 / C8-D1. The hardcoded pin is replaced by a derived, bidirectional agreement check over **all seven** effect variants — advertised bounds must be enforced, and enforced bounds must be advertised — reading bounds from the emitted schema and probing them against the registered (recursively strict) zod schema. Only one minimal valid fixture per variant is hardcoded. |
+| C26-N1 | Nitpick | **Resolved** | Three markdown links pointed at `revised-prd.md`. Two in `prd.md` were already broken before the deletion (they resolved to `documentation/v2.3.3/revised-prd.md`; the file lived under `reviews/`). All three are now plain text naming the draft as deleted, with a pointer to where its outcomes are recorded — D10–D14 and Q9–Q15 for the adopted ones, Explicit non-goals for the rejected ones. Prose mentions inside the historical decision records are left as history. |
+
+### Implemented
+
+- **The generated check leaves the tree as it found it on every failure path.** `newlyCreatedGeneratedFiles` is exported beside the existing snapshot helpers; the throw path restores pre-existing bytes and removes what the failed run created. The missing-output and changed-output branches keep their existing behavior, including deliberately preserving a legitimate new output for review.
+- **Effect bounds are checked where they are published, not only where they are enforced.** The new test derives both sides. It also skips fields the base configuration *gates* rather than bounds — the progressive ramp is refused on a normal blur by the secondary-discriminator rule, and reading that refusal as a missing bound is the false positive the probe produced on its first run, now handled explicitly. A `checked` counter guards the guard, so a conversion emitting no bounds at all cannot satisfy every branch vacuously.
+
+### Verification
+
+- Full repository suite: **1,049/1,049 tests, 5,578 assertions across 53 files** (from 1,047 / 5,538). Net +2 tests, +40 assertions.
+- Red-proof, each reverted individually and restored: dropping the discard loop fails only *discards a partial new output when the generator writes it then throws*; moving GLASS `depth`'s bound from `.min(1)` to an equivalent `.superRefine()` fails only *advertises exactly the numeric effect bounds it enforces* — **`v2.3.3.phase7.test.ts` stayed green**, which is the blind spot this test was written to cover, demonstrated rather than argued.
+- `check:generated`, `check:plugin`, `check:versions` at **v2.3.3**, `check:types:plugin`, `check:suppressions`, and `git diff --check` pass. `figma_plugin/code.js`, `manifest.json`, and the generated field artifacts are byte-identical.
+
+### Still open — documentation only, by category
+
+No functional or testing gap remains from any review in this release. What is left is prose, listed so it is tracked rather than forgotten:
+
+- **The `[2.3.3]` changelog now under-claims effect preservation.** It says validated fields are "forwarded without handler-side field loss". Live on `8trc` every accepted variant round-tripped intact — GLASS `depth: 3`, NOISE DUOTONE with `secondaryColor`, TEXTURE, and a progressive LAYER_BLUR — and the one counterexample that motivated the weaker wording (`depth: 0`) was removed from the accepted domain by Rev 74 itself. The guard that would have blocked restoring the stronger claim is gone with the rest of the changelog tests, so this is now free to correct.
+- **C22-D5:** commit `88a98ab` is titled `Change 22 | Phase 12 | 0`; every artifact in it is Phase 13.
+- **C22-D6:** Change 22's sandboxed figure, "1,035 pass / 9 fail", sums to 1,044 against a stated total of 1,047; the remaining three are unexplained.
+- **C22-D7:** `task.md` Phase 13 calls root `package-lock.json` a surface the `check:versions`/`check:plugin` mechanism enforces. Neither reads it; the Phase 13 test is its only enforcement.
+- **C24-D1:** Change 24's live section does not say which server build its `4b9u` evidence ran against, so a reader cannot tell the pre-fix observation from any post-fix check.
+
+### Files changed by Change 26
+
+`scripts/check-generated.ts`; `src/mcp_server/tests/unit/v2.3.3.phase13.test.ts`; `documentation/v2.3.3/prd.md`; `documentation/v2.3.3/reviews/open-questions.md`; and this section.
+
+## Change 25: Remove every test that asserts over documentation content (Rev 75)
+
+### Author: Claude Opus 5 @ 2026-08-02 3:00pm PT
+
+**Decision, not a defect fix.** Every test that read a documentation file is removed. The trigger was the Change 22–24 sequence: across three review rounds the changelog guards stayed green through four separate factual errors in the entry they guarded — an invalid `status` value, a `create_shape` example missing three required fields, an invented `VARIABLE_IN_USE` message, and a false "these fields are optional" claim. A `toContain` over prose proves a word was written, not that a statement is true. This is Rev 75 because it withdraws a contract guarantee (`SAFETY.md` Part B is no longer mechanically checked against code) rather than changing product behavior; no shipped code path changes.
+
+### Removed
+
+| Suite | Removed | Kept |
+| :- | :- | :- |
+| `v2.3.3.phase13.test.ts` | The whole `CHANGELOG.md` suite — 4 tests, 86 assertions: the ~35-string migration inventory, the per-bullet before/after structural check, and the Change 24 prose guards | Release-descriptor synchronization, the six `runGeneratedCheck` regressions, and the two emitted-`tools/list` description guards (schema descriptions are code, not documentation) |
+| `v2.3.3.phase12.test.ts` | **Deleted** — all 6 tests / 86 assertions read the four agent guides or `SAFETY.md`, including the pin requiring every `RATIFIED_CODES` entry to have an `error-playbook.md` recovery row | — |
+| `safetyContract.test.ts` | The `SAFETY.md` Part B bidirectional diff (1 test) and its now-dead parser helpers — `TOKEN_TO_GATE`, `IGNORE_TOKENS`, `CLEAN_IGNORE_TOKENS`, `expandToken` | All 51 real-dispatcher gate assertions, including the `EXPECTED_CONTRACTS`-driven `nodePerm` sweep and every pre-mutation rejection test |
+| `v2.3.3.phase11.test.ts` | The README/`SAFETY.md`/guides/PRD/`CHANGELOG.md` "does not contain `create_connection`" loop and the changelog/PRD prose assertions | The registry checks that actually prove removal: 45-tool manifest, absent tool and prompt, retained reaction tools, deleted wire command/handler/refusal code |
+| `resources.test.ts` | ~40 guide-content pins (`guideText[...]` phrase assertions, the G2 one-sentence count, the retired-code check) | Resource registration, metadata, fail-soft behavior, and the byte-for-byte parity between each served resource and its repository source — that asserts a property of the **server**, not of the guides |
+
+### Contract consequences, recorded rather than left implicit
+
+- **`SAFETY.md` Part B is no longer verified against the implementation.** A gate claimed in the manual but absent from code, or enforced in code but missing from the manual, no longer fails CI. The Maintenance section now says so directly, and the risk-table row that named the diff as its mitigation is re-marked **Accepted, unmitigated**. Every gate the matrix names is still asserted somewhere by the dispatcher-driven suites; what is gone is the guarantee that the *document* matches them.
+- **Error-playbook coverage is no longer mechanically checked.** A newly ratified code can ship with no recovery row.
+- **v2.3.4 D12 is blocked.** It proposed promoting nine bespoke Part B tokens *into* the bidirectional diff; that target no longer exists, so D12 needs a prior decision on whether to rebuild a doc/code gate at all. Its finding is now true of every Part B token, not nine.
+- The v2.3.3 PRD and task ledger claims that the diff "fails CI by design" are struck in place, and the v2.3.4 D4 reference to it as an existing pattern is corrected.
+
+### Verification
+
+- Full repository suite: **1,047/1,047 tests, 5,538 assertions across 53 files** (from 1,058 / 5,821 / 54). Net −11 tests, −283 assertions, −1 file; every removal was a documentation assertion.
+- `check:generated`, `check:plugin`, `check:versions` at **v2.3.3**, `check:types:plugin`, `check:suppressions`, and `git diff --check` pass.
+- No product source changed. `figma_plugin/code.js`, `manifest.json`, and the generated field artifacts are byte-identical.
+
+### Rule recorded (2026-08-02)
+
+**Never use code to check non-code files.** No test and no CI script asserts over documentation. This is recorded in four places so a later revision cannot re-add one by accident: `CONTRIBUTING.md` § Tests (with the v2.3.3 evidence and the two clarifications — a CI script is not a loophole, and testing that the *server* serves a file byte-for-byte is fine); the v2.3.3 PRD's Explicit non-goals; the v2.3.3 PRD's D8 note; and the v2.3.4 PRD, where it withdraws two planned deliverables.
+
+**v2.3.4 deliverables withdrawn under the rule:**
+
+- **D4's `check:error-codes` parity gate** — a CI script reading `error-playbook.md` to prove every registry code has an entry and vice versa. D4 is reframed as review-maintained parity against the D1 taxonomy artifact, with the loss of CI enforcement stated as an accepted cost. Removed from the in-scope list, Phase 1, Phase 10, and the acceptance criteria.
+- **D12 in full** — promoting nine bespoke `SAFETY.md` Part B tokens into the bidirectional diff. Both halves are gone: the diff no longer exists, and rebuilding it is out of scope. The underlying observation is retained as a fact about the manual rather than as work, and its in-scope item is deleted.
+
+### Files changed by Change 25
+
+`CONTRIBUTING.md`; `src/mcp_server/tests/unit/v2.3.3.phase13.test.ts`; `src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase11.test.ts`; `src/mcp_server/tests/unit/figma_plugin/safetyContract.test.ts`; `src/mcp_server/tests/unit/resources.test.ts`; deleted `src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase12.test.ts`; `SAFETY.md`; `documentation/v2.3.3/prd.md`; `documentation/v2.3.3/task.md`; `documentation/v2.3.4/prd.md`; and this section.
+
 ## Change 24: Change 23 review follow-up and truthfulness repair (Rev 74)
 
 ### Author: GPT-5.6 Sol (Extra High) @ 2026-08-02 2:00pm PT
