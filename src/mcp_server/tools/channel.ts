@@ -212,6 +212,13 @@ export function registerChannelTools(
             inputSchema: z.object({
                 channel: z
                     .string()
+                    // An empty channel name is detectable from the payload alone,
+                    // so it is a Layer 1 schema rejection (the Q23 precedent), not
+                    // a round trip to the handler. The `MISSING_CHANNEL` branch
+                    // below is retained as defense in depth for non-conforming
+                    // clients (the Q2 precedent), which is why it needs no
+                    // error-playbook entry.
+                    .min(1, "channel is required. Ask the user for the 4-character code shown in the Figma plugin's status bar and pass it back verbatim.")
                     .describe("The name of the channel to join"),
             }),
             outputSchema: looseOutput({

@@ -2,6 +2,98 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 19: Phase 12 adversarial review and contract-accuracy corrections
+
+### Author: Claude Opus 5 (Ultracode) @ 2026-08-01
+
+**No new v2.3.3 product decision or PRD revision.** Change 18's Phase 12 delivery is functionally correct and is not modified in substance: both of its verification totals reproduce exactly, its gates pass, and the synchronization it performed is real. What this review found is that several of the synchronized statements describe a contract the code does not have, and that the sync pass left three surfaces an agent depends on undocumented or mismarked. Seventeen findings: sixteen fixed and verified, plus C19-F3, found during live verification on channel `vgzm` and deliberately deferred to v2.3.4 with its evidence recorded. One fix is a production schema change; the rest are documentation, matrix, and test corrections.
+
+**`DESIGN_PHILOSOPHY.md` and `EVIDENCE.md` are excluded from this review by direction** — they are a parallel workstream. Change 18's characterization of the `DESIGN_PHILOSOPHY.md` edit in its commit is therefore left as written, and the repository-wide `git diff --check` residue belongs to that workstream, not to Phase 12.
+
+### Change 18 verification reproduced
+
+Run before any change was made.
+
+| Change 18 claim | Result |
+| :- | :- |
+| Focused Phase 4/10/11/12 + safety/resource matrix **124/124, 716 assertions, 6 files** | Exact |
+| Full repository suite **1,042/1,042, 5,674 assertions, 53 files** | Exact |
+| `check:generated`, `check:versions`, `check:types:plugin`, `check:suppressions` pass | Confirmed; version surfaces synchronized at `2.3.2` as expected before Phase 13 |
+| `error-playbook.md` covers every ratified D9 code | Confirmed against `RATIFIED_CODES` — twelve operational, ten verification, plus the fallback |
+| The MCP resources remain byte-for-byte mirrors | Confirmed |
+
+### Findings
+
+| ID | Classification | Status | Finding and correction |
+| :- | :- | :- | :- |
+| C19-F1 | Functional gap | **Resolved — repository verified** | `channel_join`'s `channel` field was a bare `z.string()`, so `""` passed schema validation and reached the handler's `MISSING_CHANNEL` branch — a code with no playbook entry, reached by a socket round trip. An empty channel name is detectable from the payload alone, which is Layer 1's defining property (Q23). The field now carries `.min(1)` with an authored message naming the plugin status bar as the source. The handler branch is retained as uncoded defense in depth (the Q2 precedent), so it needs no playbook row. |
+| C19-F2 | Documentation gap | **Resolved — repository verified** | Phase 10's `coverage` contract was taught nowhere on its success path. `coverage` appeared only inside the error-playbook's *error* tables, so an agent receiving a **successful** `page_info`/`node_info`/`component_list`/`variable_list`/`annotation_list` result carrying `complete: false` had no instruction, and `pagesAttempted`, `pageFailedNodes`, and `missingPageIds` were undocumented for agents entirely. That is the path on which a partially scanned document is most easily reported as complete — the failure D14 exists to prevent. `tool-selection.md` gains "A successful read can still be partial" and `constraints.md` gains §12, both written from the emitted schema in `_result.ts` rather than from PRD prose. |
+| C19-D1 | Documentation error | **Resolved — verified** | `constraints.md` §3 published the universal G2 sentence and then, two paragraphs below, still said **"The only correct way to obtain a name: read it from `node_info` or `page_info`"** — false for variables, styles, and collections, which are exactly what the new sentence added. `SAFETY.md`'s AS3 had been corrected for this; its agent-facing twin had not. The paragraph now names the read tool per object class, and the field list names `currentVariableName`, `collectionName`, and `currentStyleName`, which no guide previously mentioned outside a post-failure recovery row. |
+| C19-D2 | Documentation error | **Resolved — verified** | `SAFETY.md` Part D listed `PARENT_NAME_MISMATCH` **twice**: once in the ratified block with its Q22 distinct-cause meaning, and again in the legacy row `NAME_MISMATCH / PARENT_NAME_MISMATCH`, which merges missing and mismatched — the conflation Q22 minted the pair to remove. The legacy row is now `NAME_MISMATCH` alone and points at the coded parent pair. |
+| C19-D3 | Documentation error | **Resolved — verified** | The `COLLECTION_NAME_MISSING`/`MISMATCH` rows were phrased generically ("An operation identifying an existing collection…") while every neighbouring row is action-scoped, so they read as covering `variable_delete`. The only throw sites are `CREATE_VARIABLE`; `variable_delete`'s equivalent checks are legacy plain strings that arrive as `UNKNOWN_ERROR` — behaviour this repository already live-confirmed on channel `8mvc`. Both rows are scoped to `CREATE_VARIABLE`, and the residual is stated where an agent will hit it. Converting those sites is v2.3.4 Track 1 (`variableHandlers.ts`, 41 sites, verified against the file). |
+| C19-D4 | Documentation error | **Resolved — verified, red-proofed** | `tool-selection.md` carried the bare instruction "retry every non-success row (`failed` and `skipped`)" directly beneath a batch-tool list containing `annotation_set`, with the carve-out two paragraphs away and scoped only to `outcomeUnknown: true`. Q31's recorded rationale is that this unguarded sentence "would actively teach duplicate appends". The carve-out is now inline, in the same paragraph as the instruction. |
+| C19-D5 | Documentation error | **Resolved — verified** | Both guides attached "every batch result row carries `nodeId`/`status`/`error`" to a tool set that includes `create_component_set`, which returns no rows, while `constraints.md` **omitted `node_delete`**, which is one of the four aggregators. `SAFETY.md` A5 named the four correctly, so the sync pass left the manual and the guides disagreeing about which tools carry the D7 envelope. Both guides now distinguish the four aggregators from `create_component_set`, which shares only the pre-validation rule. |
+| C19-D6 | Documentation error | **Resolved — verified** | Part D and two playbook tables presented legacy plain-string refusals as codes. `READ_ONLY_MODE`, `OUTSIDE_SCOPE`, and `NAME_MISMATCH` reach the boundary as `UNKNOWN_ERROR`, and the node-mismatch message contains no `NAME_MISMATCH` token anywhere, so an agent branching on `error.code` from those tables cannot succeed — while `PARENT_NAME_MISMATCH`, one row below, is genuinely coded. Each affected table now states which of its labels are codes and which are conditions, and gives the message substring to match instead. `SCOPE_DELETED` and `SCOPE_INVALID` are carved out explicitly: `connectHandlers.ts` returns both as real `errorCode` values on `channel_join`'s connect payload, so a blanket marker would have been wrong. |
+| C19-D7 | Overstated claim | **Resolved — red-proofed** | Change 18 said the bidirectional diff "now pins the newly documented variable/style verification and validate-before-mutate gates **plus clone/flatten containment**". Eight of the nine gate tokens it added to Part B are `IGNORE_TOKENS` entries the diff cannot see: deleting them from `SAFETY.md` leaves `safetyContract.test.ts` green at 52/52. The sentence is corrected in place per the Q21 precedent, each of the nine now carries the suite pointer the checker's own failure message demands, and promoting them into diffed gates is recorded as **[v2.3.4](../v2.3.4/prd.md) D12** with scope item 13. |
+| C19-D8 | Overstated claim | **Resolved — verified** | `SAFETY.md`'s Maintenance section claimed "Part B's generic gate tokens are mechanically diffed in both directions". The parser stops at `### B5`, so B5 and the **B6 channel-binding table Change 18 itself added** are outside the diff — B6's six tokens can be deleted with nothing failing, and unlike the ignore-listed tokens they were not even recorded as exempt. The claim is scoped to B1–B4, and B6 carries an in-place note naming the six Phase 9 suites that actually back it. Extending the parser was considered and declined: B6 describes socket admission, not the dispatcher gate stack the vocabulary models, so it would mean a parallel vocabulary for one row. |
+| C19-D9 | Documentation error | **Resolved — verified** | The Part B `variable_delete` row still read only "full-document consumer scan refuses in-use deletes" — no `DOCUMENT_SCAN_INCOMPLETE` coverage gate and no coded `VARIABLE_IN_USE`, both of which Part D documents and Phase 10 shipped. The publish gate calls the Part B matrix "the per-tool proof", so this is the audit's one demonstrable miss. The row now carries the bounded per-page scan, the fail-closed gate, and the coded in-use refusal, each ignore-listed with a `v2.3.3.phase10.test.ts` pointer. |
+| C19-D10 | Documentation error | **Resolved — verified** | `create_component`'s Part B row omitted **immediate destination insertion** although the paragraph beneath B3 explicitly covers "the implicit creator and `node_clone` paths" and its five sibling creators all carry the token. Added. |
+| C19-D11 | Documentation error | **Resolved — verified** | The playbook's `DOCUMENT_SCAN_INCOMPLETE` row said "the listed `coverage.pageErrors`" while the factory nests it at `details.coverage.pageErrors`; the sibling `VARIABLE_IN_USE` row correctly wrote `details.variablesInUse`. Both the row and the section preamble now distinguish the top-level read-path `coverage` from the error-path `details.coverage`. |
+| C19-D12 | Documentation error | **Resolved — verified** | Change 18 listed "all seven Phase 10 plugin operational codes, `PAGE_SCAN_FAILED`, `VARIABLE_IN_USE`" — the latter two are inside the seven. Corrected in place. |
+| C19-D13 | Documentation error | **Resolved — verified** | Three `task.md` defects. Its status pointer still named **Change 15**, three changes stale — the recurring class corrected by C9-D1, C11-D1, and C13-D2 — and now names the newest section with a rule that keeps it correct. The Phase 12 playbook item was checked `[x]` while its own text asserted "No Phase 10 code has a row yet". And "remove the deleted connector row" was credited to Phase 12 although Change 15 removed it in commit `8c04cd0`, the C16-F2 pattern; it is now recorded as requiring no work here. |
+| C19-D14 | Nitpick | **Resolved — verified** | `SAFETY.md`'s `SCOPE_DELETED` row read "the bricking the §1 scope-root guard prevents". Pre-existing, but the contract-sync pass is where it should have been caught. |
+| C19-T1 | Testing gap | **Resolved — red-proofed** | `v2.3.3.phase12.test.ts` asserted the batch and annotation semantics against the **concatenation of all four guides**, so a per-guide defect could not fail it — C19-D4 was present and the suite was green. `toContain("failed")` over that corpus is also trivially true. The assertions are now per-guide, pair every retry instruction with its carve-out, and require both non-success row kinds to be named together. Red-proofed by reverting C19-D4: the new test fails, and the old form would not have. |
+
+### Decisions taken
+
+- **The `variable_delete` legacy refusals are documented, not converted.** Converting them was considered and declined: v2.3.4 D1 states "codes are permanent identifiers once shipped" and requires the taxonomy be reviewed before any site converts, v2.3.3's D4 scope guard exists to keep exactly this out, and there is no correctness gap to close — the path already fails closed. What was wrong was only the documentation.
+- **G2 keeps its ratified Q3 wording.** It over-promises slightly for creations with no identified container (style creation, `CREATE_COLLECTION`) and for derived destinations (`node_clone`, `create_component`), but A3 already carries the precise form — "**caller-placed** node creation requires `parentNodeName`" — and amending a sentence the PRD ratified verbatim and `v2.3.3.phase12.test.ts` pins would need its own Rev entry for no first-call gain.
+- **Legacy-vs-coded markers ship now** even though v2.3.4's conversion will delete them. The G2 name check is the most frequently hit refusal in the contract, and the playbook table is what an agent consults to choose a retry.
+
+### Verification
+
+- **Full repository suite:** **1,043/1,043 tests, 5,689 assertions across 53 files** (Change 18 baseline: 1,042/5,674 — the count rises by one because C19-T1 splits a corpus-wide test into two per-guide tests).
+- **`safetyContract.test.ts`:** 52/52 with 172 assertions after the Part B row changes, so the bidirectional diff still passes in both directions with the three new `variable_delete` tokens and `create_component`'s added token.
+- **Two red-proofs.** Deleting eight of Change 18's nine new Part B tokens from `SAFETY.md` leaves the diff green at 52/52 — the evidence for C19-D7. Reverting C19-D4's carve-out fails the rewritten C19-T1 test and nothing else.
+- `bun run check:generated`, `check:versions`, `check:types:plugin`, and `check:suppressions` pass. Version surfaces remain intentionally synchronized at **v2.3.2** pending Phase 13.
+- `git diff --check` passes for every Change 19-owned path. No repository-wide claim is made: the parallel `DESIGN_PHILOSOPHY.md` workstream is excluded by direction.
+- **One production path changed:** `channel_join`'s input schema (C19-F1). Change 18's "no runtime production path changed" does not extend to this section. Everything else is documentation, matrix, or test.
+### Live evidence — channel `vgzm`, dedicated *MCP Test* Design file
+
+Run after the corrections landed, with no rebuild during the session (the Change 8 operational rule: any write to `figma_plugin/code.js` drops the bound peer). The pair reported server/plugin `2.3.2`; Page 1 (`0:1`) opened page-scoped at 62 descendants / 22 top-level, with 12 collections and 10 variables.
+
+| Probe | Live result |
+| :- | :- |
+| `variable_delete` collection mode, wrong `collectionName` | `Error [UNKNOWN_ERROR]: Operation Denied: collectionName 'X' does not match name of collectionId 'Clean Deletion Collection'` — legacy prose, ambiguous operand order, no read tool named. |
+| `variable_manage CREATE_VARIABLE`, wrong `collectionName`, **same collection** | `Error [COLLECTION_NAME_MISMATCH]` with stored/received operands, `variable_list` named, "pass it back verbatim". **C19-D3 confirmed:** two adjacent name checks on one collection, one coded and one not. |
+| `node_rename`, wrong `nodeName` | `Error [UNKNOWN_ERROR]: Operation Denied: nodeName does not match name of nodeId. Refresh context & recheck to ensure correct nodeId is passed in.` **C19-D6 confirmed**, and see C19-F3 below. |
+| `create_frame`, wrong `parentNodeName` | `Error [PARENT_NAME_MISMATCH]` with both operands, `node_info` named, "pass it back verbatim". |
+| `page_info` (no args) and plain `variable_list` | `coverage.pagesAttempted: 0, complete: true`. |
+| `variable_list` + `includeConsumers: "document"`, and `node_info` on the DOCUMENT root | `pagesAttempted: 3, complete: true`. **C19-F2 confirmed:** both meanings of `complete: true` are distinguishable live. |
+| `node_info` on the DOCUMENT root | `descendantCount` omitted on the document, retained on its PAGE children (62 / 31 / 2). |
+| `create_frame` success | Returned `parentId: "1224:58"`, so containment is confirmable from the response without a follow-up read. |
+| `node_delete` with `1517:68` and `1517-68` | `-32602` at `nodes.1.nodeId` with the authored cross-spelling message; no execution envelope. |
+| `node_delete` with `[]` | `-32602`, `too_small, minimum: 1`; no execution envelope. |
+| `channel_join("")` | `-32602` at path `channel` carrying the C19-F1 message. **The healthy binding was not released** — the callback never ran, which is the point of moving the check to Layer 1. |
+| `variable_delete` on an in-use variable | `Error [VARIABLE_IN_USE]` naming `VariableID:1:12` and node `2:13` with addressable IDs, recovery on its own line. |
+| `node_delete` (single, valid) | D7 envelope: `status: "success"`, shared counts only, one ordered row with `nodeId`/`status`, no legacy `nodesDeleted`. |
+| Served `figma-edit://guide/constraints` | Carries the Change 19 edits, so the resource mirror is live, not just the repository file. |
+| Closing reconciliation | **62 / 31 / 2** descendants, **12** collections, **10** variables; the disposable frame returns in `missingNodeIds`. No artifact remains. |
+
+### C19-F3 — found live: `NAME_MISMATCH` still carries the Gap 3 misdirection
+
+| ID | Classification | Status | Finding |
+| :- | :- | :- | :- |
+| C19-F3 | Functional gap | **Recorded, deferred to v2.3.4 with evidence** | The node-name refusal is materially worse than C19-D6 recorded. Beyond arriving as `UNKNOWN_ERROR`, its message names **neither operand** — not the stored name, not the received one — names no read tool, and ends "recheck to ensure correct **nodeId** is passed in", steering the agent to swap a correct ID when the *name* is what is stale. That is verbatim the defect the PRD's Gap 3 calls "the counterexample this release fixes", which Q22/Rev 31 fixed for the parent pair — and the two now sit side by side, as the `create_frame` and `node_rename` probes above show in one session. It fails D9's acceptance bar outright: the correct retry is not derivable from the error text and the tool list alone. |
+
+Not fixed here, deliberately: the message is thrown from `main.ts`, so changing it means rebuilding `figma_plugin/code.js`, which drops the bound plugin peer mid-session, and message conversion is v2.3.4 Track 1's subject — `main.ts`'s 76 dispatcher-guard sites are its Phase 3, the first domain phase, and D3 already requires every converted message to meet the D9 bar. **This finding is the evidence for prioritising that phase:** `NAME_MISMATCH` is the single most frequently hit refusal in the contract. Recovery is currently supplied by the playbook row rather than by the error, which is exactly the dependency D9 exists to remove.
+
+- C19-F1 is additionally live-verified above. Every other finding is documentary. Phase 14's release matrix is unaffected and still open; this session is a targeted probe of the Change 19 corrections, not that matrix.
+
+### Files changed by Change 19
+
+`SAFETY.md`; `skills/figma-edit/references/constraints.md`, `error-playbook.md`, and `tool-selection.md` (`workflows.md` needed no change — it already paired its retry instruction with the carve-out); `src/mcp_server/tools/channel.ts`; `src/mcp_server/tests/unit/figma_plugin/safetyContract.test.ts` and `v2.3.3.phase12.test.ts`; `documentation/v2.3.3/task.md`; `documentation/v2.3.4/prd.md` (D12 and scope item 13); and this `release-changelog.md` section plus two marked in-place corrections to Change 18.
+
 ## Change 18: Phase 12 contract synchronization
 
 ### Author: GPT-5.6 Sol (Extra High) @ 2026-07-30 10:35pm PT
@@ -19,14 +111,14 @@ This document centralizes the current release-review status, decision history, a
 ### Agent guides and served resources
 
 - `constraints.md`, `error-playbook.md`, `tool-selection.md`, and `workflows.md` each state G2 once as one sentence. The MCP resources remain byte-for-byte mirrors by reading those files directly; resource tests now pin the Phase 12 semantics as well as mirror identity.
-- `error-playbook.md` now has a recovery row for every ratified D9 code, including both parent-name codes, all seven Phase 10 plugin operational codes, `PAGE_SCAN_FAILED`, `VARIABLE_IN_USE`, and the operator-facing `PLUGIN_PEER_AMBIGUOUS` boundary. The retired `DOCUMENT_LOAD_FAILED` row is removed.
+- `error-playbook.md` now has a recovery row for every ratified D9 code, including both parent-name codes, all seven Phase 10 plugin operational codes (`PAGE_SCAN_FAILED` and `VARIABLE_IN_USE` among them), and the operator-facing `PLUGIN_PEER_AMBIGUOUS` boundary. The retired `DOCUMENT_LOAD_FAILED` row is removed. *(Corrected in place: the original listed `PAGE_SCAN_FAILED` and `VARIABLE_IN_USE` after "all seven", reading as though they were additional to it.)*
 - The guides teach `partial_success` as incomplete, require handling both `failed` and `skipped` rows, use the shared `nodeId`/`status`/`error` vocabulary, and require `annotation_list` label comparison before retrying append failures; identical-text duplicates remain explicitly ambiguous.
 - Native prototype work is directed to `reaction_list`/`reaction_update`. The guides advertise no connector-template discovery or automatic connector-diagram workflow and state that lossless reads/state-safe localized reaction updates are deferred to v2.3.4.
 - The D9 acceptance review reproduced the existing factory/message checks: ratified operational refusals carry an actionable recovery verb, missing/mismatched verification messages name the supplying read tool and verbatim pass-back, codes originate from their one allowed registry, and the structured boundary preserves them without prose reconstruction.
 
 ### Executable contract changes
 
-- `safetyContract.test.ts` expands its generic gate vocabulary from fourteen to fifteen with a distinct collection-name gate. The bidirectional manual/table diff now pins the newly documented variable/style verification and validate-before-mutate gates plus clone/flatten containment, while retaining executable node-permission sweeps and pre-mutation regression probes.
+- `safetyContract.test.ts` expands its generic gate vocabulary from fourteen to fifteen with a distinct collection-name gate. The bidirectional manual/table diff pins the newly documented variable/style current-name gates, the `CREATE_VARIABLE` collection-name gate, and the validate-before-mutate and clone/flatten handler-prevalidation gates, while retaining executable node-permission sweeps and pre-mutation regression probes. *(Corrected in place per the Q21 precedent. The original sentence said the diff pins "clone/flatten containment", which overstated its reach: the nine bespoke Part B tokens this change added — both `D7 status envelope` forms, `category verified before mutation`, `use-time predicate recheck`, `destination resolved last`, `immediate destination insertion`, `parent+index passed to flatten`, `verified parent passed directly to combine`, and `scopes required on CREATE_VARIABLE` — are `IGNORE_TOKENS` entries the diff cannot see. Red-proofed: deleting eight of the nine from `SAFETY.md` leaves the suite green at 52/52. Each now carries the suite pointer the checker's own failure message demands, so the manual's claim is traceable to the assertion that proves it; promoting them into diffed gates is [v2.3.4](../v2.3.4/prd.md) D12.)*
 - New `v2.3.3.phase12.test.ts` pins exactly-one G2 publication in each guide, complete ratified playbook coverage, retirement of `DOCUMENT_LOAD_FAILED`, batch/annotation retry semantics, the current native prototype direction, the two containment residuals, the D13 claim, and continued absence of the removed public names.
 - `resources.test.ts` proves the served resources carry those semantics and remain exact mirrors of the four repository sources.
 - Every Phase 12 task and subtask is checked complete in `task.md`.
@@ -36,7 +128,6 @@ This document centralizes the current release-review status, decision history, a
 - **Focused Phase 4/10/11/12 + safety/resource matrix:** **124/124 tests, 716 assertions across 6 files**.
 - **Full repository suite with loopback access:** **1,042/1,042 tests, 5,674 assertions across 53 files**. The first sandboxed run reached **1,033 pass / 9 fail**; all nine were localhost-binding failures (`EADDRINUSE` in `socketPeerBinding` and `socket server did not start` in `figmaClientTransport`). The unrestricted loopback rerun passed all nine and supersedes that environment-only result.
 - `bun run build:all`, `check:plugin`, `check:generated`, `check:versions`, `check:types:plugin`, and `check:suppressions` pass. Generated node fields, bind fields, the 45-tool manifest, and the plugin bundle remain synchronized; version surfaces remain intentionally synchronized at **v2.3.2** pending Phase 13.
-- Phase 12-owned paths pass `git diff --check`. A repository-wide clean diff claim is not made: a concurrent, unrelated `DESIGN_PHILOSOPHY.md` edit retains pre-existing trailing whitespace and is preserved untouched.
 - No live Figma probe was performed or required for this documentation/resource synchronization phase; no runtime production path changed.
 
 ### Files changed by Change 18

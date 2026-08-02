@@ -26,9 +26,9 @@ Beyond the top-level scope, the plugin enforces strict structural boundaries:
 
 No write against an existing object proceeds unless the caller-supplied current name matches the resolved object's actual name — nodes, variables, styles, and collections alike; creation verifies the identified parent or collection instead.
 
-Node modification tools require a `nodeName`. Parent-targeted creators require `parentNodeName`; `create_component` verifies the source `nodeName`, while `create_component_set` verifies every component `nodeName` plus its `parentNodeName`. Batch tools require a name on each item in the array. The plugin resolves the actual name by ID and rejects the operation if it does not match.
+Node modification tools require a `nodeName`. Parent-targeted creators require `parentNodeName`; `create_component` verifies the source `nodeName`, while `create_component_set` verifies every component `nodeName` plus its `parentNodeName`. Batch tools require a name on each item in the array. Document-global assets follow the same rule with their own fields: `variable_manage` requires `currentVariableName` on `UPDATE_VARIABLE` and `collectionName` on `CREATE_VARIABLE`, `style_manage` requires `currentStyleName` when updating by `styleId`, and `variable_delete`/`style_delete` require their action-specific current-name fields. The plugin resolves the actual object by ID and rejects the operation if the name does not match.
 
-**The only correct way to obtain a name:** read it from `node_info` or `page_info` and pass it back verbatim. Do not guess, abbreviate, normalize, translate, or "clean up" the name. Whitespace and casing must match exactly. This catches the most common failure: confidently operating on a stale or fabricated node ID.
+**The only correct way to obtain a name:** read it from the tool that owns that object — `node_info` or `page_info` for nodes and parents, `variable_list` for variables and collections, `style_list` for styles — and pass it back verbatim. Do not guess, abbreviate, normalize, translate, or "clean up" the name. Whitespace and casing must match exactly. This catches the most common failure: confidently operating on a stale or fabricated ID.
 
 Name **verification** and name **assignment** are different contracts. A field that assigns a user-visible name rejects an explicit `""` at both the MCP and plugin boundaries before mutation; lookup fields keep their own exact/missing semantics, classified per action. Recovery depends on the assigning field: required `node_rename.name`, variable/style creation `name`, and component-property ADD `propertyName` need a non-empty value; omit optional `node_group.name` or `CREATE_COLLECTION.modeName` for the native default; omit optional style/variable update `name` or component-property EDIT `newPropertyName` to keep the current name. Do not infer a universal empty-lookup rule from C9: that decision covers `parentNodeName` on its two protected parent paths.
 
@@ -50,16 +50,16 @@ The `view_navigate` tool is **un-scope-gated**. You can navigate the user's edit
 
 ## 7. Batch tools verify every item (Atomicity & Pre-Validation)
 
-Batch tools (`text_set_content`, `annotation_set`, `instance_set_overrides`, `create_component_set`) perform type-integrity and presence checks on every target *before* making any mutations. If any node in the batch is not found, outside the editable scope, has a mismatched name, or does not match the required node type, **the entire command aborts with zero mutations applied**.
+Batch tools (`node_delete`, `text_set_content`, `annotation_set`, `instance_set_overrides`, `create_component_set`) perform type-integrity and presence checks on every target *before* making any mutations. If any node in the batch is not found, outside the editable scope, has a mismatched name, or does not match the required node type, **the entire command aborts with zero mutations applied**.
 
 Once execution begins:
 * Handlers process items sequentially and stop on the first mutation failure.
-* They return a standardized report of completed vs. failed items.
+* The four aggregators — `node_delete`, `text_set_content`, `annotation_set`, `instance_set_overrides` — return the result envelope described below. `create_component_set` shares the pre-validation rule but produces one component set, not per-item rows.
 * There is no general transaction or guaranteed rollback. Tool-specific best-effort recovery may run, and any durable state it cannot restore is disclosed as a partial mutation.
 
 *Note:* `node_delete` (`deleteMultipleNodes`) is excluded from the stop-on-first-failure rule, keeping its parallel chunked deletions resilient.
 
-For accepted batch execution, `status: "partial_success"` is incomplete: account for and retry every non-success row (`failed` and `skipped`), except that `annotation_set` requires the list-before-retry check below because append is not idempotent. Every batch result row carries the shared `nodeId`/`status`/`error` vocabulary, with `error` required on failed and skipped rows.
+For an accepted call to one of the four aggregators, `status: "partial_success"` is incomplete: account for and retry every non-success row (`failed` and `skipped`), except that `annotation_set` requires the list-before-retry check below because append is not idempotent. Every row carries the shared `nodeId`/`status`/`error` vocabulary, with `error` required on failed and skipped rows.
 
 `annotation_set` count fields are verified observations. `beforeCount`/`afterCount` may be null and are paired with required `beforeCountVerified`/`afterCountVerified`. If an append was attempted but post-state could not be read, the row fails safe with `partialMutation: true` and `outcomeUnknown: true` (plus optional secondary `postStateError`). Do not interpret null as zero or matching numbers as verified unless their flags are true; call `annotation_list` before any retry.
 
@@ -80,6 +80,10 @@ JavaScript may throw hostile values whose `code`, nested `error`, `message`, `de
 ## 11. Native prototype metadata is the supported surface
 
 Use `reaction_list` and `reaction_update` for native prototype work in the connected Design file. v2.3.3 has no connector-template discovery or automatic connector-diagram workflow; lossless reaction reads and state-safe localized updates are explicitly deferred to v2.3.4.
+
+## 12. A successful multi-page read can still be partial
+
+One unreadable page no longer fails an entire read. `page_info`, `node_info`, `component_list`, `variable_list`, and `annotation_list` return successful pages plus a `coverage` object, so a result you receive without an error may still be incomplete. Read `coverage.complete` before you summarise a result or conclude that something is absent; `coverage.pageErrors` names each failing page and its structured reason, and `node_info` additionally lists any dropped target in `pageFailedNodes`. `coverage.pagesAttempted: 0` means the call required no page access at all — never that the document was scanned and found clean. Destructive scans are held to the stricter rule: `variable_delete` refuses with `DOCUMENT_SCAN_INCOMPLETE` rather than treating an unreadable page as proof of zero consumers, and you must not make that inference either.
 
 ---
 

@@ -14,6 +14,8 @@ Treat `status: "partial_success"` as incomplete and retry every non-success row 
 
 ## Scope errors
 
+> **These labels name the condition, not a code you can branch on.** On an ordinary tool call these are legacy plain-string refusals: the boundary `code` is `UNKNOWN_ERROR` and the quoted `Operation Denied: …` text is what identifies the cause, so match on the message rather than the label. The exception is `SCOPE_DELETED` and `SCOPE_INVALID`, which `channel_join` does report as real `errorCode` values from the connect payload. Converting the rest is scheduled for v2.3.4.
+
 | Code / Message | Meaning | Recovery |
 |---|---|---|
 | `READ_ONLY_MODE` | The session lacks node-editing permissions — the user connected without a Page/Layer link. | Inform the user. Only read tools work. To enable node mutations, the user must reconnect with a link to the Page or Layer they want edited. |
@@ -28,6 +30,8 @@ Treat `status: "partial_success"` as incomplete and retry every non-success row 
 
 ## Name verification errors
 
+> **All but the first row are real codes you can branch on.** `NAME_MISMATCH` is not: it is a legacy plain-string refusal, so it arrives as `UNKNOWN_ERROR` and its message does not contain the token `NAME_MISMATCH` anywhere. Recognise it by the text `nodeName does not match name of nodeId`. Converting it is scheduled for v2.3.4.
+
 | Code / Message | Meaning | Recovery |
 |---|---|---|
 | `NAME_MISMATCH` | `nodeName` does not match the actual name of `nodeId`. | Your context is stale or the ID is wrong. Call `node_info({ nodeIds: [<id>] })` to refresh, then retry with the actual name. |
@@ -35,14 +39,16 @@ Treat `status: "partial_success"` as incomplete and retry every non-success row 
 | `PARENT_NAME_MISMATCH` | `parentNodeName` does not match the actual name of `parentId`. | Read the parent with `node_info` and pass its current exact name back verbatim; do not replace a correct `parentId` merely because its name changed. |
 | `VARIABLE_NAME_MISSING` | `UPDATE_VARIABLE` omitted `currentVariableName`. | Read the variable's current exact name with `variable_list` and pass it back verbatim. |
 | `VARIABLE_NAME_MISMATCH` | `currentVariableName` does not match the resolved variable's stored name. | Refresh with `variable_list` and pass the returned current name back verbatim. |
-| `COLLECTION_NAME_MISSING` | An operation identifying an existing collection omitted `collectionName`. | Read the collection's current exact name with `variable_list` and pass it back verbatim. |
-| `COLLECTION_NAME_MISMATCH` | `collectionName` does not match the resolved collection's stored name. | Refresh with `variable_list` and pass the returned collection name back verbatim. |
+| `COLLECTION_NAME_MISSING` | `CREATE_VARIABLE` omitted the parent collection's `collectionName`. | Read the collection's current exact name with `variable_list` and pass it back verbatim. |
+| `COLLECTION_NAME_MISMATCH` | `collectionName` does not match the resolved collection's stored name on `CREATE_VARIABLE`. | Refresh with `variable_list` and pass the returned collection name back verbatim. |
 | `STYLE_NAME_MISSING` | A `style_manage` update omitted `currentStyleName`. | Read the style's current exact name with `style_list` and pass it back verbatim. |
 | `STYLE_NAME_MISMATCH` | `currentStyleName` does not match the resolved style's stored name. | Refresh with `style_list` and pass the returned current name back verbatim. |
 | `VARIABLE_SCOPES_MISSING` | `CREATE_VARIABLE` omitted the explicit `scopes` decision. | Supply the advertised allowed scopes; use `[]` only when deliberately assigning no scopes. Omission is not a default. |
 | `ANNOTATION_CATEGORY_NOT_FOUND` | `annotation_set.categoryId` does not resolve to a category in this document. | Call `annotation_list` with `includeCategories: true` and pass a returned category ID back verbatim, or omit `categoryId`. |
 
 These are lookup/verification errors, not name-assignment rules. C9's present-empty exactness applies to the protected `parentNodeName` paths; do not assume every name-looking lookup field shares that edge behavior.
+
+**`variable_delete`'s name checks are not coded yet.** It verifies `collectionName` in collection mode and each `variableNames` entry in ID mode, but those refusals are still legacy plain strings, so they arrive as `UNKNOWN_ERROR` carrying an `Operation Denied: …` message rather than as `COLLECTION_NAME_MISMATCH`. Read the message text to recover, and do not conclude from the absence of a verification code that no name check ran. Converting these sites is scheduled for v2.3.4.
 
 ## Remote (library) asset errors
 
@@ -84,7 +90,7 @@ These are lookup/verification errors, not name-assignment rules. C9's present-em
 
 ## Page-load, scan-coverage, and destructive-scan errors
 
-Multi-page reads return these codes inside `coverage.pageErrors` while preserving successful pages; direct single-page operations raise the same structured error. `coverage.complete: false` means the response is partial, and `coverage.pagesAttempted` states how many pages were actually attempted.
+Multi-page reads return these codes inside the result's top-level `coverage.pageErrors` while preserving successful pages; direct single-page operations raise the same structured error. `coverage.complete: false` means the response is partial, and `coverage.pagesAttempted` states how many pages were actually attempted. On a thrown refusal the same object is nested under the error instead — `DOCUMENT_SCAN_INCOMPLETE` carries it as `details.coverage`.
 
 | Code | Meaning | Recovery |
 |---|---|---|
@@ -93,7 +99,7 @@ Multi-page reads return these codes inside `coverage.pageErrors` while preservin
 | `PAGE_NOT_FOUND` | The requested ID does not exist in this document. | Refresh page IDs with `page_info` and pass a returned page ID back verbatim. |
 | `TARGET_NOT_PAGE` | The requested `pageId` resolved to another node type. | Use `page_info` and pass a PAGE ID, not a frame or layer ID. |
 | `PAGE_LOAD_TIMEOUT` | A page did not settle within the bounded per-page timeout. | Retry once; if it keeps timing out, continue only with other pages and report the timed-out page. Multiple failing pages are bounded individually, not by one total command deadline. |
-| `DOCUMENT_SCAN_INCOMPLETE` | A destructive document-wide variable/collection scan could not inspect every page, so zero consumers cannot be proven and no removal starts. | Resolve the listed `coverage.pageErrors` in Figma or retry when every page loads; do not infer that omitted pages contain no consumers. |
+| `DOCUMENT_SCAN_INCOMPLETE` | A destructive document-wide variable/collection scan could not inspect every page, so zero consumers cannot be proven and no removal starts. | Resolve the pages listed in `details.coverage.pageErrors` in Figma, or retry when every page loads; do not infer that omitted pages contain no consumers. |
 | `VARIABLE_IN_USE` | A complete scan found consumers, so deletion was refused before `remove()`. | Read every consumer in `details.variablesInUse` with `node_info`, `style_list`, or `variable_list`, clear or rebind each reference, then retry the exact deletion call. |
 
 ## Variable Binding & Auto-layout Guardrails

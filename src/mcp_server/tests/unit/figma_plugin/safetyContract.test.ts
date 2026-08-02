@@ -195,15 +195,22 @@ const IGNORE_TOKENS = new Set<string>([
     "not remote-gated (local override)",
     "same-parent",
     "correct characters contract",
-    "D7 status envelope",
-    "D7 status envelope with guarded retry",
-    "category verified before mutation",
-    "use-time predicate recheck",
-    "destination resolved last",
-    "immediate destination insertion",
-    "parent+index passed to flatten",
-    "verified parent passed directly to combine",
-    "scopes required on CREATE_VARIABLE",
+    // v2.3.3 bespoke gates — each is asserted by the suite named on its line, NOT
+    // by this diff. Deleting one of these tokens from SAFETY.md leaves this test
+    // green, so the manual's claim rests on those suites alone. Promoting them
+    // into diffed gates is D12 in the v2.3.4 PRD.
+    "D7 status envelope",                         // tri-state status + shared counts + one ordered row per input (v2.3.3.phase5-6.remediation.test.ts, tools/outputSchema.test.ts)
+    "D7 status envelope with guarded retry",      // the same envelope plus Q31's non-idempotent retry carve-out (v2.3.3.phase7.test.ts, tools/mcpBoundary.test.ts)
+    "category verified before mutation",          // ANNOTATION_CATEGORY_NOT_FOUND raised before any append (v2.3.3.phase7.test.ts)
+    "use-time predicate recheck",                 // R2/R11 synchronous target gate in the same turn as the swap (v2.3.3.r2-toctou.test.ts)
+    "destination resolved last",                  // Q33 — parent resolved after the last await (v2.3.3.phase8.test.ts)
+    "immediate destination insertion",            // insertion is the next synchronous call after creation (v2.3.3.phase8.test.ts)
+    "parent+index passed to flatten",             // figma.flatten(nodes, parent, index) (v2.3.3.phase8.test.ts)
+    "verified parent passed directly to combine", // combineAsVariants receives the verified parent (v2.3.3.phase8.test.ts)
+    "scopes required on CREATE_VARIABLE",         // VARIABLE_SCOPES_MISSING handler backstop (v2.3.3.phase4.test.ts)
+    "bounded per-page scan coverage",             // every document page loaded under the Q12 per-page bound (v2.3.3.phase10.test.ts)
+    "fail-closed on incomplete coverage",         // DOCUMENT_SCAN_INCOMPLETE raised before any remove() (v2.3.3.phase10.test.ts)
+    "coded in-use refusal before removal",        // VARIABLE_IN_USE thrown with zero mutation (v2.3.3.phase10.test.ts)
     "supports-annotations",
     "source exists+INSTANCE",
     "per-target exists+scope+name+INSTANCE+locked",
@@ -217,7 +224,6 @@ const IGNORE_TOKENS = new Set<string>([
     "var-perm",
     "style-perm",
     "ids-xor-collection",
-    "full-document consumer scan refuses in-use deletes",
     "COMPONENT/COMPONENT_SET",
     "blocks VARIANT add",
     "variant-member guard",

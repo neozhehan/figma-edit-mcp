@@ -50,15 +50,51 @@ describe("v2.3.3 Phase 12 contract sync", () => {
         );
     });
 
-    it("teaches one batch interpretation and the annotation retry carve-out", () => {
-        const combined = GUIDE_PATHS.map(read).join("\n");
+    // Every guide that teaches the batch retry loop must ALSO carry the
+    // annotation carve-out, in the same place. Q31's whole rationale is that an
+    // unguarded "retry every non-success row" actively teaches duplicate
+    // appends, so asserting these strings over the concatenated corpus would
+    // pass while one guide shipped the instruction without its exception.
+    const BATCH_RETRY_GUIDES = [
+        "skills/figma-edit/references/constraints.md",
+        "skills/figma-edit/references/error-playbook.md",
+        "skills/figma-edit/references/tool-selection.md",
+        "skills/figma-edit/references/workflows.md",
+    ] as const;
 
-        expect(combined).toContain('status: "partial_success"');
-        expect(combined).toContain("failed");
-        expect(combined).toContain("skipped");
-        expect(combined).toContain("`nodeId`/`status`/`error`");
-        expect(combined).toContain("append is not idempotent");
-        expect(combined).toContain("identical-text duplicates remain ambiguous");
+    it("teaches one batch interpretation in every guide that mentions partial_success", () => {
+        for (const path of BATCH_RETRY_GUIDES) {
+            const guide = read(path);
+            expect(guide, `${path} must teach the tri-state status`).toContain(
+                'status: "partial_success"',
+            );
+            expect(guide, `${path} must name both non-success row kinds`).toMatch(
+                /`failed`[\s\S]{0,80}`skipped`/,
+            );
+            expect(guide, `${path} must teach the shared row vocabulary`).toContain(
+                "`nodeId`/`status`/`error`",
+            );
+        }
+    });
+
+    it("pairs every batch retry instruction with the annotation carve-out", () => {
+        for (const path of BATCH_RETRY_GUIDES) {
+            const guide = read(path);
+            expect(
+                guide,
+                `${path} teaches a batch retry, so it must also say append is not idempotent`,
+            ).toContain("not idempotent");
+            expect(
+                guide,
+                `${path} must direct the caller to annotation_list before retrying an append`,
+            ).toContain("annotation_list");
+        }
+
+        // The ambiguity that survives even a correct list-before-retry check is
+        // stated once, where the retry procedure itself lives.
+        expect(read("skills/figma-edit/references/error-playbook.md")).toContain(
+            "identical-text duplicates remain ambiguous",
+        );
     });
 
     it("teaches the current native prototype surface without reviving removed names", () => {

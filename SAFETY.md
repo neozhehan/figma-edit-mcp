@@ -204,7 +204,7 @@ Gate order in the dispatcher (most-specific error wins): **permission → scope 
 | `create_text` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **explicit name non-empty when supplied (§3)** · color 0–1 (Zod) · **opacity normalized, no NaN (§12)** · **destination resolved last** · **handler-prevalidation-before-mutation** · **immediate destination insertion** |
 | `create_svg` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **explicit name non-empty when supplied (§3)** · **destination resolved last** · **handler-prevalidation-before-mutation** · **immediate destination insertion** |
 | `create_instance` | node-perm · parent scope+name+**locked**+**instance-interior (§4)** · **destination resolved last** · **handler-prevalidation-before-mutation** · **immediate destination insertion** |
-| `create_component` | node-perm · scope · name · locked · **instance-interior (§4)** · **scope-root self-destruction (§1)** · **handler-prevalidation-before-mutation** |
+| `create_component` | node-perm · scope · name · locked · **instance-interior (§4)** · **scope-root self-destruction (§1)** · **handler-prevalidation-before-mutation** · **immediate destination insertion** |
 | `node_insert_child` | node-perm · parent scope+name · child scope+name · **locked(parent & child)** · **self/cyclic-parent (§3)** · **instance-interior, both ids (§4)** · **index bounds (§13)** |
 
 For the implicit creator and `node_clone` paths, handler prevalidation resolves the destination before construction and insertion is the immediate next synchronous operation. Later failures trigger best-effort cleanup. A failed cleanup preserves the initiating error and discloses the survivor's ID/name/type, `survivingParentState: "located" | "detached" | "unknown"`, nullable `survivingParentId`, and `verifiedParentId`. `located` carries the exact readable ID, `detached` requires an observed null parent, and `unknown` means the parent or its ID could not be read safely. `create_component` uses the analogous `survivingComponentParentState`/`survivingComponentParentId`, attempts every eligible child restoration independently, and removes its new component only after positive proof that the source is live, every original child is back, and the component is empty; its evidence separates restored, still-owned, unknown-parent, and relocated children plus restoration failures.
@@ -214,7 +214,7 @@ For the implicit creator and `node_clone` paths, handler prevalidation resolves 
 | Tool | Enforced gate stack |
 |---|---|
 | `variable_manage` | **var-perm (§14)** · **current-name on UPDATE** · **collection-name on CREATE_VARIABLE** · **remote block on UPDATE (§7)** · **scopes required on CREATE_VARIABLE** · **validate-before-mutate** · **explicit name non-empty when supplied** |
-| `variable_delete` | **var-perm (§14)** · ids-xor-collection · **required name verification, both modes (§6B)** · **remote block (§7)** · full-document consumer scan refuses in-use deletes |
+| `variable_delete` | **var-perm (§14)** · ids-xor-collection · **required name verification, both modes (§6B)** · **remote block (§7)** · **bounded per-page scan coverage** · **fail-closed on incomplete coverage** · **coded in-use refusal before removal** |
 | `style_manage` | **style-perm (§14)** · **current-name on UPDATE** · **remote block on edit-existing (§7)** · **validate-before-mutate** · **explicit name non-empty when supplied** · (binding a variable into a style needs only style-perm) |
 | `style_delete` | **style-perm (§14)** · `styleName` verification (strict) · **remote block (§7)** |
 | `component_manage_property` | node-perm · scope · name · locked · COMPONENT/COMPONENT_SET · blocks VARIANT add · **value type validation (§5)** · **variant-member guard (§5)** · **remote block (§7)** · **explicit name non-empty when supplied** |
@@ -241,6 +241,8 @@ For the implicit creator and `node_clone` paths, handler prevalidation resolves 
 |---|---|
 | `channel_join` / socket routing | exactly one plugin peer + one MCP session · mandatory `clientType` · peer-correlated pair-only routing · known-version equality · explicit leave/disconnect invalidation · block-until-rejoin |
 
+Unlike B1–B4, this row is **not** covered by the `safetyContract.test.ts` bidirectional diff (see Maintenance). It is prose backed by the Phase 9 suites — `socketPeerBinding`, `figmaClientPeerBinding`, `figmaClientTransport`, `figmaClientJoinError`, `connectHandlers`, and `v2.3.3.phase9.ui` — so a change to the enforcement must be reflected here by hand.
+
 ---
 
 ## Part C — Input-validation (Zod / schema-level) checks
@@ -263,13 +265,15 @@ These run in the MCP server before the plugin and reject malformed input early (
 
 v2.3.3 coded errors originate from one factory at the layer that can raise them: plugin `REFUSALS`, socket `CHANNEL_REFUSALS`, or MCP-client `CLIENT_REFUSALS`. The closed ratified inventory is twelve operational codes, ten verification codes, and the canonical `UNKNOWN_ERROR` fallback. Pre-v2.3.3 plain-string refusals remain on the separate legacy `ERRORS` surface until their scheduled conversion; codes are never inferred from their prose. Full recovery guidance for every ratified code lives in [`skills/figma-edit/references/error-playbook.md`](skills/figma-edit/references/error-playbook.md).
 
+The table's ratified rows run from `PLUGIN_PEER_UNAVAILABLE` down to `UNKNOWN_ERROR`. **Every row below `UNKNOWN_ERROR` is legacy or descriptive:** those labels name a refusal condition or a diagnostic field, not a `code` a caller receives. The refusals among them reach the MCP boundary as `UNKNOWN_ERROR` carrying their `Operation Denied: …` message, so a caller matches the message text, not the label — `SCOPE_DELETED` and `SCOPE_INVALID` are the one exception, reported as real `errorCode` values on `channel_join`'s connect payload. Note that `NAME_MISMATCH` and `PARENT_NAME_MISMATCH` therefore sit on opposite sides of that line despite appearing together in the legacy row.
+
 | Code / message | Meaning |
 |---|---|
 | `PLUGIN_PEER_UNAVAILABLE` / `PLUGIN_PEER_AMBIGUOUS` / `CHANNEL_IN_USE` / `VERSION_MISMATCH` / `CHANNEL_NOT_BOUND` | Peer admission, version-skew, or local binding-state failures under A10. `PLUGIN_PEER_AMBIGUOUS` is operator-facing in the joining plugin UI; it cannot reach `channel_join`. |
 | `PAGE_LOAD_FAILED` / `PAGE_SCAN_FAILED` / `PAGE_NOT_FOUND` / `TARGET_NOT_PAGE` / `PAGE_LOAD_TIMEOUT` | Per-page load/read isolation. Multi-page reads report them in `coverage.pageErrors`; a single-page command raises the code directly. |
 | `DOCUMENT_SCAN_INCOMPLETE` / `VARIABLE_IN_USE` | Destructive variable/collection deletion aborted before removal because coverage was incomplete or verified consumers still exist. |
 | `VARIABLE_NAME_MISSING` / `VARIABLE_NAME_MISMATCH` | `UPDATE_VARIABLE` lacks or mismatches `currentVariableName`. |
-| `COLLECTION_NAME_MISSING` / `COLLECTION_NAME_MISMATCH` | An identified collection lacks or mismatches its required `collectionName`. |
+| `COLLECTION_NAME_MISSING` / `COLLECTION_NAME_MISMATCH` | `CREATE_VARIABLE` lacks or mismatches the identified collection's `collectionName`. `variable_delete` runs the equivalent check in both modes, but its refusals are still legacy plain strings on the `UNKNOWN_ERROR` surface pending the [v2.3.4](documentation/v2.3.4/prd.md) conversion. |
 | `STYLE_NAME_MISSING` / `STYLE_NAME_MISMATCH` | A style update lacks or mismatches `currentStyleName`. |
 | `VARIABLE_SCOPES_MISSING` | `CREATE_VARIABLE` omitted the explicit `scopes` decision. |
 | `PARENT_NAME_MISSING` / `PARENT_NAME_MISMATCH` | A caller-identified parent lacks or mismatches `parentNodeName`. |
@@ -278,8 +282,8 @@ v2.3.3 coded errors originate from one factory at the layer that can raise them:
 | `READ_ONLY_MODE` | No scope link → **node** writes blocked (asset edits gated separately). |
 | `VARIABLE_EDITS_DISABLED` / `STYLE_EDITS_DISABLED` | The corresponding asset permission axis is off (§14). |
 | `OUTSIDE_SCOPE` / `PARENT_OUTSIDE_SCOPE` / `CLONING_SOURCE_NODE_OUTSIDE_SCOPE` | Target/parent/clone-source not under `scopeRootId`. |
-| `SCOPE_DELETED` | `scopeRootId` no longer resolves — the bricking the §1 scope-root guard prevents. |
-| `NAME_MISMATCH` / `PARENT_NAME_MISMATCH` | Resolved name ≠ supplied name (stale/fabricated id). |
+| `SCOPE_DELETED` | `scopeRootId` no longer resolves — the session-bricking outcome the §1 scope-root guard exists to prevent. |
+| `NAME_MISMATCH` | Resolved node name ≠ supplied `nodeName` (stale/fabricated id). The coded parent equivalents are `PARENT_NAME_MISSING`/`PARENT_NAME_MISMATCH` above. |
 | `"… is locked …"` (§2) | Target or an ancestor is locked. |
 | `"… is inside a component instance …"` (§4) | Structural edit inside an `INSTANCE`. |
 | `"… is a remote library asset …"` (§7) | Edit targets a remote style/variable/main-component. |
@@ -294,6 +298,6 @@ v2.3.3 coded errors originate from one factory at the layer that can raise them:
 
 ## Maintenance
 
-- This file is the **canonical safety manual** for v2.3.3, an aggregated view regenerated from the dispatcher + handlers + schemas. When a tool's gate stack changes, update both the code and this matrix (or delete the row if the tool is removed). Part B's generic gate tokens are **mechanically diffed in both directions** against the executable contract table in `src/mcp_server/tests/unit/figma_plugin/safetyContract.test.ts` (PRD v2.3.2 OQ4): a gate claimed here but not asserted there fails CI, and vice versa; unknown tokens fail with a pointer to the alias/ignore tables. When a guarantee, assumption, or residual risk changes, update the G/AS/R lists too — they are the contract.
+- This file is the **canonical safety manual** for v2.3.3, an aggregated view regenerated from the dispatcher + handlers + schemas. When a tool's gate stack changes, update both the code and this matrix (or delete the row if the tool is removed). The generic gate tokens **in B1–B4** are **mechanically diffed in both directions** against the executable contract table in `src/mcp_server/tests/unit/figma_plugin/safetyContract.test.ts` (PRD v2.3.2 OQ4): a gate claimed here but not asserted there fails CI, and vice versa; unknown tokens fail with a pointer to the alias/ignore tables. **B5 and B6 are outside that diff** — B5 is the ungated read surface, and B6 describes socket-level channel admission rather than the dispatcher gate stack the token vocabulary was built for, so its row is prose and must be kept in step with the Phase 9 suites by hand. When a guarantee, assumption, or residual risk changes, update the G/AS/R lists too — they are the contract.
 - **Publication:** published at the **repo root** as `SAFETY.md` — the **contributor / integrator / auditor-facing** companion to the agent-facing guides in [`skills/figma-edit/references/`](skills/figma-edit/references/) (`constraints.md` et al.) and to [`DESIGN_PHILOSOPHY.md`](DESIGN_PHILOSOPHY.md). The **end-user-facing** safety value proposition lives in [`README.md`](README.md#what-the-ai-cannot-do-to-your-file), which links here for the full contract. If the project ever accepts external vulnerability reports, add a *separate* thin `SECURITY.md` for disclosure — it is a different document from this one.
 - Cross-references: holistic agent guidance → `constraints.md`; per-error recovery → `error-playbook.md`; the v2.3.2 change rationale → [`prd.md`](documentation/v2.3.2-safety-contract-conformance-&-atomicity-hardening/prd.md) (v2.3.1: [`prd.md`](documentation/completed/v2.3.1-bind-variable-guardrails/prd.md)); review provenance → [`figma-documentation-check.md`](documentation/completed/v2.2.0-safety-enhancement/figma-documentation-check.md) and [`critique.md`](documentation/completed/v2.3.1-bind-variable-guardrails/critique.md).
