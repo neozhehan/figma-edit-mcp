@@ -77,16 +77,42 @@ describe("v2.3.3 Phase 12 contract sync", () => {
         }
     });
 
-    it("pairs every batch retry instruction with the annotation carve-out", () => {
+    // Red-proof (2026-08-01): replacing the nearby `annotation_list` in the
+    // error-playbook retry paragraph while leaving distant occurrences intact
+    // produced 0 pass / 1 fail / 5 filtered. This test was the sole failure, at
+    // the local-context assertion. The guide was restored before the green run.
+    it("pairs every batch retry instruction locally with the annotation carve-out", () => {
         for (const path of BATCH_RETRY_GUIDES) {
-            const guide = read(path);
+            const paragraphs = read(path).split(/\r?\n\s*\r?\n/);
+            const retryIndexes = paragraphs.flatMap((paragraph, index) =>
+                paragraph.includes('status: "partial_success"')
+                    && /\b(?:retry|handle)\b[\s\S]*non-success row/.test(paragraph)
+                    ? [index]
+                    : []
+            );
+
             expect(
-                guide,
-                `${path} teaches a batch retry, so it must also say append is not idempotent`,
+                retryIndexes,
+                `${path} must have exactly one paragraph that teaches the shared batch retry loop`,
+            ).toHaveLength(1);
+
+            const retryIndex = retryIndexes[0];
+            const retryParagraph = paragraphs[retryIndex];
+            expect(
+                retryParagraph,
+                `${path}'s retry paragraph must state that annotation append is not idempotent`,
             ).toContain("not idempotent");
             expect(
-                guide,
-                `${path} must direct the caller to annotation_list before retrying an append`,
+                retryParagraph,
+                `${path}'s retry paragraph must identify the annotation carve-out`,
+            ).toMatch(/`annotation_set`|annotation list-before-retry/);
+
+            const localContext = paragraphs
+                .slice(Math.max(0, retryIndex - 1), retryIndex + 2)
+                .join("\n\n");
+            expect(
+                localContext,
+                `${path} must name annotation_list in or immediately beside its retry paragraph`,
             ).toContain("annotation_list");
         }
 

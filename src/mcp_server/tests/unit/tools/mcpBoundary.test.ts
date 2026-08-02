@@ -4,6 +4,7 @@ import {
     expectedNameAssignmentContracts,
     scanPluginNameAssignmentSinks,
 } from "./nameAssignmentInvariants.js";
+import { SERVER_VERSION } from "../../../../shared/version.js";
 
 /**
  * Official-SDK boundary suite (review finding P4-1 / Q21).
@@ -34,11 +35,15 @@ const { FigmaError } = realClient;
 let commandBehavior: (command: string, params?: any) => Promise<any> = async () => {
     throw new FigmaError({ code: "UNKNOWN_ERROR", message: "behavior not set" });
 };
+let joinAttemptCount = 0;
 
 mock.module("../../../figma-client.js", () => ({
     ...realClient,
     sendCommandToFigma: mock((command: string, params?: any) => commandBehavior(command, params)),
-    joinChannel: mock(() => Promise.resolve()),
+    joinChannel: mock(async () => {
+        joinAttemptCount++;
+        return { serverVersion: SERVER_VERSION, pluginVersion: SERVER_VERSION };
+    }),
     resetChannel: mock(() => {}),
     connectToFigma: mock(() => {}),
 }));
@@ -66,6 +71,38 @@ describe("MCP boundary (official SDK client, real registered server)", () => {
         // this, the client performs no structuredContent validation and the
         // suite could not catch the -32602 failure class.
         toolsList = await client.listTools();
+    });
+
+    // Red-proof (2026-08-01): temporarily removing channel.ts's `.min(1)` and
+    // running this exact test produced 0 pass / 1 fail / 22 filtered. This test
+    // was the sole failure, at the expected `validationError` assertion. The
+    // production line was then restored before the green rerun.
+    it("Change 20: channel_join rejects an empty channel at the SDK boundary before its handler runs", async () => {
+        const attemptsBefore = joinAttemptCount;
+        const registered = (server as any)._registeredTools.channel_join;
+        let validationError: any;
+        try {
+            await (server as any).validateToolInput(
+                registered,
+                { channel: "" },
+                "channel_join",
+            );
+        } catch (caught) {
+            validationError = caught;
+        }
+
+        expect(validationError).toBeDefined();
+        expect(validationError.code).toBe(-32602);
+
+        const result = await client.callTool({
+            name: "channel_join",
+            arguments: { channel: "" },
+        });
+
+        expect(result.isError).toBe(true);
+        expect(result.content[0].text).toContain("Input validation error");
+        expect(result.content[0].text).toContain("channel is required");
+        expect(joinAttemptCount).toBe(attemptsBefore);
     });
 
     it("a thrown coded refusal arrives as isError with code and details intact — not a -32602", async () => {

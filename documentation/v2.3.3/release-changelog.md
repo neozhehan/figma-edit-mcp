@@ -2,6 +2,45 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 20: Change 19 verification repair and append-only review correction
+
+### Author: Codex @ 2026-08-01
+
+Change 19 was reviewed at commit `44413f1db612c8bc655dc60a713849365ea79dac`, then exercised live on channel `8eao` in the dedicated *MCP Test* Design file. Its production fix and corrected contracts behaved as described, but the review found four gaps in Change 19's own documentation and regression evidence. This section records and fixes those gaps without rewriting Change 19 or any earlier history.
+
+### Findings and corrections
+
+| ID | Classification | Status | Finding and correction |
+| :- | :- | :- | :- |
+| C20-T1 | Testing gap | **Resolved — repository and live verified** | C19-F1's production `.min(1)` fix had no committed test that called the real registered `channel_join` boundary with `channel: ""`. `mcpBoundary.test.ts` now drives that input through the official SDK, requires the authored `-32602` input-validation result, and proves `joinChannel` was not invoked. The initial Change 20 review described the regression risk too broadly as reaching a binding-releasing callback: the handler's retained `if (!channel)` defense returns `MISSING_CHANNEL` before `joinChannel`, so the precise regression risk is loss of the Layer 1 public schema contract and re-exposure of the undocumented handler-only result, not automatic binding loss. The live control remains useful evidence that the current schema rejection leaves a healthy binding usable. |
+| C20-D1 | Documentation error | **Resolved — verified** | `SAFETY.md` correctly split the legacy `NAME_MISMATCH` row from the ratified parent-name pair, but its paragraph above the table still said they appeared together in the legacy row. The paragraph now states the actual placement: `NAME_MISMATCH` below the ratified boundary, with `PARENT_NAME_MISSING` / `PARENT_NAME_MISMATCH` above it. |
+| C20-T2 | Testing gap / overstated claim | **Resolved — verified** | C19-T1 said its test paired every batch retry instruction with the annotation carve-out "in the same place", but the implementation only searched each whole guide for `not idempotent` and `annotation_list`. The test now locates the one paragraph teaching the shared `partial_success` retry loop, requires the non-idempotence warning and annotation carve-out in that paragraph, and requires `annotation_list` in that paragraph or an immediately adjacent one. This matches the current guide layouts: `constraints.md` points to the paragraph below and `workflows.md` to the paragraph above. |
+| C20-D2 | Historical accounting error | **Corrected here; Change 19 preserved** | Change 19 says "Seventeen findings: sixteen fixed ... plus C19-F3." Its resolved table actually contains 17 entries — C19-F1, C19-F2, C19-D1 through C19-D14, and C19-T1 — plus deferred C19-F3, for **18 total findings: 17 resolved and one deferred**. The old arithmetic remains untouched as part of the historical record; this row is the correction. |
+
+### Live evidence — channel `8eao`, dedicated *MCP Test* Design file
+
+The page-scoped pair self-reported server/plugin `2.3.2`. Page 1 (`0:1`) opened at 62 descendants / 22 top-level nodes, with 12 collections and 10 variables.
+
+- `channel_join({channel:""})` returned MCP `-32602`, `too_small`, at `channel` with the authored C19-F1 recovery. A following `page_info` succeeded against the same document, confirming the healthy binding remained usable.
+- Wrong node and parent names reproduced the documented legacy/coded split: `node_rename` returned `UNKNOWN_ERROR`; parent-targeted `create_frame` returned `PARENT_NAME_MISMATCH` with both operands and `node_info` recovery.
+- Wrong collection names reproduced the adjacent legacy/coded split: `variable_delete` returned `UNKNOWN_ERROR`; `CREATE_VARIABLE` returned `COLLECTION_NAME_MISMATCH` with `variable_list` recovery.
+- Empty and normalized-duplicate `node_delete` batches were rejected at `-32602`. A valid single deletion returned the D7 success/count/ordered-row envelope.
+- Plain `page_info` and `variable_list` reads reported `coverage.pagesAttempted: 0`; a document consumer scan reported `pagesAttempted: 3, complete: true`. Deleting its bound disposable variable returned coded `VARIABLE_IN_USE` with the consuming node ID.
+- The served `figma-edit://guide/constraints` resource carried the Change 19 guide corrections.
+- Closing reconciliation matched the opening state exactly: 62 descendants, 22 top-level nodes, 12 collections, and 10 variables. The disposable frame was confirmed in `missingNodeIds`, its variable and collection were removed, the session left `8eao`, and no live artifact remained.
+
+### Verification
+
+- **Focused changed suites:** 29/29 tests, 404 assertions across `mcpBoundary.test.ts` and `v2.3.3.phase12.test.ts`.
+- **Full repository suite:** 1,044/1,044 tests, 5,703 assertions across 53 files.
+- `check:generated`, `check:versions`, `check:types:plugin`, and `check:suppressions` pass; version surfaces remain synchronized at `2.3.2`.
+- `build:all` and `check:plugin` were not run: no plugin source or committed bundle changed, and avoiding regeneration preserved the live channel during testing.
+- The Change 19-and-older changelog tail was SHA-256 checked before and after this insertion; only this new Change 20 section was added above it.
+
+### Files changed by Change 20
+
+`SAFETY.md`; `src/mcp_server/tests/unit/tools/mcpBoundary.test.ts`; `src/mcp_server/tests/unit/figma_plugin/v2.3.3.phase12.test.ts`; and this new append-only section in `documentation/v2.3.3/release-changelog.md`.
+
 ## Change 19: Phase 12 adversarial review and contract-accuracy corrections
 
 ### Author: Claude Opus 5 (Ultracode) @ 2026-08-01
