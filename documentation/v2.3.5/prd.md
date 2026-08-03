@@ -39,7 +39,7 @@ The initial 2026-08-02 `utth` normal-path probe completed representative small r
 
 | Owner | Current behavior | Scope | Problem |
 | :- | :- | :- | :- |
-| Page-load coordinator | 10 seconds per `PageNode.loadAsync()` | Each page attempt | Correctly bounds a page, but callers can compose several attempts under a shorter silent command deadline. |
+| Page-load coordinator | 10 seconds per `PageNode.loadAsync()` **nominally; not observably enforced on a cold load — see T2a** | Each page attempt | The bound is expressed correctly in code but was measured live to not constrain a first-touch page load, so composing attempts is worse than `N × 10s`, not equal to it. |
 | MCP Figma client | 30 seconds before the first progress frame | Every dispatched command | One generic value ignores command class, page count, and bounded nested work. |
 | MCP Figma client after progress | 60 seconds of inactivity | Every command that emitted progress | Better than a total deadline, but handler progress granularity is inconsistent and some long stages emit nothing. |
 | Socket bridge | Five minutes of route inactivity, refreshed by progress | One routed command | Correct leak protection; it cannot help when upstream expires first. |
@@ -60,6 +60,29 @@ The initial 2026-08-02 `utth` normal-path probe completed representative small r
 Change 29 correctly made page loads sequential, but three worst-case page attempts exactly collide with the initial 30-second client timeout before scan and removal work are counted. The empty-collection path was observed emitting no progress during its document scan.
 
 **Proper fix:** emit accepted/start progress before the first page await; emit before and after every page load and traversal; use the shared page orchestrator; retain the fail-closed `DOCUMENT_SCAN_INCOMPLETE` gate; record an execution receipt before the first `remove()`. Do not extend the page timeout or run page loads concurrently.
+
+### T2a — the per-page 10-second bound does not observably constrain a cold page load
+
+**This corrects T2's own premise.** T2 sizes the exposure as `N × 10s`; live measurement on channel `rcvg` (2026-08-02, dedicated *MCP Test* file, three pages) shows the real cost of a first-touch load is several times its nominal bound, so `N × 10s` is a floor rather than a worst case.
+
+Measured with an identical bracket (a ~7s constant harness overhead is included in every row and should be subtracted):
+
+| Call | Elapsed | Net |
+| :- | -: | -: |
+| `node_info(["0:1","1:2","1:3"], maxDepth 12)` — **pages cold** | 71.7s | **~65s** |
+| `page_info(["0:1"])` — overhead control | 6.9s | ~0s |
+| `node_info(["1:3"], maxDepth 12)` — 2 descendants, warm | 6.3s | ~0s |
+| `node_info(["0:1"], maxDepth 12)` — 62 descendants, warm | 6.7s | ~0s |
+| `node_info(["1:2"], maxDepth 12)` — warm | 7.0s | ~0s |
+| `node_info(["0:1","1:2","1:3"], maxDepth 12, properties:["parent"])` — **same call, warm, strictly more work** | 7.9s | ~1s |
+
+The cost is neither traversal nor scale: the 62-descendant page is free once warm, and repeating the identical all-pages call with per-node property reads added costs ~1s. The only work unique to the slow call is the first-touch `loadAsync()` of the two non-scope pages, i.e. roughly 30s per cold page. That call returned `coverage.complete: true`, `pagesAttempted: 3`, and **no** `PAGE_LOAD_TIMEOUT` row. Had the 10-second bound constrained those loads, two attempts could have contributed at most ~20s.
+
+**Hypothesis for why the timer does not fire** (stated as a hypothesis; confirming it requires instrumenting the plugin, which forces a rebuild and drops the bound peer): `load()` races `setTimeout(10_000)` against `page.loadAsync()` on the sandbox's single JS thread. If materializing a cold page blocks that thread, the timer callback cannot be dispatched until `loadAsync` settles — by which point `finish()` has already resolved success and cleared it. **Falsifiable prediction:** a synthetic `loadAsync` that blocks the thread for >10s produces success, while one that awaits >10s without blocking produces `PAGE_LOAD_TIMEOUT`. The existing timeout regressions use the second shape, which is why they pass.
+
+**Why this matters beyond arithmetic.** Q12 accepted the per-page bound specifically because "recovery requires an error to exist — a hang returns nothing, the one state the D9 convention cannot recover from." A synchronously blocking host call is the most likely real cause of a hang, and it is precisely the shape the bound cannot interrupt. So the guarantee is weaker than D14/Q12 records, and v2.3.5 must not treat the page bound as a dependable inner budget when sizing outer deadlines.
+
+**Consequence for this PRD:** requirement "no outer layer is shorter than a nested bounded operation unless visible progress refreshes it first" (§ acceptance) cannot be satisfied by arithmetic over nominal bounds. Either the page orchestrator must emit progress *across* a page load rather than only before and after it, or the bound must be made effective against a blocking host call. The 10-second value remaining behavior-not-contract is unchanged; what changes is that it cannot be relied on as an upper bound.
 
 ### T3 — `channel_join`'s scope-payload leg remains exposed to the generic command timer
 

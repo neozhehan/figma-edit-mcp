@@ -4,7 +4,7 @@ This document centralizes the current release-review status, decision history, a
 
 ## Change 30: Timeout investigation and Phase 14 live-verifier hardening
 
-### Author: Codex GPT-5 @ 2026-08-02
+### Author: GPT-5.6 Sol (Extra High) @ 2026-08-02 8:40pm PT
 
 This change records the timeout investigation requested after Change 29 and fixes the verifier defects found during that investigation. It does **not** change plugin or MCP product timeout behavior; the implementation-ready product contract is tracked in [`../v2.3.5/prd.md`](../v2.3.5/prd.md).
 

@@ -2,6 +2,46 @@
 
 This document records v2.3.5 timeout/liveness decisions and implementation status. The implementation contract and task phases live in [prd.md](prd.md).
 
+## Change 2: The per-page bound is not observably enforced (corrects Change 1's T2 premise)
+
+### Author: Claude Opus 5 @ 2026-08-02 9:30pm PT
+
+**Change 1's timing evidence reproduces, and its verifier fixes are correct — but its central budget premise does not survive measurement.** Reviewing [v2.3.3 Change 30](../v2.3.3/release-changelog.md#change-30-timeout-investigation-and-phase-14-live-verifier-hardening) with live verification on channel `rcvg` (dedicated *MCP Test* file). No product or spec behavior changes here; this corrects a factual premise and records the measurement that motivates it. Full detail in [prd.md](prd.md) § T2a.
+
+### Change 30 verification reproduced
+
+Run before any change was made. Every falsifiable claim is exact.
+
+| Claim | Result |
+| :- | :- |
+| Focused verifier regressions **8/8, 30 assertions** | Exact |
+| Full suite **1,075/1,075, 5,702 assertions, 55 files** | Exact |
+| `check:types:scripts`, `check:types:plugin`, `check:generated` (192/36/45), `check:versions` at 2.3.3, `check:suppressions`, `git diff --check` | All pass |
+| SHA-256 of the changelog from `## Change 29` to EOF is `1549e2f6…c895d65a` | Exact — the append-only discipline held |
+| The ~110s live timings are real, not a harness artifact | **Confirmed independently** — see below |
+
+### The correction
+
+Change 1's timer inventory calls the page-load coordinator's 10-second bound one that "correctly bounds a page", and T2 sizes `variable_delete`'s worst case as `N × 10s`. Measured live, a **cold** all-pages `node_info(maxDepth: 12)` cost ~65s net, while the **same call repeated warm with strictly more work** (per-node `properties: ["parent"]`) cost ~1s net, and each page individually cost ~0s once warm. The 62-descendant page is free; the two non-scope pages cost ~30s each on first touch. That call returned `coverage.complete: true` with no `PAGE_LOAD_TIMEOUT` — yet an enforced 10-second bound could have admitted at most ~20s for two loads.
+
+So the exposure is not `N × 10s`; `N × 10s` is a floor. The likely mechanism is that the bound races a `setTimeout` against `loadAsync()` on the sandbox's single JS thread, and a cold page materialization blocks that thread, so the timer cannot be dispatched until the load has already resolved successfully. The existing timeout regressions use an *awaiting* slow load rather than a *blocking* one, which is why they pass — the falsifiable prediction is recorded in the PRD.
+
+This matters because Q12 accepted the bound on the ground that a hang is the one state D9 cannot recover from. A synchronously blocking host call is the most likely real hang, and it is exactly the shape the bound cannot interrupt. v2.3.5 therefore cannot size outer deadlines by arithmetic over nominal inner bounds.
+
+### Also corrected in Change 30's framing
+
+Its evidence boundary reads "ordinary valid calls can consume minutes", which invites the reading that cost tracks document scale. The measurements show the opposite: cost tracks **first-touch page loading**, and is near-zero for the same work once warm. The distinction changes the fix — heartbeats must span a page load, not merely bracket it.
+
+### Live evidence and reconciliation — channel `rcvg`
+
+Server/plugin `2.3.3`, page-scoped to Page 1, opened at 62 descendants / 22 top-level, 12 collections, 10 variables. Six bracketed timing probes as tabulated in the PRD, plus a Change 29 regression sweep against the same bundle: a single batch appending two annotations to one node succeeded (`0→1`, `1→2`); a node-type-invalid property returned the authored recovery with `beforeCount: 2 → afterCount: 2`; and `node_delete([ancestor, descendant])` returned `partial_success` with the "Do NOT retry this row" recovery. Closing state matched the opening state exactly: **62 descendants / 22 top-level**, 12 collections, 10 variables, every disposable artifact removed.
+
+**Evidence boundary.** The measurement is bracketed wall-clock including a ~7s constant harness overhead, which is subtracted and shown; it discriminates 65s from 1s unambiguously but is not millisecond-accurate. Locating the 30s *inside* `loadAsync` requires instrumenting the plugin, which forces a rebuild and drops the bound peer, so the mechanism is recorded as a hypothesis with its falsifiable prediction rather than as a measured fact.
+
+### Files changed by Change 2
+
+`documentation/v2.3.5/prd.md` (timer-inventory row and new § T2a); and this section. No v2.3.3 section was edited and no product source changed.
+
 ## Change 1: Timeout investigation, verifier reliability, and remediation contract
 
 ### Author: GPT-5.6 Sol @ 2026-08-02 8:40pm PT
