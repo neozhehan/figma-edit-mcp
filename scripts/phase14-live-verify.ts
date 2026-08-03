@@ -128,12 +128,56 @@ function assertBatch(payload: AnyRecord, ids: string[]): void {
     for (const key of legacyBatchKeys) assert.equal(payload[key], undefined, `legacy key survived: ${key}`);
 }
 
+/**
+ * Asserts the D7 envelope for a batch that did NOT fully succeed.
+ *
+ * `assertBatch` above can only ever see all-success rows, so the ordered-row
+ * contract's second half — an explicit `skipped` row for an unattempted item,
+ * and a `partial_success` status — went unexercised live. Both are reachable
+ * against the real host in one ordinary call each (Change 29): a `node_delete`
+ * naming an ancestor and its descendant yields `partial_success`, and an
+ * `annotation_set` whose first item carries a node-type-invalid property yields
+ * a `failed` row followed by `skipped` rows. Neither needs fault injection.
+ */
+function assertNonSuccessBatch(
+    payload: AnyRecord,
+    expected: { status: string; rows: Array<{ nodeId: string; status: string }> },
+): void {
+    assert.equal(payload.status, expected.status, JSON.stringify(payload));
+    assert.equal(payload.success, expected.status === "success");
+    assert.equal(payload.requestedCount, expected.rows.length);
+    assert.equal(
+        payload.succeededCount,
+        expected.rows.filter((row) => row.status === "success").length,
+    );
+    assert.equal(payload.failedCount, expected.rows.filter((row) => row.status === "failed").length);
+    assert.equal(payload.skippedCount, expected.rows.filter((row) => row.status === "skipped").length);
+    assert.deepEqual(
+        payload.results.map((row: AnyRecord) => ({ nodeId: row.nodeId, status: row.status })),
+        expected.rows,
+    );
+    for (const row of payload.results) {
+        // Q25: every non-success row carries a non-empty actionable reason.
+        if (row.status !== "success") {
+            assert.equal(typeof row.error, "string");
+            assert.ok(row.error.length > 0, `blank error on a ${row.status} row`);
+        }
+    }
+    for (const key of legacyBatchKeys) assert.equal(payload[key], undefined, `legacy key survived: ${key}`);
+}
+
 function dashId(id: string): string {
     return id.replace(":", "-");
 }
 
+/** Collects every `p14-` node name anywhere in a subtree. */
+function collectRunArtifacts(node: AnyRecord, into: string[]): void {
+    if (String(node?.name ?? "").startsWith("p14-")) into.push(`${node.name} (${node.id})`);
+    for (const child of node?.children ?? []) collectRunArtifacts(child, into);
+}
+
 async function expectRawCode(
-    command: string,
+    command: Parameters<typeof sendCommandToFigma>[0],
     params: AnyRecord,
     code: string,
 ): Promise<FigmaError> {
@@ -208,7 +252,7 @@ async function rawPluginDefense(): Promise<void> {
         // Use pre-existing dedicated-file fixtures for refusal probes. These raw
         // calls bypass the MCP schema specifically to reach the plugin's
         // defense-in-depth gates, and none can mutate by contract.
-        const listedVariables = await sendCommandToFigma("variable_list", {});
+        const listedVariables = await sendCommandToFigma("variable_list", {}) as AnyRecord;
         const variable = listedVariables.variables?.[0];
         const collection = listedVariables.collections?.[0];
         assert.ok(variable, "the MCP Test fixture needs at least one local variable");
@@ -233,7 +277,7 @@ async function rawPluginDefense(): Promise<void> {
             type: "STRING",
         }, "VARIABLE_SCOPES_MISSING");
 
-        const listedStyles = await sendCommandToFigma("style_list", {});
+        const listedStyles = await sendCommandToFigma("style_list", {}) as AnyRecord;
         const style = [
             ...(listedStyles.colors ?? []).map((candidate: AnyRecord) => ({ ...candidate, styleType: "PAINT" })),
             ...(listedStyles.texts ?? []).map((candidate: AnyRecord) => ({ ...candidate, styleType: "TEXT" })),
@@ -316,15 +360,24 @@ async function main(): Promise<void> {
         baselineCollectionCount = baselineVariables.collections.length;
         const baselineStyles = await success(primary.client, "style_list", {});
         baselineStyleCounts = [baselineStyles.colors.length, baselineStyles.texts.length, baselineStyles.effects.length, baselineStyles.grids.length];
+        // The stale-artifact sweep covers EVERY page, not just the scope page.
+        // D11's recorded residual is a failed creator's survivor landing outside
+        // its verified destination — an implicit Figma creator attaches to
+        // `figma.currentPage`, which need not be the page this session is scoped
+        // to. A Page-1-only sweep is blind to exactly the artifact class it
+        // exists to catch (Change 29, F4).
+        const allPages = await success(primary.client, "page_info", {});
+        const everyPageId = allPages.pages.map((page: AnyRecord) => page.pageId);
         const baselineTree = await success(primary.client, "node_info", {
-            nodeIds: [pageId], maxDepth: 12,
+            nodeIds: everyPageId, maxDepth: 12,
         });
         const staleNames: string[] = [];
-        const visit = (node: AnyRecord): void => {
-            if (String(node?.name ?? "").startsWith("p14-")) staleNames.push(node.name);
-            for (const child of node?.children ?? []) visit(child);
-        };
-        visit(baselineTree.nodes[0]);
+        for (const root of baselineTree.nodes) collectRunArtifacts(root, staleNames);
+        assert.equal(
+            baselineTree.coverage.complete,
+            true,
+            "cannot prove the document is free of stale Phase 14 artifacts while a page is unreadable",
+        );
         for (const candidate of [
             ...baselineVariables.variables,
             ...baselineVariables.collections,
@@ -498,6 +551,54 @@ async function main(): Promise<void> {
             .map((annotation: AnyRecord) => annotation.labelMarkdown ?? annotation.label);
         for (const label of annotationLabels) assert.ok(rediscovered.includes(label));
 
+        // The ordered-row contract's non-success half, live and uninjected.
+        // First item carries a node-type-invalid annotation property, which the
+        // real host refuses, so the second item is never attempted.
+        const skipProbe = structured(await call(primary.client, "annotation_set", {
+            annotations: [
+                {
+                    nodeId: rectA.id, nodeName: rectA.name,
+                    labelMarkdown: `${runId} never applied`,
+                    properties: [{ type: "fontSize" }],
+                },
+                { nodeId: rectB.id, nodeName: rectB.name, labelMarkdown: `${runId} unattempted` },
+            ],
+        }));
+        assertNonSuccessBatch(skipProbe, {
+            status: "failed",
+            rows: [{ nodeId: rectA.id, status: "failed" }, { nodeId: rectB.id, status: "skipped" }],
+        });
+        assert.match(skipProbe.results[0].error, /Invalid property/);
+        assert.match(skipProbe.results[0].error, /'properties'/);
+        assert.equal(skipProbe.results[1].error, "Skipped due to previous failure in batch");
+
+        const nestedDeleteParent = await success(primary.client, "create_frame", {
+            x: 700, y: 20, width: 120, height: 90, name: `${runId} delete parent`,
+            parentId: outer.id, parentNodeName: outer.name,
+        });
+        const nestedDeleteChild = await success(primary.client, "create_shape", {
+            type: "RECTANGLE", x: 10, y: 10, width: 40, height: 40,
+            name: `${runId} delete child`,
+            parentId: nestedDeleteParent.id, parentNodeName: nestedDeleteParent.name,
+        });
+        // Deleting an ancestor and its descendant in one batch: the ancestor's
+        // removal takes the descendant with it, so the descendant's own row
+        // fails. This is the commonest live route to `partial_success`.
+        const partialDelete = structured(await call(primary.client, "node_delete", {
+            nodes: [
+                { nodeId: nestedDeleteParent.id, nodeName: nestedDeleteParent.name },
+                { nodeId: nestedDeleteChild.id, nodeName: nestedDeleteChild.name },
+            ],
+        }));
+        assertNonSuccessBatch(partialDelete, {
+            status: "partial_success",
+            rows: [
+                { nodeId: nestedDeleteParent.id, status: "success" },
+                { nodeId: nestedDeleteChild.id, status: "failed" },
+            ],
+        });
+        assert.match(partialDelete.results[1].error, /Do NOT retry this row/);
+
         const deleteBatch = await success(primary.client, "node_delete", {
             nodes: [
                 { nodeId: rectA.id, nodeName: rectA.name },
@@ -508,6 +609,7 @@ async function main(): Promise<void> {
         record("batch and annotation live matrix", {
             textRows: textBatch.results.length, annotationRows: annotationBatch.results.length,
             deleteRows: deleteBatch.results.length, rediscoveredLabels: annotationLabels.length,
+            skippedRowStatus: skipProbe.status, partialDeleteStatus: partialDelete.status,
         });
 
         const nested = await success(primary.client, "create_frame", {
@@ -610,6 +712,16 @@ async function main(): Promise<void> {
         assert.equal(finalVariables.collections.length, baselineCollectionCount);
         assert.equal(finalVariables.variables.some((candidate: AnyRecord) => String(candidate.name).startsWith(runId)), false);
         assert.equal(finalVariables.collections.some((candidate: AnyRecord) => String(candidate.name).startsWith(runId)), false);
+        // Document-wide, for the same reason the preflight is (F4): a survivor
+        // outside the verified destination need not be on the scope page.
+        const finalTree = await success(primary.client, "node_info", {
+            nodeIds: everyPageId, maxDepth: 12,
+        });
+        const survivors: string[] = [];
+        for (const root of finalTree.nodes) collectRunArtifacts(root, survivors);
+        assert.deepEqual(survivors, [], `this run left node artifacts behind: ${survivors.join(", ")}`);
+        assert.equal(finalTree.coverage.complete, true);
+
         const finalStyles = await success(primary.client, "style_list", {});
         assert.deepEqual(
             [finalStyles.colors.length, finalStyles.texts.length, finalStyles.effects.length, finalStyles.grids.length],
@@ -631,18 +743,43 @@ async function main(): Promise<void> {
             ].join("/")}`,
         });
     } finally {
+        // Cleanup failures are REPORTED, never swallowed (Change 29, F5). The
+        // reconciliation above only runs on the success path, so a run that
+        // throws earlier used to fall through here, silently fail to clean up,
+        // and exit with just the original error — leaving an artifact behind
+        // with nothing in the output saying so.
+        const cleanupFailures: string[] = [];
+        const cleanup = async (what: string, run: () => Promise<any>): Promise<void> => {
+            try {
+                const result = await run();
+                if (result?.isError) cleanupFailures.push(`${what}: ${resultText(result)}`);
+            } catch (error: any) {
+                cleanupFailures.push(`${what}: ${error?.message ?? String(error)}`);
+            }
+        };
+
         if (secondary) await secondary.client.close().catch(() => {});
-        if (style) await call(primary.client, "style_delete", { styleId: style.id, styleName: style.name }).catch(() => {});
-        if (variable) await call(primary.client, "variable_delete", {
-            variableIds: [variable.id], variableNames: [variable.name],
-        }).catch(() => {});
-        if (collection) await call(primary.client, "variable_delete", {
-            collectionId: collection.id, collectionName: collection.name,
-        }).catch(() => {});
-        if (outer) await call(primary.client, "node_delete", {
-            nodes: [{ nodeId: outer.id, nodeName: outer.name }],
-        }).catch(() => {});
+        if (style) await cleanup(`style ${style.id}`, () => call(primary.client, "style_delete", {
+            styleId: style!.id, styleName: style!.name,
+        }));
+        if (variable) await cleanup(`variable ${variable.id}`, () => call(primary.client, "variable_delete", {
+            variableIds: [variable!.id], variableNames: [variable!.name],
+        }));
+        if (collection) await cleanup(`collection ${collection.id}`, () => call(primary.client, "variable_delete", {
+            collectionId: collection!.id, collectionName: collection!.name,
+        }));
+        if (outer) await cleanup(`node ${outer.id}`, () => call(primary.client, "node_delete", {
+            nodes: [{ nodeId: outer!.id, nodeName: outer!.name }],
+        }));
         await primary.client.close().catch(() => {});
+
+        if (cleanupFailures.length > 0) {
+            console.error(
+                `\nCLEANUP INCOMPLETE — ${cleanupFailures.length} disposable artifact(s) may remain ` +
+                `in the document. Remove them before the next run; the startup preflight will ` +
+                `otherwise refuse it.\n  ${cleanupFailures.join("\n  ")}\n`,
+            );
+        }
     }
 
     console.log(JSON.stringify({ ok: true, runId, channel, evidence }, null, 2));

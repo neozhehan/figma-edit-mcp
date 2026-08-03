@@ -715,8 +715,16 @@ export function sendCommandToFigma(
                 // D9's "adds or edits" rule applies and the code earns its own
                 // playbook entry. The factory carries the released channel when
                 // there is one, so recovery stays one round trip either way.
+                // Narrowed explicitly rather than read off the union: only the
+                // "unbound" member carries `releasedChannel`, and TypeScript
+                // cannot infer from `!activeBinding` that "bound" is excluded
+                // here. Runtime-identical — the property does not exist on the
+                // other members — but it is the difference between this file
+                // type-checking and not (Change 29, F6).
                 reject(new FigmaError(
-                    CLIENT_REFUSALS.CHANNEL_NOT_BOUND(bindingState.releasedChannel),
+                    CLIENT_REFUSALS.CHANNEL_NOT_BOUND(
+                        bindingState.status === "unbound" ? bindingState.releasedChannel : undefined,
+                    ),
                 ));
             }
             return;

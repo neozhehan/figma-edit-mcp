@@ -22,6 +22,21 @@
     MISSING_SOURCE_INSTANCE_ID: "Missing sourceInstanceId parameter",
     INVALID_TARGET_NODE_IDS: "targetNodeIds must be an array"
   };
+  function formatFailedPageOperand(pageErrors) {
+    if (!Array.isArray(pageErrors) || pageErrors.length === 0) {
+      return "one or more pages";
+    }
+    const ids = [];
+    for (const entry of pageErrors) {
+      try {
+        const id = entry && typeof entry === "object" ? entry.pageId : void 0;
+        if (typeof id === "string" && id.length > 0) ids.push(id);
+      } catch (e) {
+      }
+    }
+    if (ids.length === 0) return `${pageErrors.length} page(s)`;
+    return `page(s) ${ids.map((id) => `"${id}"`).join(", ")}`;
+  }
   var REFUSALS = {
     // Phase 9's four D13 codes are NOT here by design (Change 5, P9-F3). They
     // are channel-admission refusals decided by the socket bridge before any
@@ -64,9 +79,15 @@
       message: `Figma page${pageId ? ` "${pageId}"` : ""} loaded but could not be read to completion${cause ? ` (${cause})` : ""}. This is a read failure, not a load failure: retrying the identical call usually reproduces it. Narrow the request (a single page, a specific nodeId, or fewer properties) and report the failing page to the user if it persists.`,
       ...pageId || cause ? { details: { ...pageId ? { pageId } : {}, ...cause ? { cause } : {} } } : {}
     }),
+    // The failing page IDs belong in the MESSAGE, not only in `details`: the
+    // message is what an agent reads first, and "resolve the failing page in
+    // Figma" is unfollowable without knowing which page. Retry is named first
+    // because a page load can fail transiently — live on channel `gf32`
+    // (2026-08-02) this refusal fired twice on a document whose pages all read
+    // cleanly, and the third identical call succeeded.
     DOCUMENT_SCAN_INCOMPLETE: (pageErrors) => ({
       code: "DOCUMENT_SCAN_INCOMPLETE",
-      message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded \u2014 a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first.",
+      message: `Operation Denied: Document scan incomplete because ${formatFailedPageOperand(pageErrors)} could not be loaded and read \u2014 a page error can never mean zero consumers, so the destructive operation was aborted. Nothing was deleted. Retry the same call: a page load can fail transiently. If it keeps failing, open ${Array.isArray(pageErrors) && pageErrors.length > 0 ? "that page" : "the failing page"} in Figma and retry once it loads; details.coverage.pageErrors carries each page's structured reason.`,
       ...Array.isArray(pageErrors) && pageErrors.length > 0 ? {
         details: {
           coverage: {
@@ -1977,6 +1998,12 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
     if (warnings.length > 0) result.warnings = warnings;
     return result;
   }
+  function alreadyGoneRecovery(nodeId) {
+    return `Node ${nodeId} no longer exists, so the deletion you asked for is already in effect. The usual cause is that this batch also named one of its ancestors, and removing the ancestor removed this node too. Do NOT retry this row \u2014 dispatcher prevalidation refuses the whole command for an unresolvable node. Confirm with node_info (an absent node comes back in missingNodeIds) and treat this target as deleted.`;
+  }
+  function alreadyGoneReason(nodeId) {
+    return `Node not found: ${nodeId}. ${alreadyGoneRecovery(nodeId)}`;
+  }
   async function deleteMultipleNodes(params) {
     const { nodeIds } = params || {};
     const commandId = generateCommandId();
@@ -2058,7 +2085,7 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
             return {
               success: false,
               nodeId,
-              error: `Node not found: ${nodeId}`
+              error: alreadyGoneReason(nodeId)
             };
           }
           const nodeInfo = {
@@ -2079,7 +2106,7 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
           return {
             success: false,
             nodeId,
-            error: errorMessage
+            error: /does not exist|already (been )?removed/i.test(errorMessage) ? `${errorMessage}. ${alreadyGoneRecovery(nodeId)}` : errorMessage
           };
         }
       });
@@ -2294,7 +2321,12 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       throw new Error(`node_flatten: '${node.name}' is no longer a child of its resolved parent.`);
     }
     const flattened = figma.flatten([node], parent, index);
-    return { id: flattened.id, name: flattened.name, type: flattened.type };
+    return {
+      id: flattened.id,
+      name: flattened.name,
+      type: flattened.type,
+      parentId: flattened.parent ? flattened.parent.id : null
+    };
   }
   async function insertChild(params) {
     const { parentId, childId, index } = params;
@@ -4729,6 +4761,20 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
   }
 
   // figma_plugin/handlers/annotationHandlers.ts
+  function withAnnotationPropertyRecovery(message) {
+    if (typeof message !== "string") return message;
+    if (!/Invalid property\s+"[^"]*"\s+for a\b/.test(message)) return message;
+    return `${message}. Annotation property validity is decided by Figma per node type, and this tool's enum is the full catalogue rather than the subset valid for this node \u2014 drop that entry from 'properties' (or annotate a node that has it) and resend only the non-success rows.`;
+  }
+  function normalizeExistingAnnotation(annotation) {
+    if (annotation === null || typeof annotation !== "object") return annotation;
+    if (!("label" in annotation) || !("labelMarkdown" in annotation)) return annotation;
+    if (annotation.labelMarkdown === void 0 || annotation.labelMarkdown === null) {
+      return annotation;
+    }
+    const { label: _label, ...rest } = annotation;
+    return rest;
+  }
   function annotationDisclosure(beforeCount, beforeCountVerified, after, appendAttempted) {
     if (!appendAttempted) return {};
     if (!after.verified || after.count === null || !beforeCountVerified || beforeCount === null) {
@@ -4940,7 +4986,10 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
       }
       appendAttempted = true;
       report.appendAttempted = true;
-      node.annotations = [...existingAnnotations, annotationObj];
+      node.annotations = [
+        ...existingAnnotations.map(normalizeExistingAnnotation),
+        annotationObj
+      ];
       afterCount = node.annotations.length;
       afterCountVerified = true;
       return {
@@ -4952,7 +5001,7 @@ Nothing was deleted. Read each listed consumer's current state with node_info (n
         afterCountVerified
       };
     } catch (error) {
-      const initiatingError = describeError(error);
+      const initiatingError = withAnnotationPropertyRecovery(describeError(error));
       try {
         console.error("Error in setAnnotation:", error);
       } catch (e) {
@@ -5598,22 +5647,29 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     const idSet = new Set(idsToCheck);
     const stylePromise = findStyleConsumers(idSet);
     const aliasPromise = findAliasConsumers(idSet);
-    const nodeMapsPromises = figma.root.children.map(async (page) => {
+    const nodeMapsResults = [];
+    for (const page of figma.root.children) {
       const loaded = await pageLoads.load(page);
-      if (!loaded.ok) return /* @__PURE__ */ new Map();
-      if (idSet.size === 0) return /* @__PURE__ */ new Map();
+      if (!loaded.ok) {
+        nodeMapsResults.push(/* @__PURE__ */ new Map());
+        continue;
+      }
+      if (idSet.size === 0) {
+        nodeMapsResults.push(/* @__PURE__ */ new Map());
+        continue;
+      }
       try {
-        return await findVariableConsumers(page, idSet, commandId, "variable_delete");
+        nodeMapsResults.push(await findVariableConsumers(page, idSet, commandId, "variable_delete"));
       } catch (error) {
         pageLoads.fail(page.id, error);
-        return /* @__PURE__ */ new Map();
+        nodeMapsResults.push(/* @__PURE__ */ new Map());
       }
-    });
-    const [styleConsumerMap, _aliasConsumerMap, ..._nodeMaps] = await Promise.all([
+    }
+    const [styleConsumerMap, _aliasConsumerMap] = await Promise.all([
       stylePromise,
-      aliasPromise,
-      ...nodeMapsPromises
+      aliasPromise
     ]);
+    const _nodeMaps = nodeMapsResults;
     const coverage = pageLoads.coverage();
     if (!coverage.complete) {
       throw REFUSALS.DOCUMENT_SCAN_INCOMPLETE(coverage.pageErrors);
@@ -6356,6 +6412,23 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     }
   }
 
+  // figma_plugin/utils/scopeLink.ts
+  function parseNodeIdFromUrl(url) {
+    if (typeof url !== "string") return null;
+    const match = url.match(/node-id=([^&#]+)/);
+    if (!match) return null;
+    const raw = match[1];
+    let decoded = raw;
+    try {
+      decoded = decodeURIComponent(raw.replace(/\+/g, " "));
+    } catch (e) {
+      decoded = raw;
+    }
+    const nodeId = decoded.trim();
+    if (!nodeId) return null;
+    return nodeId.replace(/-/g, ":");
+  }
+
   // figma_plugin/src/main.ts
   var state = {
     serverPort: 3055,
@@ -6481,17 +6554,6 @@ Processing annotation ${i + 1}/${annotations.length}:`,
     }
     assertNotLocked(parent);
     assertNotInstanceParent(parent, "appended to");
-  }
-  function parseNodeIdFromUrl(url) {
-    try {
-      const urlObj = new URL(url);
-      const nodeId = urlObj.searchParams.get("node-id");
-      return nodeId ? nodeId.replace(/-/g, ":") : null;
-    } catch (e) {
-      const match = url.match(/node-id=([^&]+)/);
-      if (match) return match[1].replace(/-/g, ":");
-      return null;
-    }
   }
   var PLUGIN_VERSION = true ? "2.3.3" : "unknown";
   figma.showUI(__html__, { width: 350, height: 450 });

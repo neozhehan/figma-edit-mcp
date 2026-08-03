@@ -580,9 +580,23 @@ export async function deleteVariables(
     // Concurrent scanning
     const stylePromise = findStyleConsumers(idSet);
     const aliasPromise = findAliasConsumers(idSet);
-    const nodeMapsPromises = figma.root.children.map(async (page) => {
+    // Pages are loaded ONE AT A TIME, matching every other Phase 10 surface
+    // (`getVariables`' document scan above, `getPagesInfo`, `getNodesInfo`,
+    // `getComponents`, `getAnnotations`). This scan used to fan `loadAsync()`
+    // out with `figma.root.children.map(...)`, and concurrent loads fail
+    // intermittently against the live host: on channel `gf32` (2026-08-02) two
+    // consecutive `variable_delete` calls were refused DOCUMENT_SCAN_INCOMPLETE
+    // and the third succeeded, while `page_info` over the same three pages and
+    // `variable_list` + includeConsumers:"document" — the sequential path —
+    // both reported complete coverage in the same session. Because the D14 gate
+    // is fail-closed, a flaky load became a hard refusal on a healthy document,
+    // and its recovery text sent the caller looking for a broken page that did
+    // not exist. Sequential loading is also what the per-page bound is sized
+    // for; Q12 accepted N x the bound as the cost of rejecting total deadlines.
+    const nodeMapsResults: Array<Map<string, any[]>> = [];
+    for (const page of figma.root.children) {
         const loaded = await pageLoads.load(page);
-        if (!loaded.ok) return new Map<string, any[]>();
+        if (!loaded.ok) { nodeMapsResults.push(new Map<string, any[]>()); continue; }
         // Change 8 (D4): an apparently-empty collection has no variable IDs, so
         // walking every node of every page can only ever find nothing. The
         // D14/Q12 fail-closed gate still applies in full — every page is still
@@ -590,20 +604,20 @@ export async function deleteVariables(
         // but an O(document) traversal whose result is provably empty is pure
         // latency on a call that used to be instant, and latency is a
         // first-call-correctness problem on a large file.
-        if (idSet.size === 0) return new Map<string, any[]>();
+        if (idSet.size === 0) { nodeMapsResults.push(new Map<string, any[]>()); continue; }
         try {
-            return await findVariableConsumers(page, idSet, commandId, 'variable_delete');
+            nodeMapsResults.push(await findVariableConsumers(page, idSet, commandId, 'variable_delete'));
         } catch (error: any) {
             pageLoads.fail(page.id, error);
-            return new Map<string, any[]>();
+            nodeMapsResults.push(new Map<string, any[]>());
         }
-    });
-    
-    const [styleConsumerMap, _aliasConsumerMap, ..._nodeMaps] = await Promise.all([
+    }
+
+    const [styleConsumerMap, _aliasConsumerMap] = await Promise.all([
         stylePromise,
         aliasPromise,
-        ...nodeMapsPromises
     ]);
+    const _nodeMaps = nodeMapsResults;
 
     const coverage = pageLoads.coverage();
     if (!coverage.complete) {

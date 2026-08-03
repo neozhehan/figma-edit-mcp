@@ -190,7 +190,7 @@ export function registerAnnotationTools(server: McpServer) {
                                 })
                                 .describe("Markdown annotation text; required and rejected when blank"),
                             categoryId: z.string().optional().describe("Optional annotation category ID from annotation_list"),
-                            properties: annotationProperties.optional().describe("Optional duplicate-free Figma annotation property references"),
+                            properties: annotationProperties.optional().describe("Optional duplicate-free Figma annotation property references. The enum is the full catalogue; Figma gates each entry by node type and refuses the append for one the target node does not support (e.g. 'fontSize' on a RECTANGLE), so a rejection here is a per-row failure rather than a schema error. Omit this field unless the property is clearly one the target node has."),
                         })
                     )
                     .min(1)

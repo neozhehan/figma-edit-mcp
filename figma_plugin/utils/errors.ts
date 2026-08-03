@@ -66,6 +66,29 @@ export const ERRORS: any = {
  * supplies the correct value, "pass it back verbatim"). Throw the returned
  * object as-is — the dispatcher forwards `{code, message, details?}` untouched.
  */
+
+/**
+ * Renders the failing-page operand for DOCUMENT_SCAN_INCOMPLETE's message.
+ * Total by construction: a hostile or malformed `pageErrors` entry degrades to
+ * the generic phrasing rather than making the refusal itself throw (F78-18/R13).
+ */
+export function formatFailedPageOperand(pageErrors?: any[]): string {
+    if (!Array.isArray(pageErrors) || pageErrors.length === 0) {
+        return "one or more pages";
+    }
+    const ids: string[] = [];
+    for (const entry of pageErrors) {
+        try {
+            const id = entry && typeof entry === "object" ? (entry as any).pageId : undefined;
+            if (typeof id === "string" && id.length > 0) ids.push(id);
+        } catch {
+            // An unreadable operand must not replace the refusal it describes.
+        }
+    }
+    if (ids.length === 0) return `${pageErrors.length} page(s)`;
+    return `page(s) ${ids.map((id) => `"${id}"`).join(", ")}`;
+}
+
 export const REFUSALS = {
     // Phase 9's four D13 codes are NOT here by design (Change 5, P9-F3). They
     // are channel-admission refusals decided by the socket bridge before any
@@ -116,9 +139,15 @@ export const REFUSALS = {
             ? { details: { ...(pageId ? { pageId } : {}), ...(cause ? { cause } : {}) } }
             : {}),
     }),
+    // The failing page IDs belong in the MESSAGE, not only in `details`: the
+    // message is what an agent reads first, and "resolve the failing page in
+    // Figma" is unfollowable without knowing which page. Retry is named first
+    // because a page load can fail transiently — live on channel `gf32`
+    // (2026-08-02) this refusal fired twice on a document whose pages all read
+    // cleanly, and the third identical call succeeded.
     DOCUMENT_SCAN_INCOMPLETE: (pageErrors?: any[]) => ({
         code: "DOCUMENT_SCAN_INCOMPLETE",
-        message: "Operation Denied: Document scan incomplete because one or more pages could not be loaded — a page error can never mean zero consumers, so the destructive operation was aborted. Retry when every page loads, or resolve the failing page in Figma first.",
+        message: `Operation Denied: Document scan incomplete because ${formatFailedPageOperand(pageErrors)} could not be loaded and read — a page error can never mean zero consumers, so the destructive operation was aborted. Nothing was deleted. Retry the same call: a page load can fail transiently. If it keeps failing, open ${Array.isArray(pageErrors) && pageErrors.length > 0 ? "that page" : "the failing page"} in Figma and retry once it loads; details.coverage.pageErrors carries each page's structured reason.`,
         ...(Array.isArray(pageErrors) && pageErrors.length > 0
             ? {
                 details: {

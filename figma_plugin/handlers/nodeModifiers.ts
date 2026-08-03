@@ -103,6 +103,27 @@ export async function transformNode(params: any) {
  * @param {string[]} params.nodeIds - Array of node IDs to delete
  * @returns {Promise<Object>} Deletion results
  */
+/**
+ * Recovery for a delete row whose target no longer exists.
+ *
+ * `node_delete` is the one aggregator that deletes in parallel chunks, so the
+ * commonest way to reach `partial_success` is an ordinary call naming a node
+ * AND one of its descendants: the ancestor's `remove()` takes the descendant
+ * with it, and the descendant's own row then fails. Live on channel `gf32`
+ * (2026-08-02) that returned `in get_name: The node with id "…" does not exist`
+ * — prose with no recovery, under a tool description that says to "retry every
+ * non-success item". Retrying is guaranteed to fail: dispatcher prevalidation
+ * refuses the whole command for a node it cannot resolve. So the row has to say
+ * that the requested end state is already reached and that no retry is owed.
+ */
+function alreadyGoneRecovery(nodeId: string): string {
+    return `Node ${nodeId} no longer exists, so the deletion you asked for is already in effect. The usual cause is that this batch also named one of its ancestors, and removing the ancestor removed this node too. Do NOT retry this row — dispatcher prevalidation refuses the whole command for an unresolvable node. Confirm with node_info (an absent node comes back in missingNodeIds) and treat this target as deleted.`;
+}
+
+function alreadyGoneReason(nodeId: string): string {
+    return `Node not found: ${nodeId}. ${alreadyGoneRecovery(nodeId)}`;
+}
+
 export async function deleteMultipleNodes(params: any) {
     const { nodeIds } = params || {};
     const commandId = generateCommandId();
@@ -203,7 +224,7 @@ export async function deleteMultipleNodes(params: any) {
                     return {
                         success: false,
                         nodeId: nodeId,
-                        error: `Node not found: ${nodeId}`,
+                        error: alreadyGoneReason(nodeId),
                     };
                 }
 
@@ -229,7 +250,9 @@ export async function deleteMultipleNodes(params: any) {
                 return {
                     success: false,
                     nodeId: nodeId,
-                    error: errorMessage,
+                    error: /does not exist|already (been )?removed/i.test(errorMessage)
+                        ? `${errorMessage}. ${alreadyGoneRecovery(nodeId)}`
+                        : errorMessage,
                 };
             }
         });
@@ -549,7 +572,16 @@ export async function flattenNode(params: any) {
     // D11: passing parent + index gives true zero-transient placement.
     const flattened = figma.flatten([node as SceneNode], parent, index);
 
-    return { id: flattened.id, name: flattened.name, type: flattened.type };
+    // Report the destination, for the reason Rev 49 gave when it added
+    // `parentId` to all eight creators: D11 containment is the guarantee this
+    // operation makes, and without the actual parent in the response it can
+    // only be confirmed by a second `node_info` read.
+    return {
+        id: flattened.id,
+        name: flattened.name,
+        type: flattened.type,
+        parentId: flattened.parent ? flattened.parent.id : null,
+    };
 }
 
 /**

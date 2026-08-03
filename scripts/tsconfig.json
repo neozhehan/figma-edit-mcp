@@ -1,0 +1,27 @@
+{
+    // Type gate for the repository's scripts (Change 29, F6).
+    //
+    // `check:types:plugin` covers `figma_plugin/**` and the root config covers
+    // `src/**` but is not currently runnable (TS6059 — tests import plugin
+    // sources across its `rootDir`), so `scripts/` was checked by nothing.
+    // Change 28 shipped a 657-line live verifier here that carried seven real
+    // type errors, which is exactly the "unchecked code" class the tracked
+    // `check:types:server` follow-up exists to close — this closes the part of
+    // it that a separate program can cover without the rootDir conflict.
+    //
+    // `strict` matches the root server config rather than the plugin's, because
+    // these files import `src/mcp_server/**`, which was authored under it.
+    "compilerOptions": {
+        "target": "ES2022",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "esModuleInterop": true,
+        "strict": false,
+        "skipLibCheck": true,
+        "noEmit": true,
+        "lib": ["ES2022"],
+        "types": ["bun-types"],
+        "ignoreDeprecations": "6.0"
+    },
+    "include": ["**/*.ts"]
+}

@@ -33,6 +33,9 @@ jobs:
       - name: Verify plugin type safety
         run: bun run check:types:plugin
 
+      - name: Verify script type safety
+        run: bun run check:types:scripts
+
       - name: Verify suppression comments
         run: bun run check:suppressions
 

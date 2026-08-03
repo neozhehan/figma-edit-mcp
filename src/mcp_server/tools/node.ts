@@ -338,6 +338,7 @@ export function registerNodeTools(server: McpServer) {
                 id: z.string().describe("ID of the flattened node"),
                 name: z.string().describe("Name of the flattened node"),
                 type: z.string().describe("Type of the flattened node (usually VECTOR)"),
+                parentId: z.string().nullable().describe("ID of the container the flattened node was placed in — the source node's original parent, so D11 containment is confirmable from this response without a follow-up node_info"),
             }),
             annotations: {
                 destructiveHint: true,
@@ -532,8 +533,8 @@ export function registerNodeTools(server: McpServer) {
                 payload.color = { r, g, b, a: a ?? 1 };
             }
 
-            const result = await sendCommandToFigma("node_set_fill", payload);
-            
+            const result = await sendCommandToFigma("node_set_fill", payload) as Record<string, any>;
+
             if (warning) {
                 if (!result.warnings) result.warnings = [];
                 result.warnings.push(warning);

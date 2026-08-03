@@ -38,6 +38,61 @@ interface AnnotationCountObservation {
     error?: string;
 }
 
+/**
+ * Normalizes an annotation read back from Figma so it can be written again.
+ *
+ * Figma's `node.annotations` **getter** returns every stored annotation with
+ * BOTH `label` and `labelMarkdown` populated, but its **setter** refuses an
+ * annotation carrying both: `Property "annotations" failed validation: Only one
+ * of label or labelMarkdown should be given. at index 0`. Appending with
+ * `[...existing, next]` therefore fails on the pre-existing entry, not on the
+ * new one — so `annotation_set` could only ever append the FIRST annotation to
+ * a node, and every later append on that node failed. That also broke the Q10
+ * retry contract, whose whole recovery is `annotation_list` then re-append.
+ *
+ * Live-measured on channel `gf32` (2026-08-02): a node holding one annotation
+ * refused every subsequent append, with or without `properties`, and
+ * `annotation_list` showed the stored entry carrying both fields.
+ *
+ * Round-tripping keeps `labelMarkdown` (the field this tool writes and the one
+ * the schema exposes) and drops the derived `label`. Unknown keys are preserved
+ * untouched: this is Figma's own object going back to Figma, and dropping a
+ * field we do not model would silently discard a pre-existing annotation's data.
+ */
+/**
+ * Attaches recovery to Figma's node-type-gated annotation-property rejection.
+ *
+ * `annotation_set.properties[].type` is advertised as the full pinned
+ * `AnnotationProperty` catalogue, but Figma gates each entry by node type and
+ * refuses the write. The host message names the offending property and node
+ * type and is therefore diagnostic, but it carries no recovery, so an agent
+ * cannot derive the next call from the error text alone (the D9 acceptance bar).
+ *
+ * The validity table is deliberately NOT simulated here. Q17's boundary rule is
+ * "pre-validate what one read can confirm; disclose what only execution can
+ * reveal", and live measurement on channel `gf32` (2026-08-02) shows the rule is
+ * not derivable from node-property presence: `textAlignHorizontal` is a real
+ * TEXT property yet is refused as an annotation property on a TEXT node, and
+ * `textStyleId` was refused on both TEXT and RECTANGLE. A hand-built map would
+ * refuse calls Figma accepts — exactly the failure Q17 rejects. Figma stays the
+ * authority; this makes its answer actionable.
+ */
+export function withAnnotationPropertyRecovery(message: string): string {
+    if (typeof message !== "string") return message;
+    if (!/Invalid property\s+"[^"]*"\s+for a\b/.test(message)) return message;
+    return `${message}. Annotation property validity is decided by Figma per node type, and this tool's enum is the full catalogue rather than the subset valid for this node — drop that entry from 'properties' (or annotate a node that has it) and resend only the non-success rows.`;
+}
+
+export function normalizeExistingAnnotation(annotation: any): any {
+    if (annotation === null || typeof annotation !== "object") return annotation;
+    if (!("label" in annotation) || !("labelMarkdown" in annotation)) return annotation;
+    if (annotation.labelMarkdown === undefined || annotation.labelMarkdown === null) {
+        return annotation;
+    }
+    const { label: _label, ...rest } = annotation;
+    return rest;
+}
+
 interface AnnotationAttemptReport {
     beforeCount?: number;
     appendAttempted?: boolean;
@@ -328,10 +383,16 @@ async function setAnnotation(params: any, report: AnnotationAttemptReport = {}):
             annotationObj.properties = properties;
         }
 
-        // Add the annotation to the node
+        // Add the annotation to the node. Pre-existing entries are normalized
+        // first: Figma's getter returns both `label` and `labelMarkdown`, its
+        // setter refuses both, so writing the array back unchanged fails on
+        // index 0 rather than on the annotation being appended.
         appendAttempted = true;
         report.appendAttempted = true;
-        node.annotations = [...existingAnnotations, annotationObj];
+        node.annotations = [
+            ...existingAnnotations.map(normalizeExistingAnnotation),
+            annotationObj,
+        ];
         afterCount = node.annotations.length;
         afterCountVerified = true;
 
@@ -344,7 +405,7 @@ async function setAnnotation(params: any, report: AnnotationAttemptReport = {}):
             afterCountVerified,
         };
     } catch (error: any) {
-        const initiatingError = describeError(error);
+        const initiatingError = withAnnotationPropertyRecovery(describeError(error));
         try {
             console.error("Error in setAnnotation:", error);
         } catch {

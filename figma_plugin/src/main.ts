@@ -40,6 +40,7 @@ import { getVariables, setBoundVariable, handleVariableRequest, deleteVariables 
 import { createStyle, applyStyle, deleteStyle } from '../handlers/styleHandlers.js';
 import { createNodeFromSvg } from '../handlers/vectorHandlers.js';
 import { getConnectPayload } from '../handlers/connectHandlers.js';
+import { parseNodeIdFromUrl } from '../utils/scopeLink.js';
 
 
 // Plugin state
@@ -236,22 +237,9 @@ async function validateCloneWrite(params: any) {
 }
 
 
-// Helper: Parse Node ID from URL
-function parseNodeIdFromUrl(url: any) {
-    try {
-        // @ts-expect-error TS2552: live Figma UI on 2026-08-02 confirmed the sandbox lacks URL; percent-decoding is deferred to post-release UI polish.
-        const urlObj = new URL(url);
-        const nodeId = urlObj.searchParams.get("node-id");
-        return nodeId ? nodeId.replace(/-/g, ":") : null;
-    } catch (e: any) {
-        // Fallback for simple paste? Or maybe strictly require URL structure
-        // Figma often copies as: "https://www.figma.com/design/..."
-        // Regex fallback might be safer if URL object fails or protocol is weird
-        const match = url.match(/node-id=([^&]+)/);
-        if (match) return match[1].replace(/-/g, ":");
-        return null;
-    }
-}
+// Scope-link parsing lives in utils/scopeLink.ts so it is testable without
+// importing this module's Figma UI bindings (see that file for the Phase 14
+// no-`URL` measurement that removed the dead `new URL()` branch).
 
 declare const __PLUGIN_VERSION__: string;
 // Fallback must NOT be a version literal — that would be a fifth hardcoded
