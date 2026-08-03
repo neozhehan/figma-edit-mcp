@@ -2,6 +2,58 @@
 
 This document centralizes the current release-review status, decision history, and PRD revision history for [v2.3.3](prd.md). The implementation ledger remains in [`task.md`](task.md).
 
+## Change 30: Timeout investigation and Phase 14 live-verifier hardening
+
+### Author: Codex GPT-5 @ 2026-08-02
+
+This change records the timeout investigation requested after Change 29 and fixes the verifier defects found during that investigation. It does **not** change plugin or MCP product timeout behavior; the implementation-ready product contract is tracked in [`../v2.3.5/prd.md`](../v2.3.5/prd.md).
+
+### Findings
+
+The system has several independent deadlines rather than one timeout: a bounded 10-second page load, a generic 30-second MCP→Figma request deadline, a 60-second inactivity deadline after any plugin progress frame, a five-minute socket-route inactivity deadline, client/host deadlines, and formerly a fixed 180-second Phase 14 verifier deadline. Those layers were not budgeted as one protocol, and progress is emitted by only some handlers.
+
+| Surface | Evidence classification | Finding |
+| :- | :- | :- |
+| `node_info` | Structural; prior timeout investigation | Progress is item-count-based. One large traversal root, requested JSON export, or host property read can remain silent long enough for the bridge inactivity deadline to win. |
+| `variable_delete` | Live mechanism plus structural budget mismatch | Sequential page loads fixed Change 29's concurrent-load refusal, but a three-page worst case is still `3 × 10s` against the generic 30-second initial request deadline. An empty-collection scan emitted no progress in the investigation. |
+| `channel_join` scope-payload leg | Historically live-confirmed | The leg has previously returned `Request to Figma timed out`. Change 12 made the failure coded and recoverable; it did not remove the generic transport exposure. |
+| `annotation_set`, `instance_set_overrides` | High-confidence mutation risk | Both can perform an unbounded sequential batch without transport progress. The client drops its pending request on timeout but does not cancel plugin execution, so completed mutations and the truthful batch/partial-outcome envelope can become separated. |
+| `text_set_content`, `node_delete` | Coarse-progress mutation risk | Progress occurs between items/chunks. One slow font operation or one chunk can exceed the inactivity bound after earlier mutations. |
+| `annotation_list`, `reaction_list`, `node_export_visual` | High-confidence read risk | Deep recursive traversal or export can run without time-based progress. A retry is safer than for writes, but the current generic timeout loses coverage/stage evidence. |
+| `style_list`, page-scoped `component_list`, and non-document-streaming `variable_list` modes | Scale-dependent read risk | These perform cumulative host calls or large scans without transport progress. Document-scoped variants with per-page progress are safer, but a single synchronous page scan can still exceed the inactivity bound. |
+| Figma's `Unable to establish connection to Figma after 10 seconds` | Host-origin, not a repository timer | The same host failure has been observed on variable cleanup and `node_apply_style`. It is broader than either tool, but repository timer changes cannot eliminate it. |
+
+The highest Golden Rule risk is the mutation group: a caller must never be told or led to assume that nothing changed merely because the response timed out. Increasing a timer alone does not establish that truth.
+
+### Phase 14 verifier fixes
+
+- Removed both fixed 700ms startup sleeps. Raw and official-SDK channel joins now retry **only** the explicit pre-dispatch `Not connected to Figma` race, under a configurable 15-second readiness deadline; real refusals such as `CHANNEL_IN_USE` are never retried.
+- Replaced the fixed 180-second SDK deadline with a configurable ten-minute outer guard. This materially reduces harness pre-emption and covered the measured 106–119s live paths, but remains a total cap because plugin progress is not yet forwarded as MCP progress. v2.3.5 D3 owns the complete inactivity-aware fix.
+- Retained a bounded 32Ki-character diagnostic tail for every spawned server and the raw client. A failed tool call reports operation number, tool, elapsed time, cause, and that tail; the fatal path prints all retained tails instead of discarding stderr.
+- Raised the raw-peer default response wait from 1.8 seconds to a configurable 10 seconds and added ready-state plus queued-message types to timeout errors. Raw socket open now has the readiness deadline instead of waiting forever.
+- Corrected the negative-routing probe. Its old 350ms timer started **before** `page_info`, so a slow dispatch could let the silence timer expire before any route existed and manufacture a false pass. The verifier now completes the real routed call, waits a bounded settlement interval, and then checks the refused peer's received-message queue.
+- Added focused regressions for bounded diagnostics, total failure formatting, configuration parsing, transient-only readiness retries, and source invariants covering all four defects.
+
+Configuration knobs are `FIGMA_LIVE_TOOL_TIMEOUT_MS`, `FIGMA_LIVE_READINESS_TIMEOUT_MS`, `FIGMA_LIVE_RAW_MESSAGE_TIMEOUT_MS`, and `FIGMA_LIVE_RAW_SETTLE_MS`; invalid or non-positive values fall back to the documented defaults.
+
+### Evidence boundary
+
+The initial `utth` read-only timing probe did not reproduce another timeout under normal load: representative small calls completed in 1–175ms. The repaired full verifier then exercised the large paths the small probe did not: its opening/final all-pages `node_info(maxDepth:12)` calls took **109,852ms** and **106,851ms**, and its real two-node `text_set_content` batch took **119,063ms**. All three returned successfully. That is healthy-path live evidence, not an induced-timeout test; it demonstrates that ordinary valid calls can consume minutes and does not close the scale-dependent gaps above.
+
+### Verification
+
+- **Focused verifier regressions:** 8/8 tests, 30 assertions.
+- **Four independent red proofs:** restoring the discarded-stderr sink, restoring the fixed 700ms startup sleep, removing queued raw-message diagnostics, and removing the post-dispatch settlement wait each produced exactly **0 pass / 1 fail / 7 filtered** in its named guard. Each line was restored and the file returned to 8/8 green.
+- **Full repository suite:** the restricted run reported 1,066 pass / 9 loopback-bind failures; the required localhost-enabled rerun passed **1,075/1,075 tests with 5,702 assertions across 55 files**.
+- `check:types:scripts`, `check:types:plugin`, `check:generated` (192 node fields / 36 bind fields / 45 tools), `check:versions` at 2.3.3, `check:suppressions`, and `git diff --check` all pass.
+- **Live repaired-verifier replay:** channel `utth`, dedicated *MCP Test* file, server/plugin 2.3.3, 45 tools, 64 timed calls. The peer-bound refusal matrix, schema/refusal paths, all four batch surfaces, containment/component paths, cleanup, and all-pages artifact scans passed. Exact final reconciliation was **62→62 descendants, 22→22 top-level nodes, 10→10 variables, 12→12 collections, and 12/0/3/0→12/0/3/0 paint/text/effect/grid styles**. No cleanup failure or timeout occurred.
+- `build:all` and `check:plugin` were intentionally not run: this change modifies no plugin source or generated bundle, and running either would unnecessarily refresh Figma and lose the live channel.
+- The SHA-256 of the pre-existing changelog from `## Change 29` to EOF is unchanged at `1549e2f6e9f5fae0cc745de099b1ac17500c281dac9ebd9ebe685ac1c895d65a`.
+
+### Files changed
+
+`scripts/phase14-live-verify.ts`; new `scripts/liveVerifierSupport.ts`; new `src/mcp_server/tests/unit/scripts/phase14LiveVerifier.test.ts`; new `documentation/v2.3.5/prd.md`; new `documentation/v2.3.5/release-changelog.md`; and this new section. No existing v2.3.3 changelog section was edited.
+
 ## Change 29: Change 28 adversarial review — live-found defects and verifier closure (Rev 78)
 
 ### Author: Claude Opus 5 @ 2026-08-02 6:30pm PT

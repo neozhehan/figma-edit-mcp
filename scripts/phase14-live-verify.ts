@@ -13,12 +13,31 @@ import {
     sendCommandToFigma,
 } from "../src/mcp_server/figma-client.js";
 import { logger } from "../src/mcp_server/logger.js";
+import {
+    DiagnosticTail,
+    diagnosticBlock,
+    positiveInteger,
+    retryTransient,
+    verifierFailure,
+} from "./liveVerifierSupport.js";
 
 // The raw-client probes intentionally traverse the same verbose socket path as
-// production. Keep this standalone verifier's stdout reserved for its compact
-// evidence report; assertion failures still include the returned payload.
+// production. Keep stdout reserved for the compact evidence report, but retain
+// a bounded tail so a timeout never destroys the only useful liveness evidence.
+const rawClientDiagnostics = new DiagnosticTail();
+const captureRawLog = (...args: unknown[]) => {
+    args.forEach((arg, index) => {
+        if (index > 0) rawClientDiagnostics.append(" ");
+        rawClientDiagnostics.append(arg);
+    });
+    rawClientDiagnostics.append("\n");
+};
 Object.assign(logger, {
-    info: () => {}, debug: () => {}, warn: () => {}, error: () => {}, log: () => {},
+    info: captureRawLog,
+    debug: captureRawLog,
+    warn: captureRawLog,
+    error: captureRawLog,
+    log: captureRawLog,
 });
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -27,6 +46,14 @@ const serverPath = resolve(process.argv[2] ?? resolve(repoRoot, "dist/server.js"
 const channel = process.argv[3] ?? "2g4h";
 const port = Number(process.argv[4] ?? "3055");
 const runId = `p14-${Date.now().toString(36)}`;
+// The bridge owns the product's 30s initial / 60s inactivity policy. Plugin
+// progress is not yet forwarded as MCP progress, so the SDK cannot implement a
+// true inactivity timer here; use a deliberately larger configurable leak
+// guard and retain diagnostics. v2.3.5 D3 owns the progress-aware replacement.
+const toolTimeoutMs = positiveInteger(process.env.FIGMA_LIVE_TOOL_TIMEOUT_MS, 10 * 60 * 1000);
+const readinessTimeoutMs = positiveInteger(process.env.FIGMA_LIVE_READINESS_TIMEOUT_MS, 15_000);
+const rawMessageTimeoutMs = positiveInteger(process.env.FIGMA_LIVE_RAW_MESSAGE_TIMEOUT_MS, 10_000);
+const rawSettleMs = positiveInteger(process.env.FIGMA_LIVE_RAW_SETTLE_MS, 500);
 const legacyBatchKeys = [
     "nodesDeleted", "nodesFailed", "replacementsApplied", "replacementsFailed",
     "annotationsApplied", "annotationsFailed", "totalCount", "totalNodes",
@@ -34,11 +61,18 @@ const legacyBatchKeys = [
 ];
 
 type AnyRecord = Record<string, any>;
-type LiveClient = { client: Client; transport: StdioClientTransport };
+type LiveClient = {
+    client: Client;
+    transport: StdioClientTransport;
+    diagnostics: DiagnosticTail;
+    name: string;
+};
 
 const evidence: AnyRecord[] = [];
 const record = (name: string, details: AnyRecord = {}) => evidence.push({ name, ...details });
 let operationNumber = 0;
+const diagnosticsByClient = new WeakMap<Client, DiagnosticTail>();
+const activeDiagnostics = new Map<string, DiagnosticTail>([["raw client", rawClientDiagnostics]]);
 
 function structured(result: any): AnyRecord {
     return (result?.structuredContent ?? {}) as AnyRecord;
@@ -57,25 +91,74 @@ async function openClient(name: string): Promise<LiveClient> {
         cwd: repoRoot,
         stderr: "pipe",
     });
-    // The server logs its socket traffic on stderr. Keep it drained but out of
-    // the evidence stream; failed assertions below retain the actual tool result.
-    transport.stderr?.on("data", () => {});
+    const diagnostics = new DiagnosticTail();
+    transport.stderr?.on("data", (chunk) => diagnostics.append(chunk));
     const client = new Client({ name, version: "1.0.0" });
     await client.connect(transport);
-    await wait(700);
-    return { client, transport };
+    diagnosticsByClient.set(client, diagnostics);
+    activeDiagnostics.set(name, diagnostics);
+    return { client, transport, diagnostics, name };
 }
 
 async function call(client: Client, name: string, args: AnyRecord = {}): Promise<any> {
     const current = ++operationNumber;
+    const startedAt = Date.now();
     process.stderr.write(`[live ${current}] ${name} start\n`);
-    const result = await client.callTool(
-        { name, arguments: args },
-        undefined,
-        { timeout: 180_000 },
+    try {
+        const result = await client.callTool(
+            { name, arguments: args },
+            undefined,
+            { timeout: toolTimeoutMs },
+        );
+        process.stderr.write(`[live ${current}] ${name} done in ${Date.now() - startedAt}ms\n`);
+        return result;
+    } catch (error) {
+        const elapsedMs = Date.now() - startedAt;
+        process.stderr.write(`[live ${current}] ${name} failed in ${elapsedMs}ms\n`);
+        throw verifierFailure(
+            error,
+            `[live ${current}] ${name} failed after ${elapsedMs}ms`,
+            diagnosticsByClient.get(client),
+        );
+    }
+}
+
+function messageOf(error: unknown): string {
+    try {
+        return error instanceof Error ? error.message : String(error);
+    } catch {
+        return "";
+    }
+}
+
+function isBridgeNotReady(error: unknown): boolean {
+    return messageOf(error).includes("Not connected to Figma");
+}
+
+async function joinRawChannelWhenReady(): Promise<void> {
+    await retryTransient(
+        () => joinRawChannel(channel).then(() => undefined),
+        isBridgeNotReady,
+        { timeoutMs: readinessTimeoutMs, label: "raw Figma bridge" },
     );
-    process.stderr.write(`[live ${current}] ${name} done\n`);
-    return result;
+}
+
+async function joinMcpChannelWhenReady(client: Client, requestedChannel: string): Promise<any> {
+    return retryTransient(
+        async () => {
+            const result = await call(client, "channel_join", { channel: requestedChannel });
+            const payload = structured(result);
+            if (
+                payload.status === "error"
+                && String(payload.errorMessage ?? "").includes("Not connected to Figma")
+            ) {
+                throw new Error(payload.errorMessage);
+            }
+            return result;
+        },
+        isBridgeNotReady,
+        { timeoutMs: readinessTimeoutMs, label: `MCP bridge for channel '${requestedChannel}'` },
+    );
 }
 
 async function success(client: Client, name: string, args: AnyRecord = {}): Promise<AnyRecord> {
@@ -205,8 +288,19 @@ class RawPeer {
 
     async open(): Promise<void> {
         await new Promise<void>((resolveOpen, rejectOpen) => {
-            this.socket.once("open", () => resolveOpen());
-            this.socket.once("error", rejectOpen);
+            const timer = setTimeout(() => {
+                cleanup();
+                rejectOpen(new Error(`raw peer socket open timeout after ${readinessTimeoutMs}ms`));
+            }, readinessTimeoutMs);
+            const cleanup = () => {
+                clearTimeout(timer);
+                this.socket.off("open", onOpen);
+                this.socket.off("error", onError);
+            };
+            const onOpen = () => { cleanup(); resolveOpen(); };
+            const onError = (error: Error) => { cleanup(); rejectOpen(error); };
+            this.socket.once("open", onOpen);
+            this.socket.once("error", onError);
         });
         await this.next((message) => message?.type === "system" && typeof message?.peerId === "string");
     }
@@ -215,23 +309,48 @@ class RawPeer {
         this.socket.send(JSON.stringify(message));
     }
 
-    async next(predicate: (message: any) => boolean, timeoutMs = 1800): Promise<any> {
+    async next(predicate: (message: any) => boolean, timeoutMs = rawMessageTimeoutMs): Promise<any> {
         const take = () => {
             const index = this.queue.findIndex(predicate);
             return index === -1 ? undefined : this.queue.splice(index, 1)[0];
         };
         const immediate = take();
         if (immediate !== undefined) return immediate;
-        const deadline = Date.now() + timeoutMs;
-        while (Date.now() < deadline) {
-            await new Promise<void>((resolveWait) => {
-                const timer = setTimeout(resolveWait, Math.min(80, Math.max(1, deadline - Date.now())));
-                this.listeners.push(() => { clearTimeout(timer); resolveWait(); });
-            });
-            const found = take();
-            if (found !== undefined) return found;
-        }
-        throw new Error("raw peer message timeout");
+        return new Promise((resolveMessage, rejectMessage) => {
+            const removeListener = () => {
+                const index = this.listeners.indexOf(checkQueue);
+                if (index !== -1) this.listeners.splice(index, 1);
+            };
+            const cleanup = () => {
+                clearTimeout(timer);
+                removeListener();
+            };
+            const checkQueue = () => {
+                const found = take();
+                if (found !== undefined) {
+                    cleanup();
+                    resolveMessage(found);
+                } else {
+                    // The message belonged to another waiter. Re-arm this one.
+                    this.listeners.push(checkQueue);
+                }
+            };
+            const timer = setTimeout(() => {
+                cleanup();
+                const queuedTypes = this.queue
+                    .map((message) => String(message?.type ?? "unknown"))
+                    .join(", ");
+                rejectMessage(new Error(
+                    `raw peer message timeout after ${timeoutMs}ms ` +
+                    `(readyState=${this.socket.readyState}, queuedTypes=[${queuedTypes}])`,
+                ));
+            }, timeoutMs);
+            this.listeners.push(checkQueue);
+        });
+    }
+
+    hasReceived(predicate: (message: any) => boolean): boolean {
+        return this.queue.some(predicate);
     }
 
     async close(): Promise<void> {
@@ -246,8 +365,7 @@ class RawPeer {
 
 async function rawPluginDefense(): Promise<void> {
     connectToFigma(port);
-    await wait(700);
-    await joinRawChannel(channel);
+    await joinRawChannelWhenReady();
     try {
         // Use pre-existing dedicated-file fixtures for refusal probes. These raw
         // calls bypass the MCP schema specifically to reach the plugin's
@@ -301,7 +419,6 @@ async function rawPluginDefense(): Promise<void> {
         });
     } finally {
         await resetRawChannel().catch(() => {});
-        await wait(200);
     }
 }
 
@@ -333,7 +450,7 @@ async function main(): Promise<void> {
         for (const retained of ["reaction_list", "reaction_update"]) assert.ok(toolNames.includes(retained));
         assert.ok(promptNames.includes("swap_overrides_instances"));
 
-        const joined = structured(await call(primary.client, "channel_join", { channel }));
+        const joined = structured(await joinMcpChannelWhenReady(primary.client, channel));
         assert.equal(joined.status, "success", JSON.stringify(joined));
         assert.equal(joined.channel, channel);
         assert.equal(joined.serverVersion, "2.3.3");
@@ -392,11 +509,11 @@ async function main(): Promise<void> {
 
         // D13 live protocol refusals while the real plugin/MCP pair stays bound.
         secondary = await openClient("phase14-live-secondary");
-        let joinResult = structured(await call(secondary.client, "channel_join", { channel }));
+        let joinResult = structured(await joinMcpChannelWhenReady(secondary.client, channel));
         assert.equal(joinResult.status, "error");
         assert.equal(joinResult.errorCode, "CHANNEL_IN_USE");
         const unavailableChannel = `z${runId.slice(-3)}`;
-        joinResult = structured(await call(secondary.client, "channel_join", { channel: unavailableChannel }));
+        joinResult = structured(await joinMcpChannelWhenReady(secondary.client, unavailableChannel));
         assert.equal(joinResult.status, "error");
         assert.equal(joinResult.errorCode, "PLUGIN_PEER_UNAVAILABLE");
 
@@ -414,10 +531,16 @@ async function main(): Promise<void> {
         const ambiguous = await refusedPlugin.next((message) => message?.id === `${runId}-ambiguous`);
         assert.equal(ambiguous.type, "join_error");
         assert.equal(ambiguous.code, "PLUGIN_PEER_AMBIGUOUS");
-        const silence = refusedPlugin.next((message) => message?.message?.command === "page_info", 350)
-            .then(() => false, () => true);
         await success(primary.client, "page_info", { pageIds: [pageId] });
-        assert.equal(await silence, true, "refused plugin received pair traffic");
+        // Start the observation window only after the routed command has
+        // completed. The old pre-call 350ms timer could expire before a slow
+        // page_info was even dispatched, manufacturing a false pass.
+        await wait(rawSettleMs);
+        assert.equal(
+            refusedPlugin.hasReceived((message) => message?.message?.command === "page_info"),
+            false,
+            "refused plugin received pair traffic",
+        );
         await refusedPlugin.close();
 
         const mismatchChannel = `m${runId.slice(-3)}`;
@@ -428,7 +551,7 @@ async function main(): Promise<void> {
             clientType: "plugin", pluginVersion: "0.0.0",
         });
         await mismatchedPlugin.next((message) => message?.message?.id === `${runId}-mismatch-plugin`);
-        joinResult = structured(await call(secondary.client, "channel_join", { channel: mismatchChannel }));
+        joinResult = structured(await joinMcpChannelWhenReady(secondary.client, mismatchChannel));
         assert.equal(joinResult.status, "error");
         assert.equal(joinResult.errorCode, "VERSION_MISMATCH");
         await mismatchedPlugin.close();
@@ -789,6 +912,9 @@ main().then(
     () => process.exit(0),
     (error) => {
         console.error(error?.stack ?? error);
+        for (const [name, diagnostics] of activeDiagnostics) {
+            console.error(diagnosticBlock(name, diagnostics));
+        }
         process.exit(1);
     },
 );
