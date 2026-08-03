@@ -527,9 +527,11 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
         beforeEach(() => {
             loadFontCalls = [];
             mockTextStyle = {
-                id: "style-text-1", type: "TEXT", name: "",
-                // a fresh TextStyle has a concrete default font
-                fontName: { family: "Inter", style: "Regular" },
+                id: "style-text-1", type: "TEXT", name: "Body",
+                // a fresh TextStyle has a concrete default font. Deliberately NOT
+                // Inter (Q19): the handler must load the style's ACTUAL font, so a
+                // hardcoded default-font guess fails this suite.
+                fontName: { family: "Roboto", style: "Regular" },
                 fontSize: 12,
                 remove: mock(() => {}),
             };
@@ -537,9 +539,9 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
             (globalThis as any).figma.loadFontAsync = mock(async (f: any) => { loadFontCalls.push(f); });
         });
 
-        it("loads the style's default font when no fontName is given (no 'unloaded font' error)", async () => {
+        it("loads the style's ACTUAL default font when no fontName is given (Q19: no hardcoded guess)", async () => {
             const res = await createStyle({ type: "TEXT", name: "Body", properties: { fontSize: 24, textCase: "UPPER" } });
-            expect(loadFontCalls).toContainEqual({ family: "Inter", style: "Regular" });
+            expect(loadFontCalls).toContainEqual({ family: "Roboto", style: "Regular" });
             expect(mockTextStyle.fontSize).toBe(24);
             expect(mockTextStyle.textCase).toBe("UPPER");
             expect(res.id).toBe("style-text-1");
@@ -561,7 +563,7 @@ describe("Figma Plugin Handlers & Resolvers (WS5 / R5.1b-g)", () => {
                 set() { throw new Error("boom"); }, get() { return 12; }, configurable: true,
             });
             await expect(
-                createStyle({ type: "TEXT", name: "Body", styleId: "style-text-1", properties: { fontSize: 24 } })
+                createStyle({ type: "TEXT", name: "Body", styleId: "style-text-1", currentStyleName: "Body", properties: { fontSize: 24 } })
             ).rejects.toThrow("boom");
             expect(mockTextStyle.remove).not.toHaveBeenCalled();
         });

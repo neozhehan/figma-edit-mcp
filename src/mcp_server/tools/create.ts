@@ -16,9 +16,9 @@ export function registerCreateTools(server: McpServer) {
                 y: z.number().describe("Y position"),
                 width: z.number().describe("Width of the shape"),
                 height: z.number().describe("Height of the shape"),
-                name: z.string().optional().describe("Optional name for the shape"),
+                name: z.string().min(1).optional().describe("Optional non-empty name for the shape"),
                 parentId: z.string().describe("Parent node ID to append the shape to"),
-                parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
                 useAbsolutePosition: z.boolean().optional().describe("If true and parent is an auto-layout frame, forces absolute positioning to prevent layout shifts."),
                 fillColor: z.object({
                     r: z.number().min(0).max(1).describe("Red component (0-1)"),
@@ -43,6 +43,7 @@ export function registerCreateTools(server: McpServer) {
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created shape"),
                 name: z.string().describe("Name of the created shape"),
+                parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -65,9 +66,9 @@ export function registerCreateTools(server: McpServer) {
                 y: z.number().describe("Y position"),
                 width: z.number().describe("Width of the frame"),
                 height: z.number().describe("Height of the frame"),
-                name: z.string().optional().describe("Optional name for the frame"),
+                name: z.string().min(1).optional().describe("Optional non-empty name for the frame"),
                 parentId: z.string().describe("Parent node ID to append the frame to"),
-                parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
                 fillColor: z.object({
                     r: z.number().min(0).max(1).describe("Red component (0-1)"),
                     g: z.number().min(0).max(1).describe("Green component (0-1)"),
@@ -96,6 +97,7 @@ export function registerCreateTools(server: McpServer) {
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created frame"),
                 name: z.string().describe("Name of the created frame"),
+                parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -105,7 +107,7 @@ export function registerCreateTools(server: McpServer) {
             const result = await sendCommandToFigma("create_frame", {
                 ...params,
                 fillColor: params.fillColor || { r: 1, g: 1, b: 1, a: 1 },
-                name: params.name || "Frame",
+                name: params.name ?? "Frame",
             });
             return toolResult(result);
         }
@@ -121,21 +123,23 @@ export function registerCreateTools(server: McpServer) {
                 x: z.number().describe("X position"),
                 y: z.number().describe("Y position"),
                 text: z.string().describe("Text content"),
-                fontSize: z.number().optional().describe("Font size (default: 14)"),
-                fontWeight: z.number().optional().describe("Font weight (e.g., 400 for Regular, 700 for Bold)"),
+                fontSize: z.number().min(1).optional().describe("Font size, minimum 1 (default: 14)"),
+                fontWeight: z.number().int().min(100).max(900).multipleOf(100).optional()
+                    .describe("Font weight: 100–900 in increments of 100 (default: 400)"),
                 fontColor: z.object({
                     r: z.number().min(0).max(1).describe("Red component (0-1)"),
                     g: z.number().min(0).max(1).describe("Green component (0-1)"),
                     b: z.number().min(0).max(1).describe("Blue component (0-1)"),
                     a: z.number().min(0).max(1).optional().describe("Alpha component (0-1)"),
                 }).optional().describe("Font color in RGBA format"),
-                name: z.string().optional().describe("Semantic layer name for the text node"),
+                name: z.string().min(1).optional().describe("Optional non-empty semantic layer name for the text node"),
                 parentId: z.string().describe("Parent node ID to append the text to"),
-                parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created text node"),
                 name: z.string().describe("Name of the created text node"),
+                parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -144,10 +148,10 @@ export function registerCreateTools(server: McpServer) {
         async (params: any) => {
             const result = await sendCommandToFigma("create_text", {
                 ...params,
-                fontSize: params.fontSize || 14,
-                fontWeight: params.fontWeight || 400,
+                fontSize: params.fontSize ?? 14,
+                fontWeight: params.fontWeight ?? 400,
                 fontColor: params.fontColor || { r: 0, g: 0, b: 0, a: 1 },
-                name: params.name || "Text",
+                name: params.name ?? "Text",
             });
             return toolResult(result);
         }
@@ -161,15 +165,16 @@ export function registerCreateTools(server: McpServer) {
             description: "Create a node from an SVG markup string.",
             inputSchema: z.object({
                 svg: z.string().describe("The SVG XML string"),
-                name: z.string().optional().describe("Name for the new node"),
+                name: z.string().min(1).optional().describe("Optional non-empty name for the new node"),
                 parentId: z.string().describe("Parent ID to append to"),
-                parentNodeName: z.string().optional().describe("Parent Name to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
                 x: z.number().optional().describe("X position"),
                 y: z.number().optional().describe("Y position"),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created node"),
                 name: z.string().describe("Name of the created node"),
+                parentId: z.string().optional().describe("ID of the parent the node was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -189,11 +194,12 @@ export function registerCreateTools(server: McpServer) {
             description: "Convert an existing frame into a main component.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the frame to convert to a component"),
-                nodeName: z.string().describe("Name of the node to verify against"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component"),
                 name: z.string().describe("Name of the created component"),
+                parentId: z.string().optional().describe("ID of the parent the component was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -217,11 +223,13 @@ export function registerCreateTools(server: McpServer) {
                 x: z.number().describe("X position"),
                 y: z.number().describe("Y position"),
                 parentId: z.string().describe("Parent node ID to append the instance to"),
-                parentNodeName: z.string().optional().describe("Name of the parent node to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component instance"),
                 name: z.string().describe("Name of the component instance"),
+                componentId: z.string().describe("ID of the component the instance was created from"),
+                parentId: z.string().optional().describe("ID of the parent the instance was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -242,21 +250,22 @@ export function registerCreateTools(server: McpServer) {
             inputSchema: z.object({
                 components: z.array(z.object({
                     nodeId: z.string().describe("ID of the component"),
-                    nodeName: z.string().describe("Current name (for verification)"),
+                    nodeName: z.string().describe("The component's current exact name, passed back verbatim from `node_info`."),
                     propertyValues: z.array(z.string()).describe("Values corresponding to properties array")
                 })).describe("Array of component objects"),
                 properties: z.array(z.string()).describe("Array of property names (e.g. ['Size', 'State'])"),
-                componentSetName: z.string().optional().describe("Name for the component set"),
-                parentId: z.string().optional().describe("Parent frame to place the set in"),
-                parentNodeName: z.string().optional().describe("Name of parent node (required if parentId provided, for verification)"),
+                componentSetName: z.string().min(1).optional().describe("Optional non-empty name for the component set"),
+                parentId: z.string().describe("ID of the appendable parent container (frame, group, page, section, etc.) to place the set in; discover it with node_info"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the created component set"),
                 name: z.string().describe("Name of the component set"),
+                parentId: z.string().optional().describe("ID of the parent the set was placed into — confirm containment without a follow-up read"),
                 type: z.string().optional().describe("Node type (COMPONENT_SET)"),
                 childCount: z.number().optional().describe("Number of variants in the set"),
                 warning: z.string().optional().describe("Warning message if some properties could not be read"),
-                variantProperties: z.record(z.any()).optional().describe("Variant properties definition")
+                variantProperties: z.record(z.string(), z.any()).optional().describe("Variant properties definition")
             }),
             annotations: {
                 openWorldHint: true
@@ -264,50 +273,6 @@ export function registerCreateTools(server: McpServer) {
         },
         async (params: any) => {
             const result = await sendCommandToFigma("create_component_set", params);
-            return toolResult(result);
-        }
-    );
-
-    // 8. Create Connections Tool
-    server.registerTool(
-        "create_connection",
-        {
-            title: "Create Connections",
-            description: "Create connector lines between nodes, or set/check the default connector template. Pass `connectorId` to set a default, `connections` to draw lines, or nothing to check the current default.",
-            inputSchema: z.object({
-                connectorId: z
-                    .string()
-                    .optional()
-                    .describe("Optional: The ID of the connector node to set as default template"),
-                connections: z
-                    .array(
-                        z.object({
-                            startNodeId: z.string().describe("ID of the starting node"),
-                            startNodeName: z.string().describe("Name of the starting node"),
-                            endNodeId: z.string().describe("ID of the ending node"),
-                            endNodeName: z.string().describe("Name of the ending node"),
-                            text: z.string().optional().describe("Optional text to display on the connector"),
-                        })
-                    )
-                    .optional()
-                    .describe("Optional: Array of node connections to create"),
-            }),
-            outputSchema: looseOutput({
-                success: z.boolean().optional().describe("Whether the connection command succeeded"),
-                message: z.string().optional().describe("Status message"),
-                defaultConnectorId: z.string().optional().describe("The ID of the default connector style"),
-                results: z.any().optional().describe("Execution details"),
-            }),
-            annotations: {
-                openWorldHint: true
-            }
-        },
-        async ({ connectorId, connections }: any) => {
-            const result = await sendCommandToFigma("create_connection", {
-                connectorId,
-                connections,
-                checkDefault: !connectorId && !connections
-            });
             return toolResult(result);
         }
     );

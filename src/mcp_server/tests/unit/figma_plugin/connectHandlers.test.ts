@@ -1,4 +1,35 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { execFileSync } from "node:child_process";
+import { JOIN_ATTEMPT_RELEASED_CHANNEL } from "../../../../shared/channelProtocol.js";
+import { SERVER_VERSION } from "../../../../shared/version.js";
+
+const PHASE9_JOIN_VERSIONS = {
+    serverVersion: SERVER_VERSION,
+    pluginVersion: SERVER_VERSION,
+};
+
+const CONNECT_PAYLOAD_HANDLER_HARNESS =
+    "src/mcp_server/tests/fixtures/connectPayloadHandlerHarness.ts";
+const CONNECT_PAYLOAD_MARKER = "__CONNECT_PAYLOAD__";
+
+function getRealConnectPayload(scenario: "failure" | "timeout"): any {
+    const output = execFileSync(
+        process.execPath,
+        [CONNECT_PAYLOAD_HANDLER_HARNESS, scenario],
+        {
+            cwd: process.cwd(),
+            encoding: "utf8",
+            timeout: 5_000,
+        },
+    );
+    const payloadLine = output
+        .split(/\r?\n/)
+        .find(line => line.startsWith(CONNECT_PAYLOAD_MARKER));
+    if (!payloadLine) {
+        throw new Error(`Real connect-payload harness returned no payload: ${output}`);
+    }
+    return JSON.parse(payloadLine.slice(CONNECT_PAYLOAD_MARKER.length));
+}
 
 // Phase 4 §3a/§3b: Behavioral + snapshot tests for getConnectPayload.
 //
@@ -8,11 +39,14 @@ import { describe, it, expect, beforeEach, mock } from "bun:test";
 // Security Gates tests when run in the same bun process. The Phase 2 getPagesInfo
 // tests avoid this by importing nodeReaders.js (which does NOT chain to main.js).
 //
-// Therefore, this file uses TWO complementary strategies:
+// Therefore, this file uses THREE complementary strategies:
 // A) Direct handler invocation via nodeReaders.js-style figma sandbox mocking
 //    (for getPagesInfo handler tests that DO NOT require main.js).
 // B) Integration tests through the join_channel MCP tool layer, which exercises
-//    getConnectPayload's response shapes end-to-end via mocked sendCommandToFigma.
+//    connect-payload response shapes via mocked sendCommandToFigma.
+// C) A subprocess that imports main.js, invokes the actual getConnectPayload
+//    handler against its real module-owned state, and returns that exact payload
+//    to strategy B's registered callback without leaking main.js side effects.
 //
 // The three connect-payload shapes are validated as snapshots via strategy (B).
 // The loadAllPagesAsync regression is validated via strategy (A) + static analysis.
@@ -44,15 +78,27 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
     });
 
     it("all error code branches use return, not throw", () => {
-        const errorCodes = ["SCOPE_DELETED", "SCOPE_INVALID", "DOCUMENT_LOAD_FAILED", "UNKNOWN_ERROR"];
-        for (const code of errorCodes) {
-            const pattern = new RegExp(`errorCode:\\s*["']${code}["']`);
-            expect(src).toMatch(pattern);
+        // Legacy connect-payload codes are quoted literals in this handler.
+        for (const code of ["SCOPE_DELETED", "SCOPE_INVALID"]) {
+            expect(src).toMatch(new RegExp(`errorCode:\\s*["']${code}["']`));
         }
+        // Change 8 (F3): the scope-page load branch no longer mints its own
+        // `DOCUMENT_LOAD_FAILED` — a code that was never in the D9 inventory and
+        // so could never earn a playbook entry. It goes through the bounded
+        // Phase 10 coordinator and forwards whichever ratified code it raised.
+        expect(src, "the scope page load must use the bounded coordinator").toMatch(/pageLoads\.load\(/);
+        // Change 10 (C10-T1): the code is forwarded through the shared projector
+        // rather than an inline literal — asserted behaviourally by the seam
+        // tests below, and structurally by the delegation check further down.
+        expect(src, "DOCUMENT_LOAD_FAILED is retired").not.toMatch(/["']DOCUMENT_LOAD_FAILED["']/);
+        // UNKNOWN_ERROR must be the imported CONSTANT, not a re-hardcoded
+        // literal (P4-5 dedup, 2026-07-24): require the identifier form and
+        // reject a quoted literal, so the fix cannot silently regress.
+        expect(src, "connectHandlers must use the imported UNKNOWN_ERROR constant").toMatch(/errorCode:\s*UNKNOWN_ERROR\b/);
+        expect(src, "connectHandlers must not re-hardcode a quoted \"UNKNOWN_ERROR\"").not.toMatch(/errorCode:\s*["']UNKNOWN_ERROR["']/);
         // No throw statements with error codes
         expect(src).not.toMatch(/throw\s+new\s+Error\([^)]*SCOPE_DELETED/);
         expect(src).not.toMatch(/throw\s+new\s+Error\([^)]*SCOPE_INVALID/);
-        expect(src).not.toMatch(/throw\s+new\s+Error\([^)]*DOCUMENT_LOAD_FAILED/);
     });
 
     it("readonly branch does not call loadAsync", () => {
@@ -61,8 +107,22 @@ describe("Phase 4 §3a (static): getConnectPayload returns structured errors, ne
         expect(beforePageScope).not.toMatch(/\.loadAsync\(/);
     });
 
-    it("page-scope branch calls loadAsync on the resolved PAGE node", () => {
-        expect(src).toMatch(/await\s+scopeNode\.loadAsync\(\)/);
+    it("page-scope branch loads the resolved PAGE node through the bounded coordinator", () => {
+        // Change 8 (F3): the load is no longer a bare `scopeNode.loadAsync()`.
+        // It goes through the Phase 10 coordinator so it inherits the Q12
+        // per-page timeout — this sits on channel_join's second leg, where an
+        // unbounded load wedged the join itself.
+        expect(src).toMatch(/await\s+pageLoads\.load\(scopeNode\s+as\s+PageNode\)/);
+        expect(src, "no unbounded direct loadAsync may remain").not.toMatch(/scopeNode\s*(as\s+PageNode\s*)?\)?\.loadAsync\(\)/);
+        // Change 10 (C10-T1): the failure shape comes from the shared projector
+        // rather than a hand-built literal, so the key that C9-F1 got wrong is
+        // decided in exactly one place. This asserts the handler DELEGATES; the
+        // behavioural seam test below proves the resulting shape survives the
+        // plugin -> channel_join boundary. The previous assertion pinned the
+        // literal spelling `details: loaded.error.details`, which a routine
+        // refactor could satisfy or break without changing behaviour either way.
+        expect(src).toMatch(/return\s+toConnectPayloadError\(loaded\.error\)/);
+        expect(src, "the connect-payload error shape must not be rebuilt inline").not.toMatch(/errorCode:\s*loaded\.error\.code/);
     });
 
     it("node-scope branch includes path array and descendantCount", () => {
@@ -84,7 +144,7 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
     beforeEach(async () => {
         mock.module("../../../figma-client.js", () => ({
             sendCommandToFigma: mock(() => Promise.resolve({})),
-            joinChannel: mock(() => Promise.resolve()),
+            joinChannel: mock(() => Promise.resolve(PHASE9_JOIN_VERSIONS)),
             resetChannel: mock(() => {}),
         }));
         const clientMod = await import("../../../figma-client.js");
@@ -124,6 +184,12 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
 
     it("readonly payload: exact shape", async () => {
         const payload = {
+            // The plugin payload is not authoritative for transport-owned
+            // identity. These values exercise the merge order explicitly.
+            status: "error",
+            channel: "spoofed-channel",
+            serverVersion: "spoofed-server",
+            pluginVersion: "spoofed-plugin",
             editableScopeType: "readonly",
             allowEditNode: false,
             allowEditVariable: false,
@@ -144,6 +210,8 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         const parsed = JSON.parse(r.content[0].text);
         expect(parsed.status).toBe("success");
         expect(parsed.channel).toBe("ch1");
+        expect(parsed.serverVersion).toBe(SERVER_VERSION);
+        expect(parsed.pluginVersion).toBe(SERVER_VERSION);
         expect(parsed.editableScopeType).toBe("readonly");
         expect(parsed.allowEditNode).toBe(false);
         expect(parsed.allowEditVariable).toBe(false);
@@ -188,6 +256,8 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         const parsed = JSON.parse(r.content[0].text);
         expect(parsed.status).toBe("success");
         expect(parsed.channel).toBe("ch2");
+        expect(parsed.serverVersion).toBe(SERVER_VERSION);
+        expect(parsed.pluginVersion).toBe(SERVER_VERSION);
         expect(parsed.editableScopeType).toBe("page");
         expect(parsed.allowEditNode).toBe("page");
         expect(parsed.allowEditVariable).toBe(false);
@@ -232,6 +302,8 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
         const parsed = JSON.parse(r.content[0].text);
         expect(parsed.status).toBe("success");
         expect(parsed.channel).toBe("ch3");
+        expect(parsed.serverVersion).toBe(SERVER_VERSION);
+        expect(parsed.pluginVersion).toBe(SERVER_VERSION);
         expect(parsed.editableScopeType).toBe("node");
         expect(parsed.allowEditNode).toBe("node");
         expect(parsed.allowEditVariable).toBe(true);
@@ -254,16 +326,18 @@ describe("Phase 4 §3b: Snapshot — readonly scope (via join_channel integratio
 describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel integration)", () => {
     let registeredTools: Record<string, Function>;
     let sendCommandToFigma: any;
+    let joinChannel: any;
     let resetChannel: any;
 
     beforeEach(async () => {
         mock.module("../../../figma-client.js", () => ({
             sendCommandToFigma: mock(() => Promise.resolve({})),
-            joinChannel: mock(() => Promise.resolve()),
+            joinChannel: mock(() => Promise.resolve(PHASE9_JOIN_VERSIONS)),
             resetChannel: mock(() => {}),
         }));
         const clientMod = await import("../../../figma-client.js");
         sendCommandToFigma = clientMod.sendCommandToFigma;
+        joinChannel = clientMod.joinChannel;
         resetChannel = clientMod.resetChannel;
 
         const channelMod = await import("../../../tools/channel.js");
@@ -328,20 +402,104 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect((resetChannel as any).mock.calls.length).toBe(1);
     });
 
-    it("DOCUMENT_LOAD_FAILED: structured error + resetChannel", async () => {
+    it("PAGE_LOAD_FAILED: structured error + resetChannel", async () => {
         (sendCommandToFigma as any).mockImplementation((cmd: string) =>
             cmd === "get_connect_payload"
-                ? Promise.resolve({ errorCode: "DOCUMENT_LOAD_FAILED", errorMessage: "load fail" })
+                ? Promise.resolve({ errorCode: "PAGE_LOAD_FAILED", errorMessage: "load fail" })
                 : Promise.resolve({}),
         );
         const r = await registeredTools["join_channel"]({ channel: "ch1" });
         const parsed = JSON.parse(r.content[0].text);
         expect(parsed.status).toBe("error");
-        expect(parsed.errorCode).toBe("DOCUMENT_LOAD_FAILED");
+        expect(parsed.errorCode).toBe("PAGE_LOAD_FAILED");
         expect((resetChannel as any).mock.calls.length).toBe(1);
     });
 
-    it("UNKNOWN_ERROR from transport: message appended + resetChannel", async () => {
+    it("P4-4 follow-up: get_connect_payload's structured error forwards details as errorDetails", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve({
+                    errorCode: "SCOPE_INVALID",
+                    errorMessage: "bad state",
+                    details: { reportedScope: "node", scopeRootId: null },
+                })
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SCOPE_INVALID");
+        expect(parsed.errorDetails).toEqual({ reportedScope: "node", scopeRootId: null });
+    });
+
+    // Change 11 (C11-T1): the real seam. C9-F1 was a producer/consumer key
+    // mismatch that every existing test missed, because the producer side was
+    // only ever asserted by reading handler source and the consumer side was
+    // only ever fed a hand-written payload. Q27 forbids the plugin bundle
+    // importing `src/shared`, so the two sides cannot share a constant and a
+    // test is the only possible guard. Change 10 drove a real coordinator and
+    // projector but skipped getConnectPayload itself, so handler-local field
+    // loss still passed. The subprocess harness imports the real main.js-owned
+    // state and invokes the actual handler without leaking its UI side effects
+    // into this test process; its exact return then enters the real registered
+    // tool. Red-proof: deleting loaded.error.details in connectHandlers.ts makes
+    // both diagnostic assertions fail while the former Change 10 tests passed.
+    it("C11-T1 seam: the real handler's page-load diagnostics survive plugin -> channel_join", async () => {
+        const payload = getRealConnectPayload("failure");
+        expect(payload.details).toEqual({
+            pageId: "page-scope",
+            cause: "scope page unavailable",
+        });
+
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve(payload)
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("PAGE_LOAD_FAILED");
+        // The diagnostics C9-F1 silently dropped must reach the caller.
+        expect(parsed.errorDetails.pageId).toBe("page-scope");
+        expect(parsed.errorDetails.cause).toContain("scope page unavailable");
+    });
+
+    it("C11-T1 seam: the real handler's timeoutMs survives the same boundary", async () => {
+        const payload = getRealConnectPayload("timeout");
+        expect(payload.details).toEqual({ pageId: "page-slow", timeoutMs: 5 });
+
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve(payload)
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+
+        expect(parsed.errorCode).toBe("PAGE_LOAD_TIMEOUT");
+        expect(parsed.errorDetails).toEqual({ pageId: "page-slow", timeoutMs: 5 });
+    });
+
+    it("P4-4 follow-up: no details field on the payload means no errorDetails key at all", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve({ errorCode: "SCOPE_INVALID", errorMessage: "bad state" })
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect("errorDetails" in parsed).toBe(false);
+    });
+
+    // Change 12 (C12-F1): this case used to assert UNKNOWN_ERROR. Leg 1 codes
+    // its uncoded local failures as CHANNEL_JOIN_FAILED at origin (Q20), but
+    // leg 2 rides the generic sendCommandToFigma path whose timeout rejects with
+    // a plain Error — so one agent-visible outcome had two codes depending on
+    // which leg produced it. Live-reproduced on channel `gt93`.
+    it("C12-F1: an uncoded scope-payload failure is CHANNEL_JOIN_FAILED, not UNKNOWN_ERROR", async () => {
         (sendCommandToFigma as any).mockImplementation((cmd: string) =>
             cmd === "get_connect_payload"
                 ? Promise.reject(new Error("Request timed out after 30000ms"))
@@ -350,15 +508,249 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         const r = await registeredTools["join_channel"]({ channel: "ch1" });
         const parsed = JSON.parse(r.content[0].text);
         expect(parsed.status).toBe("error");
-        expect(parsed.errorCode).toBe("UNKNOWN_ERROR");
-        expect(parsed.errorMessage).toMatch(/timed out/);
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        expect(parsed.errorDetails).toEqual({ phase: "scope-payload" });
+        // The origin message survives, and the recovery names the RIGHT step:
+        // the join succeeded and the scope read failed. Naming the leg-1 cause
+        // here would repeat the C6-F3/P9-F7 wrong-cause defect.
+        // The borrowed transport message is terminated before the recovery is
+        // appended, so it does not run into the next clause.
+        expect(parsed.errorMessage).toContain("Request timed out after 30000ms. The channel was joined");
+        expect(parsed.errorMessage).toContain("did not return the editable scope");
+        expect(parsed.errorMessage).toContain("Call channel_join with 'ch1' again");
+        expect(parsed.errorMessage).not.toContain("did not acknowledge the join");
         expect((resetChannel as any).mock.calls.length).toBe(1);
     });
 
-    it("PLUGIN_DISCONNECTED from transport: Connection closed", async () => {
+    it("C12-F1: leg 1's uncoded failure keeps its own distinct cause, unchanged", async () => {
+        // The join-acknowledgement wording must stay on leg 1 only, so the two
+        // phases remain distinguishable from the message alone.
+        (joinChannel as any).mockRejectedValue(
+            Object.assign(new Error("Request to Figma timed out"), {
+                code: "CHANNEL_JOIN_FAILED",
+            }),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        expect(parsed.errorMessage).toContain("did not acknowledge the join");
+        expect(parsed.errorMessage).not.toContain("The channel was joined");
+    });
+
+    it("C12-F1: an uncoded scope-payload failure still discloses a released predecessor", async () => {
+        (joinChannel as any).mockResolvedValue({
+            ...PHASE9_JOIN_VERSIONS,
+            releasedChannel: "good",
+        });
         (sendCommandToFigma as any).mockImplementation((cmd: string) =>
             cmd === "get_connect_payload"
-                ? Promise.reject(new Error("Connection closed"))
+                ? Promise.reject(new Error("Request to Figma timed out"))
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "wanted" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        // Coding the leg must not cost the P9-F2 recovery evidence: the phase
+        // and the authoritative released channel coexist in one plain record.
+        expect(parsed.errorDetails).toEqual({
+            phase: "scope-payload",
+            releasedChannel: "good",
+        });
+        expect(parsed.errorMessage).toContain("Call channel_join with 'wanted' again");
+        expect(parsed.errorMessage).toContain(
+            "disconnected the previously joined channel 'good'",
+        );
+    });
+
+    it("C12-F1: an explicit code on leg 2 passes through untouched (Q20), including UNKNOWN_ERROR", async () => {
+        for (const code of ["PLUGIN_DISCONNECTED", "UNKNOWN_ERROR", "SOME_FUTURE_CODE"]) {
+            (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+                cmd === "get_connect_payload"
+                    ? Promise.reject(Object.assign(new Error(`origin ${code}`), { code }))
+                    : Promise.resolve({}),
+            );
+            const r = await registeredTools["join_channel"]({ channel: "ch1" });
+            const parsed = JSON.parse(r.content[0].text);
+            expect(parsed.errorCode, `${code} must not be reclassified`).toBe(code);
+            // No phase is injected onto an error that already carried a code.
+            expect(parsed.errorDetails?.phase).toBeUndefined();
+        }
+    });
+
+    it("C12-F1: a hostile thrown value cannot make the coding path throw", async () => {
+        const hostile = new Proxy({}, {
+            get: () => { throw new Error("hostile getter"); },
+            ownKeys: () => { throw new Error("hostile enumeration"); },
+        });
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(hostile)
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        // It resolves in band rather than escaping; the code is not required to
+        // be CHANNEL_JOIN_FAILED here, only that reporting stayed total.
+        expect(typeof parsed.errorCode).toBe("string");
+        expect(typeof parsed.errorMessage).toBe("string");
+    });
+
+    it("C13-F1: unreadable optional details do not erase a readable explicit code and message", async () => {
+        const origin = {
+            code: "SOME_FUTURE_CODE",
+            message: "authored future failure",
+            get details(): unknown {
+                throw new Error("details getter");
+            },
+        };
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(origin)
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SOME_FUTURE_CODE");
+        expect(parsed.errorMessage).toBe("authored future failure");
+        expect(parsed.errorDetails).toBeUndefined();
+    });
+
+    it("C13-F1: a hostile value thrown by the details getter cannot reject the registered callback", async () => {
+        const nestedHostile = new Proxy({}, {
+            get: () => { throw new Error("nested hostile getter"); },
+            ownKeys: () => { throw new Error("nested hostile enumeration"); },
+        });
+        const origin = {
+            code: "SOME_FUTURE_CODE",
+            message: "authored future failure",
+            get details(): unknown {
+                throw nestedHostile;
+            },
+        };
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(origin)
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SOME_FUTURE_CODE");
+        expect(parsed.errorMessage).toBe("authored future failure");
+        expect(parsed.errorDetails).toBeUndefined();
+    });
+
+    it("C13-F2: an unknown code colliding with Object.prototype passes through verbatim", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject({
+                    code: "toString",
+                    message: "authored future failure",
+                    details: { operand: "future" },
+                })
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("toString");
+        expect(parsed.errorMessage).toBe("authored future failure");
+        expect(parsed.errorDetails).toEqual({ operand: "future" });
+    });
+
+    it("C13-F1: an unreadable leg-1 release marker cannot erase a readable coded failure", async () => {
+        const origin = {
+            code: "SOME_FUTURE_CODE",
+            message: "authored leg-1 failure",
+            details: { operand: "future" },
+            get [Symbol.for("figma-edit-mcp.joinAttemptReleasedChannel")](): unknown {
+                throw new Error("release marker getter");
+            },
+        };
+        (joinChannel as any).mockRejectedValue(origin);
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SOME_FUTURE_CODE");
+        expect(parsed.errorMessage).toBe("authored leg-1 failure");
+        expect(parsed.errorDetails).toEqual({ operand: "future" });
+    });
+
+    // Change 14 (C14-T1): the leg-1 case C13-F1's own text describes.
+    //
+    // C13-F1 reported that joinFailure "reread optional `details` without a
+    // guard" and guarded it. On leg 2 that guard is not load-bearing, because
+    // codeScopePayloadFailure normalizes BEFORE calling joinFailure, so the
+    // hostile origin never arrives. Leg 1 hands joinFailure the raw error from
+    // joinChannel, so leg 1 is the only path where the details guard does work
+    // — and the committed leg-1 regression makes only the Symbol marker throw
+    // while leaving `details` readable. Deleting the guard therefore broke no
+    // test. Verified by mutation: re-reading `(error as any).details` keeps all
+    // 41 committed tests green and fails only the two below.
+    it("C14-T1: an unreadable leg-1 details getter cannot erase a readable coded failure", async () => {
+        const origin = {
+            code: "SOME_FUTURE_CODE",
+            message: "authored leg-1 failure",
+            get details(): unknown {
+                throw new Error("details getter");
+            },
+        };
+        (joinChannel as any).mockRejectedValue(origin);
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        // A readable code and message stay authoritative; the unreadable
+        // OPTIONAL field is omitted rather than being allowed to fail the
+        // report or downgrade a real code to UNKNOWN_ERROR.
+        expect(parsed.errorCode).toBe("SOME_FUTURE_CODE");
+        expect(parsed.errorMessage).toBe("authored leg-1 failure");
+        expect(parsed.errorDetails).toBeUndefined();
+    });
+
+    it("C14-T1: leg 1 survives an unreadable details getter and release marker together", async () => {
+        // The compound case: the committed regression covers the marker alone
+        // and the test above covers details alone. Neither proves the snapshot
+        // holds when both hostile reads occur in one value.
+        const nestedHostile = new Proxy({}, {
+            get: () => { throw new Error("nested hostile getter"); },
+            ownKeys: () => { throw new Error("nested hostile enumeration"); },
+        });
+        const origin = {
+            code: "SOME_FUTURE_CODE",
+            message: "authored leg-1 failure",
+            get details(): unknown {
+                throw nestedHostile;
+            },
+            get [Symbol.for("figma-edit-mcp.joinAttemptReleasedChannel")](): unknown {
+                throw new Error("release marker getter");
+            },
+        };
+        (joinChannel as any).mockRejectedValue(origin);
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SOME_FUTURE_CODE");
+        expect(parsed.errorMessage).toBe("authored leg-1 failure");
+        expect(parsed.errorDetails).toBeUndefined();
+        // An unreadable marker is authoritative absence, never a fabricated
+        // predecessor: no released-channel suffix may appear.
+        expect(parsed.errorMessage).not.toContain("disconnected the previously joined channel");
+    });
+
+    it("PLUGIN_DISCONNECTED from transport: coded at origin, passed through (Q20)", async () => {
+        // Mirrors figma-client's close handler, which now codes the rejection
+        // at origin instead of leaving channel.ts to sniff message prose.
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(Object.assign(new Error("Connection closed"), { code: "PLUGIN_DISCONNECTED" }))
                 : Promise.resolve({}),
         );
         const r = await registeredTools["join_channel"]({ channel: "ch1" });
@@ -366,6 +758,249 @@ describe("Phase 4 §3a: getConnectPayload error envelopes (via join_channel inte
         expect(parsed.status).toBe("error");
         expect(parsed.errorCode).toBe("PLUGIN_DISCONNECTED");
         expect((resetChannel as any).mock.calls.length).toBe(1);
+    });
+
+    it("Phase 9: an awaited leave failure never replaces the originating leg-2 error", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(Object.assign(
+                    new Error("The bound peer disconnected during scope read"),
+                    {
+                        code: "PLUGIN_DISCONNECTED",
+                        details: { pluginPeerId: "plugin-old" },
+                    },
+                ))
+                : Promise.resolve({}),
+        );
+        (resetChannel as any).mockRejectedValue(
+            new Error("leave acknowledgement timed out"),
+        );
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("PLUGIN_DISCONNECTED");
+        expect(parsed.errorMessage).toContain("disconnected");
+        expect(parsed.errorDetails).toEqual({ pluginPeerId: "plugin-old" });
+        expect((resetChannel as any).mock.calls.length).toBe(1);
+    });
+
+    it("P9-F2: a thrown leg-2 failure discloses and preserves the healthy predecessor", async () => {
+        (joinChannel as any).mockResolvedValue({
+            ...PHASE9_JOIN_VERSIONS,
+            releasedChannel: "good",
+        });
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(Object.assign(
+                    new Error("The scope read failed after admission."),
+                    {
+                        code: "PLUGIN_DISCONNECTED",
+                        details: { pluginPeerId: "plugin-new" },
+                    },
+                ))
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({
+            channel: "scope-fails",
+        });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("PLUGIN_DISCONNECTED");
+        expect(parsed.errorMessage).toContain(
+            "disconnected the previously joined channel 'good'",
+        );
+        expect(parsed.errorDetails).toEqual({
+            pluginPeerId: "plugin-new",
+            releasedChannel: "good",
+        });
+        expect((resetChannel as any).mock.calls).toEqual([
+            [{ releasedChannel: "good" }],
+        ]);
+    });
+
+    it("P9-F2: a structured leg-2 failure discloses and preserves the healthy predecessor", async () => {
+        (joinChannel as any).mockResolvedValue({
+            ...PHASE9_JOIN_VERSIONS,
+            releasedChannel: "good",
+        });
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve({
+                    errorCode: "SCOPE_INVALID",
+                    errorMessage: "The editable scope is invalid.",
+                    details: { scopeRootId: "stale-node" },
+                })
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({
+            channel: "scope-fails",
+        });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SCOPE_INVALID");
+        expect(parsed.errorMessage).toContain(
+            "disconnected the previously joined channel 'good'",
+        );
+        expect(parsed.errorDetails).toEqual({
+            scopeRootId: "stale-node",
+            releasedChannel: "good",
+        });
+        expect((resetChannel as any).mock.calls).toEqual([
+            [{ releasedChannel: "good" }],
+        ]);
+    });
+
+    it("C6-F6: leg-2 origin details cannot fabricate released-channel evidence", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve({
+                    errorCode: "SCOPE_INVALID",
+                    errorMessage: "The editable scope is invalid.",
+                    details: {
+                        releasedChannel: "fabricated",
+                        scopeRootId: "stale-node",
+                    },
+                })
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({
+            channel: "scope-fails",
+        });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("SCOPE_INVALID");
+        expect(parsed.errorMessage).toBe("The editable scope is invalid.");
+        expect(parsed.errorMessage).not.toContain(
+            "disconnected the previously joined channel",
+        );
+        // Q20 preserves the plugin's origin details verbatim, but nests the
+        // record so its reserved key cannot masquerade as trusted top-level
+        // recovery evidence.
+        expect(parsed.errorDetails).toEqual({
+            originDetails: {
+                releasedChannel: "fabricated",
+                scopeRootId: "stale-node",
+            },
+        });
+        expect((resetChannel as any).mock.calls).toEqual([[]]);
+    });
+
+    it("C6-F4: an explicit structured UNKNOWN_ERROR preserves its canonical message", async () => {
+        const originMessage =
+            "An unexpected error occurred while joining the channel: scope read exploded.";
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve({
+                    errorCode: "UNKNOWN_ERROR",
+                    errorMessage: originMessage,
+                })
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("UNKNOWN_ERROR");
+        expect(parsed.errorMessage).toBe(originMessage);
+        expect(parsed.errorDetails).toBeUndefined();
+        expect((resetChannel as any).mock.calls).toEqual([[]]);
+    });
+
+    it("C6-F4: released-channel disclosure appends to explicit UNKNOWN_ERROR without rewrapping it", async () => {
+        const originMessage =
+            "An unexpected error occurred while joining the channel: scope read exploded.";
+        (joinChannel as any).mockResolvedValue({
+            ...PHASE9_JOIN_VERSIONS,
+            releasedChannel: "good",
+        });
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve({
+                    errorCode: "UNKNOWN_ERROR",
+                    errorMessage: originMessage,
+                    details: { phase: "scope-payload" },
+                })
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({
+            channel: "scope-fails",
+        });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("UNKNOWN_ERROR");
+        expect(parsed.errorMessage).toBe(
+            `${originMessage} This attempt also disconnected the previously joined channel 'good'; call channel_join with 'good' to restore it.`,
+        );
+        expect(parsed.errorDetails).toEqual({
+            phase: "scope-payload",
+            releasedChannel: "good",
+        });
+        expect((resetChannel as any).mock.calls).toEqual([
+            [{ releasedChannel: "good" }],
+        ]);
+    });
+
+    it("P9-F2: internal release metadata is absent from a successful public envelope", async () => {
+        (joinChannel as any).mockResolvedValue({
+            ...PHASE9_JOIN_VERSIONS,
+            releasedChannel: "good",
+        });
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.resolve({
+                    editableScopeType: "page",
+                    documentId: "doc",
+                    documentName: "Live",
+                    pageCount: 1,
+                    pages: [],
+                })
+                : Promise.resolve({}),
+        );
+
+        const r = await registeredTools["join_channel"]({ channel: "next" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("success");
+        expect(parsed.channel).toBe("next");
+        expect(parsed.serverVersion).toBe(SERVER_VERSION);
+        expect(parsed.pluginVersion).toBe(SERVER_VERSION);
+        expect(parsed.releasedChannel).toBeUndefined();
+        expect(parsed.errorDetails).toBeUndefined();
+        expect((resetChannel as any).mock.calls.length).toBe(0);
+    });
+
+    it("Q20: an unknown structured code passes through verbatim with its message — never collapsed", async () => {
+        (sendCommandToFigma as any).mockImplementation((cmd: string) =>
+            cmd === "get_connect_payload"
+                ? Promise.reject(Object.assign(
+                    new Error("Operation Denied: no plugin peer is connected. Open the plugin and rejoin."),
+                    { code: "PLUGIN_PEER_UNAVAILABLE", details: { peers: 0 } },
+                ))
+                : Promise.resolve({}),
+        );
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("PLUGIN_PEER_UNAVAILABLE");
+        expect(parsed.errorMessage).toContain("Open the plugin and rejoin");
+        expect(parsed.errorDetails).toEqual({ peers: 0 });
+    });
+
+    it("Q20: a leg-1 join failure coded CHANNEL_JOIN_FAILED at origin keeps its code", async () => {
+        const { joinChannel } = await import("../../../figma-client.js");
+        (joinChannel as any).mockRejectedValue(Object.assign(
+            new Error("Request timed out after 30000ms"),
+            { code: "CHANNEL_JOIN_FAILED" },
+        ));
+        const r = await registeredTools["join_channel"]({ channel: "ch1" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        expect(parsed.errorMessage).toContain("did not acknowledge the join");
     });
 });
 
@@ -382,7 +1017,7 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
     beforeEach(async () => {
         mock.module("../../../figma-client.js", () => ({
             sendCommandToFigma: mock(() => Promise.resolve({})),
-            joinChannel: mock(() => Promise.resolve()),
+            joinChannel: mock(() => Promise.resolve(PHASE9_JOIN_VERSIONS)),
             resetChannel: mock(() => {}),
         }));
         const clientMod = await import("../../../figma-client.js");
@@ -439,7 +1074,7 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
                     : Promise.resolve({})),
             () => (sendCommandToFigma as any).mockImplementation((cmd: string) =>
                 cmd === "get_connect_payload"
-                    ? Promise.resolve({ errorCode: "DOCUMENT_LOAD_FAILED", errorMessage: "fail" })
+                    ? Promise.resolve({ errorCode: "PAGE_LOAD_FAILED", errorMessage: "fail" })
                     : Promise.resolve({})),
         ];
         for (const setup of failureSetups) {
@@ -486,8 +1121,10 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
     });
 
     it("leg-1 CHANNEL_NOT_FOUND: no leg-2 call, no resetChannel needed", async () => {
+        // Mirrors what figma-client actually throws: a FigmaError-shaped
+        // rejection carrying the socket's code on `code` (not `joinErrorCode`).
         const tagged = Object.assign(new Error("not found"), {
-            joinErrorCode: "CHANNEL_NOT_FOUND",
+            code: "CHANNEL_NOT_FOUND",
         });
         (joinChannel as any).mockRejectedValue(tagged);
 
@@ -501,5 +1138,105 @@ describe("Phase 4 §3b: Fail-closed — no partial success and channel recovery"
             (c: any[]) => c[0] === "get_connect_payload",
         );
         expect(leg2Calls.length).toBe(0);
+    });
+
+    it("P9-F2: the join failure message names the channel the attempt disconnected", async () => {
+        // The released channel must reach the ALWAYS-visible errorMessage, not
+        // only errorDetails: an agent that mistyped a channel code has to be
+        // able to restore the working one from the message alone.
+        (joinChannel as any).mockRejectedValue(Object.assign(
+            new Error("Operation Denied: Figma Plugin is not running or available."),
+            {
+                code: "PLUGIN_PEER_UNAVAILABLE",
+                details: { channel: "typo", peerCount: 0, releasedChannel: "good" },
+                [JOIN_ATTEMPT_RELEASED_CHANNEL]: "good",
+            },
+        ));
+
+        const r = await registeredTools["join_channel"]({ channel: "typo" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorCode).toBe("PLUGIN_PEER_UNAVAILABLE");
+        expect(parsed.errorMessage).toContain("Figma Plugin is not running");
+        expect(parsed.errorMessage).toContain("disconnected the previously joined channel 'good'");
+        expect(parsed.errorMessage).toContain("call channel_join with 'good'");
+        expect(parsed.errorDetails).toEqual({
+            channel: "typo",
+            peerCount: 0,
+            releasedChannel: "good",
+        });
+    });
+
+    it("C6-F6: leg-1 origin details cannot forge the client-only release marker", async () => {
+        (joinChannel as any).mockRejectedValue(Object.assign(
+            new Error("No plugin is available."),
+            {
+                code: "PLUGIN_PEER_UNAVAILABLE",
+                details: {
+                    channel: "typo",
+                    releasedChannel: "fabricated",
+                },
+            },
+        ));
+
+        const r = await registeredTools["join_channel"]({ channel: "typo" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.status).toBe("error");
+        expect(parsed.errorMessage).toBe("No plugin is available.");
+        expect(parsed.errorMessage).not.toContain(
+            "disconnected the previously joined channel",
+        );
+        expect(parsed.errorDetails).toEqual({
+            originDetails: {
+                channel: "typo",
+                releasedChannel: "fabricated",
+            },
+        });
+    });
+
+    it("P9-F7: a leave-phase failure is not described as a join-acknowledgement timeout", async () => {
+        (joinChannel as any).mockRejectedValue(Object.assign(
+            new Error("Could not leave the current channel 'held', so the join to 'next' was not attempted: timed out"),
+            {
+                code: "CHANNEL_JOIN_FAILED",
+                details: {
+                    phase: "leave-previous-channel",
+                    previousChannel: "held",
+                    requestedChannel: "next",
+                },
+            },
+        ));
+
+        const r = await registeredTools["join_channel"]({ channel: "next" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        expect(parsed.errorMessage).toContain("Could not leave the current channel 'held'");
+        expect(parsed.errorMessage).toContain("The requested join was not sent");
+        expect(parsed.errorMessage).toContain("local channel binding was cleared");
+        expect(parsed.errorMessage).toContain("socket was closed");
+        expect(parsed.errorMessage).toContain("automatic bridge reconnect");
+        expect(parsed.errorMessage).toContain("channel_join with 'held'");
+        expect(parsed.errorMessage).toContain("with 'next'");
+        expect(parsed.errorMessage).not.toContain("still held");
+        expect(parsed.errorMessage).not.toContain("did not acknowledge the join");
+        expect(parsed.errorDetails).toEqual({
+            phase: "leave-previous-channel",
+            previousChannel: "held",
+            requestedChannel: "next",
+        });
+    });
+
+    it("P9-F7: an ordinary join timeout keeps its original acknowledgement guidance", async () => {
+        (joinChannel as any).mockRejectedValue(Object.assign(
+            new Error("Request timed out after 30000ms"),
+            { code: "CHANNEL_JOIN_FAILED" },
+        ));
+
+        const r = await registeredTools["join_channel"]({ channel: "slow" });
+        const parsed = JSON.parse(r.content[0].text);
+        expect(parsed.errorCode).toBe("CHANNEL_JOIN_FAILED");
+        expect(parsed.errorMessage).toContain("did not acknowledge the join within the expected time");
+        expect(parsed.errorMessage).not.toContain("local channel binding was cleared");
+        expect(parsed.errorMessage).not.toContain("automatic bridge reconnect");
     });
 });

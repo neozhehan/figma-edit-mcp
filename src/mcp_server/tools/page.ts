@@ -1,14 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput } from "./_result.js";
+import { toolResult, looseOutput, pageCoverage } from "./_result.js";
 
 export function registerPageTools(server: McpServer) {
     server.registerTool(
         "page_info",
         {
             title: "Get Pages",
-            description: "List the document's pages; no args → all pages (no children), or pass `pageIds` → those pages with their top-level children. Batch ≤25 ids/call.",
+            description: "List the document's pages; no args → all pages (no children), or pass `pageIds` → those pages with their top-level children. Batch ≤25 ids/call. Inspect `coverage`: a failed page is omitted with a structured `pageErrors` row while other pages still return.",
             inputSchema: z.object({
                 pageIds: z
                     .array(z.string())
@@ -29,7 +29,8 @@ export function registerPageTools(server: McpServer) {
                         type: z.string().describe("Child node type"),
                     })).optional().describe("Top-level children in the page"),
                 })).describe("List of page objects"),
-                missingPageIds: z.array(z.string()).optional().describe("Page IDs that could not be found"),
+                missingPageIds: z.array(z.string()).optional().describe("Every requested page ID absent from `pages`, whatever the cause; `coverage.pageErrors` carries the structured reason for each"),
+                coverage: pageCoverage,
             }),
             annotations: {
                 readOnlyHint: true,

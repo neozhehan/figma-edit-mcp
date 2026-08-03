@@ -81,7 +81,10 @@ function indexNodes(roots: FakeNode[]): Map<string, FakeNode> {
 
 function installFigma(pages: FakeNode[]) {
     const root: any = { id: "doc-1", name: "Doc", children: pages, type: "DOCUMENT" };
-    pages.forEach((p) => (p.parent = root));
+    pages.forEach((p) => {
+        p.parent = root;
+        if (!p.loadAsync) p.loadAsync = async () => { };
+    });
     const byId = indexNodes(pages);
     byId.set(root.id, root);
     (globalThis as any).figma = {

@@ -8,19 +8,12 @@ import {
 import { registerAllTools } from "./tools/index.js";
 import { registerAllResources } from "./resources.js";
 import { parseCliArgs } from "../cli.js";
-import { readFileSync, existsSync } from "fs";
-
-// Resolve package.json version and name dynamically
-let packageJsonUrl = new URL("../package.json", import.meta.url);
-if (!existsSync(packageJsonUrl)) {
-  packageJsonUrl = new URL("../../package.json", import.meta.url);
-}
-const pkg = JSON.parse(readFileSync(packageJsonUrl, "utf-8"));
+import { SERVER_NAME, SERVER_VERSION } from "../shared/version.js";
 
 // Create MCP server
 const server = new McpServer({
-  name: pkg.name || "figma-edit-mcp",
-  version: pkg.version || "2.0.0",
+  name: SERVER_NAME,
+  version: SERVER_VERSION,
 }, {
   instructions: "Edits a **live** Figma file under hard, plugin-enforced constraints (scope, name verification, batch validation) that return structured error codes. Before writing, and on any error, load the guidance: read the MCP resources under `figma-edit://guide/*` (constraints, error-playbook, workflows, tool-selection) or use the `figma-edit` skill. Always discover before acting (`page.info` → `node.info`) and pass node names back verbatim."
 });

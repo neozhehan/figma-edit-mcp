@@ -1,6 +1,7 @@
 /**
  * Progress update utilities for Figma plugin
  */
+import { describeError } from './errors.js';
 
 /**
  * Generates a unique command ID for tracking operations
@@ -61,9 +62,19 @@ export async function sendProgressUpdate(
         update.payload = payload;
     }
 
-    // Send to UI
-    figma.ui.postMessage(update);
-    await new Promise(r => setTimeout(r, 0));
+    // Send to UI. Progress is best-effort telemetry (C3): a delivery failure
+    // must never alter mutation accounting — the handlers push their result
+    // rows and counts around these calls, so a throw here would either fabricate
+    // a duplicate failure row or reject a handler that already mutated, losing
+    // the D7 envelope. Swallow any transport error and continue.
+    try {
+        figma.ui.postMessage(update);
+        await new Promise(r => setTimeout(r, 0));
+    } catch (err: any) {
+        // The transport may throw any JavaScript value, including a Proxy whose
+        // property access throws. Error reporting must remain best-effort too.
+        console.warn(`Progress update delivery failed (ignored): ${describeError(err)}`);
+    }
     console.log(`Progress update: ${status} - ${progress}% - ${message}`);
 
     return update;

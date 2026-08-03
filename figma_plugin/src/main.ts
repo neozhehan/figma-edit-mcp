@@ -7,7 +7,7 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { sanitizeForPostMessage } from '../utils/sanitize.js';
 import { findInstanceAncestor, assertNotLocked, assertNotInstanceInterior, assertNotInstanceParent } from '../utils/nodeUtils.js';
-import { ERRORS, formatScopeError as formatScopeErrorForRoot } from '../utils/errors.js';
+import { ERRORS, REFUSALS, formatScopeError as formatScopeErrorForRoot, getStructuredError, notifyBestEffort } from '../utils/errors.js';
 
 // Import handlers
 import { getNodesInfo, getPagesInfo } from '../handlers/nodeReaders.js';
@@ -33,14 +33,14 @@ import {
     deleteComponentProperty
 } from '../handlers/componentHandlers.js';
 
-import { getReactions, createConnections } from '../handlers/connectorHandlers.js';
-import { updateReactions } from '../handlers/prototypingHandlers.js';
+import { getReactions, updateReactions } from '../handlers/prototypingHandlers.js';
 import { setMultipleTextContents, setTextStyle } from '../handlers/textHandlers.js';
 import { getAnnotations, setMultipleAnnotations } from '../handlers/annotationHandlers.js';
 import { getVariables, setBoundVariable, handleVariableRequest, deleteVariables } from '../handlers/variableHandlers.js';
 import { createStyle, applyStyle, deleteStyle } from '../handlers/styleHandlers.js';
 import { createNodeFromSvg } from '../handlers/vectorHandlers.js';
 import { getConnectPayload } from '../handlers/connectHandlers.js';
+import { parseNodeIdFromUrl } from '../utils/scopeLink.js';
 
 
 // Plugin state
@@ -139,7 +139,7 @@ async function validateSingleNodeWrite(params: any, options: { checkScopeRoot?: 
 async function validateParentWrite(params: any, options: { checkLocked?: boolean, instanceCheckVerb?: string }) {
     if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
     if (!(await checkScopeAccess(params ? params.parentId : null))) throw new Error(formatScopeError(ERRORS.PARENT_OUTSIDE_SCOPE));
-    if (!(await verifyParentName(params ? params.parentId : null, params ? params.parentNodeName : null))) throw new Error(ERRORS.PARENT_NAME_MISMATCH);
+    await verifyParentNameOrThrow(params ? params.parentId : null, params ? params.parentNodeName : null);
     const parent = await figma.getNodeByIdAsync(params?.parentId);
     if (parent) {
         if (options.checkLocked) assertNotLocked(parent);
@@ -147,12 +147,39 @@ async function validateParentWrite(params: any, options: { checkLocked?: boolean
     }
 }
 
-// Helper: Verify parent name matches expected name
-async function verifyParentName(parentId: any, expectedParentName: any) {
+// Helper: Verify parent name matches expected name, throwing the coded D6
+// refusal (Q22, Rev 31) with distinct causes — missing vs. mismatched — so an
+// agent that omits the name is not steered into swapping a correct parentId.
+// Defense in depth: the server schema already requires parentNodeName, so a
+// conforming client never reaches the "missing" branch.
+async function verifyParentNameOrThrow(parentId: any, expectedParentName: any) {
+    // C9: omission is nullish (undefined/null), not falsy — a present empty
+    // string is a real value (a parent legitimately named "") and must be
+    // compared exactly, so "" against a non-empty parent is MISMATCH, not
+    // MISSING, and an empty-named parent can still be targeted.
+    if (expectedParentName == null) throw REFUSALS.PARENT_NAME_MISSING();
     const node = await figma.getNodeByIdAsync(parentId);
-    if (!node) return false;
+    if (!node || node.name !== expectedParentName) {
+        throw REFUSALS.PARENT_NAME_MISMATCH(node ? node.name : "(parent not found)", expectedParentName);
+    }
+}
 
-    return node.name === expectedParentName;
+// Defense-in-depth duplicate-target guard for the batch tools (Q23 Option B /
+// ratification 6). The first-class rejection is the schema `.superRefine()` on
+// the batch inputs, so a conforming client never reaches this; a non-conforming
+// client that bypasses the schema still fails closed. Both throws are prose on
+// the UNKNOWN_ERROR fallback (legacy surface, v2.3.4 burn-down) — no new code is
+// minted here. Node-ID spellings are normalized (`1-2` vs `1:2`) before compare.
+function assertNoDuplicateTargets(items: any[]) {
+    const seen = new Set<string>();
+    for (const item of items) {
+        if (!item || !item.nodeId) throw new Error("Missing nodeId parameter");
+        const normalizedId = String(item.nodeId).replace(/-/g, ":");
+        if (seen.has(normalizedId)) {
+            throw new Error(`Operation Denied: Duplicate node ID detected: ${item.nodeId}. Batches must not contain duplicate targets.`);
+        }
+        seen.add(normalizedId);
+    }
 }
 
 // Helper: Clone node validation
@@ -189,8 +216,11 @@ async function validateCloneWrite(params: any) {
         throw new Error(`node_clone: '${source.name}' has no parent and cannot be cloned.`);
     }
 
-    // Require an appendable destination parent
-    if (!("appendChild" in parent)) {
+    // Require an appendable destination parent. The typings make this guard statically unreachable
+    // (source.parent is (BaseNode & ChildrenMixin) | null, so every non-null parent has appendChild);
+    // it is kept as runtime defense in depth — do not delete as dead code. The inline cast avoids the
+    // never-narrowing a direct check would produce. (v2.3.3 PRD Rev 21)
+    if (!("appendChild" in (parent as BaseNode))) {
         throw new Error(`node_clone: parent '${parent.name}' (type ${parent.type}) cannot accept cloned children.`);
     }
 
@@ -206,42 +236,10 @@ async function validateCloneWrite(params: any) {
     assertNotInstanceParent(parent, "appended to");
 }
 
-// Helper: Extract a human-readable detail from a thrown value. Figma can throw
-// error-like objects whose `.message` is undefined/empty, which would otherwise
-// collapse to the generic "Error executing command" and mask the real cause.
-function describeError(e: any): string {
-    if (e == null) return "Error executing command";
-    if (typeof e === "string") return e;
-    if (typeof e.message === "string" && e.message.length > 0) {
-        return e.name && e.name !== "Error" ? `${e.name}: ${e.message}` : e.message;
-    }
-    if (typeof e.toString === "function") {
-        const s = e.toString();
-        if (s && s !== "[object Object]") return s;
-    }
-    try {
-        const json = JSON.stringify(e);
-        if (json && json !== "{}") return json;
-    } catch { /* not serializable */ }
-    return e.name || "Error executing command";
-}
 
-// Helper: Parse Node ID from URL
-function parseNodeIdFromUrl(url: any) {
-    try {
-        // @ts-ignore
-        const urlObj = new URL(url);
-        const nodeId = urlObj.searchParams.get("node-id");
-        return nodeId ? nodeId.replace(/-/g, ":") : null;
-    } catch (e: any) {
-        // Fallback for simple paste? Or maybe strictly require URL structure
-        // Figma often copies as: "https://www.figma.com/design/..."
-        // Regex fallback might be safer if URL object fails or protocol is weird
-        const match = url.match(/node-id=([^&]+)/);
-        if (match) return match[1].replace(/-/g, ":");
-        return null;
-    }
-}
+// Scope-link parsing lives in utils/scopeLink.ts so it is testable without
+// importing this module's Figma UI bindings (see that file for the Phase 14
+// no-`URL` measurement that removed the dead `new URL()` branch).
 
 declare const __PLUGIN_VERSION__: string;
 // Fallback must NOT be a version literal — that would be a fifth hardcoded
@@ -262,7 +260,7 @@ figma.ui.onmessage = async (msg: any) => {
             updateSettings(msg);
             break;
         case "notify":
-            figma.notify(msg.message);
+            notifyBestEffort(msg.message);
             break;
         case "close-plugin":
             figma.closePlugin();
@@ -292,14 +290,22 @@ figma.ui.onmessage = async (msg: any) => {
                 state.allowEditNode = msg.scopeNodeType === "PAGE" ? "page" : "node";
                 state.allowEditVariable = !!msg.allowEditVariable;
                 state.allowEditStyle = !!msg.allowEditStyle;
-                figma.notify(`Scope locked to node: ${msg.scopeNodeId}`);
+                notifyBestEffort(`Scope locked to node: ${msg.scopeNodeId}`);
             } else {
                 state.scopeRootId = null;
                 state.allowEditNode = false;
                 state.allowEditVariable = !!msg.allowEditVariable;
                 state.allowEditStyle = !!msg.allowEditStyle;
-                figma.notify("Connected in Read-Only Mode for nodes");
+                notifyBestEffort("Connected in Read-Only Mode for nodes");
             }
+            // Scope readiness is authoritative here, after every permission
+            // field is committed. The UI must match this one-shot request ID
+            // before it opens and joins the WebSocket.
+            figma.ui.postMessage({
+                type: "scope-ready",
+                requestId: msg.requestId,
+                pluginVersion: PLUGIN_VERSION,
+            });
             break;
         case "execute-command":
             // Execute commands received from UI (which gets them from WebSocket)
@@ -320,7 +326,7 @@ figma.ui.onmessage = async (msg: any) => {
                     figma.ui.postMessage({
                         type: "command-error",
                         id: msg.id,
-                        error: describeError(error),
+                        error: getStructuredError(error),
                     });
                 }
             });
@@ -389,9 +395,9 @@ async function handleCommand(command: any, params: any) {
                         assertNotLocked(node);
                         assertNotInstanceInterior(node, "grouped");
                     }
-                    // @ts-ignore
+                    // @ts-expect-error TS18047: 'node' is possibly 'null'.
                     if (node.parent?.id !== parentId) {
-                        // @ts-ignore
+                        // @ts-expect-error TS18047: 'node' is possibly 'null'.
                         throw new Error(`Invalid Grouping: All nodes must share the same parent. Node "${node.name}" is under a different parent than "${firstNode.name}". Use 'insert_child' to reparent them first.`);
                     }
                 }
@@ -441,30 +447,6 @@ async function handleCommand(command: any, params: any) {
             await validateParentWrite(params, { checkLocked: true, instanceCheckVerb: "appended to" });
             return await createComponentInstance(params);
 
-        case "create_connection":
-            if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
-
-            // Validate connectorId if setting default
-            if (params && params.connectorId) {
-                if (!(await checkScopeAccess(params.connectorId))) throw new Error(formatScopeError(`Operation denied: Connector node ${params.connectorId} outside editable scope`));
-            }
-
-            // Validate connections if creating lines
-            if (params && params.connections && Array.isArray(params.connections)) {
-                for (const conn of params.connections) {
-                    if (!(await checkScopeAccess(conn.startNodeId))) throw new Error(formatScopeError(`Operation denied: Start node ${conn.startNodeId} outside editable scope`));
-                    if (!(await verifyNodeName(conn.startNodeId, conn.startNodeName))) throw new Error(ERRORS.NAME_MISMATCH);
-                    const startNode = await figma.getNodeByIdAsync(conn.startNodeId);
-                    if (startNode) assertNotLocked(startNode);
-
-                    if (!(await checkScopeAccess(conn.endNodeId))) throw new Error(formatScopeError(`Operation denied: End node ${conn.endNodeId} outside editable scope`));
-                    if (!(await verifyNodeName(conn.endNodeId, conn.endNodeName))) throw new Error(ERRORS.NAME_MISMATCH);
-                    const endNode = await figma.getNodeByIdAsync(conn.endNodeId);
-                    if (endNode) assertNotLocked(endNode);
-                }
-            }
-            return await createConnections(params);
-
         case "text_set_content":
             if (!state.allowEditNode) throw new Error(ERRORS.READ_ONLY_MODE);
             if (!params || !params.text || !Array.isArray(params.text)) throw new Error("Missing or Invalid text parameter");
@@ -475,6 +457,7 @@ async function handleCommand(command: any, params: any) {
                 throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
             }
 
+            assertNoDuplicateTargets(params.text);
             for (const item of params.text) {
                 const node = await figma.getNodeByIdAsync(item.nodeId);
                 if (!node) {
@@ -535,6 +518,7 @@ async function handleCommand(command: any, params: any) {
                 throw new Error(`${ERRORS.SCOPE_DELETED} (Missing Scope Node ID: ${state.scopeRootId})`);
             }
 
+            assertNoDuplicateTargets(params.nodes);
             const nodeIdsToDelete: any[] = [];
             for (const item of params.nodes) {
                 const node = await figma.getNodeByIdAsync(item.nodeId);
@@ -581,7 +565,11 @@ async function handleCommand(command: any, params: any) {
                     throw new Error(`Source node is not an instance: ${sourceNode.id} (type: ${sourceNode.type})`);
                 }
 
-                const targetNodeIds: any[] = [];
+                assertNoDuplicateTargets(params.targetNodes);
+                // Validation-time pass: fail fast with specifically-coded errors.
+                // R2 re-asserts this same predicate set at use-time inside
+                // getValidTargetInstances (immediately before execution), so a
+                // shared-document change between here and the swap fails closed.
                 for (const item of params.targetNodes) {
                     const node = await figma.getNodeByIdAsync(item.nodeId);
                     if (!node) {
@@ -597,22 +585,40 @@ async function handleCommand(command: any, params: any) {
                     if (node.type !== "INSTANCE") {
                         throw new Error(`Target is not an instance node: ${node.id} (type: ${node.type})`);
                     }
-                    targetNodeIds.push(item.nodeId);
                 }
 
-                const targetNodesResult = await getValidTargetInstances(targetNodeIds);
-                if (!targetNodesResult.success) {
-                    figma.notify(targetNodesResult.message);
-                    return { success: false, message: targetNodesResult.message };
-                }
-
+                // P6-5: these are pre-execution refusals — throw so they surface
+                // as proper errors (isError), not as an envelope-less success
+                // payload that the three-layer contract cannot classify. Prose
+                // messages ride the UNKNOWN_ERROR fallback (legacy surface,
+                // v2.3.4 burn-down).
+                // R2 (second recheck): resolve every fallible/awaited dependency
+                // BEFORE the final target gate. Source resolution awaits
+                // getNodeByIdAsync/getMainComponentAsync, so running it after the
+                // gate reopened a drift window between validation and mutation.
                 let sourceInstanceData = await getSourceInstanceData(params.sourceInstanceId);
                 if (!sourceInstanceData.success) {
-                    // @ts-ignore
-                    figma.notify(sourceInstanceData.message);
-                    return { success: false, message: sourceInstanceData.message };
+                    notifyBestEffort(sourceInstanceData.message || "Failed to resolve source instance");
+                    throw new Error(sourceInstanceData.message || "Failed to resolve source instance");
                 }
-                return await setInstanceOverrides(targetNodesResult.targetInstances, sourceInstanceData);
+
+                // R2: re-assert the full predicate set (identity, INSTANCE type,
+                // exact name, scope membership, lock) against the original request
+                // and current scope root.
+                const targetNodesResult = await getValidTargetInstances(params.targetNodes, instScopeRoot);
+                if (!targetNodesResult.success) {
+                    notifyBestEffort(targetNodesResult.message);
+                    throw new Error(targetNodesResult.message);
+                }
+
+                // The guard lets the handler re-assert the SAME predicate set
+                // synchronously immediately before each swapComponent(), closing
+                // the windows opened by its own awaits.
+                return await setInstanceOverrides(
+                    targetNodesResult.targetInstances,
+                    sourceInstanceData,
+                    { items: params.targetNodes, scopeRoot: instScopeRoot }
+                );
             }
             throw new Error(ERRORS.MISSING_TARGET_NODE_IDS);
 
@@ -665,7 +671,6 @@ async function handleCommand(command: any, params: any) {
             if (!instanceNode) {
                 throw new Error(`Instance node not found with ID: ${params.instanceNodeId}`);
             }
-            // @ts-ignore
             return await getInstanceOverrides(instanceNode);
         case "reaction_list":
             if (!params || !params.nodeIds || !Array.isArray(params.nodeIds)) {
@@ -706,7 +711,11 @@ async function handleCommand(command: any, params: any) {
             return await applyStyle(params);
 
         case "create_component":
-            await validateSingleNodeWrite(params, { checkScopeRoot: true, checkLocked: true });
+            await validateSingleNodeWrite(params, {
+                checkScopeRoot: true,
+                checkLocked: true,
+                instanceCheckVerb: "converted to a component",
+            });
             return await createComponent(params);
 
         case "create_component_set": {

@@ -96,6 +96,7 @@ const gateFigma = {
             id: "comp-1",
             name: "Component",
             type: "COMPONENT",
+            children: [],
             resize: (w: number, h: number) => {
                 if (mockResizeThrow) throw new Error("Mock resize throw");
             },
@@ -141,7 +142,7 @@ const nodeCreatorsMod: any = await import("../../../../../figma_plugin/handlers/
 const vectorHandlersMod: any = await import("../../../../../figma_plugin/handlers/vectorHandlers.js?scope=phase3");
 const componentHandlersMod: any = await import("../../../../../figma_plugin/handlers/componentHandlers.js?scope=phase3");
 
-describe("Phase 3: Creation Handlers and Clone Cleanup - No Orphans", () => {
+describe("Phase 3: Creation Handlers and Clone Cleanup - Success Containment and Truthful Survivors", () => {
     beforeEach(() => {
         gateNodeMap.clear();
         mockResizeThrow = false;
@@ -172,6 +173,10 @@ describe("Phase 3: Creation Handlers and Clone Cleanup - No Orphans", () => {
                 child.parent = parentNode;
                 parentNode.children.push(child);
             },
+            insertChild: (index: number, child: any) => {
+                child.parent = parentNode;
+                parentNode.children.splice(index, 0, child);
+            },
             children: []
         };
         gateNodeMap.set("page-id", page);
@@ -180,6 +185,15 @@ describe("Phase 3: Creation Handlers and Clone Cleanup - No Orphans", () => {
     }
 
     describe("resolveAppendableParent validation (parent-missing, parent-not-found, parent-cannot-accept)", () => {
+        // Q33 (Rev 46): `create_instance` now resolves its destination AFTER the
+        // component, so the component must resolve for the parent refusal to be
+        // the failure under test. Production precedence is unaffected — the
+        // dispatcher's validateParentWrite rejects a bad parent before the
+        // handler runs; this handler-level check is defense in depth.
+        beforeEach(() => {
+            gateNodeMap.set("c1", { id: "c1", name: "Component", type: "COMPONENT" });
+        });
+
         it("throws when parentId is missing, before any create method is called", async () => {
             await expect(
                 nodeCreatorsMod.createFrame({ parentId: "" })
@@ -420,7 +434,8 @@ describe("Phase 3: Creation Handlers and Clone Cleanup - No Orphans", () => {
                 height: 100,
                 parent: parentNode,
                 children: [],
-                remove: () => { (sourceFrame as any).removed = true; }
+                remove: () => { (sourceFrame as any).removed = true; },
+                removed: false,
             };
             gateNodeMap.set("frame-src", sourceFrame);
             parentNode.children.push(sourceFrame);
@@ -444,7 +459,14 @@ describe("Phase 3: Creation Handlers and Clone Cleanup - No Orphans", () => {
         });
 
         it("cloneNode cleans up Clone on post-creation error", async () => {
-            const page: any = { id: "page-1", type: "PAGE" };
+            const page: any = {
+                id: "page-1",
+                name: "Page",
+                type: "PAGE",
+                appendChild: (child: any) => {
+                    child.parent = page;
+                }
+            };
             let createdClone: any = null;
             const source: any = {
                 id: "c1",

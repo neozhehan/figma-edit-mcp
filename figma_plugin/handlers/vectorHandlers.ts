@@ -1,4 +1,6 @@
 import { resolveAppendableParent } from './nodeCreators.js';
+import { rethrowAfterCreatorCleanup } from '../utils/nodeUtils.js';
+import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
 
 export async function createNodeFromSvg(params: any) {
     const { parentId, svg, name, x = 0, y = 0 } = params || {};
@@ -7,28 +9,37 @@ export async function createNodeFromSvg(params: any) {
         throw new Error("Missing required parameter: svg string.");
     }
 
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "create_svg",
+        "Omit name to use the default name.",
+    );
+
     const parentNode = await resolveAppendableParent(parentId, "create_svg");
 
     const node = figma.createNodeFromSvg(svg);
     try {
-        if (name) {
+        // D11: createNodeFromSvg uses an implicit parent; contain it first.
+        parentNode.appendChild(node);
+
+        if (name !== undefined) {
             node.name = name;
         }
-
-        parentNode.appendChild(node);
 
         node.x = x;
         node.y = y;
 
-        return {
+        const result = {
             id: node.id,
             name: node.name,
-            type: node.type
+            type: node.type,
+            // D11: report where the node actually landed, so the caller can
+            // confirm containment from the response instead of re-reading.
+            parentId: node.parent ? node.parent.id : undefined,
         };
-    } catch (error) {
-        if (node && typeof node.remove === "function" && (node as any).removed !== true) {
-            node.remove();
-        }
-        throw error;
+        return result;
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, node, "create_svg", parentId);
     }
 }

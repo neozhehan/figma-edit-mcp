@@ -289,13 +289,19 @@ describe("Component Handlers", () => {
 
         it("throws when scope is 'page' and pageId does not exist", async () => {
             (globalThis as any).figma.getNodeByIdAsync = mock(async () => null);
-            expect(getComponents({ scope: "page", pageId: "nonexistent" })).rejects.toThrow("pageId with ID nonexistent not found");
+            expect(getComponents({ scope: "page", pageId: "nonexistent" })).rejects.toMatchObject({
+                code: "PAGE_NOT_FOUND",
+                details: { pageId: "nonexistent" },
+            });
         });
 
         it("throws when scope is 'page' and pageId resolves to a non-PAGE node", async () => {
             const mockRect = { id: "rect-1", type: "RECTANGLE" };
             (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockRect);
-            expect(getComponents({ scope: "page", pageId: "rect-1" })).rejects.toThrow("pageId does not resolve to a PAGE");
+            expect(getComponents({ scope: "page", pageId: "rect-1" })).rejects.toMatchObject({
+                code: "TARGET_NOT_PAGE",
+                details: { pageId: "rect-1", actualType: "RECTANGLE" },
+            });
         });
 
         it("returns components from the specified page", async () => {
@@ -305,8 +311,11 @@ describe("Component Handlers", () => {
                 loadAsync: mock(async () => {}),
                 findAllWithCriteria: null as any
             };
+            const mockDocument = { id: "doc-1", type: "DOCUMENT", children: [mockPageNode] };
+            (mockPageNode as any).parent = mockDocument;
             const mockComp = { id: "comp-1", name: "Button", type: "COMPONENT", key: "k1", remote: false, parent: mockPageNode };
             mockPageNode.findAllWithCriteria = mock(() => [mockComp]);
+            (globalThis as any).figma.root = mockDocument;
             (globalThis as any).figma.getNodeByIdAsync = mock(async (id: string) => {
                 if (id === "page-1") return mockPageNode;
                 if (id === "comp-1") return mockComp;
@@ -358,7 +367,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("Read-Only Mode");
+            expect(result.error.message).toContain("Read-Only Mode");
         });
 
         it("blocks when checkScopeAccess fails (target outside scope)", async () => {
@@ -377,7 +386,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("outside editable scope");
+            expect(result.error.message).toContain("outside editable scope");
         });
 
         it("blocks when verifyNodeName fails (name mismatch)", async () => {
@@ -396,7 +405,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("nodeName does not match");
+            expect(result.error.message).toContain("nodeName does not match");
         });
     });
 
@@ -416,7 +425,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("Read-Only Mode");
+            expect(result.error.message).toContain("Read-Only Mode");
         });
 
         it("blocks when checkScopeAccess fails (any action)", async () => {
@@ -434,7 +443,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("outside editable scope");
+            expect(result.error.message).toContain("outside editable scope");
         });
 
         it("blocks when verifyNodeName fails (any action)", async () => {
@@ -452,7 +461,7 @@ describe("Security Gates via main.ts routing", () => {
             });
 
             expect(result.type).toBe("command-error");
-            expect(result.error).toContain("nodeName does not match");
+            expect(result.error.message).toContain("nodeName does not match");
         });
     });
 });

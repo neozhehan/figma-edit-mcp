@@ -1,7 +1,11 @@
 import { getPluginState } from '../src/main.js';
 import { buildPathArray, countDescendants } from '../utils/nodeUtils.js';
+import { UNKNOWN_ERROR } from '../utils/errors.js';
+import { createPageLoadCoordinator, PageLoadCoordinator, toConnectPayloadError } from '../utils/pageLoad.js';
 
-export async function getConnectPayload() {
+export async function getConnectPayload(
+    pageLoads: PageLoadCoordinator = createPageLoadCoordinator(),
+) {
     try {
         const state = getPluginState();
 
@@ -38,13 +42,25 @@ export async function getConnectPayload() {
             }
 
             if (state.allowEditNode === "page") {
-                try {
-                    await scopeNode.loadAsync();
-                } catch (e: any) {
-                    return {
-                        errorCode: "DOCUMENT_LOAD_FAILED",
-                        errorMessage: "Failed to load the Figma document's pages. The file may be too large or temporarily unavailable. Retry shortly."
-                    };
+                // Change 8 (F3): this was the one page load outside the Phase 10
+                // coordinator, and it sits on `channel_join`'s second leg — so a
+                // hung load wedged the join itself, which is exactly the failure
+                // mode Q12's bounded timeout exists to remove. It now shares the
+                // 10s bound and reports the ratified PAGE_LOAD_FAILED /
+                // PAGE_LOAD_TIMEOUT codes instead of the hand-rolled
+                // `DOCUMENT_LOAD_FAILED`, which was never in the D9 inventory
+                // and therefore could never earn a playbook entry.
+                const loaded = await pageLoads.load(scopeNode as PageNode);
+                if (!loaded.ok) {
+                    // Change 9 (C9-F1): get_connect_payload is a private plugin
+                    // result consumed by channel.ts, which reads the canonical
+                    // structured-error key `details`; only the public
+                    // channel_join result renames it to `errorDetails`. Using
+                    // the public name here dropped pageId, timeoutMs, and cause
+                    // at the layer seam. Change 10 (C10-T1) moves the shape into
+                    // the shared projector so the key is decided once and a test
+                    // can drive the real shape through the real consumer.
+                    return toConnectPayloadError(loaded.error);
                 }
 
                 const children = ('children' in scopeNode ? scopeNode.children : []).map((child: any) => ({
@@ -93,7 +109,7 @@ export async function getConnectPayload() {
 
     } catch (e: any) {
         return {
-            errorCode: "UNKNOWN_ERROR",
+            errorCode: UNKNOWN_ERROR,
             errorMessage: `An unexpected error occurred while joining the channel: ${e.message || String(e)}.`
         };
     }

@@ -133,7 +133,6 @@ const CONTRACTS: Record<string, Contract> = {
     create_component: { reads: ["nodeId"] },                           // createComponent
     create_instance: { reads: ["parentId"] },                          // createInstance
     create_component_set: { reads: ["components", "properties", "componentSetName"] }, // createComponentSet
-    create_connection: { reads: ["connections", "connectorId", "checkDefault"] },     // createConnections (transform builds checkDefault)
     // ---- style ----
     style_list: { reads: [] },                                          // getStyles (no params)
     style_manage: { reads: ["type", "name"] },                         // createStyle

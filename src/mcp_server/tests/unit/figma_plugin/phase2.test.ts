@@ -127,12 +127,19 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
         return { page, scopeRoot, comp1, comp2, parentNode };
     }
 
-    async function sendCommand(params: any) {
+    // injectParent defaults ON for the existing tests, but is opt-OUT so the
+    // omission tests (P5-2) can exercise the plugin's missing-parent branch
+    // instead of it being masked by the helper's defaults.
+    async function sendCommand(params: any, opts: { injectParent?: boolean } = {}) {
+        const injectParent = opts.injectParent !== false;
+        const mergedParams = { ...params };
+        if (injectParent && !("parentId" in mergedParams)) mergedParams.parentId = "parent-id";
+        if (injectParent && !("parentNodeName" in mergedParams)) mergedParams.parentNodeName = "Parent Node";
         const msg = {
             type: "execute-command",
             command: "create_component_set",
             id: Math.random().toString(),
-            params
+            params: mergedParams
         };
         const resultPromise = new Promise<any>((resolve) => {
             gatePendingPromises.set(msg.id, resolve);
@@ -148,7 +155,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("components must be a non-empty array");
+        expect(res.error.message).toContain("components must be a non-empty array");
         expect(combineAsVariantsCalled).toBe(false);
     });
 
@@ -161,7 +168,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: []
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("properties must be a non-empty array");
+        expect(res.error.message).toContain("properties must be a non-empty array");
         expect(combineAsVariantsCalled).toBe(false);
     });
 
@@ -174,7 +181,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size", "Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("Duplicate property name found");
+        expect(res.error.message).toContain("Duplicate property name found");
         expect(combineAsVariantsCalled).toBe(false);
     });
 
@@ -187,7 +194,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: [""]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("Property names must be non-empty strings");
+        expect(res.error.message).toContain("Property names must be non-empty strings");
         expect(combineAsVariantsCalled).toBe(false);
     });
 
@@ -202,7 +209,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("must be a COMPONENT, got FRAME");
+        expect(res.error.message).toContain("must be a COMPONENT, got FRAME");
         expect(comp1.name).toBe("Button"); // unchanged
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -217,7 +224,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("nodeName does not match name of nodeId");
+        expect(res.error.message).toContain("nodeName does not match name of nodeId");
         expect(comp1.name).toBe("Button"); // unchanged
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -233,7 +240,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("outside editable scope");
+        expect(res.error.message).toContain("outside editable scope");
         expect(comp1.name).toBe("Button"); // unchanged
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -248,7 +255,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("Duplicate variant combination");
+        expect(res.error.message).toContain("Duplicate variant combination");
         expect(comp1.name).toBe("Button"); // unchanged
         expect(comp2.name).toBe("Button"); // unchanged
         expect(combineAsVariantsCalled).toBe(false);
@@ -264,7 +271,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("is listed more than once in components");
+        expect(res.error.message).toContain("is listed more than once in components");
         expect(comp1.name).toBe("Button"); // unchanged
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -279,7 +286,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res1.type).toBe("command-error");
-        expect(res1.error).toContain("must be non-empty and must not contain '=' or ','");
+        expect(res1.error.message).toContain("must be non-empty and must not contain '=' or ','");
 
         const res2 = await sendCommand({
             components: [
@@ -289,7 +296,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res2.type).toBe("command-error");
-        expect(res2.error).toContain("must be non-empty and must not contain '=' or ','");
+        expect(res2.error.message).toContain("must be non-empty and must not contain '=' or ','");
 
         const res3 = await sendCommand({
             components: [
@@ -299,7 +306,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res3.type).toBe("command-error");
-        expect(res3.error).toContain("must be non-empty and must not contain '=' or ','");
+        expect(res3.error.message).toContain("must be non-empty and must not contain '=' or ','");
 
         expect(comp1.name).toBe("Button"); // unchanged
         expect(comp2.name).toBe("Button"); // unchanged
@@ -319,7 +326,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("is already a variant in component set");
+        expect(res.error.message).toContain("is already a variant in component set");
         expect(comp1.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -351,7 +358,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size", "Color"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("Property values count mismatch");
+        expect(res.error.message).toContain("Property values count mismatch");
         expect(comp1.name).toBe("Button");
         expect(comp2.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
@@ -368,7 +375,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("is locked");
+        expect(res.error.message).toContain("is locked");
         expect(comp1.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -386,7 +393,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("inside a component instance");
+        expect(res.error.message).toContain("inside a component instance");
         expect(comp1.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -402,7 +409,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("is a remote shared-library component");
+        expect(res.error.message).toContain("is a remote shared-library component");
         expect(comp1.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -420,7 +427,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentNodeName: "Parent Node"
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("is locked");
+        expect(res.error.message).toContain("is locked");
         expect(comp1.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -440,7 +447,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentNodeName: "Parent Node"
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("inside a component instance");
+        expect(res.error.message).toContain("inside a component instance");
         expect(comp1.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -458,7 +465,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentNodeName: "Parent Node"
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("is a component instance and cannot be appended to directly");
+        expect(res.error.message).toContain("is a component instance and cannot be appended to directly");
         expect(comp1.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -476,7 +483,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentNodeName: "Parent Node"
         });
         expect(res1.type).toBe("command-error");
-        expect(res1.error).toContain("Parent outside editable scope");
+        expect(res1.error.message).toContain("Parent outside editable scope");
 
         parentNode.parent = scopeRoot; // back in scope
         const res2 = await sendCommand({
@@ -489,9 +496,86 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentNodeName: "Wrong Name"
         });
         expect(res2.type).toBe("command-error");
-        expect(res2.error).toContain("parentNodeName does not match");
+        expect(res2.error.code).toBe("PARENT_NAME_MISMATCH");
+        expect(res2.error.message).toContain("does not match the parent's stored name");
 
         expect(comp1.name).toBe("Button");
+        expect(combineAsVariantsCalled).toBe(false);
+    });
+
+    it("omitted parentNodeName fails closed with PARENT_NAME_MISSING (Q22/P5-2 defense in depth)", async () => {
+        const { comp1, comp2 } = setupEnvironment();
+        const res = await sendCommand({
+            components: [
+                { nodeId: "comp-1", nodeName: "Button", propertyValues: ["Small"] },
+                { nodeId: "comp-2", nodeName: "Button", propertyValues: ["Large"] }
+            ],
+            properties: ["Size"],
+            parentId: "parent-id"
+            // parentNodeName omitted
+        }, { injectParent: false });
+        expect(res.type).toBe("command-error");
+        expect(res.error.code).toBe("PARENT_NAME_MISSING");
+        expect(comp1.name).toBe("Button");
+        expect(comp2.name).toBe("Button");
+        expect(combineAsVariantsCalled).toBe(false);
+    });
+
+    it("C9: present-empty parentNodeName is a MISMATCH, not MISSING (empty is a value, not omission)", async () => {
+        const { comp1 } = setupEnvironment(); // parent is named "Parent Node"
+        const res = await sendCommand({
+            components: [
+                { nodeId: "comp-1", nodeName: "Button", propertyValues: ["Small"] },
+                { nodeId: "comp-2", nodeName: "Button", propertyValues: ["Large"] }
+            ],
+            properties: ["Size"],
+            parentId: "parent-id",
+            parentNodeName: ""
+        }, { injectParent: false });
+        expect(res.type).toBe("command-error");
+        // Red-proof of the truthiness bug: `if (!params.parentNodeName)` would
+        // classify "" as MISSING; the nullish check makes it a real MISMATCH.
+        expect(res.error.code).toBe("PARENT_NAME_MISMATCH");
+        expect(comp1.name).toBe("Button");
+        expect(combineAsVariantsCalled).toBe(false);
+    });
+
+    it("C9: an exactly empty-named parent is usable when parentNodeName is the same empty string", async () => {
+        const { parentNode } = setupEnvironment();
+        parentNode.name = ""; // a parent legitimately named ""
+        const res = await sendCommand({
+            components: [
+                { nodeId: "comp-1", nodeName: "Button", propertyValues: ["Small"] },
+                { nodeId: "comp-2", nodeName: "Button", propertyValues: ["Large"] }
+            ],
+            properties: ["Size"],
+            parentId: "parent-id",
+            parentNodeName: ""
+        }, { injectParent: false });
+        expect(res.type).toBe("command-result"); // empty-but-exact name matches → proceeds
+        expect(combineAsVariantsCalled).toBe(true);
+    });
+
+    it("omitted parentId fails closed with a parentId-specific message (Q22/P5-1)", async () => {
+        const { comp1, comp2 } = setupEnvironment();
+        const res = await sendCommand({
+            components: [
+                { nodeId: "comp-1", nodeName: "Button", propertyValues: ["Small"] },
+                { nodeId: "comp-2", nodeName: "Button", propertyValues: ["Large"] }
+            ],
+            properties: ["Size"],
+            parentNodeName: "Parent Node"
+            // parentId omitted
+        }, { injectParent: false });
+        expect(res.type).toBe("command-error");
+        expect(res.error.message).toContain("parentId is missing");
+        // R7: the missing-parentId error matches its corrected schema — it names
+        // node_info and describes an "appendable parent container", not a bare
+        // "parent container".
+        expect(res.error.message).toContain("node_info");
+        expect(res.error.message).toContain("appendable parent container");
+        expect(comp1.name).toBe("Button");
+        expect(comp2.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
 
@@ -507,7 +591,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentNodeName: "Ghost"
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("Node missing-parent not found");
+        expect(res.error.message).toContain("Node missing-parent not found");
         expect(comp1.name).toBe("Button");
         expect(comp2.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
@@ -526,7 +610,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentNodeName: "Parent Node"
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("cannot contain a component set");
+        expect(res.error.message).toContain("cannot contain a component set");
         expect(comp1.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -544,7 +628,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentNodeName: "Button"
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("is one of the components being combined");
+        expect(res.error.message).toContain("is one of the components being combined");
         expect(comp1.name).toBe("Button");
         expect(comp2.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
@@ -564,7 +648,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentNodeName: "Parent Node"
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("is one of the components being combined (or is inside one)");
+        expect(res.error.message).toContain("is one of the components being combined (or is inside one)");
         expect(comp1.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
@@ -601,12 +685,12 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("all components must be on the same page");
+        expect(res.error.message).toContain("all components must be on the same page");
         expect(comp1.name).toBe("Button");
         expect(combineAsVariantsCalled).toBe(false);
     });
 
-    it("happy path renames variants, calls combineAsVariants, renames the component set, reparents when requested, and returns the expected COMPONENT_SET result", async () => {
+    it("happy path renames variants, combines directly in the verified parent, renames the set, and returns the expected result", async () => {
         const { comp1, comp2, parentNode } = setupEnvironment();
         const res = await sendCommand({
             components: [
@@ -624,7 +708,8 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
         expect(comp1.name).toBe("Size=Small");
         expect(comp2.name).toBe("Size=Large");
         expect(combineAsVariantsCalled).toBe(true);
-        expect(appendChildCalledOnParent).toBe(true);
+        expect(combineAsVariantsArgs[1]).toBe(parentNode);
+        expect(appendChildCalledOnParent).toBe(false);
     });
 
     it("simulated combineAsVariants throw restores original component names", async () => {
@@ -638,17 +723,16 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("Mock combineAsVariants error");
+        expect(res.error.message).toContain("Mock combineAsVariants error");
         expect(comp1.name).toBe("Button"); // restored
         expect(comp2.name).toBe("Button"); // restored
         expect(combineAsVariantsCalled).toBe(true);
     });
 
-    it("residual post-combine reparent failure surfaces as an error without restoring variant names (D5)", async () => {
+    it("D11 eliminates the post-combine reparent step", async () => {
         const { comp1, comp2, parentNode } = setupEnvironment();
-        // Passes the "appendChild" in parent precheck, then fails at placement —
-        // simulates the R1 TOCTOU residual. The set exists, so names must NOT
-        // be rolled back and the set stays at the combine location.
+        // A failing appendChild must be irrelevant: combineAsVariants receives
+        // the verified parent directly and no second placement operation runs.
         parentNode.appendChild = () => {
             throw new Error("Mock TOCTOU appendChild error");
         };
@@ -662,10 +746,10 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             parentId: "parent-id",
             parentNodeName: "Parent Node"
         });
-        expect(res.type).toBe("command-error");
-        expect(res.error).toContain("Mock TOCTOU appendChild error");
+        expect(res.type).toBe("command-result");
         expect(combineAsVariantsCalled).toBe(true);
-        expect(comp1.name).toBe("Size=Small"); // variant names retained
+        expect(combineAsVariantsArgs[1]).toBe(parentNode);
+        expect(comp1.name).toBe("Size=Small");
         expect(comp2.name).toBe("Size=Large");
     });
 
@@ -685,7 +769,7 @@ describe("Phase 2: create_component_set Two-Phase Prevalidation and Atomicity", 
             properties: ["Size"]
         });
         expect(res.type).toBe("command-error");
-        expect(res.error).toContain("Mock rename error");
+        expect(res.error.message).toContain("Mock rename error");
         expect(comp1.name).toBe("Button"); // restored
         expect(combineAsVariantsCalled).toBe(false);
     });

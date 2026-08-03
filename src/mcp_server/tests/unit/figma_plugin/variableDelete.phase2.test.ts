@@ -2,6 +2,26 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { deleteVariables } from "../../../../../figma_plugin/handlers/variableHandlers.js";
 import * as progressUtils from "../../../../../figma_plugin/utils/progressUtils.js";
 
+/**
+ * Change 8 (C1): the in-use outcome is a coded D9 refusal now, not a non-error
+ * result carrying a bare `error` string, so it is THROWN. Capturing it keeps
+ * these regressions focused on the consumer-detection semantics they exist to
+ * pin, while asserting the coded envelope once here.
+ */
+async function captureInUseRefusal(call: Promise<any>) {
+    let thrown: any;
+    try {
+        await call;
+    } catch (error: any) {
+        thrown = error;
+    }
+    expect(thrown, "an in-use delete must refuse").toBeDefined();
+    expect(thrown.code).toBe("VARIABLE_IN_USE");
+    expect(thrown.details.variablesInUse).toBeDefined();
+    return { success: false, error: thrown.message, variablesInUse: thrown.details.variablesInUse };
+}
+
+
 
 
 describe("Phase 2: variable_delete WS-link stall and concurrency", () => {
@@ -94,15 +114,17 @@ describe("Phase 2: variable_delete WS-link stall and concurrency", () => {
         const var1 = { id: "var-1", name: "Var1", remove: vi.fn() };
         (global.figma.variables.getVariableByIdAsync as any).mockResolvedValue(var1);
 
-        const result = await deleteVariables({
+        const result = await captureInUseRefusal(deleteVariables({
             variableIds: ["var-1"],
             variableNames: ["Var1"]
-        });
+        }));
 
         // var-1 has consumers in page-1 and page-2, so deletion should fail and list them.
         expect(result.success).toBe(false);
-        expect(result.error).toContain("Node 'Node 1' (RECTANGLE) on fields: fills");
-        expect(result.error).toContain("Node 'Node 2' (TEXT) on fields: characters");
+        // C8-F9: each consumer line carries its ID, because layer names are not
+        // unique and the listing exists to be acted on.
+        expect(result.error).toContain("Node 'Node 1' (RECTANGLE, node-1) on fields: fills");
+        expect(result.error).toContain("Node 'Node 2' (TEXT, node-2) on fields: characters");
         expect(result.error).not.toContain("Node 3");
 
         // The pages should have been loaded concurrently.
@@ -167,10 +189,10 @@ describe("Phase 2: variable_delete WS-link stall and concurrency", () => {
             }
         ]);
 
-        const result2 = await deleteVariables({
+        const result2 = await captureInUseRefusal(deleteVariables({
             collectionId: "col-2",
             collectionName: "Col2"
-        });
+        }));
 
         expect(result2.success).toBe(false);
         expect(result2.error).toContain("Aliased by variable 'Var3'");
@@ -262,10 +284,10 @@ describe("Phase 2: variable_delete WS-link stall and concurrency", () => {
         });
 
         // delete of in-use var-1 should fail and list componentSet as consumer, but not crash on variant
-        const resultVar1 = await deleteVariables({
+        const resultVar1 = await captureInUseRefusal(deleteVariables({
             variableIds: ["var-1"],
             variableNames: ["Var1"]
-        });
+        }));
         expect(resultVar1.success).toBe(false);
         expect(resultVar1.error).toContain("Component Set 1");
         expect(resultVar1.error).toContain("componentProperty:prop-1");

@@ -1,17 +1,21 @@
 {
     "compilerOptions": {
         "target": "es2018",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
         "lib": [
             "es2018"
         ],
         "strict": true,
-        "typeRoots": [
-            "../../node_modules/@figma"
+        "types": [
+            "@figma/plugin-typings"
         ]
     },
     "include": [
         "src/**/*",
         "handlers/**/*",
-        "utils/**/*"
+        "utils/**/*",
+        "types/**/*",
+        "../src/shared/nodeTypes.ts"
     ]
 }

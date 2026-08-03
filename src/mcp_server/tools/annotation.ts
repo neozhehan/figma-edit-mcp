@@ -1,7 +1,142 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput } from "./_result.js";
+import { toolResult, looseOutput, batchResultRow, pageCoverage } from "./_result.js";
+
+// Kept in exact parity with the pinned @figma/plugin-typings
+// `AnnotationPropertyType` union. The Phase 7 contract test mechanically
+// compares this inventory with plugin-api-standalone.d.ts.
+export const ANNOTATION_PROPERTY_TYPES = [
+    "width",
+    "height",
+    "maxWidth",
+    "minWidth",
+    "maxHeight",
+    "minHeight",
+    "fills",
+    "strokes",
+    "effects",
+    "strokeWeight",
+    "cornerRadius",
+    "textStyleId",
+    "textAlignHorizontal",
+    "fontFamily",
+    "fontStyle",
+    "fontSize",
+    "fontWeight",
+    "lineHeight",
+    "letterSpacing",
+    "itemSpacing",
+    "padding",
+    "layoutMode",
+    "alignItems",
+    "opacity",
+    "mainComponent",
+    "gridRowGap",
+    "gridColumnGap",
+    "gridRowCount",
+    "gridColumnCount",
+    "gridRowAnchorIndex",
+    "gridColumnAnchorIndex",
+    "gridRowSpan",
+    "gridColumnSpan",
+] as const;
+
+const annotationPropertyType = z.enum(ANNOTATION_PROPERTY_TYPES);
+
+const annotationProperties = z
+    .array(
+        z.object({
+            type: annotationPropertyType.describe("The annotated Figma property"),
+        })
+    )
+    .superRefine((properties, ctx) => {
+        const seen = new Set<string>();
+        properties.forEach((property, index) => {
+            if (seen.has(property.type)) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: [index, "type"],
+                    message: `Duplicate annotation property type '${property.type}'. Include each property type at most once.`,
+                });
+            }
+            seen.add(property.type);
+        });
+    });
+
+const nativeAnnotation = z
+    .object({
+        label: z.string().optional().describe("Optional plain-text annotation label"),
+        labelMarkdown: z.string().optional().describe("Optional Markdown annotation label"),
+        properties: z.array(z.object({ type: annotationPropertyType })).optional(),
+        categoryId: z.string().optional(),
+    })
+    .catchall(z.any());
+
+const annotatedNode = z
+    .object({
+        nodeId: z.string().describe("ID of the node that owns these annotations"),
+        name: z.string().describe("Current name of the owning node"),
+        annotations: z.array(nativeAnnotation).describe("Annotations owned by this node"),
+    })
+    .catchall(z.any());
+
+const annotationCategoryColor = z.enum([
+    "yellow",
+    "orange",
+    "red",
+    "pink",
+    "violet",
+    "blue",
+    "teal",
+    "green",
+]);
+
+const annotationCategory = z
+    .object({
+        id: z.string(),
+        label: z.string(),
+        color: annotationCategoryColor,
+        isPreset: z.boolean(),
+    })
+    .catchall(z.any());
+
+const annotationResultRow = batchResultRow.safeExtend({
+    beforeCount: z.number().int().nonnegative().nullable().describe("Verified annotation count immediately before this row, or null when the count could not be read"),
+    afterCount: z.number().int().nonnegative().nullable().describe("Verified annotation count after this row's attempt, or null when post-attempt state is unknown"),
+    beforeCountVerified: z.boolean().describe("Whether beforeCount is a verified observation (false requires beforeCount:null)"),
+    afterCountVerified: z.boolean().describe("Whether afterCount is a verified observation (false requires afterCount:null)"),
+    outcomeUnknown: z.literal(true).optional().describe("Present when an append was attempted but post-attempt state could not be verified; never retry blindly"),
+    postStateError: z.string().optional().describe("Secondary readback failure explaining why annotation state is unknown; the row error remains the initiating failure"),
+}).superRefine((row, ctx) => {
+    for (const side of ["before", "after"] as const) {
+        const count = row[`${side}Count`];
+        const verified = row[`${side}CountVerified`];
+        if (verified !== (count !== null)) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: [`${side}CountVerified`],
+                message: `${side}CountVerified must be true exactly when ${side}Count is a verified number.`,
+            });
+        }
+    }
+    if (row.outcomeUnknown) {
+        if (!row.partialMutation) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["partialMutation"],
+                message: "outcomeUnknown rows must fail safe with partialMutation:true.",
+            });
+        }
+        if (row.afterCountVerified) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: ["afterCountVerified"],
+                message: "outcomeUnknown requires an unverified post-attempt count.",
+            });
+        }
+    }
+});
 
 export function registerAnnotationTools(server: McpServer) {
     // 1. List Annotations Tool
@@ -9,15 +144,21 @@ export function registerAnnotationTools(server: McpServer) {
         "annotation_list",
         {
             title: "List Annotations",
-            description: "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. Optionally include the file's annotation categories.",
+            description: "Read the native annotations on a page or node (and subtree); exactly one of pageId or nodeId is required. The file's annotation categories are returned by default; pass includeCategories: false to omit them. Page loading is bounded; a page-scoped failure returns its structured error directly and successful reads include `coverage`.",
             inputSchema: z.object({
                 pageId: z.string().optional().describe("The page ID to get annotations from. Exactly one of pageId or nodeId is required."),
                 nodeId: z.string().optional().describe("The node ID to get annotations from. Exactly one of pageId or nodeId is required."),
-                includeCategories: z.boolean().optional().describe("If true, retrieves the list of global annotation categories in the file"),
+                // Defaults to TRUE in the handler (`annotationHandlers.getAnnotations`),
+                // not false. The prior "If true, retrieves…" wording advertised an
+                // opt-in and was contradicted live: categories come back without the
+                // flag. Describing the real default is the truthful fix; flipping the
+                // handler would break every existing reader for no safety gain.
+                includeCategories: z.boolean().optional().describe("Include the file's global annotation categories in the result. Defaults to true; pass false to omit them."),
             }),
             outputSchema: looseOutput({
-                annotations: z.array(z.any()).optional().describe("List of annotations"),
-                categories: z.array(z.any()).optional().describe("List of global annotation categories"),
+                annotatedNodes: z.array(annotatedNode).describe("Grouped annotations, preserving the owning node in page and node modes"),
+                categories: z.array(annotationCategory).optional().describe("List of global annotation categories"),
+                coverage: pageCoverage,
             }),
             annotations: {
                 readOnlyHint: true,
@@ -35,27 +176,36 @@ export function registerAnnotationTools(server: McpServer) {
         "annotation_set",
         {
             title: "Set Annotations",
-            description: "Create or update native annotations on one or more nodes in a batched call (per item: `annotationId` present = update, absent = create).",
+            description: "Append native annotations to one or more nodes in a batched call. If the status is 'partial_success', treat it as an incomplete operation and report the failed and skipped items to the user. Appending is NOT idempotent and a 'failed' row may already have appended its annotation (verified counts differ, or outcomeUnknown is true when post-state is unreadable; both carry partialMutation: true) — before retrying any non-success item, call annotation_list and compare the labels already on the node, or you will create a duplicate.",
             inputSchema: z.object({
                 annotations: z
                     .array(
                         z.object({
                             nodeId: z.string().describe("The node ID to annotate"),
-                            nodeName: z.string().describe("Expected name of the node (verification)"),
-                            annotationId: z.string().optional().describe("If updating: ID of the existing annotation"),
-                            categoryId: z.string().describe("The ID of the category"),
-                            status: z.enum(["TODO", "DONE", "NONE"]).optional().describe("Annotation status"),
-                            properties: z.record(z.any()).optional().describe("Custom metadata properties"),
+                            nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                            labelMarkdown: z
+                                .string()
+                                .refine((value) => value.trim().length > 0, {
+                                    message: "labelMarkdown must contain at least one non-whitespace character.",
+                                })
+                                .describe("Markdown annotation text; required and rejected when blank"),
+                            categoryId: z.string().optional().describe("Optional annotation category ID from annotation_list"),
+                            properties: annotationProperties.optional().describe("Optional duplicate-free Figma annotation property references. The enum is the full catalogue; Figma gates each entry by node type and refuses the append for one the target node does not support (e.g. 'fontSize' on a RECTANGLE), so a rejection here is a per-row failure rather than a schema error. Omit this field unless the property is clearly one the target node has."),
                         })
                     )
+                    .min(1)
                     .describe("Array of annotations to set"),
             }),
             outputSchema: looseOutput({
-                success: z.boolean().optional().describe("Whether annotations were set successfully"),
-                results: z.any().optional().describe("Detailed execution results"),
+                success: z.boolean().describe("Whether all annotations were set successfully"),
+                status: z.enum(["success", "partial_success", "failed"]).describe("Overall status of the batch operation"),
+                requestedCount: z.number().describe("Number of requested annotations"),
+                succeededCount: z.number().describe("Number of succeeded annotations"),
+                failedCount: z.number().describe("Number of failed annotations"),
+                skippedCount: z.number().describe("Number of skipped annotations"),
+                results: z.array(annotationResultRow).describe("Detailed execution results with before/after annotation counts (one row per input, in input order)"),
             }),
             annotations: {
-                idempotentHint: true,
                 openWorldHint: true
             }
         },

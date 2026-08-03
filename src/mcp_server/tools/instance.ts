@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput } from "./_result.js";
+import { toolResult, looseOutput, batchResults } from "./_result.js";
+import { noDuplicateTargets } from "./_batch.js";
 
 export function registerInstanceTools(server: McpServer) {
     // 1. Set Instance Property Tool
@@ -12,7 +13,7 @@ export function registerInstanceTools(server: McpServer) {
             description: "Set one property on an instance — boolean toggle, text override, instance swap, or variant selection.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the instance node"),
-                nodeName: z.string().describe("Name of the instance node for verification"),
+                nodeName: z.string().describe("The instance's current exact name, passed back verbatim from `node_info`."),
                 propertyName: z.string().describe("The human-readable name of the component property to change"),
                 value: z.union([z.string(), z.boolean()]).describe("The new value for the property. For INSTANCE_SWAP properties, this must be a component key (the stable library identifier)."),
             }),
@@ -67,23 +68,28 @@ export function registerInstanceTools(server: McpServer) {
         "instance_set_overrides",
         {
             title: "Set Instance Overrides",
-            description: "Apply previously-read overrides to target instances; targets are swapped to the source component and all overrides applied.",
+            description: "Apply previously-read overrides to target instances; targets are swapped to the source component and all overrides applied. If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped).",
             inputSchema: z.object({
                 sourceInstanceId: z.string().describe("ID of the source component instance"),
                 targetNodes: z
                     .array(
                         z.object({
                             nodeId: z.string().describe("The ID of the target instance"),
-                            nodeName: z.string().describe("Name of the node to modify"),
+                            nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                         })
                     )
+                    .min(1)
+                    .superRefine(noDuplicateTargets)
                     .describe("Array of target instances with their expected names for verification."),
             }),
             outputSchema: looseOutput({
-                success: z.boolean().optional().describe("Whether overrides application was successful"),
-                message: z.string().optional().describe("Status message"),
-                totalCount: z.number().optional().describe("Total overrides count"),
-                results: z.array(z.any()).optional().describe("Results per target node"),
+                success: z.boolean().describe("Whether overrides application was successful"),
+                status: z.enum(["success", "partial_success", "failed"]).describe("Overall status of the batch operation"),
+                requestedCount: z.number().describe("Number of requested targets"),
+                succeededCount: z.number().describe("Number of succeeded targets"),
+                failedCount: z.number().describe("Number of failed targets"),
+                skippedCount: z.number().describe("Number of skipped targets"),
+                results: batchResults("Results per target node (one row per input, in input order)"),
             }),
             annotations: {
                 idempotentHint: true,

@@ -6,6 +6,9 @@
 import { generateCommandId, sendProgressUpdate } from '../utils/progressUtils.js';
 import { delay } from '../utils/helpers.js';
 import { getContainingPageNode, isAncestorOf } from '../utils/nodeUtils.js';
+import { batchEnvelope } from '../utils/batchResult.js';
+import { describeError } from '../utils/errors.js';
+import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
 
 /**
  * Moves and/or resizes a node (sets absolute coordinates and dimensions)
@@ -79,7 +82,6 @@ export async function transformNode(params: any) {
             }
         }
 
-        // @ts-ignore
         node.resize(newWidth, newHeight);
     }
 
@@ -101,6 +103,27 @@ export async function transformNode(params: any) {
  * @param {string[]} params.nodeIds - Array of node IDs to delete
  * @returns {Promise<Object>} Deletion results
  */
+/**
+ * Recovery for a delete row whose target no longer exists.
+ *
+ * `node_delete` is the one aggregator that deletes in parallel chunks, so the
+ * commonest way to reach `partial_success` is an ordinary call naming a node
+ * AND one of its descendants: the ancestor's `remove()` takes the descendant
+ * with it, and the descendant's own row then fails. Live on channel `gf32`
+ * (2026-08-02) that returned `in get_name: The node with id "…" does not exist`
+ * — prose with no recovery, under a tool description that says to "retry every
+ * non-success item". Retrying is guaranteed to fail: dispatcher prevalidation
+ * refuses the whole command for a node it cannot resolve. So the row has to say
+ * that the requested end state is already reached and that no retry is owed.
+ */
+function alreadyGoneRecovery(nodeId: string): string {
+    return `Node ${nodeId} no longer exists, so the deletion you asked for is already in effect. The usual cause is that this batch also named one of its ancestors, and removing the ancestor removed this node too. Do NOT retry this row — dispatcher prevalidation refuses the whole command for an unresolvable node. Confirm with node_info (an absent node comes back in missingNodeIds) and treat this target as deleted.`;
+}
+
+function alreadyGoneReason(nodeId: string): string {
+    return `Node not found: ${nodeId}. ${alreadyGoneRecovery(nodeId)}`;
+}
+
 export async function deleteMultipleNodes(params: any) {
     const { nodeIds } = params || {};
     const commandId = generateCommandId();
@@ -131,7 +154,7 @@ export async function deleteMultipleNodes(params: any) {
         nodeIds.length,
         0,
         `Starting deletion of ${nodeIds.length} nodes`,
-        { totalNodes: nodeIds.length }
+        { requestedCount: nodeIds.length }
     );
 
     const results: any[] = [];
@@ -158,7 +181,7 @@ export async function deleteMultipleNodes(params: any) {
         0,
         `Preparing to delete ${nodeIds.length} nodes using ${chunks.length} chunks`,
         {
-            totalNodes: nodeIds.length,
+            requestedCount: nodeIds.length,
             chunks: chunks.length,
             chunkSize: CHUNK_SIZE,
         }
@@ -184,8 +207,10 @@ export async function deleteMultipleNodes(params: any) {
             {
                 currentChunk: chunkIndex + 1,
                 totalChunks: chunks.length,
-                successCount,
-                failureCount,
+                // Q26/R9: progress uses the shared envelope count names — no second
+                // count vocabulary. Local vars stay `successCount`/`failureCount`.
+                succeededCount: successCount,
+                failedCount: failureCount,
             }
         );
 
@@ -199,7 +224,7 @@ export async function deleteMultipleNodes(params: any) {
                     return {
                         success: false,
                         nodeId: nodeId,
-                        error: `Node not found: ${nodeId}`,
+                        error: alreadyGoneReason(nodeId),
                     };
                 }
 
@@ -220,11 +245,14 @@ export async function deleteMultipleNodes(params: any) {
                     nodeInfo: nodeInfo,
                 };
             } catch (error: any) {
-                console.error(`Error deleting node ${nodeId}: ${error.message}`);
+                const errorMessage = describeError(error);
+                console.error(`Error deleting node ${nodeId}: ${errorMessage}`);
                 return {
                     success: false,
                     nodeId: nodeId,
-                    error: error.message,
+                    error: /does not exist|already (been )?removed/i.test(errorMessage)
+                        ? `${errorMessage}. ${alreadyGoneRecovery(nodeId)}`
+                        : errorMessage,
                 };
             }
         });
@@ -255,8 +283,9 @@ export async function deleteMultipleNodes(params: any) {
             {
                 currentChunk: chunkIndex + 1,
                 totalChunks: chunks.length,
-                successCount,
-                failureCount,
+                // Q26/R9: shared envelope count names in progress, not a second vocabulary.
+                succeededCount: successCount,
+                failedCount: failureCount,
                 chunkResults: chunkResults,
             }
         );
@@ -282,20 +311,28 @@ export async function deleteMultipleNodes(params: any) {
         successCount + failureCount,
         `Node deletion complete: ${successCount} successful, ${failureCount} failed`,
         {
-            totalNodes: nodeIds.length,
-            nodesDeleted: successCount,
-            nodesFailed: failureCount,
+            // Q26: only the shared envelope counts in the progress payload.
+            requestedCount: nodeIds.length,
+            succeededCount: successCount,
+            failedCount: failureCount,
             completedInChunks: chunks.length,
             results: results,
         }
     );
 
+    // Q25: shared row vocabulary (nodeId/status/error); nodeInfo stays additive.
+    const formattedResults = results.map((r: any) => ({
+        success: r.success,
+        status: r.success ? "success" : "failed",
+        nodeId: r.nodeId,
+        error: r.error,
+        nodeInfo: r.nodeInfo
+    }));
+
+    // Q26: shared envelope counts only — `nodesDeleted`/`nodesFailed` dropped.
     return {
-        success: successCount > 0,
-        nodesDeleted: successCount,
-        nodesFailed: failureCount,
-        totalNodes: nodeIds.length,
-        results: results,
+        ...batchEnvelope(nodeIds.length, successCount, failureCount, 0),
+        results: formattedResults,
         completedInChunks: chunks.length,
         commandId,
     };
@@ -406,6 +443,17 @@ export async function setNodeName(params: any) {
         throw new Error("Missing name parameter");
     }
 
+    // Figma normalizes an assigned empty name to a type default, so accepting
+    // "" would rename the node to something the caller never asked for and
+    // report success. Refuse before any mutation (AS1 defense in depth; the
+    // registered schema already requires a non-empty name).
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "node_rename",
+        "Supply a non-empty name.",
+    );
+
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) {
         throw new Error(`Node not found with ID: ${nodeId}`);
@@ -435,6 +483,16 @@ export async function groupNodes(params: any) {
         throw new Error("At least 2 nodes are required to create a group");
     }
 
+    // Presence, not truthiness: `if (name)` silently discarded an explicit ""
+    // and let Figma's default stand while reporting success. Refuse before the
+    // group is created, so an empty name never costs a mutation.
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "node_group",
+        "Omit name to use Figma's default group name.",
+    );
+
     // Collect all nodes
     const resolvedNodes: any[] = [];
     for (const { nodeId } of nodes) {
@@ -459,7 +517,7 @@ export async function groupNodes(params: any) {
     }
 
     const group = figma.group(resolvedNodes, parent);
-    if (name) group.name = name;
+    if (name !== undefined) group.name = name;
 
     return { id: group.id, name: group.name, childCount: group.children.length };
 }
@@ -501,10 +559,29 @@ export async function flattenNode(params: any) {
     const node = await figma.getNodeByIdAsync(nodeId);
     if (!node) throw new Error(`Node not found with ID: ${nodeId}`);
 
-    // Note: flatten() is destructive and replaces the node
-    const flattened = figma.flatten([node]);
+    const parent = node.parent;
+    if (!parent || !("children" in parent) || !("insertChild" in parent)) {
+        throw new Error(`node_flatten: '${node.name}' has no valid parent container.`);
+    }
+    const index = parent.children.indexOf(node as SceneNode);
+    if (index < 0) {
+        throw new Error(`node_flatten: '${node.name}' is no longer a child of its resolved parent.`);
+    }
 
-    return { id: flattened.id, name: flattened.name, type: flattened.type };
+    // Note: flatten() is destructive and replaces the node
+    // D11: passing parent + index gives true zero-transient placement.
+    const flattened = figma.flatten([node as SceneNode], parent, index);
+
+    // Report the destination, for the reason Rev 49 gave when it added
+    // `parentId` to all eight creators: D11 containment is the guarantee this
+    // operation makes, and without the actual parent in the response it can
+    // only be confirmed by a second `node_info` read.
+    return {
+        id: flattened.id,
+        name: flattened.name,
+        type: flattened.type,
+        parentId: flattened.parent ? flattened.parent.id : null,
+    };
 }
 
 /**
@@ -549,13 +626,13 @@ export async function insertChild(params: any) {
         if (index < 0 || index > length) {
             throw new Error(`Operation Denied: index ${index} is out of range for parent '${parent.name}' (valid: 0–${length}). Omit 'index' to append.`);
         }
-        // @ts-ignore
+        // @ts-expect-error TS2345: Argument of type 'DocumentNode | PageNode | SceneNode' is not assignable to parameter of type 'never'.
         parent.insertChild(index, child);
     } else {
-        // @ts-ignore
+        // @ts-expect-error TS2345: Argument of type 'DocumentNode | PageNode | SceneNode' is not assignable to parameter of type 'never'.
         parent.appendChild(child);
     }
 
-    // @ts-ignore
+    // @ts-expect-error TS2345: Argument of type 'DocumentNode | PageNode | SceneNode' is not assignable to parameter of type 'never'.
     return { childId: child.id, newParentId: parent.id, index: parent.children.indexOf(child) };
 }

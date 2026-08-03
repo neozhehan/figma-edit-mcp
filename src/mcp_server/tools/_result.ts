@@ -25,6 +25,123 @@ export function looseOutput<T extends z.ZodRawShape>(shape: T) {
     return z.object(shape).catchall(z.any());
 }
 
+/**
+ * Q25 shared per-item row vocabulary for the four batch aggregators
+ * (`node_delete`, `text_set_content`, `annotation_set`, `instance_set_overrides`).
+ * Every row carries `nodeId` (identity) and `status`; a non-success row carries an
+ * actionable `error`; the Q9/Q24 partial-mutation fields attach where applicable.
+ *
+ * `.catchall(z.any())` keeps each tool's legitimate additive fields (e.g.
+ * `nodeInfo`, `instanceName`, `appliedCount`, `originalText`) so encoding the
+ * contract vocabulary validates real handler rows rather than rejecting them.
+ * At the server boundary this schema rejects a row that omits `nodeId`/`status`
+ * (including a legacy `instanceId`/`message`-only row), and the refinement below
+ * rejects a non-success row without an actionable reason. It intentionally does
+ * not enforce an exact row or top-level key set: additive unknown keys remain
+ * accepted, and Rev 43 records top-level envelope exactness as test-enforced
+ * rather than advertised-schema-enforced.
+ */
+export const batchResultRow = z
+    .object({
+        nodeId: z.string().describe("Identity of the target node (Q25 contract key)"),
+        status: z.enum(["success", "failed", "skipped"]).describe("Per-item outcome (Q25 contract key)"),
+        success: z.boolean().optional().describe("Legacy per-row boolean; mirrors status === 'success'"),
+        error: z.string().optional().describe("Actionable reason, REQUIRED on any non-success row (Q25 contract key)"),
+        partialMutation: z.boolean().optional().describe("Q9/Q24: set when the item mutated before it failed"),
+        whatChanged: z.string().optional().describe("Q9/Q24: plain-language statement of what changed"),
+        before: z.any().optional().describe("Q9/Q24: diagnostic evidence of the known pre-mutation state; not guaranteed to be a directly executable restoring-write input"),
+    })
+    .catchall(z.any())
+    // Q25/D7: "every failure/skip row carries an actionable per-item reason" is
+    // the property that makes a partial_success retryable. `error` cannot be
+    // declared unconditionally required (success rows omit it), so the
+    // conditional requirement is enforced here — a `failed`/`skipped` row with
+    // no reason is a contract violation, not a tolerable shape (R3).
+    .superRefine((row, ctx) => {
+        if (row.status === "failed" || row.status === "skipped") {
+            if (typeof row.error !== "string" || row.error.trim() === "") {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    path: ["error"],
+                    message: `A '${row.status}' row must carry an actionable 'error' reason (Q25 row vocabulary).`,
+                });
+            }
+        }
+    });
+
+/**
+ * The Q25 batch `results` array: one `batchResultRow` per input, in input order.
+ * Optional because an error-envelope (`isError`) result carries no `results`.
+ */
+export function batchResults(description = "Detailed results per node (one row per input, in input order)") {
+    return z.array(batchResultRow).optional().describe(description);
+}
+
+/**
+ * The D9 structured-error envelope every tool can return in `structuredContent`
+ * on `isError: true` results: `{error: {code, message, details?}}`. Advertised
+ * as an optional field on every output schema (see `withStrictInputSchemas`) so
+ * the pinned SDK client — which validates `structuredContent` against the
+ * advertised output schema even on error results — accepts error envelopes
+ * instead of failing them with `-32602`.
+ */
+export const errorEnvelope = z.object({
+    code: z.string().describe("Stable machine-readable failure code (see the error playbook)"),
+    message: z.string().describe("Human/agent-readable message embedding its own recovery"),
+    details: z.any().optional().describe("Optional structured context (e.g. partialMutation, before-values)"),
+});
+
+const pageErrorEntry = z.object({
+    pageId: z.string().describe("ID of the page that could not be loaded, resolved, or read"),
+    error: errorEnvelope.describe("Structured per-page failure"),
+});
+
+const pagesAttempted = z
+    .number()
+    .int()
+    .min(0)
+    .describe(
+        "Distinct pages this call tried to resolve, load, or read. 0 means the result required no page access at all — it does NOT mean the document was checked and found clean.",
+    );
+
+/**
+ * D14's shared page-coverage contract. `complete` is derived, never advisory:
+ * it is true exactly when every attempted page completed successfully.
+ *
+ * Change 8 (D1) expresses that invariant as a two-branch union rather than a
+ * `.superRefine()`. The refinement enforced it in the server-side Zod parse but
+ * vanished in the zod→JSON-Schema conversion, so the schema an MCP client
+ * validates against — and the schema a model reads to learn the contract — said
+ * only "a boolean and an array". The union survives conversion as `anyOf` with
+ * `const` + `maxItems`/`minItems`, so the invariant is now advertised, not just
+ * privately checked. Enforcement is unchanged in strength and strictly wider in
+ * reach; `pageCoverageInvariant` below is the machine-checkable statement of it.
+ */
+export const pageCoverage = z
+    .union([
+        z.object({
+            complete: z.literal(true).describe("Every attempted page succeeded"),
+            pagesAttempted,
+            pageErrors: z.array(pageErrorEntry).max(0)
+                .describe("Empty: no page failed"),
+        }),
+        z.object({
+            complete: z.literal(false).describe("At least one attempted page failed"),
+            pagesAttempted,
+            pageErrors: z.array(pageErrorEntry).min(1)
+                .describe("Structured failures for pages omitted from this result; successful pages are still returned"),
+        }),
+    ])
+    .describe("Page-scan coverage; partial read data remains usable when complete is false");
+
+/**
+ * The invariant `pageCoverage` encodes, stated once so tests and reviewers do
+ * not have to re-derive it from the union's branches.
+ */
+export function pageCoverageInvariant(coverage: { complete: boolean; pageErrors: unknown[] }) {
+    return coverage.complete === (coverage.pageErrors.length === 0);
+}
+
 export function toolResult(result: unknown) {
     const payload: Record<string, unknown> =
         result && typeof result === "object" ? (result as Record<string, unknown>) : {};

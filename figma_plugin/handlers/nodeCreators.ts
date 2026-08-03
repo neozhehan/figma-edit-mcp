@@ -4,6 +4,8 @@
  */
 
 import { setCharacters } from '../utils/textUtils.js';
+import { rethrowAfterCreatorCleanup } from '../utils/nodeUtils.js';
+import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
 
 export async function resolveAppendableParent(parentId: string, command: string): Promise<any> {
     if (!parentId) throw new Error(`${command}: missing parentId parameter.`);
@@ -54,6 +56,13 @@ export async function createShape(params: any) {
         throw new Error("Missing shape type parameter");
     }
 
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "create_shape",
+        "Omit name to use the default name.",
+    );
+
     const upperType = type.toUpperCase();
     if (arcData !== undefined && upperType !== "ELLIPSE") {
         throw new Error(`arcData is only supported for shape type ELLIPSE, got ${type}`);
@@ -67,52 +76,52 @@ export async function createShape(params: any) {
 
     const parent = await resolveAppendableParent(parentId, "create_shape");
 
-    let node: RectangleNode | EllipseNode | PolygonNode | StarNode;
+    if ((upperType === "POLYGON" || upperType === "STAR") && pointCount! < 3) {
+        throw new Error(`${upperType === "POLYGON" ? "Polygons" : "Stars"} require pointCount >= 3`);
+    }
 
+    let createNode: () => RectangleNode | EllipseNode | PolygonNode | StarNode;
     switch (upperType) {
         case "RECTANGLE":
-            node = figma.createRectangle();
+            createNode = () => figma.createRectangle();
             break;
         case "ELLIPSE":
-            node = figma.createEllipse();
-            if (arcData) {
-                node.arcData = {
-                    startingAngle: arcData.startingAngle ?? 0,
-                    endingAngle: arcData.endingAngle ?? Math.PI * 2,
-                    innerRadius: arcData.innerRadius ?? 0
-                };
-            }
+            createNode = () => figma.createEllipse();
             break;
         case "POLYGON":
-            node = figma.createPolygon();
-            if (pointCount !== undefined) {
-                if (pointCount < 3) {
-                    throw new Error("Polygons require pointCount >= 3");
-                }
-                node.pointCount = pointCount;
-            }
+            createNode = () => figma.createPolygon();
             break;
         case "STAR":
-            node = figma.createStar();
-            if (pointCount !== undefined) {
-                if (pointCount < 3) {
-                    throw new Error("Stars require pointCount >= 3");
-                }
-                node.pointCount = pointCount;
-            }
-            if (innerRadius !== undefined) {
-                node.innerRadius = innerRadius;
-            }
+            createNode = () => figma.createStar();
             break;
         default:
             throw new Error(`Unsupported shape type: ${type}`);
     }
 
+    const node = createNode();
     try {
+        // D11: implicit creators place on currentPage. Reparent synchronously
+        // before any property write, await, progress event, or response.
+        parent.appendChild(node);
+
+        if (upperType === "ELLIPSE" && arcData) {
+            (node as EllipseNode).arcData = {
+                startingAngle: arcData.startingAngle ?? 0,
+                endingAngle: arcData.endingAngle ?? Math.PI * 2,
+                innerRadius: arcData.innerRadius ?? 0
+            };
+        }
+        if ((upperType === "POLYGON" || upperType === "STAR") && pointCount !== undefined) {
+            (node as PolygonNode | StarNode).pointCount = pointCount;
+        }
+        if (upperType === "STAR" && innerRadius !== undefined) {
+            (node as StarNode).innerRadius = innerRadius;
+        }
+
         node.x = x;
         node.y = y;
         node.resize(width, height);
-        if (name) {
+        if (name !== undefined) {
             node.name = name;
         } else {
             node.name = type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
@@ -142,12 +151,8 @@ export async function createShape(params: any) {
             }];
         }
 
-        // @ts-ignore
-        parent.appendChild(node);
-
         // Handle absolute positioning if requested and parent is auto-layout
         if (useAbsolutePosition && parentId) {
-            // @ts-ignore
             if (parent && (parent.layoutMode === "HORIZONTAL" || parent.layoutMode === "VERTICAL")) {
                 node.layoutPositioning = "ABSOLUTE";
                 node.x = x;
@@ -155,7 +160,7 @@ export async function createShape(params: any) {
             }
         }
 
-        return {
+        const result = {
             id: node.id,
             name: node.name,
             type: node.type,
@@ -165,11 +170,9 @@ export async function createShape(params: any) {
             height: node.height,
             parentId: node.parent ? node.parent.id : undefined
         };
-    } catch (error) {
-        if (node && typeof node.remove === "function" && (node as any).removed !== true) {
-            node.remove();
-        }
-        throw error;
+        return result;
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, node, "create_shape", parentId);
     }
 }
 
@@ -213,10 +216,20 @@ export async function createFrame(params: any) {
         itemSpacing = 0,
     } = params || {};
 
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "create_frame",
+        "Omit name to use the default name.",
+    );
+
     const parentNode = await resolveAppendableParent(parentId, "create_frame");
 
     const frame = figma.createFrame();
     try {
+        // D11: contain the new frame before any fallible configuration.
+        parentNode.appendChild(frame);
+
         frame.x = x;
         frame.y = y;
         frame.resize(width, height);
@@ -278,10 +291,7 @@ export async function createFrame(params: any) {
             frame.strokeWeight = strokeWeight;
         }
 
-        // @ts-ignore
-        parentNode.appendChild(frame);
-
-        return {
+        const result = {
             id: frame.id,
             name: frame.name,
             x: frame.x,
@@ -295,11 +305,9 @@ export async function createFrame(params: any) {
             layoutWrap: frame.layoutWrap,
             parentId: frame.parent ? frame.parent.id : undefined,
         };
-    } catch (error) {
-        if (frame && typeof frame.remove === "function" && (frame as any).removed !== true) {
-            frame.remove();
-        }
-        throw error;
+        return result;
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, frame, "create_frame", parentId);
     }
 }
 
@@ -329,7 +337,7 @@ function getFontStyle(weight: any) {
         case 900:
             return "Black";
         default:
-            return "Regular";
+            throw new Error(`Unsupported fontWeight ${weight}; expected one of 100, 200, 300, 400, 500, 600, 700, 800, or 900.`);
     }
 }
 
@@ -354,30 +362,41 @@ export async function createText(params: any) {
         fontSize = 14,
         fontWeight = 400,
         fontColor = { r: 0, g: 0, b: 0, a: 1 }, // Default to black
-        name = "",
+        name,
         parentId,
     } = params || {};
 
+    assertNonEmptyExplicitName(
+        name,
+        "name",
+        "create_text",
+        "Omit name to use the default name.",
+    );
+
+    // Defense in depth for clients that bypass the MCP schema. Never silently
+    // map an unsupported weight to Regular and then echo the unapplied input.
+    const fontStyle = getFontStyle(fontWeight);
     const parentNode = await resolveAppendableParent(parentId, "create_text");
 
     const textNode = figma.createText();
     try {
+        // D11: insertion must precede font-loading awaits and character writes.
+        parentNode.appendChild(textNode);
+
         textNode.x = x;
         textNode.y = y;
-        textNode.name = name || text;
-        try {
-            await figma.loadFontAsync({
-                family: "Inter",
-                style: getFontStyle(fontWeight),
-            });
-            textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
-            textNode.fontSize = parseInt(fontSize);
-        } catch (error: any) {
-            console.error("Error setting font size", error);
-        }
+        textNode.name = name !== undefined ? name : text;
+        // Font loading and both configuration writes are part of creation.
+        // Failure must reach the outer creator cleanup/disclosure path rather
+        // than returning success with a default or partially applied style.
+        await figma.loadFontAsync({
+            family: "Inter",
+            style: fontStyle,
+        });
+        textNode.fontName = { family: "Inter", style: fontStyle };
+        textNode.fontSize = fontSize;
         // setCharacters is async (loads fonts + writes characters); must be awaited
         // or the node has no text when we read/return it (characters:"", width:0).
-        // @ts-ignore
         await setCharacters(textNode, text);
 
         // Set text color
@@ -392,10 +411,7 @@ export async function createText(params: any) {
         };
         textNode.fills = [paintStyle];
 
-        // @ts-ignore
-        parentNode.appendChild(textNode);
-
-        return {
+        const result = {
             id: textNode.id,
             name: textNode.name,
             x: textNode.x,
@@ -410,11 +426,9 @@ export async function createText(params: any) {
             fills: textNode.fills,
             parentId: textNode.parent ? textNode.parent.id : undefined,
         };
-    } catch (error) {
-        if (textNode && typeof textNode.remove === "function" && (textNode as any).removed !== true) {
-            textNode.remove();
-        }
-        throw error;
+        return result;
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, textNode, "create_text", parentId);
     }
 }
 
@@ -438,36 +452,43 @@ export async function cloneNode(params: any) {
         throw new Error(`Node not found with ID: ${nodeId}`);
     }
 
-    // Clone the node
-    // @ts-ignore
-    const clone = node.clone();
+    const parent = node.parent;
+    if (!parent) {
+        throw new Error(`node_clone: '${node.name}' has no parent and cannot be cloned.`);
+    }
+    // The typings prove every non-null parent is appendable; retain the
+    // runtime guard for non-conforming hosts and test doubles.
+    if (!("appendChild" in (parent as BaseNode))) {
+        throw new Error(`node_clone: parent '${parent.name}' (type ${parent.type}) cannot accept cloned children.`);
+    }
+    const verifiedParentId = parent.id;
 
+    // Clone the node
+    // @ts-expect-error TS2339: Property 'clone' does not exist on type 'BaseNode'.
+    const clone = node.clone();
     try {
+        // D11: clone() uses an implicit parent, so move it immediately.
+        parent.appendChild(clone);
+
         // If x and y are provided, move the clone to that position
         if (x !== undefined && y !== undefined) {
             clone.x = x;
             clone.y = y;
         }
 
-        // Add the clone to the same parent as the original node
-        if (node.parent) {
-            node.parent.appendChild(clone);
-        } else {
-            throw new Error(`node_clone: '${node.name}' has no parent and cannot be cloned.`);
-        }
-
-        return {
+        const result = {
             id: clone.id,
             name: clone.name,
             x: "x" in clone ? clone.x : undefined,
             y: "y" in clone ? clone.y : undefined,
             width: "width" in clone ? clone.width : undefined,
             height: "height" in clone ? clone.height : undefined,
+            // D11: report where the node actually landed, so the caller can
+            // confirm containment from the response instead of re-reading.
+            parentId: clone.parent ? clone.parent.id : undefined,
         };
-    } catch (error) {
-        if (clone && typeof clone.remove === "function" && (clone as any).removed !== true) {
-            clone.remove();
-        }
-        throw error;
+        return result;
+    } catch (error: any) {
+        rethrowAfterCreatorCleanup(error, clone, "node_clone", verifiedParentId);
     }
 }

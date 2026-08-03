@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput } from "./_result.js";
+import { toolResult, looseOutput, pageCoverage } from "./_result.js";
 
 export function registerComponentTools(server: McpServer) {
     // 1. List Components Tool
@@ -9,7 +9,7 @@ export function registerComponentTools(server: McpServer) {
         "component_list",
         {
             title: "List Components",
-            description: "List components in the document, with filtering and scope options.",
+            description: "List components in the document, with filtering and scope options. Document scans isolate page failures and report them in `coverage`; page-scoped failures return their structured error directly.",
             inputSchema: z.object({
                 filter: z
                     .enum(["local", "remote"])
@@ -28,6 +28,7 @@ export function registerComponentTools(server: McpServer) {
             outputSchema: looseOutput({
                 count: z.number().describe("Total count of components"),
                 components: z.array(z.any()).describe("List of component objects"),
+                coverage: pageCoverage,
             }),
             annotations: {
                 readOnlyHint: true,
@@ -48,10 +49,10 @@ export function registerComponentTools(server: McpServer) {
             description: "Add or edit a component-property definition (BOOLEAN/TEXT/INSTANCE_SWAP) on a main component or variant set. Deleting is `component_delete_property`.",
             inputSchema: z.object({
                 nodeId: z.string().describe("ID of the COMPONENT or COMPONENT_SET"),
-                nodeName: z.string().describe("Name of the node for verification"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 action: z.enum(["ADD", "EDIT"]).describe("Action to perform"),
-                propertyName: z.string().describe("The human-readable name of the property to affect"),
-                newPropertyName: z.string().optional().describe("For the EDIT action, to rename the property"),
+                propertyName: z.string().describe("For ADD, the required new property name, which must be non-empty. For EDIT, the existing property's exact lookup name."),
+                newPropertyName: z.string().min(1).optional().describe("For EDIT, the optional replacement property name. It must be non-empty when supplied; omit it to leave the existing property name unchanged."),
                 propertyType: z.enum(["BOOLEAN", "TEXT", "INSTANCE_SWAP"]).optional().describe("Required for ADD: The type of property"),
                 defaultValue: z.union([z.string(), z.boolean()]).optional().describe("Required for ADD: Default value for the property. For INSTANCE_SWAP, this must be a component node ID."),
                 newDefaultValue: z.union([z.string(), z.boolean()]).optional().describe("For the EDIT action, to change the default value. For INSTANCE_SWAP, this must be a component node ID."),
@@ -64,6 +65,14 @@ export function registerComponentTools(server: McpServer) {
                     )
                     .optional()
                     .describe("Array of preferred values for INSTANCE_SWAP properties during ADD or EDIT."),
+            }).superRefine((data, ctx) => {
+                if (data.action === "ADD" && data.propertyName === "") {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        path: ["propertyName"],
+                        message: "propertyName must not be empty for ADD. Supply a non-empty name for the new component property.",
+                    });
+                }
             }),
             outputSchema: looseOutput({
                 id: z.string().optional().describe("ID of the component/component set"),
@@ -94,7 +103,7 @@ export function registerComponentTools(server: McpServer) {
             description: "Remove a component-property definition from a main component or variant set; propagates to every instance.",
             inputSchema: z.object({
                 nodeId: z.string().describe("ID of the COMPONENT or COMPONENT_SET"),
-                nodeName: z.string().describe("Name of the node for verification"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 propertyName: z.string().describe("The human-readable name of the property to delete"),
             }),
             outputSchema: looseOutput({

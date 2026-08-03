@@ -1,8 +1,15 @@
 import { describe, it, expect, mock } from "bun:test";
+import { SERVER_VERSION } from "../../../../shared/version.js";
 
+// C7: a mutable transport return so the callback tests can drive a specific
+// handler-shaped payload through the REAL registered callback.
+let nextTransportResult: any = {};
 mock.module("../../../figma-client.js", () => ({
-    sendCommandToFigma: mock(() => Promise.resolve({})),
-    joinChannel: mock(() => Promise.resolve()),
+    sendCommandToFigma: mock(() => Promise.resolve(nextTransportResult)),
+    joinChannel: mock(() => Promise.resolve({
+        serverVersion: SERVER_VERSION,
+        pluginVersion: SERVER_VERSION,
+    })),
     resetChannel: mock(() => { }),
 }));
 
@@ -14,11 +21,13 @@ const { registerAllTools } = await import("../../../tools/index.js");
 const { toJsonSchemaCompat } = await import("@modelcontextprotocol/sdk/server/zod-json-schema-compat.js");
 const { AjvJsonSchemaValidator } = await import("@modelcontextprotocol/sdk/validation/ajv-provider.js");
 
-// Capture every registered tool's schema
+// Capture every registered tool's schema and (C7) its wrapped callback
 const TOOLS: Record<string, any> = {};
+const HANDLERS: Record<string, Function> = {};
 const mockServer: any = {
     registerTool: (name: string, config: any, handler: Function) => {
         TOOLS[name] = config?.outputSchema;
+        HANDLERS[name] = handler;
     },
     tool: (name: string, _d: any, _s: any, handler: Function) => {
         // Ignored or handle differently
@@ -75,10 +84,18 @@ describe("Phase 4: outputSchema Validation Tests", () => {
     describe("channel_join output schema validation", () => {
         const schema = TOOLS["channel_join"];
 
+        it("advertises both self-reported version fields", () => {
+            const advertised: any = toJsonSchemaCompat(schema, { target: "draft-7" });
+            expect(advertised.properties.serverVersion.type).toBe("string");
+            expect(advertised.properties.pluginVersion.type).toBe("string");
+        });
+
         it("validates successful page-mode connects", () => {
             assertPayloadValidates("channel_join(page)", schema, {
                 status: "success",
                 channel: "my-channel",
+                serverVersion: SERVER_VERSION,
+                pluginVersion: SERVER_VERSION,
                 allowEditNode: "page",
                 allowEditVariable: true,
                 allowEditStyle: true,
@@ -104,6 +121,8 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             assertPayloadValidates("channel_join(node)", schema, {
                 status: "success",
                 channel: "my-channel",
+                serverVersion: SERVER_VERSION,
+                pluginVersion: SERVER_VERSION,
                 allowEditNode: "node",
                 allowEditVariable: false,
                 allowEditStyle: false,
@@ -128,6 +147,8 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             assertPayloadValidates("channel_join(readonly)", schema, {
                 status: "success",
                 channel: "my-channel",
+                serverVersion: SERVER_VERSION,
+                pluginVersion: SERVER_VERSION,
                 allowEditNode: false,
                 allowEditVariable: false,
                 allowEditStyle: false,
@@ -143,6 +164,83 @@ describe("Phase 4: outputSchema Validation Tests", () => {
         });
     });
 
+    describe("Phase 10 shared page-coverage contract", () => {
+        const BASE_OUTPUTS: Record<string, any> = {
+            page_info: {
+                documentId: "doc-1",
+                documentName: "My Doc",
+                pageCount: 2,
+                pages: [{ pageId: "page-good", pageName: "Good" }],
+            },
+            node_info: {
+                nodes: [{ id: "node-good", name: "Good", type: "FRAME" }],
+            },
+            component_list: {
+                count: 1,
+                components: [{ id: "component-good", name: "Good" }],
+            },
+            variable_list: {
+                variables: [],
+                collections: [],
+            },
+            annotation_list: {
+                annotatedNodes: [],
+                categories: [],
+            },
+        };
+
+        for (const [name, base] of Object.entries(BASE_OUTPUTS)) {
+            it(`${name} advertises and validates partial coverage with the exact complete invariant`, () => {
+                const schema = TOOLS[name];
+                const coverage = {
+                    complete: false,
+                    pagesAttempted: 2,
+                    pageErrors: [{
+                        pageId: "page-bad",
+                        error: {
+                            code: "PAGE_LOAD_FAILED",
+                            message: "Failed to load page-bad",
+                            details: { pageId: "page-bad" },
+                        },
+                    }],
+                };
+
+                assertPayloadValidates(name, schema, { ...base, coverage });
+
+                const advertised: any = toJsonSchemaCompat(schema, { target: "draft-7" });
+                expect(advertised.properties.coverage).toBeDefined();
+                // Change 8 (D1): the invariant is now carried BY the advertised
+                // schema, not only by the server-side Zod parse. A `.superRefine`
+                // is dropped in the zod -> JSON Schema conversion, so the schema
+                // a client validates against — and a model reads — used to state
+                // only "a boolean and an array".
+                const branches = advertised.properties.coverage.anyOf
+                    ?? advertised.properties.coverage.oneOf;
+                expect(branches, `${name} must advertise the coverage invariant`).toBeDefined();
+                expect(branches).toHaveLength(2);
+                expect(branches.find((b: any) => b.properties.complete.const === true)
+                    .properties.pageErrors.maxItems).toBe(0);
+                expect(branches.find((b: any) => b.properties.complete.const === false)
+                    .properties.pageErrors.minItems).toBe(1);
+
+                expect(schema.safeParse({
+                    ...base,
+                    coverage: { ...coverage, complete: true },
+                }).success).toBe(false);
+                expect(schema.safeParse({
+                    ...base,
+                    coverage: { complete: false, pagesAttempted: 2, pageErrors: [] },
+                }).success).toBe(false);
+                // F4: pagesAttempted is required, so "nothing scanned" can never
+                // be read as "everything scanned clean".
+                expect(schema.safeParse({
+                    ...base,
+                    coverage: { complete: true, pageErrors: [] },
+                }).success).toBe(false);
+            });
+        }
+    });
+
     describe("Contract-seam outputSchema validations for all tools", () => {
         // Representative SUCCESS payloads, authored from the plugin handlers'
         // actual `return` statements (not from the schemas — that would be
@@ -150,18 +248,22 @@ describe("Phase 4: outputSchema Validation Tests", () => {
         const REPRESENTATIVE_OUTPUTS: Record<string, any> = {
             channel_join: {
                 status: "success",
-                channel: "my-channel"
+                channel: "my-channel",
+                serverVersion: SERVER_VERSION,
+                pluginVersion: SERVER_VERSION,
             },
             page_info: {
                 documentId: "doc-1",
                 documentName: "My Doc",
                 pageCount: 1,
                 pages: [{ pageId: "1:1", pageName: "Page" }],
-                missingPageIds: ["9:9"]
+                missingPageIds: ["9:9"],
+                coverage: { complete: true, pagesAttempted: 1, pageErrors: [] }
             },
             node_info: {
                 nodes: [{ id: "1:2", name: "Node", type: "FRAME" }],
-                missingNodeIds: ["9:9"]
+                missingNodeIds: ["9:9"],
+                coverage: { complete: true, pagesAttempted: 1, pageErrors: [] }
             },
             node_transform: {
                 id: "1:2",
@@ -176,13 +278,15 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 name: "New Name",
                 oldName: "Old Name"
             },
-            // deleteMultipleNodes return shape
+            // deleteMultipleNodes return shape (Q26: envelope counts only)
             node_delete: {
                 success: true,
-                nodesDeleted: 1,
-                nodesFailed: 0,
-                totalNodes: 1,
-                results: [{ success: true, nodeId: "1:2" }],
+                status: "success",
+                requestedCount: 1,
+                succeededCount: 1,
+                failedCount: 0,
+                skippedCount: 0,
+                results: [{ success: true, status: "success", nodeId: "1:2" }],
                 completedInChunks: 1
             },
             node_clone: {
@@ -339,10 +443,6 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 childCount: 2,
                 variantProperties: { "Size": { values: ["S", "L"] } }
             },
-            create_connection: {
-                success: true,
-                message: "Connections created"
-            },
             style_list: {
                 colors: [],
                 texts: [],
@@ -358,12 +458,14 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 success: true,
                 message: "Style deleted"
             },
-            // setMultipleTextContents return shape
+            // setMultipleTextContents return shape (Q26: envelope counts only)
             text_set_content: {
                 success: true,
-                replacementsApplied: 1,
-                replacementsFailed: 0,
-                totalReplacements: 1,
+                status: "success",
+                requestedCount: 1,
+                succeededCount: 1,
+                failedCount: 0,
+                skippedCount: 0,
                 results: []
             },
             // setTextStyle return shape
@@ -377,7 +479,8 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             component_list: {
                 count: 0,
                 scope: "document",
-                components: []
+                components: [],
+                coverage: { complete: true, pagesAttempted: 1, pageErrors: [] }
             },
             component_manage_property: {
                 id: "1:14",
@@ -406,8 +509,13 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             },
             instance_set_overrides: {
                 success: true,
+                status: "success",
+                requestedCount: 1,
+                succeededCount: 1,
+                failedCount: 0,
+                skippedCount: 0,
+                totalAppliedCount: 1,
                 message: "Overrides applied",
-                totalCount: 1,
                 results: []
             },
             reaction_list: {
@@ -422,7 +530,8 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             },
             variable_list: {
                 variables: [],
-                collections: []
+                collections: [],
+                coverage: { complete: true, pagesAttempted: 1, pageErrors: [] }
             },
             variable_manage: {
                 id: "v1",
@@ -434,11 +543,17 @@ describe("Phase 4: outputSchema Validation Tests", () => {
                 deleted: ["v1"]
             },
             annotation_list: {
-                annotations: [],
-                categories: []
+                annotatedNodes: [],
+                categories: [],
+                coverage: { complete: true, pagesAttempted: 1, pageErrors: [] }
             },
             annotation_set: {
                 success: true,
+                status: "success",
+                requestedCount: 1,
+                succeededCount: 1,
+                failedCount: 0,
+                skippedCount: 0,
                 results: []
             }
         };
@@ -453,9 +568,196 @@ describe("Phase 4: outputSchema Validation Tests", () => {
             });
         }
 
+        // Change 8 (C1): variable_delete's in-use refusal is a coded D9 error
+        // like its sibling DOCUMENT_SCAN_INCOMPLETE, so top-level `error` is the
+        // {code, message, details} envelope on EVERY tool. The bare string that
+        // forced a union here is retired; nothing may reintroduce a second type
+        // for `error`, because a model would then have to test the type of a
+        // field before it could read it.
+        it("variable_delete's refusals both use the single D9 error envelope", () => {
+            for (const code of ["VARIABLE_IN_USE", "DOCUMENT_SCAN_INCOMPLETE"]) {
+                assertPayloadValidates(`variable_delete(${code})`, TOOLS.variable_delete, {
+                    error: {
+                        code,
+                        message: "Operation Denied: ...",
+                        details: { variablesInUse: {} },
+                    },
+                });
+            }
+            expect(
+                TOOLS.variable_delete.safeParse({
+                    success: false,
+                    error: "Cannot delete: variable(s) are still in use.",
+                }).success,
+                "a bare string `error` must no longer validate",
+            ).toBe(false);
+        });
+
+        // Q26 (review P6-8/P6-11): the four batch tools advertise ONLY the shared
+        // envelope counts — no tool-specific duplicate count survives in the
+        // declared schema. Asserting against the declared (pre-relaxation) shape
+        // so a re-added alias fails here rather than being masked by looseOutput.
+        it("batch tools declare envelope counts only — no legacy duplicate counts", () => {
+            const legacyByTool: Record<string, string[]> = {
+                node_delete: ["nodesDeleted", "nodesFailed", "totalNodes", "deletedCount"],
+                text_set_content: ["replacementsApplied", "replacementsFailed", "totalReplacements", "count"],
+                annotation_set: ["annotationsApplied", "annotationsFailed", "totalAnnotations"],
+                instance_set_overrides: ["totalCount"],
+            };
+            const envelope = ["status", "requestedCount", "succeededCount", "failedCount", "skippedCount"];
+            for (const [tool, legacy] of Object.entries(legacyByTool)) {
+                // TOOLS[tool] is the registered (loose-relaxed) output schema; its
+                // `.shape` still lists exactly the declared field names.
+                const declared = (TOOLS[tool] as any).shape as Record<string, unknown>;
+                for (const gone of legacy) {
+                    expect(declared[gone], `${tool} must not declare legacy count ${gone}`).toBeUndefined();
+                }
+                for (const keep of envelope) {
+                    expect(declared[keep], `${tool} must declare envelope field ${keep}`).toBeDefined();
+                }
+            }
+        });
+
         it("has no stale representative entries for unregistered tools", () => {
             for (const name of Object.keys(REPRESENTATIVE_OUTPUTS)) {
                 expect(TOOLS[name]).toBeDefined();
+            }
+        });
+    });
+
+    // C7 (ratification 1): invoke the real registered callback over a controlled
+    // mocked transport and assert its `structuredContent` preserves a compliant
+    // envelope with no legacy count field. This exercises callback pass-through;
+    // it does not make the intentionally loose advertised schema an exact runtime
+    // validator (Rev 43).
+    describe("C7: registered batch callbacks surface envelope-only output", () => {
+        const batchReturns: Record<string, any> = {
+            node_delete: {
+                success: true, status: "success",
+                requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                results: [{ success: true, status: "success", nodeId: "1:2" }],
+            },
+            text_set_content: {
+                success: true, status: "success",
+                requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                results: [{ success: true, status: "success", nodeId: "1:2" }],
+            },
+            annotation_set: {
+                success: true, status: "success",
+                requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                results: [{
+                    success: true,
+                    status: "success",
+                    nodeId: "1:2",
+                    beforeCount: 0,
+                    afterCount: 1,
+                    beforeCountVerified: true,
+                    afterCountVerified: true,
+                }],
+            },
+            instance_set_overrides: {
+                success: true, status: "success",
+                requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                totalAppliedCount: 1,
+                results: [{ success: true, status: "success", nodeId: "1:2" }],
+            },
+        };
+        const legacyByTool: Record<string, string[]> = {
+            node_delete: ["nodesDeleted", "nodesFailed", "totalNodes", "deletedCount"],
+            text_set_content: ["replacementsApplied", "replacementsFailed", "totalReplacements", "count"],
+            annotation_set: ["annotationsApplied", "annotationsFailed", "totalAnnotations"],
+            instance_set_overrides: ["totalCount"],
+        };
+
+        for (const [tool, handlerReturn] of Object.entries(batchReturns)) {
+            it(`${tool} callback preserves a compliant envelope with no legacy count`, async () => {
+                nextTransportResult = handlerReturn;
+                const res: any = await HANDLERS[tool]({}, {} as any);
+                const sc = res.structuredContent;
+                // Round-trips the handler shape faithfully.
+                expect(sc).toEqual(handlerReturn);
+                // Envelope present, legacy absent.
+                for (const key of ["status", "requestedCount", "succeededCount", "failedCount", "skippedCount"]) {
+                    expect(sc[key], `${tool} envelope field ${key}`).toBeDefined();
+                }
+                for (const gone of legacyByTool[tool]) {
+                    expect(sc[gone], `${tool} must not surface legacy ${gone}`).toBeUndefined();
+                }
+                // The declared schema validates the registered callback output.
+                expect((TOOLS[tool] as any).safeParse(sc).success).toBe(true);
+            });
+        }
+
+        // R3 (closure audit): the round-trip above only proves the callback does
+        // not itself corrupt a compliant payload. The encoded row schema enforces
+        // the required Q25 vocabulary (nodeId + status); it is deliberately not an
+        // exact allowlist or a top-level envelope validator. These negative cases
+        // red-proof omission of the required keys.
+        it("R3: the encoded results schema rejects a reintroduced legacy/drifted row", () => {
+            const legacy = {
+                success: true, status: "success",
+                requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                results: [{ instanceId: "i1", message: "ok" }], // pre-Q25 instance vocabulary
+            };
+            expect((TOOLS["instance_set_overrides"] as any).safeParse(legacy).success).toBe(false);
+
+            for (const tool of Object.keys(batchReturns)) {
+                const noStatus = {
+                    success: true, status: "success",
+                    requestedCount: 1, succeededCount: 1, failedCount: 0, skippedCount: 0,
+                    results: [{
+                        nodeId: "1:2",
+                        ...(tool === "annotation_set" ? {
+                            beforeCount: 0,
+                            afterCount: 1,
+                            beforeCountVerified: true,
+                            afterCountVerified: true,
+                        } : {}),
+                    }], // no `status`
+                };
+                expect((TOOLS[tool] as any).safeParse(noStatus).success, `${tool} rejects a status-less row`).toBe(false);
+            }
+        });
+
+        // R3 (second recheck): D7 promises every failure/skip row carries an
+        // actionable reason — that is what makes a partial_success retryable.
+        // A non-success row without `error` must not validate.
+        it("R3: a failed/skipped row without an actionable `error` is rejected", () => {
+            for (const tool of Object.keys(batchReturns)) {
+                for (const status of ["failed", "skipped"]) {
+                    const noReason = {
+                        success: false, status: "failed",
+                        requestedCount: 1, succeededCount: 0, failedCount: 1, skippedCount: 0,
+                        results: [{
+                            nodeId: "1:2",
+                            status,
+                            ...(tool === "annotation_set" ? {
+                                beforeCount: 0,
+                                afterCount: 0,
+                                beforeCountVerified: true,
+                                afterCountVerified: true,
+                            } : {}),
+                        }], // no `error`
+                    };
+                    expect((TOOLS[tool] as any).safeParse(noReason).success, `${tool} rejects a reasonless '${status}' row`).toBe(false);
+                }
+                // …while the same row WITH a reason validates.
+                const withReason = {
+                    success: false, status: "failed",
+                    requestedCount: 1, succeededCount: 0, failedCount: 1, skippedCount: 0,
+                    results: [{
+                        nodeId: "1:2",
+                        status: "failed",
+                        error: "Node not found: 1:2",
+                        ...(tool === "annotation_set" ? {
+                            beforeCount: 0,
+                            afterCount: 0,
+                            beforeCountVerified: true,
+                            afterCountVerified: true,
+                        } : {}),
+                    }],
+                };
+                expect((TOOLS[tool] as any).safeParse(withReason).success, `${tool} accepts a reasoned failure row`).toBe(true);
             }
         });
     });

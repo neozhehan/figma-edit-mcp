@@ -1,6 +1,4 @@
 import { describe, it, expect, beforeEach, mock } from "bun:test";
-import { readFileSync } from "fs";
-import { join } from "path";
 
 // Mocks for Figma environment
 let cloneCalled = false;
@@ -83,7 +81,7 @@ const mainMod: any = await import("../../../../../figma_plugin/src/main.js?scope
 const pluginState = mainMod.getPluginState();
 const gateOnMessage = gateFigma.ui.onmessage as (msg: any) => Promise<void> | void;
 
-// Expected tool-to-gate mapping (13 generic gate categories)
+// Expected tool-to-gate mapping (15 generic gate categories)
 // 1. nodePerm
 // 2. scope
 // 3. name
@@ -97,189 +95,52 @@ const gateOnMessage = gateFigma.ui.onmessage as (msg: any) => Promise<void> | vo
 // 11. remoteAsset
 // 12. batchPrevalidation
 // 13. handlerPrevalidationBeforeMutation
+// 14. explicitNameNonEmpty
+// 15. collectionName
+// This table is the executable gate contract, asserted below by driving the real
+// dispatcher. It was previously ALSO diffed against SAFETY.md Part B in both
+// directions; that diff has been removed along with every other test that read a
+// documentation file. SAFETY.md is now kept in step by hand — see its Maintenance
+// section.
 const EXPECTED_CONTRACTS: Record<string, string[]> = {
     node_set_fill: ["nodePerm", "scope", "name", "lockedTarget"],
     node_set_stroke: ["nodePerm", "scope", "name", "lockedTarget"],
     node_set_corner_radius: ["nodePerm", "scope", "name", "lockedTarget"],
     node_set_effects: ["nodePerm", "scope", "name", "lockedTarget"],
     node_set_auto_layout: ["nodePerm", "scope", "name", "lockedTarget"],
-    node_rename: ["nodePerm", "scope", "name", "lockedTarget"],
+    node_rename: ["nodePerm", "scope", "name", "lockedTarget", "explicitNameNonEmpty"],
     node_transform: ["nodePerm", "scope", "name", "lockedTarget"],
     node_bind_variable: ["nodePerm", "scope", "name", "lockedTarget"],
     node_apply_style: ["nodePerm", "scope", "name", "lockedTarget"],
-    node_clone: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "parentScope", "lockedParent", "instanceInteriorParent"],
-    node_flatten: ["nodePerm", "scope", "name", "lockedTarget", "scopeRootPreservation"],
+    node_clone: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "parentScope", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
+    node_flatten: ["nodePerm", "scope", "name", "lockedTarget", "scopeRootPreservation", "handlerPrevalidationBeforeMutation"],
     node_ungroup: ["nodePerm", "scope", "name", "lockedTarget", "scopeRootPreservation", "instanceInteriorTarget"],
     text_set_style: ["nodePerm", "scope", "name", "lockedTarget"],
     instance_set_property: ["nodePerm", "scope", "name", "lockedTarget"],
     reaction_update: ["nodePerm", "scope", "name", "lockedTarget"],
 
     node_delete: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "scopeRootPreservation", "batchPrevalidation"],
-    node_group: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "batchPrevalidation"],
+    node_group: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "batchPrevalidation", "explicitNameNonEmpty"],
     text_set_content: ["nodePerm", "scope", "name", "lockedTarget", "batchPrevalidation"],
     annotation_set: ["nodePerm", "scope", "name", "lockedTarget", "batchPrevalidation"],
     instance_set_overrides: ["nodePerm", "scope", "name", "lockedTarget", "batchPrevalidation"],
-    create_component_set: ["nodePerm", "scope", "name", "instanceInteriorTarget", "remoteAsset", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "batchPrevalidation", "handlerPrevalidationBeforeMutation"],
+    create_component_set: ["nodePerm", "scope", "name", "instanceInteriorTarget", "remoteAsset", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "batchPrevalidation", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
 
-    create_shape: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
-    create_frame: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
-    create_text: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
-    create_svg: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
+    create_shape: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
+    create_frame: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
+    create_text: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
+    create_svg: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
     create_instance: ["nodePerm", "parentScope", "parentName", "lockedParent", "instanceInteriorParent", "handlerPrevalidationBeforeMutation"],
-    create_component: ["nodePerm", "scope", "name", "lockedTarget", "scopeRootPreservation", "handlerPrevalidationBeforeMutation"],
+    create_component: ["nodePerm", "scope", "name", "lockedTarget", "instanceInteriorTarget", "scopeRootPreservation", "handlerPrevalidationBeforeMutation"],
     node_insert_child: ["nodePerm", "parentScope", "parentName", "scope", "name", "lockedParent", "lockedTarget", "instanceInteriorParent", "instanceInteriorTarget"],
-    create_connection: ["nodePerm", "lockedTarget"],
-
-    variable_manage: ["remoteAsset"],
+    variable_manage: ["name", "collectionName", "remoteAsset", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
     variable_delete: ["name", "remoteAsset"],
-    style_manage: ["remoteAsset"],
+    style_manage: ["name", "remoteAsset", "handlerPrevalidationBeforeMutation", "explicitNameNonEmpty"],
     style_delete: ["name", "remoteAsset"],
-    component_manage_property: ["nodePerm", "scope", "name", "lockedTarget", "remoteAsset"],
+    component_manage_property: ["nodePerm", "scope", "name", "lockedTarget", "remoteAsset", "explicitNameNonEmpty"],
     component_delete_property: ["nodePerm", "scope", "name", "lockedTarget", "remoteAsset"],
 };
 
-// Aliases for generic token mapping
-const TOKEN_TO_GATE: Record<string, string> = {
-    "node-perm": "nodePerm",
-    "scope": "scope",
-    "scope(source)": "scope",
-    "name": "name",
-    "locked": "lockedTarget",
-    "locked(source)": "lockedTarget",
-    "parent scope": "parentScope",
-    "parent name": "parentName",
-    "parent locked": "lockedParent",
-    "locked(parent)": "lockedParent",
-    "locked(parent & child)": "lockedParent",
-    "instance-interior": "instanceInteriorTarget",
-    "instance-interior(parent)": "instanceInteriorParent",
-    "parent instance-interior": "instanceInteriorParent",
-    "scope-root": "scopeRootPreservation",
-    "remote block": "remoteAsset",
-    "remote block on UPDATE": "remoteAsset",
-    "remote block on edit-existing": "remoteAsset",
-    "per-item pre-validation": "batchPrevalidation",
-    "batch": "batchPrevalidation",
-    "per-component": "batchPrevalidation",
-    "handler-prevalidation": "handlerPrevalidationBeforeMutation",
-    "handler-prevalidation-before-mutation": "handlerPrevalidationBeforeMutation",
-    "parent-first + cleanup": "handlerPrevalidationBeforeMutation",
-    "plan/mutate two-phase": "handlerPrevalidationBeforeMutation",
-    "styleName verification": "name",
-    "required name verification, both modes": "name",
-    "scope-root self-destruction": "scopeRootPreservation"
-};
-
-// Ignored/bespoke section tokens to bypass
-const IGNORE_TOKENS = new Set<string>([
-    "enum checks",
-    "FILL needs auto-layout parent",
-    "NONE-frame silent-drop rejected",
-    "BASELINE horizontal-only",
-    "counterAxisSpacing WRAP-only",
-    "layout-controlled x/y hard-reject",
-    "resize-resets-sizing warning",
-    "unsupported node / mixed paint guard",
-    "auto-layout precheck",
-    "SOLID-only paint bind",
-    "type-mismatch guard",
-    "must be GROUP",
-    "mixed-font load via getStyledTextSegments",
-    "full schema↔handler contract incl. fontName + lineHeight AUTO",
-    "value type validation BOOLEAN/TEXT/VARIANT/INSTANCE_SWAP",
-    "not remote-gated (local override)",
-    "same-parent",
-    "correct characters contract",
-    "supports-annotations",
-    "source exists+INSTANCE",
-    "per-target exists+scope+name+INSTANCE+locked",
-    "per-component exists+scope+name+propValues-count+COMPONENT-type",
-    "duplicate-variant uniqueness",
-    "shape-param checks",
-    "color 0–1",
-    "opacity normalized, no NaN",
-    "self/cyclic-parent",
-    "index bounds",
-    "connector scope",
-    "per-connection start/end scope+name",
-    "var-perm",
-    "style-perm",
-    "ids-xor-collection",
-    "full-document consumer scan refuses in-use deletes",
-    "COMPONENT/COMPONENT_SET",
-    "blocks VARIANT add",
-    "variant-member guard",
-    "value type validation",
-    "parent exists",
-    "exists",
-    "scopeRoot present",
-    "scopeRoot",
-    "type TEXT",
-    "type INSTANCE",
-    "type COMPONENT",
-    "gated by node-perm, not style-perm",
-    "gated by node-perm not var-perm",
-    // v2.3.2 bespoke gates — covered by phase1/phase2/phase3 suites:
-    "parent appendable",            // node_clone destination appendability (phase1.test.ts)
-    "parent-cycle",                 // create_component_set cycle precheck (phase2.test.ts)
-    "set-member block",             // create_component_set OQ2 reject (phase2.test.ts)
-    "value separator rules",        // create_component_set OQ1 reject (phase2.test.ts)
-    "duplicate component IDs",      // create_component_set duplicate-id reject (phase2.test.ts)
-]);
-
-const CLEAN_IGNORE_TOKENS = new Set(
-    Array.from(IGNORE_TOKENS).map(tok => 
-        tok.replace(/\*\*/g, "").replace(/\([^\)]*\)/g, "").trim()
-    )
-);
-
-// Helper to expand parent scopes like parent scope+name+locked
-function expandToken(tok: string): string[] {
-    const clean = tok.trim();
-    if (clean.startsWith("parent ") && clean.includes("+")) {
-        const parts = clean.substring("parent ".length).split("+").map(p => p.trim());
-        // Distribute the parent prefix
-        return parts.map(p => {
-            const cleanP = p.replace(/\([^\)]*\)/g, "").trim();
-            if (cleanP === "locked") return "parent locked";
-            if (cleanP === "instance-interior") return "parent instance-interior";
-            if (cleanP.startsWith("scope")) return "parent scope";
-            if (cleanP.startsWith("name")) return "parent name";
-            return `parent ${cleanP}`;
-        });
-    }
-    if (clean.startsWith("child ") && clean.includes("+")) {
-        const parts = clean.substring("child ".length).split("+").map(p => p.trim());
-        return parts.map(p => {
-            const cleanP = p.replace(/\([^\)]*\)/g, "").trim();
-            if (cleanP.startsWith("scope")) return "scope";
-            if (cleanP.startsWith("name")) return "name";
-            return cleanP;
-        });
-    }
-    if (clean === "child scope+name") {
-        return ["scope", "name"];
-    }
-    if (clean === "instance-interior, both ids") {
-        return ["instance-interior", "parent instance-interior"];
-    }
-    if (clean === "per-target exists+scope+name+INSTANCE+locked") {
-        return ["scope", "name", "locked"];
-    }
-    if (clean === "per-component exists+scope+name+propValues-count+COMPONENT-type") {
-        return ["scope", "name"];
-    }
-    if (clean === "locked(parent & child)") {
-        return ["locked", "parent locked"];
-    }
-    if (clean === "locked(source)") {
-        return ["locked"];
-    }
-    if (clean === "locked(parent)") {
-        return ["parent locked"];
-    }
-    return [clean];
-}
 
 async function sendCommand(command: string, params: any) {
     const msg = {
@@ -295,99 +156,6 @@ async function sendCommand(command: string, params: any) {
     return await resultPromise;
 }
 
-describe("Phase 5: SAFETY.md Part B Bidirectional Verification", () => {
-    it("parses SAFETY.md and ensures exact mapping to EXPECTED_CONTRACTS", () => {
-        const safetyPath = join(process.cwd(), "SAFETY.md");
-        const safetyContent = readFileSync(safetyPath, "utf8");
-        const lines = safetyContent.split("\n");
-
-        let inPartB = false;
-        let currentSection = "";
-        const parsedContracts: Record<string, string[]> = {};
-
-        for (const line of lines) {
-            if (line.includes("## Part B")) {
-                inPartB = true;
-            }
-            if (line.includes("## Part C") || line.includes("### B5")) {
-                inPartB = false;
-            }
-            if (!inPartB) continue;
-            const sectionMatch = line.match(/^### (B\d)/);
-            if (sectionMatch) currentSection = sectionMatch[1];
-
-            if (line.startsWith("|") && !line.includes("Tool |") && !line.includes("---|")) {
-                const parts = line.split("|").map(p => p.trim());
-                if (parts.length >= 3) {
-                    const tool = parts[1].replace(/`/g, "").trim();
-                    const rawGates = parts[2];
-                    
-                    // Skip read tools/handshake (which are documented but not writes or are ungated)
-                    if (tool === "node_info" || tool.includes("style_list") || tool.includes("view_navigate") || tool.includes("get_connect_payload") || tool.includes("reaction_list") || tool.includes("instance_get_overrides")) {
-                        continue;
-                    }
-
-                    const tokens = rawGates.split("·").map(t => t.trim()).filter(Boolean);
-                    const gates: string[] = [];
-
-                    for (const rawTok of tokens) {
-                        const cleanedRaw = rawTok.replace(/\*\*/g, "").replace(/\`/g, "").replace(/\((v?\d+\.\d+\.\d+ )?§[^\)]*\)/g, "").trim();
-                        const expanded = expandToken(cleanedRaw);
-                        for (let cleanTok of expanded) {
-                            cleanTok = cleanTok.replace(/\([^\)]*\)/g, "").trim();
-                            
-                            // Bespoke tokens must match the ignore set EXACTLY —
-                            // substring/fuzzy passes would let novel gate claims
-                            // slip past the unknown-token tripwire (OQ4 guardrail).
-                            if (!cleanTok || CLEAN_IGNORE_TOKENS.has(cleanTok)) {
-                                continue;
-                            }
-
-                            const mapped = TOKEN_TO_GATE[cleanTok];
-                            if (!mapped) {
-                                throw new Error(`Unknown safety token in SAFETY.md for tool '${tool}': '${cleanTok}' (original raw: '${rawTok}'). Map it in TOKEN_TO_GATE, add it to IGNORE_TOKENS with a suite pointer, or fix SAFETY.md.`);
-                            }
-                            if (!gates.includes(mapped)) {
-                                gates.push(mapped);
-                            }
-                        }
-                    }
-
-                    // Rows under "### B2. Node batch tools (per-item pre-validation,
-                    // zero-mutation abort)" inherit the section's batch claim; the
-                    // handler-prevalidation claim is carried per-row via explicit
-                    // tokens ("parent-first + cleanup", "plan/mutate two-phase").
-                    if (currentSection === "B2" && !gates.includes("batchPrevalidation")) {
-                        gates.push("batchPrevalidation");
-                    }
-
-                    parsedContracts[tool] = gates;
-                }
-            }
-        }
-
-        for (const [tool, expected] of Object.entries(EXPECTED_CONTRACTS)) {
-            const parsed = parsedContracts[tool] || [];
-            try {
-                expect(parsed.sort()).toEqual(expected.sort());
-            } catch (err) {
-                console.error(`Mismatch for tool '${tool}': expected ${JSON.stringify(expected.sort())}, got ${JSON.stringify(parsed.sort())}`);
-                throw err;
-            }
-        }
-
-        for (const [tool, parsed] of Object.entries(parsedContracts)) {
-            const expected = EXPECTED_CONTRACTS[tool] || [];
-            try {
-                expect(parsed.sort()).toEqual(expected.sort());
-            } catch (err) {
-                console.error(`Mismatch for tool '${tool}': expected ${JSON.stringify(expected.sort())}, got ${JSON.stringify(parsed.sort())}`);
-                throw err;
-            }
-        }
-    });
-});
-
 describe("Phase 5: table-driven nodePerm sweep — every nodePerm-gated write rejects in read-only mode", () => {
     // The permission gate runs before any param handling, so empty params
     // suffice; a tool that reaches its handler would return command-result
@@ -399,7 +167,7 @@ describe("Phase 5: table-driven nodePerm sweep — every nodePerm-gated write re
             pluginState.scopeRootId = null;
             const res = await sendCommand(tool, {});
             expect(res.type).toBe("command-error");
-            expect(res.error).toContain("Read-Only Mode");
+            expect(res.error.message).toContain("Read-Only Mode");
         });
     }
 });

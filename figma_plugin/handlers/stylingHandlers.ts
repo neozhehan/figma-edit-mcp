@@ -262,12 +262,12 @@ export async function setCornerRadius(params: any) {
             if (corners[3]) node.bottomLeftRadius = radius;
         } else {
             // Node only supports uniform corner radius
-            // @ts-ignore
+            // @ts-expect-error TS2540: Cannot assign to 'cornerRadius' because it is a read-only property.
             node.cornerRadius = radius;
         }
     } else {
         // Set uniform corner radius
-        // @ts-ignore
+        // @ts-expect-error TS2540: Cannot assign to 'cornerRadius' because it is a read-only property.
         node.cornerRadius = radius;
     }
 
@@ -291,39 +291,68 @@ export async function setCornerRadius(params: any) {
  * @param {Array} params.effects - Array of effect objects
  * @returns {Promise<Object>} Result with node info and applied effects
  */
+/**
+ * Figma's `Effect` union discriminators. Mirrors `EFFECT_TYPES` in
+ * `src/mcp_server/tools/style.ts` — kept as a SEPARATE definition for the same
+ * reason the error registries are (Q27): the plugin bundle does not import
+ * `src/` at runtime. A behavioural parity test covers both against the pinned
+ * typings.
+ */
+const KNOWN_EFFECT_TYPES = [
+    "DROP_SHADOW",
+    "INNER_SHADOW",
+    "LAYER_BLUR",
+    "BACKGROUND_BLUR",
+    "NOISE",
+    "TEXTURE",
+    "GLASS",
+];
+
 export function normalizeEffects(effects: any[]): any[] {
     return effects.map((effect: any) => {
         if (!effect.type) {
-            throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR)");
+            throw new Error("Each effect must have a type (DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR, NOISE, TEXTURE, GLASS)");
         }
 
-        // Defaults for required fields if missing, to prevent crashes
-        const baseEffect: any = {
-            type: effect.type,
+        // A type outside the pinned union can only reach here from a client that
+        // bypassed the schema. We know nothing about its shape, so forward it
+        // untouched rather than injecting fields it may not accept.
+        if (!KNOWN_EFFECT_TYPES.includes(effect.type)) {
+            return effect;
+        }
+
+        // Q35: fill defaults ON TOP of the caller's object instead of rebuilding
+        // from an enumerated field list. Rebuilding silently discarded every
+        // field this function did not name — including `blurType` and the
+        // PROGRESSIVE ramp, which downgraded a progressive blur to a normal one
+        // with no error, and every field of the NOISE/TEXTURE/GLASS variants.
+        // The schema is now the authority on which fields are valid (a
+        // per-variant discriminated union pinned to the typings), so whatever
+        // reaches here has already been validated and must be forwarded intact.
+        const normalized: any = Object.assign({}, effect, {
             visible: effect.visible !== undefined ? effect.visible : true,
-        };
+        });
 
         if (effect.type === "DROP_SHADOW" || effect.type === "INNER_SHADOW") {
-            const shadow: any = Object.assign({}, baseEffect, {
-                color: effect.color || { r: 0, g: 0, b: 0, a: 0.25 },
-                offset: effect.offset || { x: 0, y: 4 },
-                radius: effect.radius !== undefined ? effect.radius : 4,
-                spread: effect.spread !== undefined ? effect.spread : 0,
-                blendMode: effect.blendMode || "NORMAL",
-            });
+            normalized.color = effect.color || { r: 0, g: 0, b: 0, a: 0.25 };
+            normalized.offset = effect.offset || { x: 0, y: 4 };
+            normalized.radius = effect.radius !== undefined ? effect.radius : 4;
+            normalized.spread = effect.spread !== undefined ? effect.spread : 0;
+            normalized.blendMode = effect.blendMode || "NORMAL";
             // showShadowBehindNode is a DROP_SHADOW-only property; Figma's runtime
             // rejects it on INNER_SHADOW ("Unrecognized key(s) ... 'showShadowBehindNode'").
+            // The schema already rejects it there; deleting it is defense in depth
+            // for a client that bypasses the schema (AS1).
             if (effect.type === "DROP_SHADOW") {
-                shadow.showShadowBehindNode = effect.showShadowBehindNode !== undefined ? effect.showShadowBehindNode : false;
+                normalized.showShadowBehindNode = effect.showShadowBehindNode !== undefined ? effect.showShadowBehindNode : false;
+            } else {
+                delete normalized.showShadowBehindNode;
             }
-            return shadow;
         } else if (effect.type === "LAYER_BLUR" || effect.type === "BACKGROUND_BLUR") {
-            return Object.assign({}, baseEffect, {
-                radius: effect.radius !== undefined ? effect.radius : 4,
-            });
+            normalized.radius = effect.radius !== undefined ? effect.radius : 4;
         }
 
-        return effect; // Pass through if it matches schema perfectly or is unknown type
+        return normalized;
     });
 }
 

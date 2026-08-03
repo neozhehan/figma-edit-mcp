@@ -87,6 +87,44 @@ bun test src/mcp_server/tests/<file>.test.ts   # one file
 
 Tests run against in-memory mocks; no Figma connection required. Please add or update tests for any tool change. See existing tests in `src/mcp_server/tests/` for the established patterns.
 
+### Red-proof every regression you add
+
+**A test that passes both before and after your fix is not a guard.** Before you consider a fix done, break the production line on purpose — delete the guard, revert the key, restore the old branch — and confirm that a test fails. Then restore it. If nothing failed, the regression does not cover the line it was written to protect.
+
+This is not a hypothetical. Three consecutive reviews of the same area shipped a **correct** fix alongside a regression that never entered the line it protected:
+
+- A producer was pinned by a regular expression over handler source, so it checked spelling rather than behaviour.
+- A seam test drove the real coordinator and the real consumer but never called the handler between them, so a handler-local edit was invisible.
+- A guard was covered only on the code path where it is inert, because an earlier layer already normalized the value; deleting the guard broke nothing.
+
+Each was found by mutating the production line and watching the suite stay green. Reading the tests would not have revealed any of them — they looked thorough. Budget a minute for the mutation; it is the cheapest check available and the only one that answers "does this test actually work?"
+
+When a mutation red-proof is recorded in a review, state which tests failed and how many, so the claim is reproducible.
+
+### Never use code to check non-code files
+
+**No test and no CI script asserts over documentation.** Not `CHANGELOG.md`, not `SAFETY.md`, not the `skills/figma-edit/references/` guides, not a PRD. If you are reaching for `expect(doc).toContain(...)`, stop.
+
+Matching a string proves a word was written, not that a statement is true. v2.3.3 shipped a suite of such guards and they stayed green through four separate factual errors in the very entry they were guarding — an invalid enum value in a migration example, a request missing three required fields, an invented error message, and a claim that required fields were optional. Every one used the right vocabulary. Worse, each review round that fixed the previous round's prose also introduced new prose-and-guard defects, so the guards cost more than they caught. They were all removed on 2026-08-02.
+
+Two clarifications, because both have been argued before:
+
+- **A script is not a loophole.** Rebuilding the check as `check:<something>` wired into CI is the same thing in a different file. v2.3.4's proposed `check:error-codes` playbook-parity gate was withdrawn on exactly this ground.
+- **Testing that a *server* serves a file is fine.** `resources.test.ts` asserts each `figma-edit://guide/*` resource returns its repository source byte-for-byte. That is a property of the server, and it makes no claim about what the document says.
+
+Documentation is kept in step by review. Where that leaves a guarantee unenforced — `SAFETY.md` Part B is no longer verified against the dispatcher, and error-playbook coverage is no longer checked — the affected document says so plainly rather than implying a gate that does not exist.
+
+### Mocks cannot establish Figma's behaviour
+
+The suite runs on stubs, which makes it fast and hermetic — and means **a mock can only prove what you told it to do.** Where a contract depends on how the Figma host actually behaves, a green test proves the stub, not the product. This repo has repeatedly shipped assertions that encoded a false assumption about Figma:
+
+- Stubs allowed an empty layer name to persist; the live host silently normalizes it to a default. The passing matrix proved only stub behaviour.
+- Whitespace-name preservation was asserted from stubs and had never been observed on a real document.
+- An effect payload accepted unknown keys and discarded them; no test noticed, because the mock had no opinion.
+- A response field was advertised and returned for months while being `undefined` at runtime, because the property does not exist on the real node type.
+
+Before asserting that Figma does something — honours a parent argument, preserves a value, exposes a property — either verify it against a live document or mark the assertion as an assumption. Prefer a live check for anything whose failure would be invisible to a stub.
+
 Image test fixtures under `src/mcp_server/tests/fixtures/images/` are third-party Creative Commons / public-domain assets (not covered by this project's MIT license); see their [`CREDITS.md`](src/mcp_server/tests/fixtures/images/CREDITS.md) for per-file attribution and licensing.
 
 ---

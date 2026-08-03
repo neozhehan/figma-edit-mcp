@@ -17,30 +17,44 @@ This plugin allows you as a Designer to focus purely on creative decision-making
 
 📖 **Documentation:** [neozhehan.github.io/figma-edit-mcp](https://neozhehan.github.io/figma-edit-mcp/)
 
-## Core Goals & Philosophy
-- 🛡️ **Safer:** The plugin performs programmatic checks and protections that exceed those in the Figma Desktop app. For example, it prevents the deletion of variables that are still in use, avoiding dangling references. By enforcing these strict validations before an action is taken, the plugin protects designs from both human error and AI hallucinations.
-- ✨ **Cleaner:** Programmatic, thorough operations mean no node is ever skipped or forgotten during large updates, ensuring that the design file is always consistent.
-- ⚡ **Faster:** Executing batch operations (like bulk text replacement or instance override propagation) via AI reduces hours of tedious manual design work down to seconds.
+## What This Does for You
 
-[Read the design philosophy behind these goals →](DESIGN_PHILOSOPHY.md)
+The project has three goals: **Safer**, **Cleaner**, and **Faster**.
 
-## Safer than Figma Itself
+- 🛡️ **Safer:** The plugin checks every action the AI requests before that action runs. If an action would damage the file, the plugin refuses it and tells the AI why. For example, the plugin will not delete a color variable while layers still use it. Figma itself does not warn you when you delete a variable that is in use — the deletion leaves broken references that are very hard to find afterwards.
+- ✨ **Cleaner:** Because damaging actions are refused, the file does not accumulate broken references or leftover values. Bulk updates cover every layer that matches your request, not just the layers a person remembers to check.
+- ⚡ **Faster:** The AI applies one change across hundreds of layers in seconds. For example, it can replace a product name in every text layer on a page, or copy the overrides from one component instance to fifty others.
 
-Every other way to give an AI write access to your Figma file trusts the AI to behave. **This one doesn't** — and that's the whole point.
+These goals support each other: when the plugin refuses mistakes, the file stays consistent, and a consistent file is easier for both you and the AI to work with.
 
-An AI agent is one hallucination away from deleting the wrong layer, overwriting a shared component, or quietly mangling a design-system token — and you may not notice until the damage is downstream. Figma Edit MCP treats the agent as **untrusted with respect to edit safety**, and puts a gate it *cannot bypass* in front of every write. The agent never decides what's safe; the plugin does, and it refuses anything outside the lines — with a structured error, not a guess.
+[Read the full reasoning behind these goals →](DESIGN_PHILOSOPHY.md)
 
-**What the agent physically cannot do to your file:**
-- 🎯 **Wander off** — it only writes inside the region *you* point it at; no scope, no edits.
-- 👻 **Edit a hallucinated layer** — every write must name the exact node it's touching; a stale or invented ID is refused, never guessed.
-- 💥 **Half-finish a bulk edit** — a batch with one bad target changes *nothing*; all-or-nothing, never a partial mess.
-- 🔒 **Touch what you protected** — locked layers, shared-library assets, and the insides of component instances are off-limits.
-- 🧨 **Saw off the branch it sits on** — it can't delete or replace the anchor of your editing session.
-- 🌍 **Reach for global tokens uninvited** — editing your variables or styles takes a separate, explicit opt-in, off by default.
+## What the AI Cannot Do to Your File
 
-And it's **honest about its limits**: it guarantees *where*, *which node*, and *what kind* of edit happens — not whether a valid, in-bounds edit was the one you actually meant. You stay in charge of intent; it removes the accidents.
+AI assistants sometimes invent things. An AI can name a layer that does not exist, or misremember which layer it was editing. This plugin does not depend on the AI being right. The plugin checks every edit itself, inside Figma, and refuses any edit that fails a check. The AI cannot skip these checks.
 
-📖 **The full contract** — every guarantee, the conditions it holds under, and exactly how each is enforced — lives in **[SAFETY.md](SAFETY.md)**. *(Your agent loads the same rules at runtime via the `figma-edit` skill or `figma-edit://guide/*`.)*
+What the plugin enforces:
+
+1. **The AI can only edit the area you chose.** When you connect, you choose one page or one frame for the session. The plugin refuses any edit outside that area. If you choose no area, the AI can read the file but cannot edit any layers.
+2. **Every edit must name its exact target layer.** The plugin compares the layer name the AI supplies with the real layer's name. If the names do not match, the plugin refuses the edit. This stops the AI from editing a layer it invented or misremembered.
+3. **A bulk edit with one bad item changes nothing.** The plugin validates every item in a bulk edit before it changes the first one. If any item fails validation, the plugin rejects the entire bulk edit.
+4. **Protected layers stay protected.** The plugin refuses edits to locked layers and to assets from shared libraries. It also refuses to add, delete, or move layers inside a component instance.
+5. **The AI cannot delete its own working area.** The plugin refuses any action that would delete or replace the page or frame you assigned for the session.
+6. **Variables and styles require separate permission.** Editing your variables or styles requires its own checkbox in the plugin, and both checkboxes are off by default. You grant that permission; the AI cannot grant it to itself.
+
+One honest limit: the plugin checks *where* an edit happens and *which layer* it touches. It cannot check whether the edit is the one you wanted. A wrong edit that follows all the rules will go through. So you review the AI's work the same way you would review a colleague's work.
+
+The exact rules, and the conditions under which each one holds, are written down in **[SAFETY.md](SAFETY.md)**. That document is for developers. *(Your AI assistant loads the same rules at runtime via the `figma-edit` skill or the `figma-edit://guide/*` resources.)*
+
+## How the Work Is Divided
+
+You do not need to know every Figma feature to direct this system. The work splits three ways:
+
+- **You** decide what the design should be. You describe the change in plain language, and you judge the result. You do not need to know which Figma menu or panel performs the change.
+- **The AI assistant** turns your request into specific Figma operations and carries out the repetitive work across many layers.
+- **The plugin** runs inside Figma, checks each operation, and refuses the unsafe ones.
+
+The AI contributes scale. The plugin contributes protection. You contribute the design judgment.
 
 ## Supported AI Integrations
 - Cursor
@@ -228,7 +242,6 @@ Tools are grouped into a two-level, underscore-separated namespace (`group_actio
 | `create_component` | Convert an existing frame into a main component |
 | `create_instance` | Instantiate a component at a position |
 | `create_component_set` | Combine components into a component set (variants) |
-| `create_connection` | Draw connector lines between nodes, or set/check the default connector |
 
 ### `style` — shared styles
 
@@ -297,7 +310,6 @@ Built-in prompts guide complex multi-step design tasks:
 
 | Prompt | Description |
 |---|---|
-| `reaction_to_connector_strategy` | Convert prototype reaction flows into visual FigJam connector lines |
 | `swap_overrides_instances` | Transfer component instance overrides from a source to multiple targets |
 
 ---

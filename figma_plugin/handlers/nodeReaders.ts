@@ -3,9 +3,11 @@
  * Handles reading and querying node information
  */
 
-import { buildPathArray, countDescendants, SAFE_LIST_PROPERTIES } from '../utils/nodeUtils.js';
+import { buildPathArray, countDescendants, getContainingPageNode, SAFE_LIST_PROPERTIES } from '../utils/nodeUtils.js';
+import { createPageLoadCoordinator, PageLoadCoordinator } from '../utils/pageLoad.js';
 import { sendProgressUpdate } from '../utils/progressUtils.js';
-import { NodeEntry, PathTuple } from '../../shared/nodeTypes.js';
+import { describeError } from '../utils/errors.js';
+import { NodeEntry, PathTuple } from '../../src/shared/nodeTypes.js';
 
 
 /**
@@ -13,7 +15,10 @@ import { NodeEntry, PathTuple } from '../../shared/nodeTypes.js';
  * @param {Object} params - Parameters including pageIds and commandId
  * @returns {Promise<Object>} Pages information
  */
-export async function getPagesInfo(params: any) {
+export async function getPagesInfo(
+    params: any,
+    pageLoads: PageLoadCoordinator = createPageLoadCoordinator(),
+) {
     const { pageIds, commandId } = params || {};
 
     const documentId = figma.root.id;
@@ -30,7 +35,8 @@ export async function getPagesInfo(params: any) {
             documentId,
             documentName,
             pageCount,
-            pages
+            pages,
+            coverage: pageLoads.coverage(),
         };
     }
 
@@ -54,25 +60,32 @@ export async function getPagesInfo(params: any) {
 
     let processedItems = 0;
     for (const id of orderedIds) {
-        const node = await figma.getNodeByIdAsync(id);
-        
-        // Strict page check: must be PAGE and parent must be root
-        // @ts-ignore
-        if (node && node.type === "PAGE" && node.parent?.id === figma.root.id) {
-            // @ts-ignore
-            await node.loadAsync();
-            pages.push({
-                pageId: node.id,
-                pageName: node.name,
-                descendantCount: countDescendants(node),
-                // @ts-ignore
-                children: node.children.map((child: any) => ({
-                    id: child.id,
-                    name: child.name,
-                    type: child.type
-                }))
-            });
+        const loaded = await pageLoads.resolve(id);
+
+        if (loaded.ok) {
+            const node = loaded.page;
+            try {
+                pages.push({
+                    pageId: node.id,
+                    pageName: node.name,
+                    descendantCount: countDescendants(node),
+                    children: node.children.map((child: any) => ({
+                        id: child.id,
+                        name: child.name,
+                        type: child.type
+                    }))
+                });
+            } catch (error: any) {
+                pageLoads.fail(node.id, error);
+                missingPageIds.push(id);
+            }
         } else {
+            // Change 8 (D5): `missingPageIds` is every requested ID absent from
+            // `pages`, whatever the reason. It previously listed only not-found
+            // and non-page IDs, so a load failure or timeout left the caller
+            // with no way to diff requested against returned without also
+            // reading `coverage` — and the two lists disagreed about the same
+            // question. `coverage.pageErrors` remains the authoritative reason.
             missingPageIds.push(id);
         }
 
@@ -108,7 +121,8 @@ export async function getPagesInfo(params: any) {
         documentName,
         pageCount,
         pages,
-        missingPageIds
+        missingPageIds,
+        coverage: pageLoads.coverage(),
     };
 }
 
@@ -130,8 +144,13 @@ async function getNodesInfoParallel(
     concurrencyLimit: number,
     commandId: string | undefined,
     exportCache: Map<string, any>,
-    stats: { processed: number; commandId?: string }
-): Promise<{ nodes: NodeEntry[]; missingNodeIds: string[] }> {
+    stats: { processed: number; commandId?: string },
+    pageLoads: PageLoadCoordinator,
+): Promise<{
+    nodes: NodeEntry[];
+    missingNodeIds: string[];
+    pageFailedNodes: { nodeId: string; pageId: string }[];
+}> {
     const results = new Array(uniqueIds.length);
     let nextIndex = 0;
     let completedCount = 0;
@@ -144,11 +163,25 @@ async function getNodesInfoParallel(
                 break;
             }
             const id = uniqueIds[index];
+            let containingPage: PageNode | null = null;
             try {
                 const node = await figma.getNodeByIdAsync(id);
                 if (!node) {
                     results[index] = { missing: true, id };
                 } else {
+                    containingPage = getContainingPageNode(node) as PageNode | null;
+                    if (containingPage) {
+                        const loaded = await pageLoads.load(containingPage);
+                        if (!loaded.ok) {
+                            results[index] = {
+                                pageFailed: true,
+                                id,
+                                pageId: containingPage.id,
+                            };
+                            continue;
+                        }
+                    }
+
                     const mappedSubtree = await mapNodeRecursive(
                         node,
                         0,
@@ -156,7 +189,8 @@ async function getNodesInfoParallel(
                         properties,
                         filter,
                         exportCache,
-                        stats
+                        stats,
+                        pageLoads,
                     );
 
                     let entry = mappedSubtree;
@@ -174,12 +208,26 @@ async function getNodesInfoParallel(
                         }
                     }
                     entry.path = buildPathArray(node);
-                    entry.descendantCount = countDescendants(node);
+                    // A DOCUMENT root can span pages that failed coverage. Do
+                    // not synchronously touch their child trees to manufacture
+                    // a count after they were deliberately isolated.
+                    if (node.type !== "DOCUMENT") {
+                        entry.descendantCount = countDescendants(node);
+                    }
                     results[index] = entry;
                 }
             } catch (error: any) {
-                console.error(`[getNodesInfoParallel] Error processing node ${id}: ${error.message}`);
-                results[index] = { missing: true, id };
+                console.error(`[getNodesInfoParallel] Error processing node ${id}: ${describeError(error)}`);
+                if (containingPage) {
+                    pageLoads.fail(containingPage.id, error);
+                    results[index] = {
+                        pageFailed: true,
+                        id,
+                        pageId: containingPage.id,
+                    };
+                } else {
+                    results[index] = { missing: true, id };
+                }
             } finally {
                 completedCount++;
                 if (commandId && uniqueIds.length > 1) {
@@ -211,19 +259,30 @@ async function getNodesInfoParallel(
 
     const nodes: NodeEntry[] = [];
     const missingNodeIds: string[] = [];
+    // Change 8 (F1): a node whose containing page failed is neither returned
+    // nor "missing" — it exists, we just could not read it. It used to vanish
+    // from the response entirely, so the caller could see THAT some page failed
+    // but never WHICH of its requested nodes was dropped. Naming the casualty
+    // and its page is what makes the coverage row actionable in one round trip.
+    const pageFailedNodes: { nodeId: string; pageId: string }[] = [];
     for (let i = 0; i < uniqueIds.length; i++) {
         const res = results[i];
         if (res && res.missing) {
             missingNodeIds.push(res.id);
+        } else if (res && res.pageFailed) {
+            pageFailedNodes.push({ nodeId: res.id, pageId: res.pageId });
         } else if (res) {
             nodes.push(res);
         }
     }
 
-    return { nodes, missingNodeIds };
+    return { nodes, missingNodeIds, pageFailedNodes };
 }
 
-export async function getNodesInfo(params: any) {
+export async function getNodesInfo(
+    params: any,
+    pageLoads: PageLoadCoordinator = createPageLoadCoordinator(),
+) {
     const { 
         nodeIds = [], 
         properties = [], 
@@ -256,7 +315,7 @@ export async function getNodesInfo(params: any) {
         const stats = { processed: 0, commandId };
         const limit = Math.max(1, typeof concurrencyLimit === 'number' ? concurrencyLimit : 4);
 
-        const { nodes, missingNodeIds } = await getNodesInfoParallel(
+        const { nodes, missingNodeIds, pageFailedNodes } = await getNodesInfoParallel(
             uniqueIds,
             properties,
             filter,
@@ -264,7 +323,8 @@ export async function getNodesInfo(params: any) {
             limit,
             commandId,
             exportCache,
-            stats
+            stats,
+            pageLoads,
         );
 
         // 4. Final completion event
@@ -276,17 +336,22 @@ export async function getNodesInfo(params: any) {
                 100,
                 uniqueIds.length,
                 uniqueIds.length,
-                `Successfully processed ${nodes.length} nodes (${missingNodeIds.length} missing)`
+                `Successfully processed ${nodes.length} nodes (${missingNodeIds.length} missing, ${pageFailedNodes.length} unreadable)`
             );
         }
 
         return {
             nodes,
-            missingNodeIds: missingNodeIds.length > 0 ? missingNodeIds : undefined
+            missingNodeIds: missingNodeIds.length > 0 ? missingNodeIds : undefined,
+            pageFailedNodes: pageFailedNodes.length > 0 ? pageFailedNodes : undefined,
+            coverage: pageLoads.coverage(),
         };
 
     } catch (error: any) {
-        console.error(`[getNodesInfo] Error: ${error.message}`);
+        // describeError, not `error.message`: a hostile thrown value whose
+        // message getter throws must not replace the initiating failure with a
+        // crash inside the reporting path (the F78-18/R13 totality rule).
+        console.error(`[getNodesInfo] Error: ${describeError(error)}`);
         throw error;
     }
 }
@@ -302,8 +367,16 @@ async function mapNodeRecursive(
     requestedProps: string[],
     filter: Record<string, string[]>,
     exportCache: Map<string, any>,
-    progressTracker: { processed: number; commandId?: string }
+    progressTracker: { processed: number; commandId?: string },
+    pageLoads: PageLoadCoordinator,
 ): Promise<NodeEntry | null> {
+    if (node.type === "PAGE") {
+        const loaded = await pageLoads.load(node);
+        if (!loaded.ok) {
+            return null;
+        }
+    }
+
     // 1. Progress + yield every N nodes. Order is REQUIRED per spec
     // (§Loading rule 2): emit first (resets MCP 60s inactivity timer), then
     // yield (flushes the sandbox postMessage queue so the event isn't coalesced).
@@ -334,15 +407,26 @@ async function mapNodeRecursive(
 
     if (hasChildren && shouldRecurse) {
         for (const child of (node as any).children) {
-            const mappedChild = await mapNodeRecursive(
-                child,
-                depth + 1,
-                maxDepth,
-                requestedProps,
-                filter,
-                exportCache,
-                progressTracker
-            );
+            let mappedChild: NodeEntry | null;
+            try {
+                mappedChild = await mapNodeRecursive(
+                    child,
+                    depth + 1,
+                    maxDepth,
+                    requestedProps,
+                    filter,
+                    exportCache,
+                    progressTracker,
+                    pageLoads,
+                );
+            } catch (error: any) {
+                if (child.type === "PAGE") {
+                    pageLoads.fail(child.id, error);
+                    mappedChild = null;
+                } else {
+                    throw error;
+                }
+            }
             if (mappedChild) {
                 children.push(mappedChild);
                 hasMatchingDescendant = true;
@@ -380,7 +464,7 @@ async function mapNodeRecursive(
     // Per spec §Per-node entry: boundary nodes at maxDepth carry descendantCount
     // so the LLM can distinguish genuine leaves (descendantCount: 0, children: [])
     // from truncated nodes (descendantCount: 12, children: []).
-    if (!shouldRecurse) {
+    if (!shouldRecurse && node.type !== "DOCUMENT") {
         entry.descendantCount = hasChildren ? countDescendants(node) : 0;
     }
 
@@ -565,5 +649,3 @@ async function extractProperties(
 
     return props;
 }
-
-

@@ -11,3 +11,4 @@ src/figma_plugin/dist/
 *.tgz
 scratch/
 temp/
+scratchpad/

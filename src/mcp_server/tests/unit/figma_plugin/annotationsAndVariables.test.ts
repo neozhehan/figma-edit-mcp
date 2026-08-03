@@ -9,7 +9,7 @@ describe("getAnnotations Handler", () => {
                 getAnnotationCategoriesAsync: mock(async () => [])
             },
             getNodeByIdAsync: mock(async (id: string) => {
-                if (id === "page-1") return { id: "page-1", type: "PAGE", annotations: [], children: [] };
+                if (id === "page-1") return { id: "page-1", type: "PAGE", annotations: [], children: [], loadAsync: async () => { } };
                 if (id === "rect-1") return { id: "rect-1", type: "RECTANGLE", annotations: [] };
                 return null;
             }),
@@ -27,27 +27,74 @@ describe("getAnnotations Handler", () => {
 
     it("throws when pageId is not found", async () => {
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => null);
-        expect(getAnnotations({ pageId: "nonexistent" })).rejects.toThrow("pageId with ID nonexistent not found");
+        expect(getAnnotations({ pageId: "nonexistent" })).rejects.toMatchObject({
+            code: "PAGE_NOT_FOUND",
+            details: { pageId: "nonexistent" },
+        });
     });
 
     it("throws when pageId does not resolve to a PAGE", async () => {
         const mockRect = { id: "rect-1", type: "RECTANGLE" };
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockRect);
-        expect(getAnnotations({ pageId: "rect-1" })).rejects.toThrow("pageId does not resolve to a PAGE");
+        expect(getAnnotations({ pageId: "rect-1" })).rejects.toMatchObject({
+            code: "TARGET_NOT_PAGE",
+            details: { pageId: "rect-1", actualType: "RECTANGLE" },
+        });
     });
 
     it("returns annotations for a valid pageId", async () => {
+        const mockDocument: any = {
+            id: "doc-1",
+            name: "Document",
+            type: "DOCUMENT",
+            children: [],
+        };
         const mockPage = {
             id: "page-1",
+            name: "Page",
             type: "PAGE",
-            annotations: [{ label: { type: "MARKDOWN", content: "Page note" } }],
-            children: []
+            parent: mockDocument,
+            annotations: [{ labelMarkdown: "Page note" }],
+            children: [],
+            loadAsync: async () => { },
         };
+        mockDocument.children = [mockPage];
+        (globalThis as any).figma.root = mockDocument;
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockPage);
         const result = await getAnnotations({ pageId: "page-1", includeCategories: false });
         expect(result.annotatedNodes).toEqual([
-            { nodeId: "page-1", name: undefined, annotations: [{ label: { type: "MARKDOWN", content: "Page note" } }] }
+            { nodeId: "page-1", name: "Page", annotations: [{ labelMarkdown: "Page note" }] }
         ]);
+    });
+
+    it("returns the same grouped ownership shape for a node and its descendants", async () => {
+        const child = {
+            id: "child-1",
+            name: "Child",
+            type: "RECTANGLE",
+            annotations: [{ labelMarkdown: "Child note" }],
+        };
+        const root = {
+            id: "frame-1",
+            name: "Frame",
+            type: "FRAME",
+            annotations: [{ labelMarkdown: "Root note" }],
+            children: [child],
+        };
+        (globalThis as any).figma.getNodeByIdAsync = mock(async (id: string) =>
+            id === root.id ? root : id === child.id ? child : null
+        );
+
+        const result = await getAnnotations({ nodeId: root.id, includeCategories: false });
+
+        expect(result).toEqual({
+            annotatedNodes: [
+                { nodeId: root.id, name: root.name, annotations: root.annotations },
+                { nodeId: child.id, name: child.name, annotations: child.annotations },
+            ],
+            coverage: { complete: true, pagesAttempted: 0, pageErrors: [] },
+        });
+        expect(result.annotations).toBeUndefined();
     });
 });
 
@@ -70,7 +117,7 @@ describe("getVariables Handler", () => {
                 getVariableCollectionByIdAsync: mock(async () => null)
             },
             getNodeByIdAsync: mock(async (id: string) => {
-                if (id === "page-1") return { id: "page-1", type: "PAGE" };
+                if (id === "page-1") return { id: "page-1", type: "PAGE", children: [], loadAsync: async () => { } };
                 return null;
             }),
             currentPage: { id: "page-current", type: "PAGE" }
@@ -83,13 +130,19 @@ describe("getVariables Handler", () => {
 
     it("throws when includeConsumers is 'page' and pageId is not found", async () => {
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => null);
-        expect(getVariables({ variableId: ["v-1"], includeConsumers: "page", pageId: "nonexistent" })).rejects.toThrow("pageId with ID nonexistent not found");
+        expect(getVariables({ variableId: ["v-1"], includeConsumers: "page", pageId: "nonexistent" })).rejects.toMatchObject({
+            code: "PAGE_NOT_FOUND",
+            details: { pageId: "nonexistent" },
+        });
     });
 
     it("throws when includeConsumers is 'page' and pageId does not resolve to a PAGE", async () => {
         const mockRect = { id: "rect-1", type: "RECTANGLE" };
         (globalThis as any).figma.getNodeByIdAsync = mock(async () => mockRect);
-        expect(getVariables({ variableId: ["v-1"], includeConsumers: "page", pageId: "rect-1" })).rejects.toThrow("pageId does not resolve to a PAGE");
+        expect(getVariables({ variableId: ["v-1"], includeConsumers: "page", pageId: "rect-1" })).rejects.toMatchObject({
+            code: "TARGET_NOT_PAGE",
+            details: { pageId: "rect-1", actualType: "RECTANGLE" },
+        });
     });
 
     it("lookup mode returns an object keyed by `variables` (not a bare array), omitting missingIds when all resolve", async () => {
@@ -462,6 +515,7 @@ describe("handleVariableRequest Handler (CREATE_VARIABLE / UPDATE_VARIABLE scope
         await handleVariableRequest({
             action: "CREATE_VARIABLE",
             collectionId: "col-1",
+            collectionName: "My Collection",
             name: "Var1",
             type: "FLOAT",
             scopes: ["TEXT_CONTENT", "CORNER_RADIUS"]
@@ -469,21 +523,21 @@ describe("handleVariableRequest Handler (CREATE_VARIABLE / UPDATE_VARIABLE scope
         expect(mockVariable.scopes).toEqual(["TEXT_CONTENT", "CORNER_RADIUS"]);
     });
 
-    it("CREATE_VARIABLE without scopes leaves Figma's default", async () => {
-        await handleVariableRequest({
+    it("CREATE_VARIABLE without scopes is rejected", async () => {
+        await expect(handleVariableRequest({
             action: "CREATE_VARIABLE",
             collectionId: "col-1",
+            collectionName: "My Collection",
             name: "Var2",
             type: "FLOAT",
-        });
-        // createVariable mock returned mockVariable which has ["ALL_SCOPES"]
-        expect(mockVariable.scopes).toEqual(["ALL_SCOPES"]);
+        })).rejects.toThrow("scopes is missing for CREATE_VARIABLE");
     });
 
     it("UPDATE_VARIABLE updates scopes when provided", async () => {
         await handleVariableRequest({
             action: "UPDATE_VARIABLE",
             variableId: "v-1",
+            currentVariableName: "My Variable",
             scopes: ["WIDTH_HEIGHT"]
         });
         expect(mockVariable.scopes).toEqual(["WIDTH_HEIGHT"]);
@@ -493,6 +547,7 @@ describe("handleVariableRequest Handler (CREATE_VARIABLE / UPDATE_VARIABLE scope
         await handleVariableRequest({
             action: "UPDATE_VARIABLE",
             variableId: "v-1",
+            currentVariableName: "My Variable",
             name: "Renamed"
         });
         expect(mockVariable.scopes).toEqual(["ALL_SCOPES"]); // Remains unchanged
@@ -513,6 +568,7 @@ describe("handleVariableRequest Handler (CREATE_VARIABLE / UPDATE_VARIABLE scope
         await expect(handleVariableRequest({
             action: "CREATE_VARIABLE",
             collectionId: "col-1",
+            collectionName: "My Collection",
             name: "Bad",
             type: "FLOAT",
             scopes: ["ALL_FILLS"],

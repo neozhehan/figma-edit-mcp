@@ -228,7 +228,7 @@ Internally, `plan_manage` must dispatch to strict per-action schemas. Do not pla
 The initial plan command set should include write commands only:
 
 - Node writes: `node_transform`, `node_rename`, `node_delete`, `node_clone`, `node_group`, `node_ungroup`, `node_flatten`, `node_insert_child`, `node_set_auto_layout`, `node_set_fill`, `node_set_stroke`, `node_set_corner_radius`, `node_set_effects`, `node_apply_style`, `node_bind_variable`.
-- Creation: `create_shape`, `create_frame`, `create_text`, `create_svg`, `create_component`, `create_instance`, `create_component_set`, `create_connection`.
+- Creation: `create_shape`, `create_frame`, `create_text`, `create_svg`, `create_component`, `create_instance`, `create_component_set`.
 - Text/style/variable/component/instance/annotation/reaction writes: `text_set_content`, `text_set_style`, `style_manage`, `style_delete`, `variable_manage`, `variable_delete`, `component_manage_property`, `component_delete_property`, `instance_set_property`, `instance_set_overrides`, `annotation_set`, `reaction_update`.
 
 Excluded from the plan graph in the MVP:
@@ -733,4 +733,3 @@ The PRD was grounded against the current v2.3.1 tree before writing:
 | Existing plugin queue | `figma_plugin/src/main.ts` | Commands are serialized through `state.commandQueue`; plan execution should preserve serialized mutation semantics. |
 | Existing dispatcher guards | `figma_plugin/src/main.ts` | Single-node and parent writes already share validation helpers that plan verification/execution should reuse where possible. |
 | v2.3.1 operational guidance | `skills/figma-edit/references/*.md` | The current guidance already teaches discover-before-acting, clear fills, variable scopes, and `node_bind_variable` ordering guardrails. Plans must build on that, not replace it. |
-    

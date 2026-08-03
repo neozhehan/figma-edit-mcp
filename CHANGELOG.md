@@ -2,6 +2,281 @@
 
 > **Note:** `1.5.0` is the first version published to NPM. Versions `1.3.0` and `1.4.0` were development milestones tagged in this repository but never released to the registry. The entries below are retained for traceability of the breaking changes that landed before the first published release.
 
+> **Superseded wording in the v2.3.2 entry:** its "no-orphan creation" bullet promised that a failed creation removes the new object, which reads as an infallible rollback. The real guarantee is an observable success boundary with best-effort cleanup — see `[2.3.3] → Changed`. Every entry below is retained unchanged for traceability, including the v2.0.0 rename and tool-count records; where an older entry and `[2.3.3]` disagree, `[2.3.3]` is authoritative.
+
+## [2.3.3]
+
+This release restores type-checking for the Figma plugin and closes the v2.3.3 safety-contract gaps across design-system writes, explicit placement, batch reporting, annotations, structured errors, peer-bound channels, page-load isolation, and current documentation. It is a **hard contract cutover**: fail-closed safety repairs ship at patch level, and callers must migrate the request and response shapes below.
+
+### Breaking changes and migration examples
+
+- **Design-system writes require current-name and collection verification.** `UPDATE_VARIABLE` now requires `currentVariableName`; `style_manage` updates selected by `styleId` require `currentStyleName`; and `CREATE_VARIABLE` requires both `collectionName` and an explicit `scopes` array. A style/variable update may omit `name` to keep the current name.
+
+  Before:
+
+  ```json
+  {"action":"UPDATE_VARIABLE","variableId":"VariableID:1:2","description":"Updated"}
+  {"type":"PAINT","styleId":"S:1:2","name":"Assumed name","description":"Updated"}
+  {"action":"CREATE_VARIABLE","name":"Brand","collectionId":"VariableCollectionId:1:1","type":"COLOR"}
+  ```
+
+  After:
+
+  ```json
+  {"action":"UPDATE_VARIABLE","variableId":"VariableID:1:2","currentVariableName":"Brand/Primary","description":"Updated"}
+  {"type":"PAINT","styleId":"S:1:2","currentStyleName":"Brand/Primary","description":"Updated"}
+  {"action":"CREATE_VARIABLE","name":"Brand","collectionId":"VariableCollectionId:1:1","collectionName":"Brand tokens","type":"COLOR","scopes":["ALL_FILLS"]}
+  ```
+
+- **Every caller-placed creator has an explicit verified parent.** `create_shape`, `create_frame`, `create_text`, `create_svg`, and `create_instance` require `parentId` plus `parentNodeName`; `create_component_set` now requires the same pair. The five existing creators already refused an omitted parent name inside the plugin; v2.3.3 advertises and rejects the omission at the schema boundary as well.
+
+  Before:
+
+  ```json
+  {"type":"RECTANGLE","x":0,"y":0,"width":100,"height":100,"parentId":"1:1"}
+  {"components":[{"nodeId":"1:2","nodeName":"Small","propertyValues":["Small"]}],"properties":["Size"]}
+  ```
+
+  After:
+
+  ```json
+  {"type":"RECTANGLE","x":0,"y":0,"width":100,"height":100,"parentId":"1:1","parentNodeName":"Cards"}
+  {"components":[{"nodeId":"1:2","nodeName":"Small","propertyValues":["Small"]}],"properties":["Size"],"parentId":"1:1","parentNodeName":"Cards"}
+  ```
+
+  `parentId` was already required on the five creators in v2.3.2 and only `parentNodeName` changes for them; `create_component_set` is the one tool where both fields become required.
+
+- **`annotation_set` is now a working append contract.** Each row requires `nodeId`, `nodeName`, and non-blank `labelMarkdown`; `categoryId` is optional and verified when present; `properties` is an array of `{type}` entries; unsupported `annotationId` and `status` inputs are removed. The tool is explicitly non-idempotent.
+
+  Before:
+
+  ```json
+  {"annotations":[{"nodeId":"1:2","nodeName":"Button","annotationId":"a1","status":"TODO","categoryId":"cat-1","properties":{}}]}
+  ```
+
+  After:
+
+  ```json
+  {"annotations":[{"nodeId":"1:2","nodeName":"Button","labelMarkdown":"Use the primary token","categoryId":"cat-1","properties":[{"type":"fills"}]}]}
+  ```
+
+- **`annotation_list` uses one grouped output in page and node modes.** Node mode no longer returns a flat owner-tagged list.
+
+  Before:
+
+  ```json
+  {"nodeId":"1:2","name":"Button","annotations":[{"nodeId":"1:2","annotation":{"labelMarkdown":"Review"}}]}
+  ```
+
+  After:
+
+  ```json
+  {"annotatedNodes":[{"nodeId":"1:2","name":"Button","annotations":[{"labelMarkdown":"Review"}]}]}
+  ```
+
+- **Nested inputs are strict.** Unknown keys at any object depth are rejected instead of silently stripped, except for the two intentional pass-through objects: `style_manage.properties.paints[]` and `style_manage.properties.layoutGrids[]`.
+
+  Before:
+
+  ```json
+  {"text":[{"nodeId":"1:2","nodeName":"Label","characters":"Save","charcters":"typo was discarded"}]}
+  ```
+
+  After:
+
+  ```json
+  {"text":[{"nodeId":"1:2","nodeName":"Label","characters":"Save"}]}
+  ```
+
+  The original v2.3.2 request is now rejected with MCP `-32602` at `text[0].charcters` instead of running with altered intent.
+
+- **Effect-style payloads are strict per Figma effect variant.** `style_manage.properties.effects[]` now enumerates `DROP_SHADOW`, `INNER_SHADOW`, `LAYER_BLUR`, `BACKGROUND_BLUR`, `NOISE`, `TEXTURE`, and `GLASS` with variant-specific fields and the exact 19-literal `BlendMode` inventory. Cross-variant or undeclared keys are rejected rather than accepted and discarded; validated progressive-blur and NOISE/TEXTURE/GLASS fields are forwarded without handler-side field loss.
+
+  Before:
+
+  ```json
+  {"type":"EFFECT","name":"Blur","properties":{"effects":[{"type":"LAYER_BLUR","radius":12,"showShadowBehindNode":true}]}}
+  ```
+
+  After:
+
+  ```json
+  {"type":"EFFECT","name":"Blur","properties":{"effects":[{"type":"LAYER_BLUR","radius":12}]}}
+  ```
+
+  The old cross-variant request now fails validation; the migration is to drop `showShadowBehindNode`, which only ever applied to `DROP_SHADOW` and was silently discarded here. Separately — and independently of that migration — the handler no longer rebuilds effects from a four-type field list, so validated progressive-blur and NOISE/TEXTURE/GLASS fields reach Figma. Requiredness remains variant-specific: NOISE/TEXTURE/GLASS base fields are required, while the progressive ramp is required as a set only when `blurType` is `PROGRESSIVE`. GLASS `depth` must be at least `1`; a live `depth: 0` write was accepted by the setter but normalized to `1` on read-back. A progressive blur is written as:
+
+  ```json
+  {"type":"EFFECT","name":"Blur","properties":{"effects":[{"type":"LAYER_BLUR","radius":12,"blurType":"PROGRESSIVE","startRadius":2,"startOffset":{"x":0,"y":0},"endOffset":{"x":0,"y":100}}]}}
+  ```
+
+- **Batch request validation rejects empty and duplicate target sets before execution.** All batch arrays require at least one item. `node_delete`, `text_set_content`, and `instance_set_overrides` reject duplicate targets after normalizing URL/API spellings (`1-2` and `1:2` are the same target); repeated annotation targets remain valid because annotation append is meaningful more than once.
+
+  Before:
+
+  ```json
+  {"nodes":[]}
+  {"nodes":[{"nodeId":"1-2","nodeName":"Card"},{"nodeId":"1:2","nodeName":"Card"}]}
+  ```
+
+  After:
+
+  ```json
+  {"nodes":[{"nodeId":"1:2","nodeName":"Card"}]}
+  ```
+
+- **The four batch aggregators use one result envelope.** `node_delete`, `text_set_content`, `annotation_set`, and `instance_set_overrides` now return `success`, `status`, `requestedCount`, `succeededCount`, `failedCount`, `skippedCount`, and one ordered row per input. `status` is `success`, `partial_success`, or `failed`, and `success === (status === "success")`. Removed duplicate counts include `nodesDeleted`/`nodesFailed`, `replacementsApplied`/`replacementsFailed`, `annotationsApplied`/`annotationsFailed`, `totalCount`, and the older `totalNodes`/`totalReplacements`/`totalAnnotations` fields. `instance_set_overrides.totalAppliedCount` is **not** removed — it counts applied override *properties* rather than targets, so it duplicates no envelope count — but like the top-level `message` summary and the per-row `nodeInfo`/`instanceName`/`appliedCount` extras, it is an additive field carried outside the declared output schema rather than an advertised one. Read the seven envelope fields and the row vocabulary as the contract; treat everything else as best-effort context.
+
+  Before:
+
+  ```json
+  {"success":true,"nodesDeleted":1,"nodesFailed":1,"results":[{"nodeId":"1:2","success":true}]}
+  ```
+
+  After:
+
+  ```json
+  {"success":false,"status":"partial_success","requestedCount":2,"succeededCount":1,"failedCount":1,"skippedCount":0,"results":[{"nodeId":"1:2","status":"success"},{"nodeId":"1:3","status":"failed","error":"remove failed"}]}
+  ```
+
+- **`instance_set_overrides` rows use the shared row vocabulary.** Target rows are keyed by `nodeId`/`status`/`error`; `instanceId` and row-level `message` are removed. `instanceName` may still be present as additive context, and the top-level summary `message` is unchanged.
+
+  Before:
+
+  ```json
+  {"instanceId":"1:2","instanceName":"Card","success":false,"message":"swap failed"}
+  ```
+
+  After:
+
+  ```json
+  {"nodeId":"1:2","instanceName":"Card","status":"failed","error":"swap failed"}
+  ```
+
+- **Annotation result rows report counts as explicit observations.** v2.3.2 rows carried only `success`/`nodeId`/`error` and no counts at all. Each row now adds nullable `beforeCount`/`afterCount` with required `beforeCountVerified`/`afterCountVerified` flags, so a number is never fabricated for state that could not be read. An append whose post-state cannot be read returns `partialMutation:true` and `outcomeUnknown:true`; callers must run `annotation_list` before retrying. Never read `null` as zero, and never treat matching counts as verified unless both flags are true.
+
+  Before:
+
+  ```json
+  {"success":false,"nodeId":"1:2","error":"setter failed"}
+  ```
+
+  After:
+
+  ```json
+  {"nodeId":"1:2","status":"failed","beforeCount":0,"beforeCountVerified":true,"afterCount":null,"afterCountVerified":false,"partialMutation":true,"outcomeUnknown":true,"error":"setter failed"}
+  ```
+
+- **The socket handshake is role-declared, versioned, and peer-bound.** Plugin joins send `clientType:"plugin"` plus `pluginVersion`; MCP joins send `clientType:"mcp"` plus `serverVersion`. `channel_join` success adds `serverVersion` and `pluginVersion`; it can refuse no plugin (`PLUGIN_PEER_UNAVAILABLE`), a second MCP session (`CHANNEL_IN_USE`), or known version skew (`VERSION_MISMATCH`). A second plugin is refused `PLUGIN_PEER_AMBIGUOUS` in that joining plugin's UI and never reaches `channel_join`. Frames without `clientType` are refused, so upgrading the server requires rebuilding and reinstalling the matching plugin.
+
+  Before:
+
+  ```json
+  {"type":"join","channel":"abcd"}
+  {"status":"success","channel":"abcd"}
+  ```
+
+  After:
+
+  ```json
+  {"type":"join","channel":"abcd","clientType":"plugin","pluginVersion":"2.3.3"}
+  {"status":"success","channel":"abcd","serverVersion":"2.3.3","pluginVersion":"2.3.3"}
+  ```
+
+- **The connector-visualization surface is removed.** `create_connection`, its raw wire command and plugin handler, `CONNECTOR_TEMPLATE_REQUIRED`, and the `reaction_to_connector_strategy` prompt no longer exist. The tool created FigJam diagram artifacts rather than native Figma Design prototype interactions, could not create its advertised artifact in a Design file, and could not bridge Design-file node IDs into a separate FigJam file. Native prototype metadata remains available through `reaction_list` and `reaction_update`.
+
+  Before:
+
+  ```text
+  reaction_to_connector_strategy -> create_connection(...)
+  ```
+
+  After:
+
+  ```text
+  reaction_list(...) -> reaction_update(...)
+  ```
+
+  v2.3.3 intentionally provides no automatic connector-diagram substitute, and the two reaction tools carry migration caveats that are specified and scheduled — not implemented — in v2.3.4 Track 3. `reaction_list` omits any reaction containing a `CHANGE_TO` action, silently omits missing or read-failed requested roots, reports `nodesCount` as the number of requested IDs rather than the number successfully inspected, and may duplicate descendants when requested roots overlap. `reaction_update` replaces the caller-supplied whole reactions array with no observed-state token or authoritative read-back, so a stale write can erase another edit, and arbitrary setter failures can collapse to `Failed to update reactions: undefined`.
+
+- **Assigned names and `create_text` typography reject inputs Figma could not apply truthfully.** Figma normalizes an empty layer name instead of preserving `""` (live channel `2476`: shape → `Rectangle`, frame → `Frame`, text → its content, SVG root → `Frame`, component set → `Component`), so an explicit empty user-visible assignment is now rejected before mutation at both the MCP and plugin boundaries. This covers every classified public assignment sink — `node_rename`, `node_group`, the five creators and `create_component_set`, `variable_manage` (including `CREATE_COLLECTION.modeName` and `UPDATE_VARIABLE.name`), `style_manage`, and `component_manage_property` (both ADD `propertyName` and EDIT `newPropertyName`). Required names (`node_rename.name`, variable/style create `name`, component-property ADD `propertyName`) must be non-empty; optional creator/group/collection-mode names may be omitted for native defaults; optional variable/style/property update names may be omitted to keep the current value. `create_text.fontSize` is at least 1 and `fontWeight` is one of 100, 200, …, 900. Name *assignment* and name *verification* are separate contracts: this rule does not change the exact-match semantics of lookup fields such as `nodeName` or `parentNodeName`.
+
+  Before:
+
+  ```json
+  {"nodeId":"1:2","nodeName":"Card","name":""}
+  {"parentId":"1:1","parentNodeName":"Cards","characters":"Label","fontSize":0,"fontWeight":550}
+  ```
+
+  After:
+
+  ```json
+  {"nodeId":"1:2","nodeName":"Card","name":"Card compact"}
+  {"parentId":"1:1","parentNodeName":"Cards","characters":"Label","fontSize":16,"fontWeight":500}
+  ```
+
+  Where a name is optional, omit the field instead of sending `""`.
+
+- **`variable_delete` in-use failures use the one structured error envelope.** Consumer evidence moves under `error.details.variablesInUse`, and the refusal is a thrown, coded `VARIABLE_IN_USE` error rather than a successful callback result with a prose string.
+
+  Before:
+
+  ```json
+  {"success":false,"error":"Cannot delete: variable(s) are still in use.\n- Variable 'Brand/Primary' is used by:\n  - Node 'Card' (FRAME) on fields: fills","variablesInUse":{"VariableID:1:2":{"nodeConsumers":[{"nodeId":"1:9","nodeName":"Card","nodeType":"FRAME","fields":["fills"]}],"styleConsumers":[],"aliasConsumers":[]}}}
+  ```
+
+  After:
+
+  ```json
+  {"error":{"code":"VARIABLE_IN_USE","message":"Operation Denied: Cannot delete: variable(s) are still in use.\n- Variable 'Brand/Primary' (VariableID:1:2) is used by:\n  - Node 'Card' (FRAME, 1:9) on fields: fills\n\nNothing was deleted. Read each listed consumer's current state with node_info (nodes), style_list (styles), or variable_list (aliasing variables), clear or rebind that reference, then retry this exact call. details.variablesInUse lists every consumer by variable ID.","details":{"variablesInUse":{"VariableID:1:2":{"nodeConsumers":[{"nodeId":"1:9","nodeName":"Card","nodeType":"FRAME","fields":["fills"]}],"styleConsumers":[],"aliasConsumers":[]}}}}}
+  ```
+
+  The `variablesInUse` payload is unchanged in shape; it moves from a top-level key to `error.details`. Every consumer line in the message now carries its ID, because layer, style, and variable names are not unique.
+
+- **Partial page coverage is explicit and response semantics are corrected.** Every `coverage` object now requires `pagesAttempted`; `node_info` adds `pageFailedNodes` for targets dropped with an unreadable containing page; a DOCUMENT root no longer exposes `descendantCount`; and `page_info.missingPageIds` is every requested page ID absent from `pages`, including load/read failures, with `coverage.pageErrors` providing the reason.
+
+  Before:
+
+  ```json
+  {"nodes":[{"id":"0:0","type":"DOCUMENT","descendantCount":120}],"coverage":{"complete":true,"pageErrors":[]}}
+  {"pages":[],"missingPageIds":[]}
+  ```
+
+  After:
+
+  ```json
+  {"nodes":[{"id":"0:0","type":"DOCUMENT"}],"pageFailedNodes":[{"nodeId":"1:2","pageId":"0:1"}],"coverage":{"complete":false,"pagesAttempted":1,"pageErrors":[{"pageId":"0:1","error":{"code":"PAGE_LOAD_FAILED","message":"..."}}]}}
+  {"pages":[],"missingPageIds":["0:1"],"coverage":{"complete":false,"pagesAttempted":1,"pageErrors":[{"pageId":"0:1","error":{"code":"PAGE_LOAD_FAILED","message":"..."}}]}}
+  ```
+
+### Added
+
+- **Structured failure transport:** coded plugin, socket, and client errors retain `{code, message, details?}` through the MCP boundary. Arbitrary thrown values fall back to canonical `UNKNOWN_ERROR` without erasing readable partial-mutation evidence.
+- **`create_instance.componentId`:** successful responses now include the resolved component's ID on both local-ID and remote-key paths. Before: `{"id":"2:1","name":"Card instance"}`. After: `{"id":"2:1","name":"Card instance","componentId":"1:2"}`.
+- **Plugin TypeScript gate:** the plugin loads the pinned Figma typings without `dom`, passes strict type-checking, and CI runs `check:types:plugin` plus the TypeScript-parser-backed suppression policy.
+- **Name-assignment oracle:** an AST scan of direct `.name` writes plus an explicit inventory of recognized Figma naming APIs is checked against the public assignment classification, so a name sink cannot be added without its empty-name contract. A future Figma naming API must be added to that inventory.
+- **Page-load isolation:** multi-page reads preserve successful page data and report bounded per-page load/read failures in `coverage`; destructive variable scans refuse with `DOCUMENT_SCAN_INCOMPLETE` unless every required page was inspected.
+- **`node_flatten.parentId`:** the response now reports the container the flattened vector was placed in — the source node's original parent — so containment is confirmable without a follow-up `node_info`, matching the eight creators. Before: `{"id":"1:3","name":"Star","type":"VECTOR"}`. After: `{"id":"1:3","name":"Star","type":"VECTOR","parentId":"1:1"}`.
+- **Script type gate:** CI runs `check:types:scripts`, so the repository's verification and maintenance scripts are type-checked instead of shipping unchecked.
+
+### Fixed
+
+- **`annotation_set` can append more than once to the same node.** Figma's `annotations` getter returns each stored annotation with both `label` and `labelMarkdown`, while its setter refuses an annotation carrying both. Appending wrote the existing array straight back, so every append to a node that already had an annotation failed with `Property "annotations" failed validation: Only one of label or labelMarkdown should be given. at index 0` — the rejection naming the *pre-existing* entry, not the new one. Only the first annotation on a node could ever be created, and the documented `annotation_list`-then-retry recovery could not succeed either. Pre-existing entries are now normalized to a single label field before the write, preserving their `properties`, `categoryId`, and any other stored keys.
+- **`variable_delete` no longer refuses a healthy document.** Its consumer scan was the only page-loading surface that ran `loadAsync()` on every page concurrently; concurrent loads fail intermittently against the live host, and the fail-closed D14 gate turned that into a hard `DOCUMENT_SCAN_INCOMPLETE` on documents whose pages all read cleanly through the sequential surfaces. Pages are now loaded one at a time, as everywhere else. The refusal also names the failing page IDs in its message and tells the caller to retry the same call first.
+- **Percent-encoded scope links resolve.** The plugin UI's link parser tried `new URL()` first, but the Figma sandbox provides no `URL` global, so it always fell through to a regex that never percent-decoded: a link carrying `node-id=1%3A2` reported "Node not found in current document" while the same node written `node-id=1-2` validated. The dead branch is removed and the value is decoded, so both spellings resolve.
+- **`node_delete` rows for an already-removed target are actionable.** Naming both an ancestor and its descendant in one batch removes the descendant with its ancestor, and the descendant's row then failed with raw host prose under a description telling the caller to retry — a retry the dispatcher refuses outright. The row now states that the requested deletion already holds and that it must not be retried.
+- **`annotation_set.properties[]` rejections carry recovery.** Figma gates each property type by node type and the enum is the full catalogue, so a schema-valid call can be refused (for example `fontSize` on a `RECTANGLE`, and some members are valid on no node type at all). The failing row now explains that validity is node-type-dependent and says to drop the entry and resend only the non-success rows; the field description says the same before the first call. The validity table is deliberately not reproduced client-side — it is not derivable from node-property presence, and guessing it would refuse calls Figma accepts.
+
+### Changed
+
+- Implicit creators, clone, flatten, component creation, and component-set creation now place results at the verified destination by the observable success boundary — a successful command never returns with its created node outside that destination. This supersedes v2.3.2's "no-orphan creation" wording: cleanup after a later failure is best-effort, not an infallible rollback. When removal throws or cannot be confirmed, the initiating error is preserved and carries `details.partialMutation: true`, `whatChanged`, the verified destination, and a tri-state survivor location — `located` (with the exact surviving parent ID), `detached` (an observed null parent), or `unknown` (the parent could not be read; never assume detached). Reconcile that evidence before retrying.
+- Design-system updates validate their complete readable plan before the first mutation and disclose unexpected mid-update mutations through the shared `partialMutation` / `whatChanged` / `before` vocabulary.
+- Batch progress and notifications are best-effort telemetry and cannot replace or erase the mutation result envelope.
+- The registered MCP inventory contains 45 tools and retains `reaction_list`, `reaction_update`, and `swap_overrides_instances`.
+- Two advertised descriptions now match observed behavior, with no behavior change: `annotation_list.includeCategories` documents its real default of `true` (categories are returned unless you pass `false`) instead of reading as an opt-in, and `style_manage.properties.effects[]` lists every required field per variant, adding NOISE `color` and GLASS `lightAngle`.
+- Effect numeric bounds now match what Figma actually preserves, measured by writing each boundary and reading it back. NOISE `density` is `0–1`; NOISE/TEXTURE `noiseSize` and TEXTURE `radius` are `0–100`; and at most one GLASS effect is accepted per node. Figma silently clamps `noiseSize`/`radius` above `100` — `101` and `100000` both store as `100` — so an unbounded schema reported success for a value the document never held; a second GLASS effect was refused by the host as an `UNKNOWN_ERROR` relaying Figma's own prose.
+- GLASS effect writes now require `depth >= 1`. A prior setter-only probe showed that Figma accepted `depth: 0`; a complete write/read probe on channel `4b9u` showed that Figma silently normalizes it to `1`, so the MCP boundary now rejects zero instead of reporting success for a value it cannot preserve.
+
 ## [2.3.2]
 This release makes the documented safety contract match the implementation and prevents future drift: dispatcher guard parity, `create_component_set` atomicity, no-orphan creation handlers, an executable safety matrix, output-schema conformance, and version synchronization across every surface.
 

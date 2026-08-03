@@ -1,8 +1,10 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { sendCommandToFigma } from "../figma-client.js";
-import { toolResult, looseOutput } from "./_result.js";
+import { toolResult, looseOutput, batchResults, pageCoverage } from "./_result.js";
+import { noDuplicateTargets } from "./_batch.js";
 import { resizeIfOversized } from "../imageResize.js";
+import { nodeEffect } from "./style.js";
 // Allowlist of bindable fields, generated from @figma/plugin-typings
 // (VariableBindableNodeField ∪ VariableBindableTextField + fills/strokes) by
 // scripts/gen-node-fields.ts. Regenerated on every build:all and CI-checked for
@@ -53,7 +55,7 @@ export function registerNodeTools(server: McpServer) {
         "node_info",
         {
             title: "Get Node Info",
-            description: "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. The workhorse read; start here before any write.",
+            description: "Read one or more nodes — recursive subtree traversal with `properties` selection, `filter`, and `maxDepth`. Returns only the requested properties (incl. resolved `boundVariables`/`explicitVariableModes`) under each node's `properties` key. A node whose containing page could not be read is listed in `pageFailedNodes` with that page's ID, and the page's structured reason is in `coverage.pageErrors` — other pages still return normally. The workhorse read; start here before any write.",
             inputSchema: z.object({
                 nodeIds: z
                     .array(z.string())
@@ -64,7 +66,7 @@ export function registerNodeTools(server: McpServer) {
                     .optional()
                     .describe("Array of property names to return (populates each node's `properties` object in the response)."),
                 filter: z
-                    .record(z.array(z.string()))
+                    .record(z.string(), z.array(z.string()))
                     .optional()
                     .describe("Optional filter criteria."),
                 maxDepth: z
@@ -83,6 +85,11 @@ export function registerNodeTools(server: McpServer) {
             outputSchema: looseOutput({
                 nodes: z.array(nodeInfoEntry).describe("Node entries (id/name/type + optional properties/children/path/descendantCount)"),
                 missingNodeIds: z.array(z.string()).optional().describe("Requested IDs that weren't found"),
+                pageFailedNodes: z.array(z.object({
+                    nodeId: z.string().describe("Requested node ID that could not be read"),
+                    pageId: z.string().describe("Its containing page — match this against `coverage.pageErrors` for the reason and the recovery"),
+                })).optional().describe("Requested nodes that exist but could not be read because their containing page failed; omitted when none"),
+                coverage: pageCoverage,
             }),
             annotations: {
                 readOnlyHint: true,
@@ -109,7 +116,7 @@ export function registerNodeTools(server: McpServer) {
             description: "Move and/or resize a node by setting absolute `x`/`y`/`width`/`height` (any subset).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to transform"),
-                nodeName: z.string().describe("Name of the node to modify"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 x: z.number().optional().describe("New X position"),
                 y: z.number().optional().describe("New Y position"),
                 width: z.number().positive().optional().describe("New width"),
@@ -142,8 +149,8 @@ export function registerNodeTools(server: McpServer) {
             description: "Rename a node (sets `name` to an exact value).",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to rename"),
-                nodeName: z.string().describe("Name of the node to modify"),
-                name: z.string().describe("New name for the node"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
+                name: z.string().min(1).describe("New non-empty name for the node. Figma normalizes an empty name to a type default, so `\"\"` is refused rather than silently substituted."),
             }),
             outputSchema: looseOutput({
                 name: z.string().describe("The new name of the node"),
@@ -165,21 +172,27 @@ export function registerNodeTools(server: McpServer) {
         "node_delete",
         {
             title: "Delete Nodes",
-            description: "Delete one or more nodes in a single batched, per-item-validated call. No API undo.",
+            description: "Delete one or more nodes in a single batched, per-item-validated call. No API undo. If the status is 'partial_success', treat it as an incomplete operation, report the failed and skipped items to the user, and retry every non-success item (both failed and skipped).",
             inputSchema: z.object({
                 nodes: z
                     .array(
                         z.object({
                             nodeId: z.string().describe("The ID of the node to delete"),
-                            nodeName: z.string().describe("Name of the node to modify"),
+                            nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                         })
                     )
+                    .min(1)
+                    .superRefine(noDuplicateTargets)
                     .describe("Array of nodes to delete"),
             }),
             outputSchema: looseOutput({
-                success: z.boolean().describe("Whether the operation succeeded"),
-                deletedCount: z.number().optional().describe("Number of deleted nodes"),
-                results: z.array(z.any()).optional().describe("Detailed deletion results"),
+                success: z.boolean().describe("Whether all deletions succeeded"),
+                status: z.enum(["success", "partial_success", "failed"]).describe("Overall status of the batch operation"),
+                requestedCount: z.number().describe("Number of requested deletions"),
+                succeededCount: z.number().describe("Number of succeeded deletions"),
+                failedCount: z.number().describe("Number of failed deletions"),
+                skippedCount: z.number().describe("Number of skipped deletions"),
+                results: batchResults("Detailed deletion results (one row per input, in input order)"),
             }),
             annotations: {
                 destructiveHint: true,
@@ -201,13 +214,14 @@ export function registerNodeTools(server: McpServer) {
             description: "Duplicate an existing node, optionally at a new `x`/`y`. Produces a new node id.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to clone"),
-                nodeName: z.string().describe("Name of the node to modify"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 x: z.number().optional().describe("New X position for the clone"),
                 y: z.number().optional().describe("New Y position for the clone"),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the new cloned node"),
                 name: z.string().describe("Name of the cloned node"),
+                parentId: z.string().optional().describe("ID of the parent the clone was placed into — confirm containment without a follow-up read"),
             }),
             annotations: {
                 openWorldHint: true
@@ -261,11 +275,11 @@ export function registerNodeTools(server: McpServer) {
                     .array(
                         z.object({
                             nodeId: z.string().describe("The ID of the node to group"),
-                            nodeName: z.string().describe("Name of the node to modify"),
+                            nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                         })
                     )
                     .describe("Array of nodes to group"),
-                name: z.string().optional().describe("Name for the new group"),
+                name: z.string().min(1).optional().describe("Optional non-empty name for the new group. Omit to accept Figma's default; `\"\"` is refused rather than silently substituted."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the new group node"),
@@ -290,7 +304,7 @@ export function registerNodeTools(server: McpServer) {
             description: "Dissolve a group, promoting its children to the parent. Removes the group container.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the group to ungroup"),
-                nodeName: z.string().describe("Name of the group to verify against"),
+                nodeName: z.string().describe("The group's current exact name, passed back verbatim from `node_info`."),
             }),
             outputSchema: looseOutput({
                 parentId: z.string().nullable().describe("ID of the parent node (null if the group had no parent)"),
@@ -318,12 +332,13 @@ export function registerNodeTools(server: McpServer) {
             description: "Flatten a node and its children into a single vector. Lossy — original structure is not recoverable.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to flatten"),
-                nodeName: z.string().describe("Name of the node to verify against"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
             }),
             outputSchema: looseOutput({
                 id: z.string().describe("ID of the flattened node"),
                 name: z.string().describe("Name of the flattened node"),
                 type: z.string().describe("Type of the flattened node (usually VECTOR)"),
+                parentId: z.string().nullable().describe("ID of the container the flattened node was placed in — the source node's original parent, so D11 containment is confirmable from this response without a follow-up node_info"),
             }),
             annotations: {
                 destructiveHint: true,
@@ -344,9 +359,9 @@ export function registerNodeTools(server: McpServer) {
             description: "Reparent a node under a new parent at an optional `index`. Valid range is 0 to parent's child count. Omit `index` to append.",
             inputSchema: z.object({
                 parentId: z.string().describe("ID of the new parent node"),
-                parentNodeName: z.string().describe("Name of the parent node to verify against"),
+                parentNodeName: z.string().describe("The parent node's current exact name, passed back verbatim from `node_info`."),
                 childId: z.string().describe("ID of the child node to reparent"),
-                childNodeName: z.string().describe("Name of the child node to verify against"),
+                childNodeName: z.string().describe("The child node's current exact name, passed back verbatim from `node_info`."),
                 index: z
                     .number()
                     .optional()
@@ -376,7 +391,7 @@ export function registerNodeTools(server: McpServer) {
             description: "Configure a frame's auto-layout (mode, padding, spacing, alignment, sizing) in one unified setter.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the frame to modify"),
-                nodeName: z.string().describe("Name of the node to modify"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 layoutMode: z
                     .enum(["NONE", "HORIZONTAL", "VERTICAL"])
                     .optional()
@@ -448,7 +463,7 @@ export function registerNodeTools(server: McpServer) {
             description: "Set a node's fill to a literal RGBA color, an image, or clear it. Use `node_apply_style` to link a shared paint style, or `node_bind_variable` to bind a color token.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
-                nodeName: z.string().describe("Name of the node to modify"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 r: z.number().min(0).max(1).optional().describe("Red component (0-1)"),
                 g: z.number().min(0).max(1).optional().describe("Green component (0-1)"),
                 b: z.number().min(0).max(1).optional().describe("Blue component (0-1)"),
@@ -518,8 +533,8 @@ export function registerNodeTools(server: McpServer) {
                 payload.color = { r, g, b, a: a ?? 1 };
             }
 
-            const result = await sendCommandToFigma("node_set_fill", payload);
-            
+            const result = await sendCommandToFigma("node_set_fill", payload) as Record<string, any>;
+
             if (warning) {
                 if (!result.warnings) result.warnings = [];
                 result.warnings.push(warning);
@@ -537,7 +552,7 @@ export function registerNodeTools(server: McpServer) {
             description: "Set a node's stroke color and weight; supports uniform or per-side weights.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
-                nodeName: z.string().describe("Name of the node to modify"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 r: z.number().min(0).max(1).describe("Red component (0-1)"),
                 g: z.number().min(0).max(1).describe("Green component (0-1)"),
                 b: z.number().min(0).max(1).describe("Blue component (0-1)"),
@@ -584,7 +599,7 @@ export function registerNodeTools(server: McpServer) {
             description: "Set a node's corner radius — uniform or per-corner.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
-                nodeName: z.string().describe("Name of the node to modify"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 radius: z.number().min(0).describe("Corner radius value"),
                 corners: z
                     .array(z.boolean())
@@ -621,34 +636,10 @@ export function registerNodeTools(server: McpServer) {
             description: "Set a node's effect array (shadows, blurs). Use `node_apply_style` to link a shared effect style instead.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to modify"),
-                nodeName: z.string().describe("Name of the node to verify against"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 effects: z
-                    .array(
-                        z.object({
-                            type: z.enum([
-                                "DROP_SHADOW",
-                                "INNER_SHADOW",
-                                "LAYER_BLUR",
-                                "BACKGROUND_BLUR",
-                            ]).describe("Effect type"),
-                            visible: z.boolean().optional().describe("Visibility"),
-                            color: z
-                                .object({
-                                    r: z.number().describe("Red (0-1)"),
-                                    g: z.number().describe("Green (0-1)"),
-                                    b: z.number().describe("Blue (0-1)"),
-                                    a: z.number().optional().describe("Alpha (0-1)"),
-                                })
-                                .optional()
-                                .describe("Effect color"),
-                            offset: z.object({ x: z.number().describe("X offset"), y: z.number().describe("Y offset") }).optional().describe("Shadow offset"),
-                            radius: z.number().optional().describe("Blur radius"),
-                            spread: z.number().optional().describe("Shadow spread"),
-                            blendMode: z.string().optional().describe("Blend mode"),
-                            showShadowBehindNode: z.boolean().optional().describe("Show shadow behind node"),
-                        }).describe("Figma effect settings")
-                    )
-                    .describe("Array of effect objects"),
+                    .array(nodeEffect)
+                    .describe("Array of strict per-variant Figma effects: DROP_SHADOW/INNER_SHADOW or LAYER_BLUR/BACKGROUND_BLUR"),
             }),
             outputSchema: looseOutput({
                 name: z.string().optional().describe("Name of the modified node"),
@@ -672,7 +663,7 @@ export function registerNodeTools(server: McpServer) {
             description: "Link a node to a shared library style (paint/text/effect/grid) by `styleId`. Use the raw `node_set_*` setters for ad-hoc values not backed by a style.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to apply style to"),
-                nodeName: z.string().describe("Name of the node to verify against"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 styleId: z.string().describe("The ID of the style to apply"),
                 styleType: z
                     .enum(["TEXT", "FILL", "STROKE", "EFFECT", "GRID"])
@@ -701,7 +692,7 @@ export function registerNodeTools(server: McpServer) {
             description: "Bind a variable to a node property, or set an explicit variable mode. Use instead of a literal `node_set_*` when the value should track a design token. Ordering rules: set auto-layout before binding padding/spacing; set a solid fill before binding a colour token.",
             inputSchema: z.object({
                 nodeId: z.string().describe("The ID of the node to bind variables to"),
-                nodeName: z.string().describe("Name of the node to verify against"),
+                nodeName: z.string().describe("The node's current exact name, passed back verbatim from `node_info`."),
                 bindVariables: z
                     // Restrict keys to the typings-derived allowlist (z.enum), so the valid
                     // set is published in the wire JSON schema as propertyNames.enum — not just
@@ -722,7 +713,7 @@ export function registerNodeTools(server: McpServer) {
                     .optional()
                     .describe(`Map of property names to variable IDs (to bind) or null (to unbind). Valid fields: ${BINDABLE_FIELDS.join(", ")}. E.g., { 'fills': 'VariableID:1:2' }`),
                 explicitVariableModes: z
-                    .record(z.string())
+                    .record(z.string(), z.string())
                     .optional()
                     .describe("Map of variable collection IDs to mode IDs. E.g., { 'VariableCollectionID:1:2': 'ModeID:1:3' }"),
             }),

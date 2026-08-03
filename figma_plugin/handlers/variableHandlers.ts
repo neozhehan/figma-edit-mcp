@@ -1,5 +1,8 @@
 // figma_plugin/handlers/variableHandlers.ts
 import { sendProgressUpdate } from '../utils/progressUtils.js';
+import { describeError as describeThrownError, REFUSALS, withPartialDisclosure } from '../utils/errors.js';
+import { assertNonEmptyExplicitName } from '../utils/creatorValidation.js';
+import { createPageLoadCoordinator, PageLoadCoordinator } from '../utils/pageLoad.js';
 
 
 export interface StyleConsumerEntry {
@@ -328,9 +331,6 @@ async function findVariableConsumers(
             }
         }
 
-        if (node.type === 'PAGE') {
-            await node.loadAsync();
-        }
         if ("children" in node) {
             for (const child of (node as any).children) {
                 await walk(child);
@@ -342,7 +342,10 @@ async function findVariableConsumers(
     return consumerMap;
 }
 
-export async function getVariables(params: any) {
+export async function getVariables(
+    params: any,
+    pageLoads: PageLoadCoordinator = createPageLoadCoordinator(),
+) {
     const { variableId, includeConsumers, pageId, commandId } = params || {};
 
     try {
@@ -404,22 +407,27 @@ export async function getVariables(params: any) {
                     if (!pageId) {
                         throw new Error("pageId is required when includeConsumers is 'page'");
                     }
-                    const pageNode = await figma.getNodeByIdAsync(pageId);
-                    if (!pageNode) {
-                        throw new Error(`pageId with ID ${pageId} not found`);
+                    const pageNode = await pageLoads.require(pageId);
+                    try {
+                        nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, 'get_variables');
+                    } catch (error: any) {
+                        throw pageLoads.fail(pageNode.id, error).error;
                     }
-                    if (pageNode.type !== 'PAGE') {
-                        throw new Error("pageId does not resolve to a PAGE");
-                    }
-                    nodeConsumerMap = await findVariableConsumers(pageNode, idSet, commandId, 'get_variables');
                 } else {
                     // includeConsumers === 'document'
                     const pages = figma.root.children;
                     for (const [index, page] of pages.entries()) {
-                        const pageConsumers = await findVariableConsumers(page, idSet, commandId, 'get_variables');
-                        for (const [vid, entries] of pageConsumers) {
-                            const existing = nodeConsumerMap.get(vid) || [];
-                            nodeConsumerMap.set(vid, existing.concat(entries));
+                        const loaded = await pageLoads.load(page);
+                        if (loaded.ok) {
+                            try {
+                                const pageConsumers = await findVariableConsumers(page, idSet, commandId, 'get_variables');
+                                for (const [vid, entries] of pageConsumers) {
+                                    const existing = nodeConsumerMap.get(vid) || [];
+                                    nodeConsumerMap.set(vid, existing.concat(entries));
+                                }
+                            } catch (error: any) {
+                                pageLoads.fail(page.id, error);
+                            }
                         }
                         
                         if (commandId) {
@@ -457,7 +465,9 @@ export async function getVariables(params: any) {
                     `Completed fetching variable information`
                 );
             }
-            return missingIds.length > 0 ? { variables, missingIds } : { variables };
+            return missingIds.length > 0
+                ? { variables, missingIds, coverage: pageLoads.coverage() }
+                : { variables, coverage: pageLoads.coverage() };
         }
 
         // 2. List All Mode (Discovery)
@@ -483,14 +493,30 @@ export async function getVariables(params: any) {
                 valuesByMode: v.valuesByMode,
                 description: v.description,
             })),
+            coverage: pageLoads.coverage(),
         };
     } catch (err: any) {
-        throw new Error(`Error getting variables: ${err.message}`);
+        // Preserve canonical Phase 10 structured errors unchanged while
+        // retaining the legacy wrapper for unrelated uncoded failures.
+        let isStructured = false;
+        try {
+            isStructured =
+                err !== null &&
+                typeof err === 'object' &&
+                typeof err.code === 'string';
+        } catch {
+            // Hostile thrown values remain uncoded and are rendered safely.
+        }
+        if (isStructured) throw err;
+        throw new Error(`Error getting variables: ${describeThrownError(err)}`);
     }
 }
 
 
-export async function deleteVariables(params: any) {
+export async function deleteVariables(
+    params: any,
+    pageLoads: PageLoadCoordinator = createPageLoadCoordinator(),
+) {
     const { variableIds, variableNames, collectionId, collectionName, commandId } = params || {};
 
     // Mutual exclusivity check
@@ -520,12 +546,6 @@ export async function deleteVariables(params: any) {
             throw new Error(`Operation Denied: '${collection.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
         }
         idsToCheck = collection.variableIds || [];
-
-        // Empty collection — safe to delete immediately
-        if (idsToCheck.length === 0) {
-            collection.remove();
-            return { success: true, deleted: [], deletedCollection: collectionId };
-        }
     } else {
         // Variable IDs mode
         if (!Array.isArray(variableIds) || variableIds.length === 0) {
@@ -560,13 +580,52 @@ export async function deleteVariables(params: any) {
     // Concurrent scanning
     const stylePromise = findStyleConsumers(idSet);
     const aliasPromise = findAliasConsumers(idSet);
-    const nodeMapsPromises = figma.root.children.map(page => findVariableConsumers(page, idSet, commandId, 'variable_delete'));
-    
-    const [styleConsumerMap, _aliasConsumerMap, ..._nodeMaps] = await Promise.all([
+    // Pages are loaded ONE AT A TIME, matching every other Phase 10 surface
+    // (`getVariables`' document scan above, `getPagesInfo`, `getNodesInfo`,
+    // `getComponents`, `getAnnotations`). This scan used to fan `loadAsync()`
+    // out with `figma.root.children.map(...)`, and concurrent loads fail
+    // intermittently against the live host: on channel `gf32` (2026-08-02) two
+    // consecutive `variable_delete` calls were refused DOCUMENT_SCAN_INCOMPLETE
+    // and the third succeeded, while `page_info` over the same three pages and
+    // `variable_list` + includeConsumers:"document" — the sequential path —
+    // both reported complete coverage in the same session. Because the D14 gate
+    // is fail-closed, a flaky load became a hard refusal on a healthy document,
+    // and its recovery text sent the caller looking for a broken page that did
+    // not exist. Sequential loading is also what the per-page bound is sized
+    // for; Q12 accepted N x the bound as the cost of rejecting total deadlines.
+    const nodeMapsResults: Array<Map<string, any[]>> = [];
+    for (const page of figma.root.children) {
+        const loaded = await pageLoads.load(page);
+        if (!loaded.ok) { nodeMapsResults.push(new Map<string, any[]>()); continue; }
+        // Change 8 (D4): an apparently-empty collection has no variable IDs, so
+        // walking every node of every page can only ever find nothing. The
+        // D14/Q12 fail-closed gate still applies in full — every page is still
+        // loaded, and a load failure or timeout still aborts before remove() —
+        // but an O(document) traversal whose result is provably empty is pure
+        // latency on a call that used to be instant, and latency is a
+        // first-call-correctness problem on a large file.
+        if (idSet.size === 0) { nodeMapsResults.push(new Map<string, any[]>()); continue; }
+        try {
+            nodeMapsResults.push(await findVariableConsumers(page, idSet, commandId, 'variable_delete'));
+        } catch (error: any) {
+            pageLoads.fail(page.id, error);
+            nodeMapsResults.push(new Map<string, any[]>());
+        }
+    }
+
+    const [styleConsumerMap, _aliasConsumerMap] = await Promise.all([
         stylePromise,
         aliasPromise,
-        ...nodeMapsPromises
     ]);
+    const _nodeMaps = nodeMapsResults;
+
+    const coverage = pageLoads.coverage();
+    if (!coverage.complete) {
+        // This gate precedes every variable/collection remove(), including the
+        // apparently-empty collection path. A page failure is never evidence
+        // that the target has zero consumers.
+        throw REFUSALS.DOCUMENT_SCAN_INCOMPLETE(coverage.pageErrors);
+    }
 
     const nodeConsumerMap = new Map<string, any[]>();
     for (const pageResults of _nodeMaps) {
@@ -616,31 +675,42 @@ export async function deleteVariables(params: any) {
         }
         
         let errorMsg = collectionId
-            ? `Cannot delete collection: variable(s) in collection are still in use.\n`
+            ? `Cannot delete collection '${collection.name}': variable(s) in it are still in use.\n`
             : `Cannot delete: variable(s) are still in use.\n`;
-            
-        // Build readable descriptions
+
+        // Build readable descriptions.
+        //
+        // Change 8 (C8-F9, found live on channel zhfj): every consumer line
+        // carries its ID. Layer, style, and variable names are not unique — the
+        // live refusal listed two different nodes on two different pages as an
+        // identical "Node 'Rectangle 2' (RECTANGLE) on fields: fills", so the
+        // message told the agent to rebind a reference it had no way to
+        // address. D9's acceptance check is that the correct next call is
+        // derivable from the error text alone, and the IDs are already in hand.
         for (const [vid, consumers] of Object.entries(variablesInUse)) {
             const varName = variables.find(v => v && v.id === vid)?.name || vid;
-            errorMsg += `- Variable '${varName}' is used by:\n`;
-            
+            errorMsg += `- Variable '${varName}' (${vid}) is used by:\n`;
+
             for (const n of consumers.nodeConsumers) {
-                errorMsg += `  - Node '${n.nodeName}' (${n.nodeType}) on fields: ${n.fields.join(", ")}\n`;
+                errorMsg += `  - Node '${n.nodeName}' (${n.nodeType}, ${n.nodeId}) on fields: ${n.fields.join(", ")}\n`;
             }
             for (const s of consumers.styleConsumers) {
                 const styleTypeName = s.styleType === 'PAINT' ? 'Paint' : s.styleType === 'TEXT' ? 'Text' : s.styleType === 'EFFECT' ? 'Effect' : s.styleType === 'GRID' ? 'Grid' : 'Style';
-                errorMsg += `  - ${styleTypeName} style '${s.styleName}' on fields: ${s.fields.join(", ")}\n`;
+                errorMsg += `  - ${styleTypeName} style '${s.styleName}' (${s.styleId}) on fields: ${s.fields.join(", ")}\n`;
             }
             for (const a of consumers.aliasConsumers) {
-                errorMsg += `  - Aliased by variable '${a.variableName}' in modes: ${a.modes.join(", ")}\n`;
+                errorMsg += `  - Aliased by variable '${a.variableName}' (${a.variableId}) in modes: ${a.modes.join(", ")}\n`;
             }
         }
 
-        return {
-            success: false,
-            error: errorMsg.trim(),
-            variablesInUse,
-        };
+        // Change 8 (C1): this is a policy refusal, so it is thrown as a coded
+        // D9 error like its sibling DOCUMENT_SCAN_INCOMPLETE, not returned as a
+        // non-error result carrying a bare `error` string. That string was the
+        // only place in the tool surface where top-level `error` was not the
+        // {code, message, details} envelope, so a caller had to branch on the
+        // TYPE of `error` before it could read it. The consumer evidence moves
+        // into `details.variablesInUse`, unchanged in shape.
+        throw REFUSALS.VARIABLE_IN_USE(errorMsg.trim(), variablesInUse);
     }
 
     // Safe to delete
@@ -668,11 +738,11 @@ export async function getNodeVariables(params: any) {
     }
 
     // 1. Get Bound Variables (individual properties)
-    // @ts-ignore
+    // @ts-expect-error TS2339: Property 'boundVariables' does not exist on type 'BaseNode'.
     const boundVariables = node.boundVariables || {};
 
     // 2. Get Explicit Variable Modes (theme settings)
-    // @ts-ignore
+    // @ts-expect-error TS2339: Property 'explicitVariableModes' does not exist on type 'BaseNode'.
     const explicitVariableModes = node.explicitVariableModes || {};
 
     // Resolve mode names (optional, but helpful)
@@ -705,13 +775,13 @@ export async function getNodeVariables(params: any) {
         // boundVariables can be nested (e.g. for fills/strokes/componentProperties)
         // or simple Alias (id, type)
         // Simple handling for now: if it has an id, try to resolve name
-        // @ts-ignore
+        // @ts-expect-error TS2339: Property 'id' does not exist on type '{}'.
         if (alias && alias.id) {
             try {
-                // @ts-ignore
+                // @ts-expect-error TS2339: Property 'id' does not exist on type '{}'.
                 const v = await figma.variables.getVariableByIdAsync(alias.id);
                 resolvedBindings[field] = {
-                    // @ts-ignore
+                    // @ts-expect-error TS2339: Property 'id' does not exist on type '{}'.
                     variableId: alias.id,
                     variableName: v ? v.name : "Unknown Variable"
                 }
@@ -797,7 +867,7 @@ export async function setBoundVariable(params: any) {
             try {
                 const collection = await figma.variables.getVariableCollectionByIdAsync(collectionId);
                 if (!collection) throw new Error(`Collection ${collectionId} not found`);
-                // @ts-ignore
+                // @ts-expect-error TS2339: Property 'setExplicitVariableModeForCollection' does not exist on type 'BaseNode'.
                 await node.setExplicitVariableModeForCollection(collection, modeId);
                 results.push(`Set mode ${modeId} for collection ${collectionId}`);
             } catch (e: any) {
@@ -822,7 +892,7 @@ export async function setBoundVariable(params: any) {
                     if (!(field in node)) {
                         throw new Error(`node_bind_variable: '${node.name}' (type ${node.type}) has no '${field}' property to bind.`);
                     }
-                    // @ts-ignore
+                    // @ts-expect-error TS7053: '"fills" | "strokes"' cannot index the node type (implicit any)
                     if (node[field] === figma.mixed) {
                         throw new Error(`node_bind_variable: '${field}' on '${node.name}' is mixed (multiple values); bind on a node with a single ${field} value.`);
                     }
@@ -830,7 +900,7 @@ export async function setBoundVariable(params: any) {
                         throw new Error(`node_bind_variable: cannot bind a non-color variable ('${variable.name}', ${variable.resolvedType}) to ${field}; ${field} requires a COLOR variable.`);
                     }
 
-                    // @ts-ignore
+                    // @ts-expect-error TS7053: '"fills" | "strokes"' cannot index the node type (implicit any)
                     const rawPaints = node[field];
 
                     if (rawPaints.length === 0) {
@@ -839,7 +909,7 @@ export async function setBoundVariable(params: any) {
                             const bound = figma.variables.setBoundVariableForPaint(
                                 { type: "SOLID", color: { r: 0, g: 0, b: 0 } }, "color", variable
                             );
-                            // @ts-ignore
+                            // @ts-expect-error TS7053: '"fills" | "strokes"' cannot index the node type (implicit any)
                             node[field] = [bound];
                             results.push(`Bound ${field} to variable ${variable.name} (created solid paint)`);
                         } else {
@@ -862,7 +932,7 @@ export async function setBoundVariable(params: any) {
                     }
 
                     if (modified) {
-                        // @ts-ignore
+                        // @ts-expect-error TS7053: '"fills" | "strokes"' cannot index the node type (implicit any)
                         node[field] = paints;
                         results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
                     } else {
@@ -893,7 +963,7 @@ export async function setBoundVariable(params: any) {
                     }
                 }
 
-                // @ts-ignore
+                // @ts-expect-error TS2339: Property 'setBoundVariable' does not exist on type 'BaseNode'.
                 node.setBoundVariable(field, variable);
                 results.push(variable ? `Bound ${field} to variable ${variable.name}` : `Unbound variable from ${field}`);
             } catch (e: any) {
@@ -946,6 +1016,12 @@ export async function handleVariableRequest(params: any) {
         case 'CREATE_COLLECTION': {
             const { name, modeName } = params;
             if (!name) throw new Error("Missing name for collection");
+            assertNonEmptyExplicitName(
+                modeName,
+                "modeName",
+                "variable_manage CREATE_COLLECTION",
+                "Omit modeName to keep the collection's default mode name.",
+            );
 
             const collection = figma.variables.createVariableCollection(name);
             if (modeName) {
@@ -961,8 +1037,14 @@ export async function handleVariableRequest(params: any) {
         }
 
         case 'CREATE_VARIABLE': {
-            const { collectionId, name, type, value, scopes } = params;
+            const { collectionId, collectionName, name, type, value, scopes } = params;
             if (!collectionId || !name || !type) throw new Error("Missing required parameters for variable creation");
+            if (scopes === undefined) {
+                throw REFUSALS.VARIABLE_SCOPES_MISSING();
+            }
+            if (!collectionName) {
+                throw REFUSALS.COLLECTION_NAME_MISSING();
+            }
 
             // Resolve resolvedType string to VariableResolvedType
             // 'FLOAT', 'COLOR', 'STRING', 'BOOLEAN'
@@ -979,8 +1061,13 @@ export async function handleVariableRequest(params: any) {
                 throw new Error(`Collection not found: ${collectionId}`);
             }
 
+            // Verify collectionName matches collection.name
+            if (collection.name !== collectionName) {
+                throw REFUSALS.COLLECTION_NAME_MISMATCH(collection.name, collectionName);
+            }
+
             // Using collection object for createVariable as requested by error message
-            // @ts-ignore
+            // @ts-expect-error TS2769: No overload matches this call.
             const variable = figma.variables.createVariable(name, collection, resolvedType);
 
             // Apply scopes/value as a unit; roll back the freshly-created variable if any
@@ -993,7 +1080,6 @@ export async function handleVariableRequest(params: any) {
 
                 // Set initial value if provided (for default mode)
                 if (value !== undefined) {
-                    // @ts-ignore
                     const defaultModeId = collection.defaultModeId;
 
                     // Value parsing for color (setValueForMode takes r,g,b,a in 0-1)
@@ -1025,42 +1111,83 @@ export async function handleVariableRequest(params: any) {
         case 'UPDATE_VARIABLE': {
             const { variableId, name, value, modeId, description, currentVariableName, scopes } = params;
             if (!variableId) throw new Error("Missing variableId for update");
+            assertNonEmptyExplicitName(
+                name,
+                "name",
+                "variable_manage UPDATE_VARIABLE",
+                "Omit name to leave the variable's name unchanged.",
+            );
+            if (!currentVariableName) {
+                throw REFUSALS.VARIABLE_NAME_MISSING();
+            }
 
             const variable = await figma.variables.getVariableByIdAsync(variableId);
             if (!variable) throw new Error(`Variable ${variableId} not found`);
 
-            if (currentVariableName && variable.name !== currentVariableName) {
-                throw new Error(`Variable name verification failed. Expected "${variable.name}", got "${currentVariableName}"`);
+            if (variable.name !== currentVariableName) {
+                throw REFUSALS.VARIABLE_NAME_MISMATCH(variable.name, currentVariableName);
             }
 
             if (variable.remote) {
                 throw new Error(`Operation Denied: '${variable.name}' is a remote library asset (style/variable/component) and is read-only in this file. Edit it in its source library.`);
             }
 
-            if (name) {
-                variable.name = name;
-            }
-
-            if (description !== undefined) {
-                variable.description = description;
-            }
-
-            if (scopes !== undefined) {
-                variable.scopes = scopes;
-            }
-
+            // Validate-before-mutate: check modeId if value is supplied
             if (value !== undefined) {
                 if (!modeId) throw new Error("Missing modeId for setting variable value");
-
-                // Handle Aliases
-                if (typeof value === 'object' && value.type === 'VARIABLE_ALIAS') {
-                    variable.setValueForMode(modeId, {
-                        type: 'VARIABLE_ALIAS',
-                        id: value.id
-                    });
-                } else {
-                    variable.setValueForMode(modeId, value);
+                const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+                if (!collection) {
+                    throw new Error(`Collection not found for variable: ${variable.variableCollectionId}`);
                 }
+                const isValidMode = collection.modes.some(m => m.modeId === modeId);
+                if (!isValidMode) {
+                    throw new Error(`Invalid modeId: "${modeId}" is not a valid mode in collection "${collection.name}"`);
+                }
+                // Q17 pre-check: an alias value resolves its target before any mutation.
+                if (typeof value === 'object' && value !== null && value.type === 'VARIABLE_ALIAS') {
+                    const aliasTarget = await figma.variables.getVariableByIdAsync(value.id);
+                    if (!aliasTarget) {
+                        throw new Error(`Alias target variable not found: "${value.id}". Read a valid variable ID with variable_list and pass it back verbatim.`);
+                    }
+                }
+            }
+
+            // Q18: an unexpected failure after a write must disclose the partial
+            // mutation with before-values; a clean failure never carries the flag.
+            const before = { name: variable.name, description: variable.description };
+            const applied: string[] = [];
+            try {
+                if (name) {
+                    variable.name = name;
+                    applied.push(`name (was "${before.name}")`);
+                }
+
+                if (description !== undefined) {
+                    variable.description = description;
+                    applied.push("description");
+                }
+
+                if (scopes !== undefined) {
+                    variable.scopes = scopes;
+                    applied.push("scopes");
+                }
+
+                if (value !== undefined) {
+                    // Handle Aliases
+                    if (typeof value === 'object' && value.type === 'VARIABLE_ALIAS') {
+                        variable.setValueForMode(modeId!, {
+                            type: 'VARIABLE_ALIAS',
+                            id: value.id
+                        });
+                    } else {
+                        variable.setValueForMode(modeId!, value);
+                    }
+                }
+            } catch (e) {
+                if (applied.length > 0) {
+                    throw withPartialDisclosure(e, `the variable's ${applied.join(", ")} had already been updated when the failure occurred.`, before);
+                }
+                throw e;
             }
 
             return {

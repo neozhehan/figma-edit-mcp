@@ -20,9 +20,9 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
         (sendCommandToFigma as any).mockClear();
     });
 
-    it("should register all 46 tools in correct groups", () => {
+    it("should register all 45 tools in correct groups", () => {
         const registered = (server as any)._registeredTools;
-        expect(Object.keys(registered).length).toBe(46);
+        expect(Object.keys(registered).length).toBe(45);
 
         // Verification of presence of expected tools
         const expectedTools = [
@@ -35,7 +35,7 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             "node_set_effects", "node_apply_style", "node_bind_variable", "node_export_visual",
             // create
             "create_shape", "create_frame", "create_text", "create_svg", "create_component",
-            "create_instance", "create_component_set", "create_connection",
+            "create_instance", "create_component_set",
             // style
             "style_list", "style_manage", "style_delete",
             // text
@@ -79,6 +79,7 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
         for (const legacyName of legacyNames) {
             expect(legacyName in registered).toBe(false);
         }
+        expect("create_connection" in registered).toBe(false);
 
         // Regression guard for the Antigravity / function-calling failure: every
         // tool name (and thus `mcp_<server>_<name>`) must satisfy the LLM
@@ -160,7 +161,7 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
     });
 
     describe("v2.1.0 schema constraints", () => {
-        it("all five creation tools require parentId", () => {
+        it("all five creation tools require parentId and parentNodeName", () => {
             const registered = (server as any)._registeredTools;
             // Input schemas are now STRICT (reject unknown keys), so each tool gets
             // exactly its own required fields — a shared superset would be rejected
@@ -174,9 +175,24 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
             };
             for (const [t, fields] of Object.entries(requiredByTool)) {
                 const schema = registered[t].inputSchema;
-                expect(schema.safeParse({ ...fields }).success).toBe(false);          // no parentId → rejected
-                expect(schema.safeParse({ ...fields, parentId: "p1" }).success).toBe(true);
+                expect(schema.safeParse({ ...fields }).success).toBe(false);          // no parentId or parentNodeName → rejected
+                expect(schema.safeParse({ ...fields, parentId: "p1" }).success).toBe(false);          // no parentNodeName → rejected
+                expect(schema.safeParse({ ...fields, parentNodeName: "parent" }).success).toBe(false); // no parentId → rejected
+                expect(schema.safeParse({ ...fields, parentId: "p1", parentNodeName: "parent" }).success).toBe(true);
             }
+        });
+
+        it("create_component_set requires parentId and parentNodeName", () => {
+            const registered = (server as any)._registeredTools;
+            const schema = registered["create_component_set"].inputSchema;
+            const baseFields = {
+                components: [{ nodeId: "c1", nodeName: "c1", propertyValues: ["A"] }],
+                properties: ["Prop"]
+            };
+            expect(schema.safeParse({ ...baseFields }).success).toBe(false); // missing both
+            expect(schema.safeParse({ ...baseFields, parentId: "p1" }).success).toBe(false); // missing parentNodeName
+            expect(schema.safeParse({ ...baseFields, parentNodeName: "parent" }).success).toBe(false); // missing parentId
+            expect(schema.safeParse({ ...baseFields, parentId: "p1", parentNodeName: "parent" }).success).toBe(true);
         });
 
         it("instance_get_overrides requires nodeId", () => {
@@ -239,11 +255,31 @@ describe("v2.0.0 Tool Registration & Routing Tests (WS3)", () => {
         it("variable_manage accepts valid scopes and rejects an invalid enum value", () => {
             const schema = (server as any)._registeredTools["variable_manage"].inputSchema;
             // valid scopes accepted
-            expect(schema.safeParse({ action: "CREATE_VARIABLE", scopes: ["ALL_FILLS", "STROKE_COLOR"] }).success).toBe(true);
-            // scopes is optional (omitted is fine)
-            expect(schema.safeParse({ action: "CREATE_VARIABLE" }).success).toBe(true);
+            expect(schema.safeParse({
+                action: "CREATE_VARIABLE",
+                collectionId: "coll-1",
+                collectionName: "MyColl",
+                name: "var1",
+                type: "FLOAT",
+                scopes: ["ALL_FILLS", "STROKE_COLOR"]
+            }).success).toBe(true);
+            // scopes omission is rejected
+            expect(schema.safeParse({
+                action: "CREATE_VARIABLE",
+                collectionId: "coll-1",
+                collectionName: "MyColl",
+                name: "var1",
+                type: "FLOAT"
+            }).success).toBe(false);
             // an invalid enum value is rejected by Zod
-            expect(schema.safeParse({ action: "CREATE_VARIABLE", scopes: ["NOT_A_REAL_SCOPE"] }).success).toBe(false);
+            expect(schema.safeParse({
+                action: "CREATE_VARIABLE",
+                collectionId: "coll-1",
+                collectionName: "MyColl",
+                name: "var1",
+                type: "FLOAT",
+                scopes: ["NOT_A_REAL_SCOPE"]
+            }).success).toBe(false);
         });
     });
 

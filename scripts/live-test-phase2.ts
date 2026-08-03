@@ -10,7 +10,7 @@ async function run() {
 
     // 1. Get all variables to pick one
     console.log("Fetching variable list...");
-    const listRes = await sendCommandToFigma("variable_list", {});
+    const listRes = await sendCommandToFigma("variable_list", {}) as Record<string, any>;
     
     if (!listRes || !listRes.variables || listRes.variables.length === 0) {
         console.log("No variables found in this document. Cannot test consumer scan.");
@@ -29,7 +29,7 @@ async function run() {
         const details = await sendCommandToFigma("variable_list", {
             variableId: [varId],
             includeConsumers: "document"
-        });
+        }) as Record<string, any>;
         
         console.log("Successfully completed document scan!");
         console.log(`Found ${details.variables[0].nodeConsumers.length} node consumers for this variable.`);

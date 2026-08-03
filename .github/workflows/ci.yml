@@ -27,13 +27,22 @@ jobs:
       - name: Build all
         run: bun run build:all
 
-      - name: Verify plugin bundle is committed up to date
+      - name: Verify plugin bundle is up to date with its sources
         run: bun run check:plugin
+
+      - name: Verify plugin type safety
+        run: bun run check:types:plugin
+
+      - name: Verify script type safety
+        run: bun run check:types:scripts
+
+      - name: Verify suppression comments
+        run: bun run check:suppressions
 
       - name: Verify version synchronization
         run: bun run check:versions
 
-      - name: Verify generated files are committed up to date
+      - name: Verify generated files are up to date with their sources
         run: bun run check:generated
 
       - name: Pack
@@ -59,9 +68,13 @@ jobs:
       - name: Markdown Link Check
         uses: lycheeverse/lychee-action@v2
         with:
+          # research.chalmers.se and riunet.upv.es intermittently reject/timeout
+          # GitHub Actions runner IPs (TLS handshake failures, request timeouts)
+          # even though the cited PDFs are live; excluded to stop false-failing CI.
           args: >-
             --accept 200..204,403,429,500..504
             --exclude-loopback
+            --exclude 'https?://(research\.chalmers\.se|riunet\.upv\.es)/'
             '*.md'
 
   node-smoke:
