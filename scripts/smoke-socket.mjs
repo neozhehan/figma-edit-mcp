@@ -36,15 +36,24 @@ proc.on("exit", (code, signal) => {
 
 const deadline = Date.now() + 15000;
 let ws;
+let firstMessage;
 while (Date.now() < deadline && !exited) {
     await sleep(300);
     try {
         const candidate = new WebSocket(`ws://localhost:${port}`);
+        // Subscribe BEFORE awaiting "open". The server sends its welcome frame
+        // synchronously inside its connection handler, so when the upgrade
+        // response and that frame arrive in the same I/O tick, `ws` emits
+        // "message" while this function is still suspended on the await below —
+        // a listener attached after the await would miss it and the frame would
+        // be dropped with no error. Buffering it here removes the race.
+        const buffered = new Promise((res) => candidate.once("message", res));
         await new Promise((res, rej) => {
             candidate.once("open", res);
             candidate.once("error", rej);
         });
         ws = candidate;
+        firstMessage = buffered;
         break;
     } catch {
         // not ready yet
@@ -59,7 +68,8 @@ if (!ws) {
 
 const welcome = await new Promise((res, rej) => {
     const t = setTimeout(() => rej(new Error("no welcome frame within 5s")), 5000);
-    ws.once("message", (data) => {
+    // Resolves whether the frame landed during the handshake tick or arrives now.
+    firstMessage.then((data) => {
         clearTimeout(t);
         try {
             res(JSON.parse(data.toString()));
