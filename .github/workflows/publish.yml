@@ -21,14 +21,24 @@ jobs:
           tag_version="${GITHUB_REF_NAME#v}"
           [ "$pkg_version" = "$tag_version" ] || { echo "Mismatch: package.json=$pkg_version tag=$tag_version"; exit 1; }
 
+      # Publish tooling only — this is NOT the supported consumer runtime.
+      # package.json keeps `engines.node: >=20`, and ci.yml's node-smoke matrix
+      # installs the packed tarball on Node 20 explicitly, so that floor stays
+      # covered. This runner needs a newer Node because npm 12 (below) requires
+      # one, and because Node 20 reached EOL in April 2026.
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
+      # Pinned to a MAJOR, not `@latest`. `@latest` silently broke the v2.3.3
+      # publish: npm 12.0.2 dropped Node 20 (`^22.22.2 || ^24.15.0 || >=26.0.0`)
+      # while this job ran Node 20, so the release tagged fine, published
+      # nothing, and uploaded no MCPB bundle. A pinned major turns the next
+      # npm-major runtime bump into a deliberate edit instead of a failed release.
       - name: Upgrade npm (Trusted Publishing requires 11.5.1+)
-        run: npm install -g npm@latest
+        run: npm install -g npm@^12
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
