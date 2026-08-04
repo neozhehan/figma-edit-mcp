@@ -9,7 +9,7 @@ scratch/
 .vscode/
 .claude/
 *.tgz
-documentation/
+planning/
 scripts/
 bun.lock
 tsconfig.json

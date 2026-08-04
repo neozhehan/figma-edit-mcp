@@ -491,7 +491,7 @@ This release completely overhauls the Model Context Protocol tool API to use a c
 - `descendantCount` added to both page-scope and node-scope payloads, and to top-level/boundary nodes in `get_nodes_info`.
 - `progress_update` streaming events for all potentially slow traversal operations (`get_nodes_info` at depth, large `get_pages_info` requests) to prevent client timeouts.
 
-For the full specification, see [get_nodes_info_update_spec.md](./documentation/completed/v1.4.0%20-%20get_nodes_info_update/get_nodes_info_update_spec.md).
+For the full specification, see [get_nodes_info_update_spec.md](./planning/completed/v1.4.0%20-%20get_nodes_info_update/get_nodes_info_update_spec.md).
 
 ## [1.3.0]
 ### Breaking changes
@@ -505,4 +505,4 @@ For the full specification, see [get_nodes_info_update_spec.md](./documentation/
 - \`get_pages_info\` streaming with progress events.
 - Structured connect-flow error codes (\`CHANNEL_NOT_FOUND\` / \`CHANNEL_JOIN_FAILED\` / \`PLUGIN_DISCONNECTED\` / \`SCOPE_DELETED\` / \`SCOPE_INVALID\` / \`DOCUMENT_LOAD_FAILED\` / \`UNKNOWN_ERROR\`).
 
-For the full specification, see [read_tools_update.md](./documentation/completed/v1.3.0%20-%20read_tools_update/read_tools_update.md).
+For the full specification, see [read_tools_update.md](./planning/completed/v1.3.0%20-%20read_tools_update/read_tools_update.md).

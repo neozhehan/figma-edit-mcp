@@ -19,7 +19,7 @@ exclude:
   - scripts
   - test
   - skills
-  - documentation
+  - planning
   - figma_plugin
   - "*.mcpb"
   - package.json

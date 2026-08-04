@@ -24,7 +24,7 @@ scripts/
   setup.sh           # First-time local setup
   integrate.sh       # Generates MCP host config snippets
 dist/                # Build output (gitignored)
-documentation/       # Specs, plans, and release notes per version
+planning/            # Per-version PRDs, task lists, reviews, and release notes
 ```
 
 ---
@@ -197,7 +197,7 @@ Once the design decision is settled:
 
 ## Versioning and releases
 
-The project follows semver. Release mechanics (NPM publish, tarball verification, GitHub Release) live in the per-version specs under `documentation/`. Maintainers handle publishing; contributors do not need NPM credentials. Publishing is tag-driven, and maintainers must use a fine-grained NPM automation token scoped exclusively to the `figma-edit-mcp` package.
+The project follows semver. Release mechanics (NPM publish, tarball verification, GitHub Release) live in the per-version specs under `planning/`. Maintainers handle publishing; contributors do not need NPM credentials. Publishing is tag-driven, and maintainers must use a fine-grained NPM automation token scoped exclusively to the `figma-edit-mcp` package.
 
 **Tag contract:** Git tags must exactly match the `package.json#version` (e.g., `v1.5.0` for version `1.5.0`). The CI pipeline enforces this contract and will reject any release where the tag and package version diverge.
 
