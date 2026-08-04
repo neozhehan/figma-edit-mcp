@@ -160,6 +160,11 @@ jobs:
               - 'tsup.config.ts'
               - 'figma_plugin/build.js'
               - 'scripts/integrate.sh'
+              # The release workflow itself. Without this, a PR that changes
+              # ONLY publish.yml gets no publish validation at all — which is
+              # how the v2.3.3 release shipped a workflow that tagged, published
+              # nothing, and uploaded no MCPB bundle.
+              - '.github/workflows/publish.yml'
 
   dry-run-publish:
     runs-on: ubuntu-latest
@@ -168,7 +173,23 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-        
+
+      # The next two steps MIRROR publish.yml's toolchain setup, in the same
+      # order, and exist to make a release-runtime break fail a PR instead of a
+      # release. v2.3.3 died on the npm upgrade below (npm 12 requires Node
+      # >=22.22.2; publish.yml pinned Node 20), and nothing in CI ran either
+      # step, so the tag published nothing and CI stayed green.
+      #
+      # KEEP THESE PINS IN SYNC WITH publish.yml. They are duplicated across two
+      # workflow files; a divergence silently restores the gap this closes.
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - name: Upgrade npm (mirrors publish.yml — the step that broke v2.3.3)
+        run: npm install -g npm@^12
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
