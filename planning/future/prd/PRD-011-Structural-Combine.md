@@ -3,7 +3,7 @@
 - **Status:** Proposed; implementation is blocked on native-behavior probes
 - **Release:** Version-unassigned standalone minor release with an accepted hard cutover
 - **PRD date:** 2026-08-04
-- **Source:** [Figma Design Editing Capability Expansion, Section 19](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#19-node_combine-group-and-boolean-structural-operations-p0)
+- **Source:** [Figma Design Editing Capability Expansion, Section 19](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#19-node_combine-group-and-boolean-structural-operations-p0)
 - **Compatibility posture:** Hard-replace `node_group` with `node_combine`; no compatibility alias
 
 > [!IMPORTANT]

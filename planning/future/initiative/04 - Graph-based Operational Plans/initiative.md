@@ -1,4 +1,4 @@
-# v2.x.0 PRD: Graph-Based Operational Plans
+# v2.x.0 Initiative: Graph-Based Operational Plans
 
 This document is the product/implementation spec for a future **v2.x.0** release of `figma-edit-mcp`. The current baseline is **v2.3.1**: the server already has strict input schemas, discover-before-acting guidance, plugin-enforced scope/name/batch safety, variable/style permission axes, image/clear fill support, and hardened `node_bind_variable` guardrails.
 
@@ -61,7 +61,7 @@ The purpose is not to let the MCP server "trust the LLM more." It is the opposit
 > **D10 - Direct tools remain supported.** This release does not force every edit through a plan. A future "approval-required mode" could block direct write tools when enabled, but that is out of scope for this release. The new feature is a safer orchestration path for complex multi-step tasks, not a removal of the existing API.
 
 > [!NOTE]
-> **D11 - All decisions recorded and confirmed.** The feature is an additive, graph-based planning and approval layer exposed as one public tool: `plan_manage`. It keeps plugin-side safety authoritative, supports incremental graph construction, uses symbolic references for created objects, submits the canonical graph to the plugin for programmatic verification and human vetting, binds approval to a digest, and executes the approved graph through the plugin-owned guard stack. No open product decisions remain for this PRD.
+> **D11 - All decisions recorded and confirmed.** The feature is an additive, graph-based planning and approval layer exposed as one public tool: `plan_manage`. It keeps plugin-side safety authoritative, supports incremental graph construction, uses symbolic references for created objects, submits the canonical graph to the plugin for programmatic verification and human vetting, binds approval to a digest, and executes the approved graph through the plugin-owned guard stack. No open product decisions remain for this Initiative.
 
 ---
 
@@ -86,7 +86,7 @@ This feature turns an implicit chain of LLM tool calls into an explicit operatio
 | Better test fixtures | Plans can become regression fixtures for safety tests, schema tests, execution ordering, and live verification. |
 | Resumability and repair | A draft or failed plan can be inspected, amended, and revalidated instead of recreated from scratch. |
 | Product trust | The agent feels less like a black box and more like a careful assistant operating under visible constraints. |
-| Handoff and reproducibility | A saved plan graph can be shared in issues, PRDs, test cases, bug reports, or documentation. |
+| Handoff and reproducibility | A saved plan graph can be shared in issues, Initiatives, test cases, bug reports, or documentation. |
 | Telemetry and prioritization | The project can measure which operation sequences are common, which validations fail, and where new compound tools would pay off. |
 | Human-designer control | The designer remains the final approver of intent; the AI does orchestration and the plugin enforces mechanical safety. |
 
@@ -721,7 +721,7 @@ Update the single source of operational guidance:
 
 ## §11. Provenance - baseline verification
 
-The PRD was grounded against the current v2.3.1 tree before writing:
+The Initiative was grounded against the current v2.3.1 tree before writing:
 
 | Baseline fact | Verified at | Finding |
 | :- | :- | :- |

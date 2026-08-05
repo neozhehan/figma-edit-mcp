@@ -9,7 +9,7 @@
 >
 > **Standalone extraction/revision:** 2026-08-04
 >
-> **Authoritative source:** [Figma Design Editing Capability Expansion](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md), Section 13 and the detach portion of Section 14
+> **Authoritative source:** [Figma Design Editing Capability Expansion](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md), Section 13 and the detach portion of Section 14
 
 This release adds two explicit tools for changing an instance's relationship to
 a component:

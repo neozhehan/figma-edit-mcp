@@ -5,7 +5,7 @@
 | Status | Proposed |
 | Release | Version-unassigned standalone minor release |
 | Date | 2026-08-04 |
-| Source | [Figma Design Editing Capability Expansion](<../Figma Design Editing Capability Expansion/prd.md>) |
+| Source | [Figma Design Editing Capability Expansion](<../initiative/03 - Figma Design Editing Capability Expansion/initiative.md>) |
 | Source scopes | Checklist 6, 7, 8, and 10; decisions D7, D11, and D15; Sections 6–9 |
 | Release boundary | TEXT_PATH and LINE creation, raw vector-path creation, and the unified native-region creator |
 

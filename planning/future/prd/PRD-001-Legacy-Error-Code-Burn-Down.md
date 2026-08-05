@@ -9,9 +9,9 @@
 >
 > **Standalone extraction/revision:** 2026-08-03
 >
-> **Historical source index:** [`planning/v2.3.4/prd.md`](../../v2.3.4/prd.md), Track 1
+> **Historical source index:** [Initiative 01 — Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/initiative.md>), Track 1
 >
-> **Revision ledger:** [`planning/v2.3.4/release-changelog.md`](../../v2.3.4/release-changelog.md#change-1-prd-revision-history)
+> **Revision ledger:** [Initiative 01 release changelog](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/release-changelog.md#change-1-prd-revision-history>)
 
 This release converts the plugin's known legacy, uncoded failure surface to the
 structured error contract established by v2.3.3. Its outcome is that
@@ -665,8 +665,8 @@ standalone PRD is revised.
 
 ## References
 
-- [v2.3.4 compatibility index](../../v2.3.4/prd.md)
-- [Verbatim v2.3.4 revision ledger](../../v2.3.4/release-changelog.md#change-1-prd-revision-history)
+- [Initiative 01 — Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/initiative.md>)
+- [Verbatim v2.3.4 revision ledger](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/release-changelog.md#change-1-prd-revision-history>)
 - [v2.3.3 safety-contract PRD](<../../completed/v2.3.3-Plugin-Type-Check-Restoration-&-Safety-Contract-Gap-Closure/prd.md>)
 - [v2.3.3 release changelog](<../../completed/v2.3.3-Plugin-Type-Check-Restoration-&-Safety-Contract-Gap-Closure/release-changelog.md>)
 - [`figma_plugin/utils/errors.ts`](../../../figma_plugin/utils/errors.ts)

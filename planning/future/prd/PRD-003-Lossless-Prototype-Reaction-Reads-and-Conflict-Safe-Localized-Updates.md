@@ -6,8 +6,8 @@
 | Release class | Standalone minor release (`v2.x.0`; assign the exact version when scheduled) |
 | Standalone extraction/revision | 2026-08-03 |
 | Source scope | Former v2.3.4 Track 3; source decisions D9–D11; Phase T3 |
-| Historical source index | [`planning/v2.3.4/prd.md`](../../v2.3.4/prd.md) |
-| Historical ledger | [`planning/v2.3.4/release-changelog.md`](../../v2.3.4/release-changelog.md#change-1-prd-revision-history) |
+| Historical source index | [Initiative 01 — Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/initiative.md>) |
+| Historical ledger | [Initiative 01 release changelog](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/release-changelog.md#change-1-prd-revision-history>) |
 
 ## Executive summary
 
@@ -348,4 +348,4 @@ This minor release is complete only when:
 6. Every contract regression is red-proofed, all repository/static/generated/bundle gates pass, and live evidence is recorded separately from repository/injected-fault evidence with exact cleanup reconciliation.
 7. Guides, served resources, tool descriptions, generated manifest, version surfaces, and changelog all describe the hard cutover and safe recovery path.
 
-> The historical umbrella revision ledger remains unchanged in [`planning/v2.3.4/release-changelog.md`](../../v2.3.4/release-changelog.md#change-1-prd-revision-history).
+> The historical umbrella revision ledger remains unchanged in [`planning/future/initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/release-changelog.md`](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/release-changelog.md#change-1-prd-revision-history>).

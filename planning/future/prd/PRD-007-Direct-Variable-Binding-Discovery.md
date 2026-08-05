@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Release:** Version-unassigned standalone minor release
 - **PRD date:** 2026-08-04
-- **Source:** [Future Figma Design Editing Capability Expansion](<../Figma Design Editing Capability Expansion/prd.md>), Section 1
+- **Source:** [Future Figma Design Editing Capability Expansion](<../initiative/03 - Figma Design Editing Capability Expansion/initiative.md>), Section 1
 - **Required predecessor:** [`PRD-005-Scoped-Match-Discovery.md`](PRD-005-Scoped-Match-Discovery.md)
 - **Parallel sibling:** [`PRD-006-Typography-and-Font-Discovery.md`](PRD-006-Typography-and-Font-Discovery.md)
 
@@ -581,7 +581,7 @@ No variable create/update/delete, binding write, mode selection, collection main
 
 ## 20. References
 
-- [Umbrella capability-expansion PRD](<../Figma Design Editing Capability Expansion/prd.md>)
+- [Umbrella capability-expansion PRD](<../initiative/03 - Figma Design Editing Capability Expansion/initiative.md>)
 - [Scoped Match Discovery predecessor](PRD-005-Scoped-Match-Discovery.md)
 - [Typography and Font Discovery sibling](PRD-006-Typography-and-Font-Discovery.md)
 - [Styled-Text Read Fidelity](PRD-008-Styled-Text-Read-Fidelity.md)

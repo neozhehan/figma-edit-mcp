@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Release:** Version-unassigned standalone minor release with an accepted hard cutover
 - **PRD date:** 2026-08-04
-- **Source:** [Figma Design Editing Capability Expansion, Section 3](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#3-node_set_layout-container-child-grid-and-viewport-layout-p0)
+- **Source:** [Figma Design Editing Capability Expansion, Section 3](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#3-node_set_layout-container-child-grid-and-viewport-layout-p0)
 - **Compatibility posture:** Hard-replace `node_set_auto_layout` with `node_set_layout`; no compatibility alias
 
 > [!IMPORTANT]

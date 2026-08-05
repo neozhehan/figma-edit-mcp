@@ -3,7 +3,7 @@
 This folder contains the canonical, scope-specific PRDs extracted from the former v2.3.4 and v2.3.5 umbrella plans and from the future Figma Design Editing Capability Expansion plan. Each numbered `PRD-*` file is sized and written as one independently releasable **minor release**. Exact version numbers remain unassigned until the releases are scheduled. Intentional public hard cutovers are permitted where the owning PRD says so.
 
 > [!IMPORTANT]
-> The original [`v2.3.4`](../../v2.3.4/prd.md) and [`v2.3.5`](../../v2.3.5/prd.md) paths remain compatibility indexes for path-level historical links. Their companion release changelogs remain the unchanged historical ledgers; they are not redistributed among the new PRDs. Pre-split deep-heading links are served by the commit permalinks recorded below, not recreated on the indexes.
+> The pre-split umbrella plans now live at [Initiative 01](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/initiative.md>) and [Initiative 02](<../initiative/02 - Timeout, Liveness, and Mutation-Outcome Integrity/initiative.md>). Their companion release changelogs remain the unchanged historical ledgers; they are not redistributed among the new PRDs. Pre-split paths and deep-heading links are served by the commit permalinks recorded below.
 
 ## Canonical PRDs
 
@@ -42,7 +42,7 @@ This folder contains the canonical, scope-specific PRDs extracted from the forme
 
 ## v2.3.4 migration crosswalk
 
-The source identifiers below remain stable historical references in the unchanged [v2.3.4 revision ledger](../../v2.3.4/release-changelog.md#change-1-prd-revision-history). The standalone PRDs retain those source identifiers in their mapping sections even when they introduce local section names.
+The source identifiers below remain stable historical references in the unchanged [v2.3.4 revision ledger](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/release-changelog.md#change-1-prd-revision-history>). The standalone PRDs retain those source identifiers in their mapping sections even when they introduce local section names.
 
 | Source material | Canonical disposition |
 | :- | :- |
@@ -78,7 +78,7 @@ Significant overlap keeps all v2.3.5 work in `PRD-004-Timeout-Liveness-and-Mutat
 
 ## Figma Design Editing Capability Expansion crosswalk
 
-The source [`Figma Design Editing Capability Expansion/prd.md`](<../Figma Design Editing Capability Expansion/prd.md>) remains the historical umbrella specification. PRD-005 through PRD-020 are the canonical implementation documents. The umbrella's implementation phases are not release boundaries: each child owns its applicable contract scaffolding, safety/error work, documentation, generated output, versioning, repository gates, and live evidence.
+The source [`initiative/03 - Figma Design Editing Capability Expansion/initiative.md`](<../initiative/03 - Figma Design Editing Capability Expansion/initiative.md>) remains the historical umbrella specification. PRD-005 through PRD-020 are the canonical implementation documents. The umbrella's implementation phases are not release boundaries: each child owns its applicable contract scaffolding, safety/error work, documentation, generated output, versioning, repository gates, and live evidence.
 
 | Umbrella source | Canonical PRD |
 | :- | :- |

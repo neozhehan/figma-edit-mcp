@@ -4,8 +4,8 @@
 - **Original PRD date:** 2026-08-02
 - **Standalone extraction/revision:** 2026-08-03
 - **Release:** Version unassigned — standalone minor release
-- **Original source/index:** [v2.3.5 PRD](../../v2.3.5/prd.md)
-- **Unchanged historical ledger:** [v2.3.5 release changelog](../../v2.3.5/release-changelog.md)
+- **Original source/index:** [Initiative 02 — Timeout, Liveness, and Mutation-Outcome Integrity](<../initiative/02 - Timeout, Liveness, and Mutation-Outcome Integrity/initiative.md>)
+- **Unchanged historical ledger:** [v2.3.5 release changelog](<../initiative/02 - Timeout, Liveness, and Mutation-Outcome Integrity/release-changelog.md>)
 
 ## Consolidation rationale
 
@@ -29,7 +29,7 @@ The public `command_status` tool is additive. Progress notifications and receipt
 
 ## Historical provenance
 
-This standalone PRD consolidates the complete contract previously indexed as v2.3.5. The original path is now a compatibility index, the pre-split source is preserved by the commit permalink recorded there, and the companion ledger remains unchanged.
+This standalone PRD consolidates the complete contract previously indexed as v2.3.5. The pre-split source now lives in Initiative 02, its original path is preserved by the commit permalink recorded in the [PRD catalog](README.md#historical-source-record), and the companion ledger remains unchanged.
 
 References to Changes 12, 29, and 30 and to D9, D14, and Q12 refer to the completed [v2.3.3 PRD](<../../completed/v2.3.3-Plugin-Type-Check-Restoration-&-Safety-Contract-Gap-Closure/prd.md>) and [v2.3.3 release changelog](<../../completed/v2.3.3-Plugin-Type-Check-Restoration-&-Safety-Contract-Gap-Closure/release-changelog.md>). Historical measurements, channel identifiers, counts, hashes, and evidence qualifications below remain part of the decision record; they are not claims that this PRD has been implemented.
 

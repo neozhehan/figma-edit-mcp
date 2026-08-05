@@ -9,7 +9,7 @@
 >
 > **Standalone extraction/revision:** 2026-08-04
 >
-> **Authoritative source:** [Figma Design Editing Capability Expansion](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md), Sections 10–12
+> **Authoritative source:** [Figma Design Editing Capability Expansion](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md), Sections 10–12
 
 This release completes the local variable-maintenance lifecycle without adding
 another public tool. It expands `variable_manage` with code-syntax maintenance,

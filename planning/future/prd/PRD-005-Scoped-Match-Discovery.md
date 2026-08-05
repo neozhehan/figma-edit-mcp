@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Release:** Version-unassigned standalone minor release
 - **PRD date:** 2026-08-04
-- **Source:** [Future Figma Design Editing Capability Expansion](<../Figma Design Editing Capability Expansion/prd.md>), Section 1
+- **Source:** [Future Figma Design Editing Capability Expansion](<../initiative/03 - Figma Design Editing Capability Expansion/initiative.md>), Section 1
 - **Dependency direction:** foundation for [`PRD-006-Typography-and-Font-Discovery.md`](PRD-006-Typography-and-Font-Discovery.md), [`PRD-007-Direct-Variable-Binding-Discovery.md`](PRD-007-Direct-Variable-Binding-Discovery.md), and [`PRD-008-Styled-Text-Read-Fidelity.md`](PRD-008-Styled-Text-Read-Fidelity.md)
 
 > [!IMPORTANT]
@@ -615,7 +615,7 @@ No text write, variable write, paint write, instance/component write, creation, 
 
 ## 19. References
 
-- [Umbrella capability-expansion PRD](<../Figma Design Editing Capability Expansion/prd.md>)
+- [Umbrella capability-expansion PRD](<../initiative/03 - Figma Design Editing Capability Expansion/initiative.md>)
 - [Repository safety contract](../../../SAFETY.md)
 - [Contributor and verification guidance](../../../CONTRIBUTING.md)
 - [Figma-edit constraints](../../../skills/figma-edit/references/constraints.md)

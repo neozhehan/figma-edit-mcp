@@ -3,7 +3,7 @@
 - **Status:** Proposed; release closure requires pinned live mask-propagation evidence
 - **Release:** Version-unassigned standalone minor release with an accepted hard cutover
 - **PRD date:** 2026-08-04
-- **Source:** [Figma Design Editing Capability Expansion, Section 4](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#4-node_set_appearance-effects-visibility-opacity-blend-mask-p0)
+- **Source:** [Figma Design Editing Capability Expansion, Section 4](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#4-node_set_appearance-effects-visibility-opacity-blend-mask-p0)
 - **Compatibility posture:** Hard-replace `node_set_effects` with `node_set_appearance`; no compatibility alias
 
 > [!IMPORTANT]
@@ -704,10 +704,10 @@ There is no unresolved product-contract contradiction after the clarifications a
 
 | Evidence | Record |
 | :- | :- |
-| Canonical source file | [`planning/future/Figma Design Editing Capability Expansion/prd.md`](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md) |
-| Source section | [Section 4 — `node_set_appearance`](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#4-node_set_appearance-effects-visibility-opacity-blend-mask-p0) |
+| Canonical source file | [`planning/future/initiative/03 - Figma Design Editing Capability Expansion/initiative.md`](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md) |
+| Source section | [Section 4 — `node_set_appearance`](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#4-node_set_appearance-effects-visibility-opacity-blend-mask-p0) |
 | Source checklist row | Item 4 in the same document |
-| Cross-cutting source | [Section 20 — safety and error contract](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#20-cross-cutting-safety-and-error-contract-p0) |
+| Cross-cutting source | [Section 20 — safety and error contract](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#20-cross-cutting-safety-and-error-contract-p0) |
 | Historical Git commit | [`40d39e8bb48edacade40111e1d00b8bf82b7a5d8`](https://github.com/neozhehan/figma-edit-mcp/blob/40d39e8bb48edacade40111e1d00b8bf82b7a5d8/planning/future/Figma%20Design%20Editing%20Capability%20Expansion/prd.md) |
 | Source Git blob | `9f1ec339ea5526bb4668a77edb6bd768d2cf32e0` |
 | Source SHA-256 at extraction | `23cc718af794f8ec981244979f50b042229a5125d0e8b8000a4f17399cf39d77` |

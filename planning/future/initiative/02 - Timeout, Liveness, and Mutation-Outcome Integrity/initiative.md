@@ -1,8 +1,7 @@
-# v2.3.5 PRD — Timeout, Liveness, and Mutation-Outcome Integrity
+# Initiative — Timeout, Liveness, and Mutation-Outcome Integrity
 
 **Status:** Proposed; implementation not started  
-**Date:** 2026-08-02  
-**Release:** v2.3.5  
+**Date:** 2026-08-02    
 **Companion ledger:** [release-changelog.md](release-changelog.md)
 
 ## 1. Executive summary
@@ -27,7 +26,7 @@ The project's Golden Rule is to maximize **first-call correctness and one-round-
 
 ## 3. Evidence boundary
 
-This PRD separates three evidence classes:
+This Initiative separates three evidence classes:
 
 - **Live-confirmed:** a real host or bridge returned the timeout/failure on the named path.
 - **Repository-confirmed structural risk:** current timers, handler awaits/traversals, progress sites, and cancellation behavior prove the unsafe budget relationship; normal live calls may still complete quickly.
@@ -82,7 +81,7 @@ The cost is neither traversal nor scale: the 62-descendant page is free once war
 
 **Why this matters beyond arithmetic.** Q12 accepted the per-page bound specifically because "recovery requires an error to exist — a hang returns nothing, the one state the D9 convention cannot recover from." A synchronously blocking host call is the most likely real cause of a hang, and it is precisely the shape the bound cannot interrupt. So the guarantee is weaker than D14/Q12 records, and v2.3.5 must not treat the page bound as a dependable inner budget when sizing outer deadlines.
 
-**Consequence for this PRD:** requirement "no outer layer is shorter than a nested bounded operation unless visible progress refreshes it first" (§ acceptance) cannot be satisfied by arithmetic over nominal bounds. Either the page orchestrator must emit progress *across* a page load rather than only before and after it, or the bound must be made effective against a blocking host call. The 10-second value remaining behavior-not-contract is unchanged; what changes is that it cannot be relied on as an upper bound.
+**Consequence for this Initiative:** requirement "no outer layer is shorter than a nested bounded operation unless visible progress refreshes it first" (§ acceptance) cannot be satisfied by arithmetic over nominal bounds. Either the page orchestrator must emit progress *across* a page load rather than only before and after it, or the bound must be made effective against a blocking host call. The 10-second value remaining behavior-not-contract is unchanged; what changes is that it cannot be relied on as an upper bound.
 
 ### T3 — `channel_join`'s scope-payload leg remains exposed to the generic command timer
 

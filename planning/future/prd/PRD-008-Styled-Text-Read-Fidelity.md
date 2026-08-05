@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Release:** Version-unassigned standalone minor release
 - **PRD date:** 2026-08-04
-- **Source:** [Future Figma Design Editing Capability Expansion](<../Figma Design Editing Capability Expansion/prd.md>), Section 16.3 and the read-side paint normalization in Section 18.1
+- **Source:** [Future Figma Design Editing Capability Expansion](<../initiative/03 - Figma Design Editing Capability Expansion/initiative.md>), Section 16.3 and the read-side paint normalization in Section 18.1
 - **Required predecessors:** [`PRD-005-Scoped-Match-Discovery.md`](PRD-005-Scoped-Match-Discovery.md) and [`PRD-006-Typography-and-Font-Discovery.md`](PRD-006-Typography-and-Font-Discovery.md)
 - **Optional sibling:** [`PRD-007-Direct-Variable-Binding-Discovery.md`](PRD-007-Direct-Variable-Binding-Discovery.md)
 
@@ -744,7 +744,7 @@ No setter, creator, asset import, image dimension lookup, range mutation, variab
 
 ## 23. References
 
-- [Umbrella capability-expansion PRD](<../Figma Design Editing Capability Expansion/prd.md>)
+- [Umbrella capability-expansion PRD](<../initiative/03 - Figma Design Editing Capability Expansion/initiative.md>)
 - [Scoped Match Discovery predecessor](PRD-005-Scoped-Match-Discovery.md)
 - [Typography and Font Discovery predecessor](PRD-006-Typography-and-Font-Discovery.md)
 - [Direct Variable-Binding Discovery sibling](PRD-007-Direct-Variable-Binding-Discovery.md)

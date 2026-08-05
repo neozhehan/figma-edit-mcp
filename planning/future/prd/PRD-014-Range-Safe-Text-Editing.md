@@ -6,7 +6,7 @@
 | Release class | Version-unassigned standalone minor release (`v2.x.0`; assign the exact version when scheduled) |
 | Standalone extraction/revision | 2026-08-04 |
 | Source scope | Capability Expansion Section 5; source-checklist items 5 and 23 |
-| Authoritative source | [Future PRD: Figma Design Editing Capability Expansion](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#5-text-ranges-full-style-surface-and-content-replacement-p0) |
+| Authoritative source | [Future PRD: Figma Design Editing Capability Expansion](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#5-text-ranges-full-style-surface-and-content-replacement-p0) |
 | Required predecessors | [PRD-006 — Typography and Font Discovery](PRD-006-Typography-and-Font-Discovery.md) and [PRD-008 — Styled-Text Read Fidelity](PRD-008-Styled-Text-Read-Fidelity.md) |
 
 ## 1. Executive summary
@@ -60,7 +60,7 @@ This PRD preserves the source's identifiers so later audits can prove that the u
 | Relevant schema, handler, safety, and live tests | Section 18 |
 | Relevant success measures, risks, and provenance | Sections 20–22 |
 
-The source revision history remains at the [authoritative umbrella document](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#revision-history). This extraction does not rewrite that historical ledger.
+The source revision history remains at the [authoritative umbrella document](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#revision-history). This extraction does not rewrite that historical ledger.
 
 ## 4. Problem and current repository baseline
 
@@ -806,9 +806,9 @@ The release is complete only when:
 
 | Evidence source | Finding carried into this PRD |
 | :- | :- |
-| [Capability Expansion Section 5](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#5-text-ranges-full-style-surface-and-content-replacement-p0) | Authoritative style/content schemas, property matrix, UTF-16/font rules, `TEXT_PATH` subset, native content algorithm, output, and acceptance |
-| [Capability Expansion Section 16.3](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#163-styled-text-segments-through-node_info) | Styled segments are the mandatory canonical discovery path before partial writes |
-| [Capability Expansion Section 18.1](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#181-expand-node_set_fill-and-node_set_stroke) | Text fills must use the same strict write-ready `PaintInput` and serializer; PRD-008 owns the predecessor contract consumed here |
+| [Capability Expansion Section 5](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#5-text-ranges-full-style-surface-and-content-replacement-p0) | Authoritative style/content schemas, property matrix, UTF-16/font rules, `TEXT_PATH` subset, native content algorithm, output, and acceptance |
+| [Capability Expansion Section 16.3](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#163-styled-text-segments-through-node_info) | Styled segments are the mandatory canonical discovery path before partial writes |
+| [Capability Expansion Section 18.1](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#181-expand-node_set_fill-and-node_set_stroke) | Text fills must use the same strict write-ready `PaintInput` and serializer; PRD-008 owns the predecessor contract consumed here |
 | `src/mcp_server/tools/text.ts` | Current public style is whole-node/subset; content items are whole-node only |
 | `figma_plugin/handlers/textHandlers.ts` and `figma_plugin/utils/textUtils.ts` | Current handlers are `TEXT`-only, have internal font logic, whole-string assignment, ordered batch rows, and existing font-before-content partial evidence |
 | `SAFETY.md` and the four figma-edit guide references | Existing plugin-enforced scope/name/lock/batch/partial/error contracts that this release must preserve |

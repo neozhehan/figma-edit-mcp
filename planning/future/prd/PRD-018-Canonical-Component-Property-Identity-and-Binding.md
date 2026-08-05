@@ -9,7 +9,7 @@
 >
 > **Standalone extraction/revision:** 2026-08-04
 >
-> **Authoritative source:** [Figma Design Editing Capability Expansion](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md), Sections 16.1 and 15
+> **Authoritative source:** [Figma Design Editing Capability Expansion](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md), Sections 16.1 and 15
 
 This release makes Figma's canonical component-property key the one public
 identity used to create, discover, edit, delete, bind, and unbind non-variant

@@ -3,7 +3,7 @@
 - **Status:** Proposed
 - **Release:** Version-unassigned standalone minor release
 - **PRD date:** 2026-08-04
-- **Source:** [Figma Design Editing Capability Expansion, Section 17](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md#17-rename-the-scoped-page-through-node_rename-p0)
+- **Source:** [Figma Design Editing Capability Expansion, Section 17](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md#17-rename-the-scoped-page-through-node_rename-p0)
 - **Compatibility posture:** Additive PAGE branch in `node_rename`; no new or renamed MCP tool
 
 > [!IMPORTANT]

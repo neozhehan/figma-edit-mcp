@@ -9,7 +9,7 @@
 >
 > **Standalone extraction/revision:** 2026-08-04
 >
-> **Authoritative source:** [Figma Design Editing Capability Expansion](../Figma%20Design%20Editing%20Capability%20Expansion/prd.md), Sections 14 (override removal), 16.2, and the canonical instance-state read requirements
+> **Authoritative source:** [Figma Design Editing Capability Expansion](../initiative/03%20-%20Figma%20Design%20Editing%20Capability%20Expansion/initiative.md), Sections 14 (override removal), 16.2, and the canonical instance-state read requirements
 
 This release replaces the ambiguous instance-property and override-transfer
 surface with three explicit operations:

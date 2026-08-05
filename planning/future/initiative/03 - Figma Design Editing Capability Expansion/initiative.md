@@ -1,4 +1,4 @@
-# Future PRD: Figma Design Editing Capability Expansion
+# Future Initiative: Figma Design Editing Capability Expansion
 
 This document is the product and implementation specification for a future release of `figma-edit-mcp`. It turns the feature-gap checklist produced from the Figwright comparison into a concrete local-project design.
 
@@ -6,7 +6,7 @@ The goal is not to copy Figwright's tool surface. The goal is to add the useful 
 
 > **Golden Rule:** maximize **first-call correctness** (the model can compose a valid call from the tool schema and guides) and **one-round-trip recovery** (a failed call tells the model exactly how to repair it in one step).
 
-The Figma plugin remains the trust boundary. Every write in this PRD must continue to enforce the scope, exact-name, locked-node, instance-interior, remote-asset, permission-axis, batch-validation, and scope-root controls documented in `SAFETY.md`.
+The Figma plugin remains the trust boundary. Every write in this Initiative must continue to enforce the scope, exact-name, locked-node, instance-interior, remote-asset, permission-axis, batch-validation, and scope-root controls documented in `SAFETY.md`.
 
 ---
 
@@ -51,9 +51,9 @@ All other work extends existing tools without adding public names. Font discover
 
 ## Source checklist and scope fidelity
 
-This PRD covers every complete item in the source checklist plus the explicitly approved follow-up requirements.
+This Initiative covers every complete item in the source checklist plus the explicitly approved follow-up requirements.
 
-| # | Source item | PRD section |
+| # | Source item | Initiative section |
 | :-: | :- | :- |
 | 1 | Add search capability for `page_info` and `node_info` | Section 1 |
 | 2 | Add rotation to `node_transform` | Section 2 |
@@ -2942,14 +2942,14 @@ The following claims were verified from code, not repository popularity metrics.
 | Local styled-text discovery | `src/mcp_server/tools/node.ts`, `figma_plugin/handlers/nodeReaders.ts`, `textHandlers.ts` | `node_info` does not expose styled runs; `getStyledTextSegments(["fontName"])` is used internally only to load fonts for writes |
 | Local page rename path | `src/mcp_server/tools/node.ts`, `figma_plugin/src/main.ts`, `nodeModifiers.ts` | The generic rename route assigns `node.name` after ordinary scope/name/lock validation, but its public contract and tests do not explicitly define the exact page-scope-only PAGE branch or its recovery error |
 | Local structural-combine surface | `src/mcp_server/tools/node.ts`, `figma_plugin/src/main.ts`, `figma_plugin/handlers/nodeModifiers.ts`, `nodeReaders.ts` | `node_group` accepts an ordered list and optional name, infers the shared parent from the first input, has no explicit parent/index contract, and supports only grouping. Its dispatcher already requires same-parent, exact-name, scope, lock, scope-root, and instance-interior checks. Direct `node_info.properties.parent` returns the parent ID only, while a second parent-rooted read returns its exact name and immediate child order. `node_ungroup` hard-rejects every type except `GROUP`. |
-| Pinned Figma API | `@figma/plugin-typings` 1.125.0 | Provides `listAvailableFontsAsync()`, whole-node and styled-segment `fontName`/`textStyleId`, `getStyledTextSegments()`, `getStyleByIdAsync()`, Text Style ID/name/key/remote metadata, the complete scalar/array/map `SceneNode.boundVariables` shape, styled-text `boundVariables`, component-property definition/value bindings, variable ID/name/key/collection/remote metadata, writable complete `EllipseNode.arcData`, degree-based node rotation, strict paint variants, async pattern paint setters, common stroke geometry, `Image.getSizeAsync`, text insert/delete and range setters, grid/container/child layout fields, mutable collection names, mode/code-syntax maintenance, exact-map `InstanceNode.setProperties()`, direct-only `InstanceNode.overrides`, `removeOverrides()`, component swap/detach, native `group`/`union`/`subtract`/`intersect`/`exclude` calls with parent/index arguments, and a broad `ungroup(SceneNode & ChildrenMixin)` signature used or probed by this PRD |
-| Figwright comparison baseline | `awdr74100/figwright` at commit `e2a30a3de38fada3ad1c058a500c4b3b81641053` | Its `get_fonts` scans text on implicit `figma.currentPage` and does not list editor-session available fonts; this PRD keeps those concepts explicit and selection-independent while consolidating other capabilities under local safety and naming conventions |
+| Pinned Figma API | `@figma/plugin-typings` 1.125.0 | Provides `listAvailableFontsAsync()`, whole-node and styled-segment `fontName`/`textStyleId`, `getStyledTextSegments()`, `getStyleByIdAsync()`, Text Style ID/name/key/remote metadata, the complete scalar/array/map `SceneNode.boundVariables` shape, styled-text `boundVariables`, component-property definition/value bindings, variable ID/name/key/collection/remote metadata, writable complete `EllipseNode.arcData`, degree-based node rotation, strict paint variants, async pattern paint setters, common stroke geometry, `Image.getSizeAsync`, text insert/delete and range setters, grid/container/child layout fields, mutable collection names, mode/code-syntax maintenance, exact-map `InstanceNode.setProperties()`, direct-only `InstanceNode.overrides`, `removeOverrides()`, component swap/detach, native `group`/`union`/`subtract`/`intersect`/`exclude` calls with parent/index arguments, and a broad `ungroup(SceneNode & ChildrenMixin)` signature used or probed by this Initiative |
+| Figwright comparison baseline | `awdr74100/figwright` at commit `e2a30a3de38fada3ad1c058a500c4b3b81641053` | Its `get_fonts` scans text on implicit `figma.currentPage` and does not list editor-session available fonts; this Initiative keeps those concepts explicit and selection-independent while consolidating other capabilities under local safety and naming conventions |
 
 ---
 
 ## Revision history
 
-- **Rev 1, 2026-07-18** - Initial PRD. Converts the complete source checklist into 16 implementation sections, records three hard-cutover renames and three new tools, specifies search consolidation, mask containment, UTF-16 text ranges, source-preserving text paths, strict region/vector/line branches, variable mode lifecycle, destructive instance semantics, canonical component property IDs, testing, rollout, provenance, and the unresolved empty `variable_manage` bullet as Q1.
+- **Rev 1, 2026-07-18** - Initial Initiative. Converts the complete source checklist into 16 implementation sections, records three hard-cutover renames and three new tools, specifies search consolidation, mask containment, UTF-16 text ranges, source-preserving text paths, strict region/vector/line branches, variable mode lifecycle, destructive instance semantics, canonical component property IDs, testing, rollout, provenance, and the unresolved empty `variable_manage` bullet as Q1.
 - **Rev 2, 2026-07-18** - Adds exact page-scope rename support to `node_rename` and promotes all three required prerequisites to explicit P0 contracts: canonical component `propertyId` round-tripping, exact/batched `instance_set_property` maps with `VariableAlias`, and styled-text segments through `node_info`. Synchronizes safety gates, errors, rollout order, tests, success measures, risks, and provenance.
 - **Rev 3, 2026-07-18** - Expands fill/stroke tools to strict ordered paint stacks and common stroke geometry, broadens `node_set_layout` across container/child/grid/viewport behavior, adds guarded range content replacement, exposes intrinsic image dimensions on writes and reads, and adds collection rename to `variable_manage`. Resolves former Q1 and synchronizes safety, schemas, rollout, tests, risks, and provenance.
 - **Rev 4, 2026-07-18** - Resolves font-discovery Q1 as Option A and records D23. Expands `page_info` with strict, opt-in `USED` and `AVAILABLE` modes; specifies exact scope, counts, availability checks, failure recovery, text-write integration, schema/tool descriptions, rollout, tests, success measures, risks, and provenance without adding a public tool.

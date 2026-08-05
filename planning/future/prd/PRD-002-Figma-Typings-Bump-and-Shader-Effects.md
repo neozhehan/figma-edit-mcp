@@ -3,8 +3,8 @@
 - **Status:** Proposed; implementation is blocked on the pre-implementation revalidation gate
 - **Release:** Version-unassigned standalone minor release
 - **Standalone extraction/revision:** 2026-08-03
-- **Source index:** [v2.3.4 Track 2 / D8 / Phase T2](../../v2.3.4/prd.md)
-- **Historical decision ledger:** [v2.3.4 release changelog, Change 1](../../v2.3.4/release-changelog.md#change-1-prd-revision-history)
+- **Source index:** [v2.3.4 Track 2 / D8 / Phase T2](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/initiative.md>)
+- **Historical decision ledger:** [v2.3.4 release changelog, Change 1](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/release-changelog.md#change-1-prd-revision-history>)
 
 > [!IMPORTANT]
 > This PRD is the standalone successor to Track 2 of the original v2.3.4 PRD. It is not assigned the version `2.3.4` and it must not share a release with the legacy-error or prototype-reaction tracks.
@@ -365,7 +365,7 @@ The following rows preserve the original Track 2 evidence boundary. They must be
 | Q35 parity lever | Existing effect-parity test under substituted declarations, 2026-07-26 | Went red on the eighth `Effect` union member. |
 | Generated coupling | Package generation scripts and generated-file headers, 2026-07-26 | Typings drive committed node-field output and can change `node_info` readability. |
 
-The unchanged historical revision ledger records this scope as [Rev 2](../../v2.3.4/release-changelog.md#change-1-prd-revision-history). Later ledger entries may mention Track 2 only as a dependency of prototype-reaction work; they do not expand this release.
+The unchanged historical revision ledger records this scope as [Rev 2](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/release-changelog.md#change-1-prd-revision-history>). Later ledger entries may mention Track 2 only as a dependency of prototype-reaction work; they do not expand this release.
 
 ## 14. Source-ID mapping
 
@@ -386,4 +386,4 @@ The unchanged historical revision ledger records this scope as [Rev 2](../../v2.
 | Release identity/version surfaces shared by the source release | Section 2 |
 | Source Rev 2 history | Section 13 and the unchanged ledger |
 
-The [original PRD path](../../v2.3.4/prd.md) remains the compatibility index and historical source pointer after the split. The [release ledger](../../v2.3.4/release-changelog.md) is historical evidence and is not rewritten or renumbered by this standalone PRD.
+The [source initiative](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/initiative.md>) remains the historical source pointer after the split. The [release ledger](<../initiative/01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/release-changelog.md>) is historical evidence and is not rewritten or renumbered by this standalone PRD.

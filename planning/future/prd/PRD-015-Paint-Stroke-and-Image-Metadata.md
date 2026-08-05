@@ -6,7 +6,7 @@
 | Release class | Version-unassigned standalone minor release |
 | PRD date | 2026-08-04 |
 | Source scope | Expansion checklist items 21 and 24; decisions D19 and D21; Section 18 |
-| Authoritative source | [Figma Design Editing Capability Expansion](<../Figma Design Editing Capability Expansion/prd.md#18-paint-stacks-stroke-geometry-and-image-dimensions-p0>) |
+| Authoritative source | [Figma Design Editing Capability Expansion](<../initiative/03 - Figma Design Editing Capability Expansion/initiative.md#18-paint-stacks-stroke-geometry-and-image-dimensions-p0>) |
 
 ## Executive summary
 
