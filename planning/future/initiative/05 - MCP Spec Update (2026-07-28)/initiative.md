@@ -64,14 +64,11 @@ this release it becomes an explicit state-handle creator:
 
 ```ts
 type ChannelJoinInput = {
-  pairingToken: string;
+  channel: string; // existing four-character code shown by the Figma plugin
 };
 
 type ChannelJoinResult = {
   connectionHandle: string;
-  createdAt: string;
-  idleExpiresAt: string;
-  absoluteExpiresAt: string;
   // Existing plugin/server versions and editable-scope payload follow.
 };
 ```
@@ -92,10 +89,9 @@ channel_release({ connectionHandle })
 exist concurrently and may be intentionally shared with another agent. Tool
 lists remain static regardless of how many handles exist.
 
-The current four-character channel code is retired with no alias. The Figma
-plugin generates and displays a copyable, cryptographically random pairing
-token with at least 128 bits of entropy. A short human code cannot authenticate
-the plugin-to-relay binding and must not remain as a hidden admission path.
+The existing four-character channel code and plugin UI remain unchanged. This
+Initiative changes how an established binding is referenced after
+`channel_join`; it does not redesign the existing connection workflow.
 
 The current baseline exposes 45 tools. On that baseline this release has a net
 increase of one tool. If another future initiative lands first, Phase 0 must
@@ -232,10 +228,12 @@ implement the affected optional surface; it does not mean the item was ignored.
 - No use of `x-mcp-header`; it is an HTTP transport feature and all public MCP
   traffic remains stdio.
 - No implicit release of Figma handles when the stdio process exits. Handle
-  lifetime belongs to the relay registry, its TTLs, plugin disconnect, and
+  lifetime belongs to the relay registry, plugin disconnect, relay restart, and
   explicit `channel_release`.
 - No cancellation rollback guarantee. Cancellation stops future work where
   practical; it cannot reverse a mutation already accepted by Figma.
+- No redesign of the existing four-character channel code or internal Figma
+  relay. Those concerns are outside this MCP-spec migration.
 
 ---
 
@@ -269,18 +267,15 @@ implement the affected optional surface; it does not mean the item was ignored.
 > process's memory.
 
 > [!NOTE]
-> **D6 - Handles are bearer capabilities in the unauthenticated local model.**
-> Generate at least 128 bits of cryptographically secure entropy, never derive
-> a handle from the pairing token, never log either secret, and impose both
-> idle and absolute expiry. A handle is minted only after authenticated plugin
-> pairing and authenticated MCP-to-relay admission; adding entropy after an
-> unauthenticated join would not repair the admission boundary.
+> **D6 - Preserve the existing channel workflow.** `channel_join` continues to
+> accept the four-character `channel` shown by the Figma plugin. The call now
+> returns an opaque `connectionHandle`; that state-reference change is the only
+> connection change owned by this release.
 
 > [!NOTE]
-> **D7 - Handle lifetime is explicit.** Default idle expiry is two hours and
-> default absolute expiry is twenty-four hours. Every successful command
-> refreshes idle expiry but never extends absolute expiry. Plugin disconnect,
-> relay restart, explicit release, or absolute expiry invalidates the handle.
+> **D7 - Handle lifetime is explicit.** A handle remains valid until
+> `channel_release`, plugin disconnect, or relay restart. It is never inferred
+> from the lifetime of an MCP stdio process or request stream.
 
 > [!NOTE]
 > **D8 - Static discovery is publicly cacheable.** Tool, prompt, resource, and
@@ -356,19 +351,6 @@ implement the affected optional surface; it does not mean the item was ignored.
 > methods return `-32601`. A legacy `initialize` attempt also receives an
 > actionable message naming `2026-07-28`; it is never silently interpreted as
 > a modern request.
-
-> [!NOTE]
-> **D21 - Tool admission is bounded before work begins.** The 2026-07-28 Tools
-> security contract requires rate limiting. Apply global, per-plugin,
-> per-handle, and pairing-attempt limits plus bounded queues; overload is an
-> actionable refusal and never creates an unbounded pending route.
-
-> [!NOTE]
-> **D22 - One immutable internal command identity crosses every layer.** MCP
-> request IDs are caller-chosen and can collide across peers. The relay mints a
-> unique `commandId` for each admitted Figma command and the plugin echoes it
-> unchanged in progress, result, error, timeout, and cancellation frames. No
-> mutable global `activeRequestId` participates in correlation.
 
 ---
 
@@ -597,7 +579,7 @@ Capability rules:
 - Omit `resources.subscribe` because guide resources never emit updates.
 - Omit `logging`, `completions`, and every deprecated client-facing feature.
 - Omit `extensions` or return an empty map. Do not advertise Tasks.
-- Discovery is identical before and after channel creation, handle expiry,
+- Discovery is identical before and after channel creation, handle release,
   plugin disconnect, or any Figma operation.
 
 The existing short instruction breadcrumb moves from initialization to
@@ -637,16 +619,12 @@ expects simply by calling `channel_join` on the same stdio process.
 
 ```ts
 type ChannelJoinInput = {
-  pairingToken: string; // exact copyable token displayed by the Figma plugin
+  channel: string; // existing exact four-character plugin code
 };
 
 type ChannelJoinSuccess = {
   status: "success";
   connectionHandle: string;
-  createdAt: string;
-  lastUsedAt: string;
-  idleExpiresAt: string;
-  absoluteExpiresAt: string;
   serverVersion: string;
   pluginVersion: string;
   // Existing scope/document payload.
@@ -655,20 +633,15 @@ type ChannelJoinSuccess = {
 
 Rules:
 
-- Generate a new handle for every successful call.
-- Require a plugin-generated pairing token containing at least 128 bits of
-  CSPRNG entropy; the token is single-plugin, expires after ten minutes, and is
-  rotated immediately after a successful pairing.
-- Send only a digest of the pairing token in relay registry state where the
-  protocol permits challenge/response comparison; never persist or log the raw
-  token.
-- Do not return the pairing token as the handle.
+- Preserve the current four-character channel entry and join behavior.
+- After the channel and scope payload are resolved, create and return one opaque
+  `connectionHandle` that names that binding.
 - Do not invalidate another handle for the same plugin.
-- Do not mark `channel_join` idempotent; repeated calls create distinct state.
+- Do not mark `channel_join` idempotent; repeated successful joins create
+  distinct handles.
 - If scope-payload retrieval fails, delete the partially created handle.
-- The output description states the default idle and absolute lifetime.
 - The serialized text content includes the handle because the model must retain
-  it, but diagnostics and logs redact it.
+  and pass it to later tools.
 
 Add:
 
@@ -679,15 +652,12 @@ type ChannelReleaseInput = {
 
 type ChannelReleaseResult = {
   released: boolean;
-  releasedAt: string;
   noOp: boolean;
 };
 ```
 
-`channel_release` is idempotent for an already released handle only when the
-server can distinguish that tombstone from a never-valid token within the
-tombstone TTL. A completely unknown handle fails with an actionable structured
-error; it is not reported as a successful release.
+`channel_release` is idempotent. Releasing an absent or already released handle
+returns `noOp: true`.
 
 ### 4.2 Tool schema invariant
 
@@ -735,7 +705,6 @@ Replace ambient `sendCommandToFigma(command, params)` with an explicit context:
 type FigmaRequestContext = {
   connectionHandle: string;
   mcpRequestId: string | number;
-  commandId: string;
   signal: AbortSignal;
   reportProgress?: (update: CommandProgressUpdate) => Promise<void>;
   traceContext?: TraceContext;
@@ -751,165 +720,57 @@ visible at the command boundary and straightforward to test.
 
 Delete the module-global `bindingState` and all semantics that infer a current
 channel. Pending requests remain process-local transient state, keyed by their
-relay-minted `commandId` and handle, not by an MCP request ID alone and not by
-cross-call context. The MCP request ID remains only the stdio response and
-cancellation correlation key in that one server process.
+existing command/request identity plus `connectionHandle`, not by cross-call
+ambient state.
 
 ### 4.4 Relay handle registry
-
-#### Authenticated relay admission
-
-Before adding handle state, harden the relay's existing trust boundary:
-
-- Replace self-declared `clientType` on one undifferentiated WebSocket endpoint
-  with role-specific `/plugin` and `/mcp` upgrade paths.
-- The `/plugin` path validates the exact Figma Desktop plugin Origin established
-  by a release-blocking live probe. Reject unexpected origins before upgrade.
-  If the host supplies no stable Origin, record that fact and rely on the
-  high-entropy pairing challenge; never treat `Origin: null` or absence as
-  broadly trusted.
-- The plugin UI creates its pairing token using `crypto.getRandomValues`, not
-  `Math.random`, and registers a digest/challenge with the relay.
-- The `/mcp` path requires a separate relay bootstrap credential shared by the
-  socket and MCP processes through a protected local credential file or
-  equivalent OS credential mechanism. The file is owner-only (`0600` on POSIX;
-  equivalent ACL on Windows), rotates on relay start, and is never supplied to
-  the model or Figma plugin.
-- Reject browser-origin requests on `/mcp`, reject missing/invalid bootstrap
-  credentials, and never fall back to self-declared roles.
-- Bind to loopback only. A configured non-loopback relay address is a startup
-  error in this release, including prior WSL-style remote-host guidance.
-- Rate-limit failed upgrades and pairing attempts before expensive work. Do not
-  reveal whether a pairing token exists.
-- Until authenticated multi-peer ownership is proven, one active MCP relay
-  lease may use a handle at a time. A lease may transfer only after explicit
-  release or confirmed peer disconnect; unrelated handles still coexist.
-
-The bootstrap credential authenticates a local MCP process to the relay. The
-pairing token proves user-directed association with one plugin. The
-`connectionHandle` then authorizes subsequent routing. None substitutes for the
-plugin's Figma edit-scope checks.
 
 Move durable application binding to the relay process:
 
 ```ts
 type ConnectionHandleRecord = {
-  handleDigest: string;       // store a digest, not the raw token, where practical
+  connectionHandle: string;
   pluginPeerId: string;
-  pluginRegistrationId: string;
-  pluginGeneration: number;
-  scopeEpoch: string;
-  serverCompatibilityEpoch: string;
-  leasedMcpPeerId?: string;
-  createdAt: number;
-  lastUsedAt: number;
-  idleExpiresAt: number;
-  absoluteExpiresAt: number;
-  releasedAt?: number;
+  channel: string;
 };
 ```
 
 Relay rules:
 
-- Generate handles with `crypto.randomBytes(32)` or equivalent CSPRNG output.
-- Prefix encoded values with `fch_` for accidental-type recognition, without
-  encoding channel, user, document, timestamp, or scope data.
-- Compare/lookup handles without logging the raw value.
+- Treat the handle as an opaque server-minted identifier; callers must pass it
+  back verbatim and must not infer structure from it.
 - A relay WebSocket peer may create or use multiple handles.
-- A handle routes each command to the exact plugin peer generation that created
-  it.
-- The plugin mints an opaque `scopeEpoch` whenever its document, editable scope
-  root, or permission axes are established or changed. Every command carries
-  the handle's expected epoch; the plugin compares it before dispatch and
-  echoes its current epoch in every terminal frame.
-- The MCP process registers its server version, protocol version, and a
-  release-defined compatibility epoch with the relay. Handle creation snapshots
-  that epoch. A restarted MCP process may reuse the handle only when its epoch
-  matches; a package/protocol incompatibility fails before dispatch.
+- A handle routes each command to the plugin binding created by
+  `channel_join`.
 - Reconnecting the MCP stdio process and its relay socket does not invalidate a
-  handle when bootstrap authentication, compatibility epoch, and lease transfer
-  all succeed.
-- Reconnecting/replacing the Figma plugin peer does invalidate prior handles;
-  a new plugin generation requires a new `channel_join`.
+  handle while the relay and plugin binding remain alive.
 - Plugin disconnect invalidates all handles for that peer and rejects all
   pending routes with `PLUGIN_DISCONNECTED`.
 - Releasing one handle does not disconnect the plugin or affect sibling
   handles.
-- Idle expiry is refreshed only by a successfully admitted command, not by an
-  invalid request or attacker guessing a token.
-- Absolute expiry is never extended.
-- Expiry cleanup runs independently of new command traffic and uses unref'd
-  timers where supported.
-- Bound registry size and per-plugin handle count. Default to 64 active handles
-  per plugin and reject further creation with exact cleanup guidance.
 
 ### 4.5 Command routing and concurrency
 
-Every relay command frame carries `connectionHandle`. After authenticating the
-MCP peer, resolving the handle, validating its lease/epochs, and admitting the
-call under Section 4.6 limits, the relay mints a CSPRNG/UUID-grade `commandId`.
-The route snapshots handle digest, MCP peer, plugin peer/generation, scope
-epoch, compatibility epoch, and the originating MCP request ID.
+Every relay command frame carries `connectionHandle`. The relay resolves that
+handle to the corresponding plugin binding before creating the existing pending
+route. Progress, cancellation, and terminal frames continue to use the
+project's existing per-command correlation; this Initiative adds handle
+selection but does not redesign the relay protocol.
 
-The plugin receives and echoes `commandId` unchanged on every command,
-progress, result, error, and cancellation frame. Remove the UI's global
-`activeRequestId`; the UI/dispatcher keeps per-command state keyed by
-`commandId`. The relay accepts a plugin frame only when all snapshotted
-identities match. Caller-supplied MCP IDs never become relay route keys.
+Two handles may issue concurrent commands subject to the relay and plugin's
+existing command-processing behavior. A response is accepted only for the
+pending route that dispatched the command.
 
-Two handles may issue concurrent commands. Existing plugin command
-serialization/parallelism policy remains authoritative. Until a live probe and
-handler audit establish safe plugin concurrency, the relay admits one active
-command per plugin generation and uses the bounded FIFO described below. It
-must not route one handle's terminal result to another caller even when MCP
-request IDs collide on different peers.
-
-### 4.6 Tool invocation admission controls
-
-Apply token-bucket rate limits and hard concurrency/queue bounds before a relay
-route or large payload buffer is created. Initial defaults, configurable only
-within hard ceilings, are:
-
-- failed plugin/MCP upgrade or pairing attempts: 5 per source per minute;
-- `channel_join`: 5 attempts per authenticated MCP peer per minute;
-- all `tools/call`: burst 40, sustained 20 per second per MCP peer;
-- one active command and at most 32 queued commands per plugin generation;
-- at most 8 queued commands per handle;
-- at most 64 active commands globally across plugins;
-- maximum queued argument/frame bytes per plugin and globally, sized and tested
-  separately from item-count limits.
-
-Queue entries retain their cancellation signal and absolute deadline. A
-cancelled/expired queued request is removed without reaching the plugin.
-Read-only status does not bypass admission controls. Rate limiting is in
-addition to existing per-tool batch and payload-size bounds.
-
-Overload returns an in-band tool execution error such as
-`TOOL_RATE_LIMITED` or `PLUGIN_COMMAND_QUEUE_FULL`, with `retryAfterMs`, current
-limit, and a bounded recovery instruction. Never disclose other handles or
-callers. Add sanitization and output-size limits before returning plugin data so
-the other mandatory Tools security controls remain explicit.
-
-### 4.7 Handle errors
+### 4.6 Handle errors
 
 Add stable tool-execution error codes:
 
 | Code | Meaning | Required recovery |
 | :- | :- | :- |
-| `CONNECTION_HANDLE_UNKNOWN` | Token was never minted by this relay or its tombstone is gone | Call `channel_join` with the current plugin code |
-| `CONNECTION_HANDLE_EXPIRED` | Idle or absolute TTL elapsed | Return expiry timestamps; call `channel_join` again |
-| `CONNECTION_HANDLE_RELEASED` | Explicitly released | Return release timestamp; call `channel_join` again |
-| `CONNECTION_HANDLE_PLUGIN_DISCONNECTED` | Owning plugin generation ended | Reopen plugin, copy its new pairing token, and call `channel_join` |
-| `CONNECTION_HANDLE_SCOPE_CHANGED` | Plugin `scopeEpoch` differs from the handle snapshot | Reconnect/re-scope in plugin and call `channel_join` with its new pairing token |
-| `CONNECTION_HANDLE_VERSION_MISMATCH` | MCP server compatibility epoch differs from the handle snapshot | Use matching server/plugin builds or create a new handle after upgrading both |
-| `CONNECTION_HANDLE_LEASED` | Another authenticated MCP peer currently owns the handle lease | Release/disconnect the current lease or create a separate handle |
-| `CONNECTION_HANDLE_LIMIT` | Per-plugin active-handle limit reached | Release listed caller-owned handles where safely discoverable, or wait for expiry |
+| `CONNECTION_HANDLE_UNKNOWN` | The handle is not present in the relay registry | Call `channel_join` again with the current four-character channel code |
+| `CONNECTION_HANDLE_PLUGIN_DISCONNECTED` | The bound plugin disconnected | Reopen the plugin and call `channel_join` with its current channel code |
 
-Never echo a full handle in an error message or log. A response may include a
-short non-secret fingerprint such as the first eight characters of a SHA-256
-digest for correlation.
-
-### 4.8 Safety relationship
+### 4.7 Safety relationship
 
 Handle validation occurs before plugin dispatch, but it is not the write safety
 gate. After routing, the plugin still performs all existing controls in
@@ -925,23 +786,10 @@ turns a read-only plugin connection into a writable one.
   without cross-talk.
 - Two handles for one plugin coexist; releasing one leaves the other usable.
 - A handle remains usable after restarting only the MCP stdio server and
-  reconnecting it to the same relay with matching bootstrap authentication and
-  compatibility epoch.
-- A relay restart or plugin peer-generation change yields one actionable
+  reconnecting it to the same still-running relay.
+- A relay restart or plugin disconnect yields one actionable
   handle error, not an opaque timeout.
-- Idle, absolute, release, disconnect, and capacity paths are deterministic and
-  tested with an injectable clock.
-- Pairing uses CSPRNG entropy, rotates after success, and cannot be brute-forced
-  through an unbounded join path.
-- Unexpected WebSocket origins, self-declared roles, invalid bootstrap
-  credentials, and non-loopback relay binding are refused before handle state.
-- Every command/progress/result/cancel frame carries one immutable relay-minted
-  `commandId`; deleting the plugin's global `activeRequestId` is test-enforced.
-- Scope and server compatibility epochs are validated before every dispatch.
-- Tool bursts and large queued payloads remain within global/per-plugin/
-  per-handle bounds and return actionable overload errors.
-- Raw handles never appear in `stderr`, relay logs, thrown errors, snapshots,
-  telemetry attributes, or test failure output.
+- Release and disconnect paths are deterministic.
 - Existing plugin scope/name/lock/instance/remote/permission gates still run on
   every command.
 
@@ -980,8 +828,8 @@ retry it with a new request ID. This project must not claim automatic replay or
 exactly-once semantics, especially for writes.
 
 The explicit `connectionHandle` may be reused after MCP process restart if the
-relay and plugin generation remain alive. A retried write remains subject to
-the tool's own idempotency and read-before-write guidance.
+relay and plugin binding remain alive. A retried write remains subject to the
+tool's own idempotency and read-before-write guidance.
 
 ### 5.3 Public HTTP non-applicability boundary
 
@@ -998,11 +846,8 @@ MCP endpoint. Therefore the following are intentionally not implemented:
 - Streamable HTTP cancellation by closing response streams;
 - OAuth issuer, registration, and credential-binding behavior.
 
-The internal relay binds to loopback unconditionally and implements the
-role-specific authenticated upgrade and Origin policy from Section 4.4. A
-non-loopback address is a startup refusal, not a warning or supported WSL
-convenience. The plugin pairing token and MCP bootstrap credential have distinct
-roles and neither is transmitted in URL query strings or logs.
+The internal relay retains its current transport and deployment behavior. This
+section classifies it as non-MCP infrastructure; it does not redesign it.
 
 If a future release adds public Streamable HTTP, it must implement the complete
 2026-07-28 HTTP contract in a separate initiative. It may not expose the
@@ -1013,13 +858,10 @@ existing relay health route as MCP.
 - Raw stdout contains only valid modern MCP messages.
 - Server-initiated JSON-RPC requests are impossible through the server API used
   by this project.
-- EOF shuts down promptly while leaving relay-owned handles to their normal
-  TTL.
+- EOF shuts down promptly without deleting relay-owned handles.
 - The public package metadata advertises only stdio.
 - A test making an HTTP request to the relay receives relay/health behavior,
   never MCP JSON-RPC discovery or tools.
-- WebSocket upgrades on the wrong role path, with a forbidden Origin, or without
-  the MCP bootstrap credential fail before a peer object is created.
 
 ---
 
@@ -1238,7 +1080,7 @@ missing resource selected by the caller.
 - Cache scope is public only for data proven identical across authorization
   contexts.
 - Repeated lists preserve exact order.
-- Creating, using, releasing, or expiring handles never changes a list.
+- Creating, using, releasing, or invalidating handles never changes a list.
 - Server capabilities do not claim list changes or resource subscriptions.
 - No list-change notification is emitted during registration.
 - Unknown resource uses `-32602`; an internal read failure uses `-32603`.
@@ -1375,7 +1217,8 @@ On `notifications/cancelled`:
 2. mark its request context cancelled;
 3. abort the MCP handler signal;
 4. remove or mark the relay pending route so late frames are discarded;
-5. send a `commandId`-scoped cancellation control frame to the plugin;
+5. cancel the matching plugin command through the project's existing command
+  identifier;
 6. stop emitting progress and do not send a final MCP response;
 7. free request-local buffers and timers.
 
@@ -1384,10 +1227,10 @@ ignored without a response.
 
 ### 9.3 Plugin cancellation cooperation
 
-Add plugin command cancellation state keyed by immutable `commandId`. Long-running loops,
-page scans, exports, variable-consumer scans, and batch handlers check it at
-their existing yield/chunk boundaries. New handlers must accept a cancellation
-probe in shared progress/page traversal helpers.
+Add plugin command cancellation state keyed by the existing command identifier.
+Long-running loops, page scans, exports, variable-consumer scans, and batch
+handlers check it at their existing yield/chunk boundaries. New handlers must
+accept a cancellation probe in shared progress/page traversal helpers.
 
 Rules:
 
@@ -1396,7 +1239,7 @@ Rules:
 - A mutation already committed is not rolled back or represented as untouched.
 - Since the MCP response is suppressed after cancellation, any partial mutation
   is written to sanitized `stderr` diagnostics for operator investigation.
-- Cancellation state is removed at terminal completion or bounded expiry.
+- Cancellation state is removed at terminal completion or request timeout.
 
 ### 9.4 Timeout policy
 
@@ -1622,19 +1465,17 @@ Create a request-local observability context containing:
 - method and tool/resource/prompt name where applicable;
 - trace/span identifiers from valid context;
 - client name/version for display only;
-- non-secret connection-handle fingerprint;
 - internal plugin command ID.
 
 Propagate trace context through relay command frames and progress diagnostics so
 one operation can be correlated across MCP server, relay, and plugin. Do not
-include raw tool arguments, Figma document content, image bytes, connection
-handles, secrets, or PII as trace attributes.
+include raw tool arguments, Figma document content, or image bytes as trace
+attributes.
 
 ### Logger migration
 
 Keep stderr as the output channel, but make logger calls accept structured
-request context. Redact fields by key and by tagged secret type before
-serialization. Avoid writing complete thrown objects whose getters or proxies
+request context. Avoid writing complete thrown objects whose getters or proxies
 may be hostile; retain the existing safe error snapshot approach.
 
 No logging behavior depends on `clientInfo`, trace fields, or log level.
@@ -1674,7 +1515,7 @@ be MCP-reserved protocol codes.
 ### Tool execution errors
 
 Existing Figma error codes such as `NAME_MISMATCH`, `NODE_LOCKED`, and
-`CONNECTION_HANDLE_EXPIRED` are strings inside a successful `tools/call` result:
+`CONNECTION_HANDLE_UNKNOWN` are strings inside a successful `tools/call` result:
 
 ```json
 {
@@ -1707,7 +1548,7 @@ Protocol errors:
 
 Tool execution errors:
 
-- unknown/expired/released Figma connection handle;
+- unknown or released Figma connection handle;
 - schema-valid but semantically invalid Figma arguments;
 - plugin/API failure;
 - scope, name, lock, remote, instance, permission, or safety refusal;
@@ -1748,11 +1589,12 @@ Update:
 
 Required guidance:
 
-1. Copy the plugin's high-entropy pairing token, call
-  `channel_join({ pairingToken })`, and retain `connectionHandle`.
+1. Call `channel_join({ channel })` with the existing four-character plugin
+  code and retain `connectionHandle`.
 2. Pass the handle verbatim to every Figma tool.
 3. A handle is opaque; do not parse, shorten, guess, or derive it.
-4. Handles expire and are invalidated by plugin/relay restart.
+4. Handles are invalidated by plugin disconnect, relay restart, or explicit
+  release.
 5. Use `channel_release` when work is complete.
 6. Handle possession routes to a plugin but does not bypass edit scope.
 7. Do not assume one stdio process equals one conversation.
@@ -1774,9 +1616,8 @@ Regenerate `manifest.json` tool metadata so:
 
 Enumerate `prompts/list` and inspect every `prompts/get` result during contract
 synchronization. Prompt text is executable agent guidance: a prompt that tells
-the model to call a Figma tool without `connectionHandle`, or still names the
-retired four-character channel flow, fails the release even when tool schemas
-are correct.
+the model to call a Figma tool without `connectionHandle` fails the release even
+when tool schemas are correct.
 
 Extend `scripts/check-versions.ts` or add a companion check for:
 
@@ -1815,8 +1656,8 @@ state a universal pre-dispatch invariant and add rows for `channel_join` and
 | `initialize` then `notifications/initialized` | Optional `server/discover`, then self-contained requests |
 | Version/capabilities sent once | Version and client capabilities in every request `_meta` |
 | Server identity/instructions from initialize | Identity/capabilities/instructions from `server/discover`; identity repeated in result `_meta` |
-| `channel_join({channel})`, then omit channel | Copy plugin pairing token; `channel_join({pairingToken}) -> connectionHandle`; include it on every Figma tool |
-| Process exit releases current binding | `channel_release` or TTL/plugin/relay invalidation |
+| `channel_join({channel})`, then omit channel | `channel_join({channel}) -> connectionHandle`; include it on every Figma tool |
+| Process exit releases current binding | Handle remains relay-owned until `channel_release`, plugin disconnect, or relay restart |
 | Plugin progress only in terminal logs | MCP progress when the request supplies `progressToken` |
 | No cancellation path | `notifications/cancelled` propagates to relay/plugin |
 
@@ -1827,8 +1668,8 @@ state a universal pre-dispatch invariant and add rows for `channel_join` and
 - All examples include modern `_meta` at the raw protocol level.
 - All Figma tool examples include `connectionHandle` or explicitly show it as a
   carried variable.
-- Every registered prompt is free of initialization, short-channel, implicit
-  binding, and handle-less Figma calls.
+- Every registered prompt is free of initialization, implicit binding, and
+  handle-less Figma calls.
 - Registry/package metadata claims only implemented transport/capabilities.
 - Future initiative docs are cross-linked where their state assumptions must be
   rebased.
@@ -1854,7 +1695,7 @@ Every request has a new ID and complete modern `_meta`. Every successful result
 is checked for `resultType`, server identity, and cache fields where required.
 
 Do not send `initialize` or `notifications/initialized`.
-Assert the returned prompt contains the modern pairing/handle workflow and no
+Assert the returned prompt contains the modern channel/handle workflow and no
 handle-less live-Figma example. If Initiative 03 removes that prompt first,
 replace the fixture with every then-registered prompt rather than dropping
 prompt-content coverage.
@@ -1892,28 +1733,16 @@ prompt-content coverage.
 
 ### 15.5 Handle tests
 
-- Creator returns CSPRNG-shaped opaque handle and expiry metadata.
-- Plugin pairing token uses CSPRNG entropy, expires/rotates, and is never a
-  four-character or `Math.random` value.
-- Role-specific relay upgrades enforce Origin/bootstrap credentials and reject
-  self-declared role switching/non-loopback startup.
+- `channel_join` retains the existing four-character `channel` input and returns
+  an opaque `connectionHandle`.
 - Every Figma tool schema requires the handle.
 - Static tools/resources/prompts require none.
-- Unknown, expired, released, disconnected, and scope-changed failures.
-- Idle refresh and absolute non-extension with fake clock.
-- Per-plugin capacity.
+- Unknown, released, and disconnected handle behavior.
 - Two channels and two callers interleave without route crossover.
 - Duplicate request IDs on different relay peers remain isolated.
-- Relay-minted `commandId` is unique and immutable end to end; progress,
-  terminal, timeout, and cancel frames with another ID/epoch/peer are dropped.
-- Plugin UI has no global `activeRequestId` correlation path.
 - MCP process restart retains a relay-owned handle.
-- Matching/mismatched server compatibility and plugin scope epochs.
 - Plugin/relay restart invalidates it cleanly.
-- No raw handle in logs/snapshots/errors.
 - Release is scoped to exactly one handle.
-- Pairing/tool token buckets, concurrency limits, queue depth/byte bounds, and
-  actionable `retryAfterMs` overload results prevent pending-state growth.
 
 ### 15.6 Progress/cancellation/subscription tests
 
@@ -2038,27 +1867,22 @@ about cancelling a live Figma operation also needs a live smoke test.
 
 ### Phase 3 - Explicit handle architecture
 
-- Define shared handle format, errors, lifetime, and redaction helpers.
-- Replace four-character/`Math.random` pairing with a plugin-generated CSPRNG
-  token; split/authenticate relay role endpoints; enforce Origin, bootstrap
-  credential, loopback-only, and pairing-attempt policies.
+- Define the shared handle format, lifecycle, and error contract.
+- Preserve the existing four-character channel-code workflow.
 - Redesign relay peer/channel state into a handle registry.
-- Make relay command frames carry a handle plus plugin scope/server
-  compatibility epochs.
-- Mint one relay `commandId` per admitted command and remove plugin
-  `activeRequestId` correlation.
+- Make relay command frames carry `connectionHandle` and resolve it before
+  dispatch.
 - Refactor `figma-client.ts` away from global binding state.
 - Change `channel_join` to return a handle.
 - Add `channel_release`.
 - Inject required handle schema into every Figma tool.
 - Update every command call site to pass explicit request context.
-- Add tool rate/concurrency/queue/byte limits and sanitized output bounds.
-- Add concurrency/restart/expiry/release integration tests before continuing.
+- Add concurrency/restart/release integration tests before continuing.
 
 ### Phase 4 - Progress, cancellation, and request lifecycle
 
 - Bridge plugin progress to MCP progress tokens.
-- Add notification rate limiting and strictly-increasing progress guards.
+- Add strictly-increasing progress guards and coalescing.
 - Propagate stdio cancellation through server, relay, and plugin.
 - Add cooperative cancellation checks to shared long-running traversal helpers.
 - Introduce idle and absolute timeouts.
@@ -2113,9 +1937,9 @@ process:
 
 1. `server/discover` as the first message, with no initialization;
 2. repeated stable/cacheable tools/resources/prompts lists before any join;
-3. copy plugin A's CSPRNG pairing token, join it, obtain handle A, and read its
-  scope;
-4. pair plugin B without releasing A and obtain handle B;
+3. join plugin A with its four-character channel code, obtain handle A, and
+   read its scope;
+4. join plugin B without releasing A and obtain handle B;
 5. interleave page/node reads through A and B and prove no document crossover;
 6. perform one safe write through each handle and verify plugin-side scope/name
    enforcement still applies;
@@ -2132,15 +1956,7 @@ process:
 14. send unsupported version, missing metadata, removed methods, and an unknown
     resource and verify exact protocol errors;
 15. close stdin with active relay handles and prove prompt process exit without
-    destroying the still-valid relay handle.
-16. attempt forbidden-origin/plugin-role upgrades, an unauthenticated MCP relay
-  connection, a stale pairing token, and a non-loopback startup; prove no
-  handle or peer state is created;
-17. exceed pairing, tool-rate, concurrency, queue-depth, and queued-byte limits;
-  verify bounded state and actionable retry timing;
-18. deliberately collide MCP request IDs across peers and inject stale
-  command/scope/version IDs; prove no progress, result, or cancellation crosses
-  routes.
+  destroying the still-valid relay handle.
 
 ---
 
@@ -2160,15 +1976,8 @@ The release is complete only when:
   connections and prior calls.
 - Every live-Figma tool requires an explicit opaque `connectionHandle`.
 - No module-global current Figma binding remains in the MCP server.
-- Handles survive compatible MCP process restart, have bounded lifetime, and
-  cannot route across plugin generations, scope epochs, server compatibility
-  epochs, or concurrent peer leases.
-- Plugin pairing and MCP relay admission are authenticated, loopback-only,
-  origin-checked where the host provides an Origin, rate-limited, and free of
-  `Math.random`/four-character secrets.
-- Every Figma command has an immutable relay-minted end-to-end `commandId`.
-- Tool invocation rate, concurrency, queue, payload, and output limits are
-  enforced before unbounded state or work.
+- Handles survive MCP process restart while the relay/plugin binding remains
+  alive and are invalidated by release, plugin disconnect, or relay restart.
 - Handle validation does not weaken any plugin safety control.
 - Stdio progress is opt-in, correlated, strictly increasing, and
   request-scoped.
@@ -2196,12 +2005,7 @@ The release is complete only when:
 | A package claims draft support while retaining legacy runtime handlers | High | Raw wire and removed-route tests, not type/export inspection alone |
 | Requiring a handle on every tool causes schema drift | High without centralization | Central tool classification/injection plus exhaustive inventory test |
 | Global binding state survives in a helper and leaks across callers | High | Delete `bindingState`; explicit context argument at every command boundary; concurrency tests |
-| Handle leaks through logs or errors | Medium | Secret-tagged type, redaction, digest fingerprints, adversarial log tests |
-| High-entropy handle is minted after a weak pairing step | High without admission hardening | Retire short channel codes; CSPRNG pairing, role endpoints, Origin/bootstrap checks, loopback-only binding, and join rate limits |
 | Relay restart loses handles | Certain | Document relay-memory durability and exact rejoin recovery; never claim permanent state |
-| Handle survives while plugin scope or server compatibility changes | Medium | Plugin scope epoch and server compatibility epoch on every dispatch; invalidate on mismatch |
-| Caller-chosen request IDs collide across peers or mutable UI state | High under concurrency | Relay-minted immutable command IDs; remove global `activeRequestId`; peer/generation/epoch route checks |
-| Tool bursts exhaust pending routes or plugin queues | High without admission limits | Token buckets, one active command/plugin initially, bounded queue/bytes, overload recovery, cancellation-aware dequeue |
 | A cancelled mutation has already changed Figma | Medium | Cooperative checks, stop-before-next-mutation, no rollback claim, live test and stderr audit |
 | Progress keeps a broken operation alive forever | Medium | Separate idle and absolute timeout; absolute bound never refreshes |
 | SDK high-level API advertises `listChanged: true` automatically | High on current SDK | Capability snapshot test and low-level handler override/replacement |
@@ -2234,8 +2038,6 @@ The following findings were verified from the repository and authoritative
 | Application binding | `src/mcp_server/figma-client.ts` | Stores one module-global `bindingState`; every non-join command requires that implicit binding but receives no explicit handle |
 | Channel tool | `src/mcp_server/tools/channel.ts` | `channel_join` replaces/releases the current binding and returns scope, but no reusable opaque handle |
 | Relay | `src/socket.ts`, `src/shared/channelProtocol.ts` | Channel state binds one plugin peer to one MCP peer and pending routes are connection/channel scoped |
-| Relay admission | `src/socket.ts` | WebSocket upgrade currently performs no Origin/authentication check and peers self-declare `clientType`; HTTP CORS is `*` |
-| Plugin pairing/correlation | `figma_plugin/ui.html` | Current channel values use `Math.random`, and one mutable `activeRequestId` retags outbound progress |
 | Tool registration | `src/mcp_server/tools/index.ts` | Central proxy already provides a suitable enforcement point for strict schemas and universal handle classification |
 | Tool results | `src/mcp_server/tools/_result.ts` | Assumes structured payloads are objects and converts non-object values to `{}`; no `resultType`/server-info decorator |
 | Resources | `src/mcp_server/resources.ts` | Registers five static packaged guides; catches file errors and returns synthetic successful Markdown error content |
@@ -2260,12 +2062,10 @@ The following findings were verified from the repository and authoritative
 
 ## Revision history
 
-- **Rev 2, 2026-08-05** - Closes independent-review gaps: retires weak
-  four-character/`Math.random` pairing; adds role-specific authenticated relay
-  admission, immutable end-to-end command IDs, plugin scope and server
-  compatibility epochs, bounded tool admission, overlap-safe output
-  validation, strictly increasing progress, an explicit runtime-only schema
-  refinement inventory, and registered-prompt migration/tests.
+- **Rev 2, 2026-08-05** - Narrows the Initiative to MCP-spec migration,
+  preserves the existing four-character channel workflow, and limits the
+  connection change to explicit `connectionHandle` state required by the
+  sessionless protocol model.
 - **Rev 1, 2026-08-05** - Initial Initiative. Audits every 2026-07-28
   changelog item against the current stdio server; records the non-compliant
   1.29.0/1.30.0 SDK baseline; selects a modern-only, stdio-only cutover;
