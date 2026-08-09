@@ -7,6 +7,10 @@ It is based on the normative specification and changelog published at:
 - <https://modelcontextprotocol.io/specification/2026-07-28/changelog>
 - <https://modelcontextprotocol.io/specification/2026-07-28/>
 
+**Companion ledger:** [initiative-changelog.md](initiative-changelog.md) records
+the decision and revision history. The adversarial review this Initiative
+answers is [initiative-review.md](initiative-review.md).
+
 The goal is not merely to update an SDK package. The 2026-07-28 revision changes
 the protocol's lifecycle model from initialized, connection-scoped sessions to
 stateless, self-contained requests. This project currently keeps the active
@@ -57,6 +61,43 @@ The public MCP transport remains **stdio only**. The HTTP/WebSocket process in
 `src/socket.ts` is the internal Figma relay, not an MCP Streamable HTTP endpoint.
 This release does not add a public HTTP MCP transport.
 
+### Scheduling precondition
+
+> [!IMPORTANT]
+> This Initiative is not started until
+> [PRD-004 — Timeout, Liveness, and Mutation-Outcome Integrity](../../prd/PRD-004-Timeout-Liveness-and-Mutation-Outcome-Integrity.md)
+> has shipped. Phase 0 does not begin, including the SDK admission probe, while
+> PRD-004 is unreleased.
+
+PRD-004 owns command identity, the shared progress reporter, command-aware
+timeout policy, execution receipts, duplicate suppression, and mutation-outcome
+classification. This release owns the MCP wire surface those mechanisms are
+exposed through. The two are ordered rather than combined, for three reasons.
+
+- **The dependency runs one way.** PRD-004 needs nothing from this Initiative.
+  Progress notifications and `progressToken` already exist in the protocol the
+  repository speaks today, so PRD-004's D3 is implementable on the currently
+  pinned SDK. Section 9 here cannot state a truthful timeout or cancellation
+  contract without PRD-004's receipts.
+- **This release is gated on an SDK that does not yet exist** (see the SDK
+  release gate below). Combining the two would make the only release that stops
+  a timed-out write from being retried blind wait on a third-party publication
+  date. PRD-004 is ranked second in [the backlog](../../../BACKLOG.md) and is
+  unblocked today.
+- **Neither half would be reviewable or revertible as one release.** They also
+  cannot share one live evidence pass. PRD-004's live protocol forbids
+  rebuilding the plugin while a channel is preserved, and this release requires
+  a plugin rebuild for handles and cancellation.
+
+Three consequences are carried through this document. Section 9 is an adapter
+over PRD-004's policy rather than a second answer to it. Section 14 records the
+dependency. Phase 0 rebases the tool inventory over PRD-004's `command_status`.
+
+If the ordering is ever reversed, that is a new decision requiring its own
+review: this Initiative would then have to state which PRD-004 decisions it
+pre-empts, and would still owe the project an in-band record of a partial
+mutation whose response was suppressed.
+
 ### Public tool-shape change
 
 The current `channel_join` call creates an implicit process-global binding. In
@@ -94,9 +135,11 @@ Initiative changes how an established binding is referenced after
 `channel_join`; it does not redesign the existing connection workflow.
 
 The current baseline exposes 45 tools. On that baseline this release has a net
-increase of one tool. If another future initiative lands first, Phase 0 must
-recalculate the count and apply the handle invariant to the then-current tool
-inventory.
+increase of one tool. The scheduled predecessor is PRD-004, which adds the
+read-only `command_status` tool, so the expected baseline at Phase 0 is 46 tools
+and `command_status` also carries `connectionHandle`. Phase 0 must recalculate
+the count against the inventory that actually shipped and apply the handle
+invariant to it.
 
 ### SDK release gate
 
@@ -124,6 +167,11 @@ decision would be required to vendor and maintain a modern protocol runtime.
 
 ## Current-state findings
 
+Measured against the working tree on 2026-08-05. The scheduled predecessor is
+PRD-004, so the progress, cancellation, and timeout rows below describe a
+baseline that release changes on purpose. Phase 0 re-measures every row against
+the inventory that actually shipped.
+
 | Area | Current project behavior | 2026-07-28 requirement | Migration consequence |
 | :- | :- | :- | :- |
 | MCP SDK | `@modelcontextprotocol/sdk@1.29.0`; runtime is initialization-era | Modern stateless runtime | Replace only after behavioral gate passes |
@@ -136,8 +184,9 @@ decision would be required to vendor and maintain a modern protocol runtime.
 | Lists | High-level SDK builds tools/resources/prompts from registration state and advertises `listChanged: true` | Lists MUST NOT vary per connection; deterministic order SHOULD be used | Freeze order, remove unsupported list-change claims, add cache hints |
 | Caching | List/read results have no `ttlMs` or `cacheScope` | Required on discovery, list, template-list, and resource-read complete results | Add explicit cache policy |
 | Resources | Five static guide resources; read failure is returned as a synthetic `# Error` resource | Missing resource is `-32602`; internal read failure is an error | Stop converting read failures into successful content |
-| Progress | Plugin progress resets internal timeouts and is written to `stderr`; no MCP progress is sent | Request-scoped progress only after `progressToken` opt-in | Bridge plugin progress to the originating MCP request |
-| Cancellation | No end-to-end MCP cancellation path into the Figma command | stdio cancellation uses `notifications/cancelled` | Add request, relay-route, and plugin cancellation propagation |
+| Progress | Plugin progress resets internal timeouts and is written to `stderr`; no MCP progress is sent. **PRD-004 D3 adds forwarding under the current protocol** | Request-scoped progress only after `progressToken` opt-in | Re-point PRD-004's forwarding at the modern envelope; do not build a second bridge |
+| Cancellation | No end-to-end MCP cancellation path into the Figma command. **PRD-004 D7 adds the plugin-side cooperative path and its acknowledgement** | stdio cancellation uses `notifications/cancelled` | Add the stdio trigger and relay-route propagation into PRD-004's existing cancellation points |
+| Timeouts | 30 s before the first progress frame, 60 s inactivity after it, 5-minute relay route expiry. **PRD-004 D4 replaces these with a command-aware policy** | No protocol requirement; the deadline must not misreport a mutation | Carry PRD-004's policy through the request context; define no constants here |
 | Logging | Project logger writes to `stderr` | Protocol Logging is deprecated; `stderr` is preferred for stdio | Keep `stderr`; do not advertise Logging or emit `notifications/message` |
 | Tool schemas | Zod schemas are recursively strict, but the SDK path assumes object output schemas | Full JSON Schema 2020-12; output and structured content may be any JSON | Remove object-only infrastructure assumptions and test emitted schemas |
 | Tasks | Project does not intentionally use tasks, but the installed SDK contains old experimental handlers/types | Tasks moved to `io.modelcontextprotocol/tasks`; old task surface removed | Advertise no task extension and prove no task methods/results are emitted |
@@ -706,12 +755,20 @@ type FigmaRequestContext = {
   connectionHandle: string;
   mcpRequestId: string | number;
   signal: AbortSignal;
+  timeoutPolicy: CommandTimeoutPolicy; // PRD-004 D4, selected by execution class
   reportProgress?: (update: CommandProgressUpdate) => Promise<void>;
   traceContext?: TraceContext;
 };
 
 sendCommandToFigma(command, params, context);
 ```
+
+The third parameter changes meaning: the shipped signature is
+`sendCommandToFigma(command, params, timeoutMs = 30000)`, and the deadline does
+not disappear, it moves onto the context as `timeoutPolicy`. Because the
+parameter position is reused with a different type, every call site is migrated
+explicitly and no default is provided; a missed site must fail to type-check
+rather than silently inherit a bound.
 
 Every tool callback removes `connectionHandle` from the plugin command payload
 and passes it through `FigmaRequestContext`. Do not use `AsyncLocalStorage` as a
@@ -1179,6 +1236,18 @@ inferring it from an older SDK.
 
 ## 9. Request-scoped progress, cancellation, and timeouts (P0)
 
+> [!IMPORTANT]
+> This section is a protocol-surface adapter over PRD-004, not a second design
+> of the same subsystem. PRD-004 ships first (see **Scheduling precondition**)
+> and owns command identity, the shared progress reporter, the command-aware
+> timeout policy, cancellation acknowledgement, and execution receipts. This
+> section owns only how those reach an MCP client on the 2026-07-28 wire.
+>
+> Where PRD-004 has decided something, this section maps it and does not restate
+> it. Phase 0 records the shipped values of PRD-004's `CommandTimeoutPolicy`,
+> receipt states, and cancellation acknowledgement frame, and any divergence
+> found here is raised against PRD-004 rather than resolved locally.
+
 ### 9.1 MCP progress bridge
 
 The current plugin already emits `command_progress` through the relay. Extend
@@ -1234,25 +1303,50 @@ accept a cancellation probe in shared progress/page traversal helpers.
 
 Rules:
 
+PRD-004's D7 already defines cooperative cancellation and its acknowledgement.
+This section adds only the stdio trigger for it. The rules below restate the
+boundary conditions this release must not weaken.
+
 - No new mutation begins after cancellation is observed.
 - A synchronous Figma API call already in progress may finish.
 - A mutation already committed is not rolled back or represented as untouched.
-- Since the MCP response is suppressed after cancellation, any partial mutation
-  is written to sanitized `stderr` diagnostics for operator investigation.
-- Cancellation state is removed at terminal completion or request timeout.
+- The MCP response is suppressed after cancellation, so the partial-mutation
+  record is retained where a later request can retrieve it: PRD-004's execution
+  receipt, readable through its `command_status` tool with the command
+  identifier the client already holds. Sanitized `stderr` diagnostics are a
+  supplement for operator investigation, never the only copy.
+- Cancellation state is removed at terminal completion or request timeout;
+  the receipt outlives it under PRD-004's retention bounds.
 
 ### 9.4 Timeout policy
 
-The current internal command timeout is reset indefinitely by progress. Replace
-it with two bounds:
+Command deadlines are PRD-004's, not this release's. PRD-004 D4 replaces
+`sendCommandToFigma(..., timeoutMs = 30000)` and the hard-coded post-progress
+60 seconds with a `CommandTimeoutPolicy` selected by execution class, because a
+single global bound was measured to fail valid work: an all-pages
+`node_info(maxDepth: 12)` read completed legitimately at 109,852 ms, and a cold
+page load blocks the plugin's single JS thread for roughly 30 seconds without
+being able to emit the progress that would refresh an idle bound.
 
-- **idle timeout:** 60 seconds with no progress or terminal frame;
-- **absolute timeout:** 10 minutes from dispatch, never extended by progress.
+This release therefore:
 
-Both are configurable for development/live verification but have bounded
-production defaults. Timeout follows the same cancellation propagation path as
-an explicit client cancellation, then returns an actionable tool execution
-error only if the MCP request itself has not already been cancelled.
+- carries PRD-004's policy through the request context rather than defining
+  its own idle and absolute constants;
+- keeps `FigmaRequestContext` as the carrier, with the deadline an explicit
+  field on it (see Section 4.3), so no positional parameter is silently
+  repurposed;
+- routes an expiry through the same cancellation propagation path as an
+  explicit client cancellation, then returns an actionable tool execution error
+  only if the MCP request itself has not already been cancelled;
+- preserves PRD-004's distinction in that error: `COMMAND_INACTIVITY_TIMEOUT`
+  only where execution is known not to have crossed a mutation boundary, and
+  `COMMAND_OUTCOME_UNKNOWN` with its reconciliation instructions otherwise. A
+  maximum total deadline never silently converts a mutation into a clean
+  failure.
+
+Phase 0 records the shipped policy values. If PRD-004 shipped without a bound
+this release needs, that gap is raised against PRD-004's contract rather than
+answered with a constant here.
 
 ### Acceptance criteria
 
@@ -1264,7 +1358,10 @@ error only if the MCP request itself has not already been cancelled.
   for that request.
 - Cancelled page scans stop at a bounded yield point.
 - A cancelled write never claims rollback.
-- Progress can refresh idle liveness but cannot defeat the absolute timeout.
+- A cancelled write that had already changed the document leaves a receipt that
+  a later `command_status` call returns, without re-executing anything.
+- Progress refreshes PRD-004's running-inactivity bound but cannot defeat its
+  maximum total bound, and no timeout constant is defined in this release.
 - Route, timer, and cancellation maps are empty after completion/cancellation.
 
 ---
@@ -1640,6 +1737,23 @@ state a universal pre-dispatch invariant and add rows for `channel_join` and
 
 ### Future initiative interaction
 
+- [PRD-004 — Timeout, Liveness, and Mutation-Outcome
+  Integrity](../../prd/PRD-004-Timeout-Liveness-and-Mutation-Outcome-Integrity.md)
+  is this release's **scheduled predecessor**, not a parallel proposal. It ships
+  first, and Section 9 is an adapter over its command identity, progress
+  reporter, timeout policy, cancellation acknowledgement, and execution
+  receipts. Its `command_status` tool is part of the Phase 0 baseline inventory
+  and carries `connectionHandle` like every other Figma-dependent tool. The
+  pre-split umbrella for that work is
+  [Initiative 02](<../02 - Timeout, Liveness, and Mutation-Outcome Integrity/initiative.md>),
+  which is historical; PRD-004 is the document to read.
+- [Initiative 01](<../01 - Error-Code Burn-Down, Figma Typings Bump & Safe Prototype-Reaction Editing/initiative.md>)
+  and its child [PRD-001](../../prd/PRD-001-Legacy-Error-Code-Burn-Down.md) are
+  burning down the legacy error surface that Section 4.6 and Section 13 add to.
+  Whichever ships second inherits the other's registry: if PRD-001 lands first,
+  the handle codes here are authored in the converted form; if this release
+  lands first, its codes join PRD-001's inventory before that release
+  re-measures its site count.
 - Initiative 03's future tools inherit the handle field from central
   classification; its tool count is rebased during implementation.
 - Initiative 04's `planId` is already an explicit application handle, but its
@@ -1752,7 +1866,10 @@ prompt-content coverage.
 - Progress stops before terminal result.
 - Client cancellation suppresses response and late notifications.
 - Relay/plugin cancellation state is reclaimed.
-- Idle versus absolute timeout behavior.
+- A cancelled write's receipt survives the suppressed response and is returned
+  by `command_status` without re-execution.
+- PRD-004's inactivity and maximum-total bounds behave correctly through the
+  modern transport, tested with injected clocks and no wall-clock waits.
 - Subscription acknowledgment ordering and exact subscription IDs.
 - Unsupported filters omitted.
 - Multiple subscriptions demultiplex correctly.
@@ -1836,6 +1953,12 @@ about cancelling a live Figma operation also needs a live smoke test.
 
 ### Phase 0 - Ratification and external gates
 
+- Confirm PRD-004 has shipped. If it has not, stop: no other Phase 0 step runs,
+  including the SDK admission probe.
+- Record PRD-004's shipped `CommandTimeoutPolicy` values, receipt states and
+  retention bounds, cancellation acknowledgement frame, and `command_status`
+  contract. Section 9 is written against what shipped, not against PRD-004's
+  proposal.
 - Assign the major release number.
 - Re-read the final 2026-07-28 specification and schema in case post-release
   editorial corrections changed examples without changing normative behavior.
@@ -1883,9 +2006,13 @@ about cancelling a live Figma operation also needs a live smoke test.
 
 - Bridge plugin progress to MCP progress tokens.
 - Add strictly-increasing progress guards and coalescing.
-- Propagate stdio cancellation through server, relay, and plugin.
-- Add cooperative cancellation checks to shared long-running traversal helpers.
-- Introduce idle and absolute timeouts.
+- Propagate stdio cancellation through server, relay, and plugin, triggering
+  PRD-004's existing cooperative cancellation rather than a second mechanism.
+- Extend PRD-004's cancellation probes to any traversal helper added since.
+- Carry PRD-004's command-aware timeout policy through the request context.
+  Define no new timeout constants in this release.
+- Prove a cancelled write's partial-mutation receipt is still retrievable
+  through `command_status` after the MCP response is suppressed.
 - Prove route/timer cleanup and late-frame suppression.
 
 ### Phase 5 - Subscriptions and modern notifications
@@ -1964,6 +2091,8 @@ process:
 
 The release is complete only when:
 
+- PRD-004 has shipped and this release's timeout, progress, cancellation, and
+  mutation-outcome behavior maps onto its contract without redefining it.
 - The server supports exactly MCP `2026-07-28` and no initialization-era
   behavior.
 - `server/discover` is implemented and cacheable.
@@ -1981,7 +2110,8 @@ The release is complete only when:
 - Handle validation does not weaken any plugin safety control.
 - Stdio progress is opt-in, correlated, strictly increasing, and
   request-scoped.
-- Stdio cancellation reaches the relay/plugin and suppresses late output.
+- Stdio cancellation reaches the relay/plugin and suppresses late output, and a
+  cancelled write's partial-mutation evidence remains retrievable in band.
 - `subscriptions/listen` follows modern acknowledgment/correlation/cancellation
   semantics while honestly acknowledging no unsupported events.
 - No server-initiated JSON-RPC request is emitted.
@@ -2006,8 +2136,10 @@ The release is complete only when:
 | Requiring a handle on every tool causes schema drift | High without centralization | Central tool classification/injection plus exhaustive inventory test |
 | Global binding state survives in a helper and leaks across callers | High | Delete `bindingState`; explicit context argument at every command boundary; concurrency tests |
 | Relay restart loses handles | Certain | Document relay-memory durability and exact rejoin recovery; never claim permanent state |
-| A cancelled mutation has already changed Figma | Medium | Cooperative checks, stop-before-next-mutation, no rollback claim, live test and stderr audit |
-| Progress keeps a broken operation alive forever | Medium | Separate idle and absolute timeout; absolute bound never refreshes |
+| A cancelled mutation has already changed Figma | Medium | Cooperative checks, stop-before-next-mutation, no rollback claim, PRD-004 receipt retrievable through `command_status`, live test and stderr audit |
+| Progress keeps a broken operation alive forever | Medium | PRD-004's running-inactivity and maximum-total bounds; the total bound never refreshes |
+| PRD-004 slips, and pressure builds to define timeout policy here instead | Medium once an SDK exists | The scheduling precondition is a stated gate, not a preference; reversing the order is a reviewed decision that must name the PRD-004 contracts it pre-empts |
+| PRD-004 ships with different values or field names than it proposed | High | Phase 0 records what shipped and Section 9 is written against that; no constant in this release is copied from PRD-004's draft |
 | SDK high-level API advertises `listChanged: true` automatically | High on current SDK | Capability snapshot test and low-level handler override/replacement |
 | Cache marked public exposes caller-specific data | Low for current static guides, high if surface evolves | Central explicit cache policy; review gate for every new cacheable resource |
 | Tool list changes because of a handle or plugin capability | Medium without invariant | Keep all tools unconditional; require handle through schema; byte-stable list tests |
@@ -2042,6 +2174,8 @@ The following findings were verified from the repository and authoritative
 | Tool results | `src/mcp_server/tools/_result.ts` | Assumes structured payloads are objects and converts non-object values to `{}`; no `resultType`/server-info decorator |
 | Resources | `src/mcp_server/resources.ts` | Registers five static packaged guides; catches file errors and returns synthetic successful Markdown error content |
 | Logging/progress | `src/mcp_server/logger.ts`, `src/mcp_server/figma-client.ts` | Logs to stderr; plugin progress only refreshes timeout/logs and is not forwarded as MCP progress |
+| Timeout constants | `src/mcp_server/figma-client.ts` | `sendCommandToFigma(..., timeoutMs = 30000)`; a 60-second post-progress inactivity bound; a separate 5-second leave-request bound |
+| Scheduled predecessor | `planning/future/prd/PRD-004-Timeout-Liveness-and-Mutation-Outcome-Integrity.md`, `planning/BACKLOG.md` | PRD-004 owns command identity, progress forwarding, the command-aware timeout policy, execution receipts, and the `command_status` tool; it is ranked second in the backlog and is not blocked by this Initiative's SDK gate |
 | Dependency baseline | root `package.json` | Pins `@modelcontextprotocol/sdk` 1.29.0, Zod 4.4.3, Node >=20 |
 | Stale dependency island | `src/mcp_server/package.json` and local lockfiles | Pins older SDK/Zod and is not the root build authority |
 | Build | `tsup.config.ts` | Bundles SDK into `dist/server.js`, so conformance must test the built artifact |
@@ -2062,6 +2196,15 @@ The following findings were verified from the repository and authoritative
 
 ## Revision history
 
+- **Rev 3, 2026-08-07** - Resolves review finding B1. Declares PRD-004 the
+  scheduled predecessor and states that this Initiative does not start until
+  PRD-004 has shipped. Section 9 becomes an adapter over PRD-004's command
+  identity, progress reporter, timeout policy, cancellation acknowledgement,
+  and receipts instead of restating them; its own idle and absolute constants
+  are removed. A cancelled write's partial-mutation evidence is retained in the
+  PRD-004 receipt and read back through `command_status`, with `stderr` as a
+  supplement. Adds Initiative 01/PRD-001 to the cross-initiative list and
+  rebases the Phase 0 tool inventory over `command_status`.
 - **Rev 2, 2026-08-05** - Narrows the Initiative to MCP-spec migration,
   preserves the existing four-character channel workflow, and limits the
   connection change to explicit `connectionHandle` state required by the

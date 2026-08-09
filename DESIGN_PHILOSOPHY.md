@@ -16,25 +16,32 @@ Safer means more errors are caught and prevented, and fewer ways exist to make o
 
 ### Safer leads to Cleaner
 
-The first insight explains why the checks actually deliver safety: 
-**A programmatic check is more reliable & costs less than instructing the AI.**
+The first insight explains the benefit of systematically checking every change before it is applied, instead of the rule being left to the AI to follow: 
+**A rule enforced before every change becomes a property the file is guaranteed to keep, not a behavior the AI has to remember.**
 
-There are two ways to stop an AI from making a specific mistake. You can instruct the AI ("never delete a variable that is still in use"), or you can write a program that checks each action and blocks the mistake.
+There are two ways to stop any tool — or any person — from making a particular mistake. You can give an instruction ("don't delete something that other things still depend on") and hope it is followed, or you can put a check before the action, so the action cannot go through when it would break the rule. The first way depends on attention and memory; the second does not.
 
-The two differ first in reliability. An instruction produces probable compliance: an AI follows instructions most of the time, not every time, and in a long session its attention to any single rule weakens. A check produces a guarantee: it returns the same result on every call, and it does not depend on the AI's attention, the AI's context length, or which AI model is connected. The checks in figma-edit-mcp run inside the Figma plugin, so the AI cannot skip them, and the guarantee holds even for an AI that never read any instructions.
+The check is the more dependable of the two: 
+**A check that blocks a bad action is more reliable than an instruction telling the AI to avoid it.**
 
-The costs differ as well. An instruction consumes tokens on every request, because its text must sit in the AI's context window every time. A check runs by itself on every call. Over any sustained use, the check is the cheaper of the two.
+An instruction only makes the right action more likely. Whether it is followed still depends on the AI holding the rule in mind, reading the situation correctly, and choosing to apply it — and over a long session, its attention to any single rule fades. 
 
-Two measured results support this insight. OpenAI compared the two approaches on output formatting: with instructions alone, its earlier model produced a valid complex output format in fewer than 40% of test cases; with checks, the rate was 100%. The SWE-agent research team gave a coding agent an edit command that discards any edit that introduces a syntax error and asks the agent to retry — the same pattern figma-edit-mcp uses — and the agent solved 18.0% of its benchmark tasks with that check versus 15.0% without it. ([Quotes and sources](EVIDENCE.md#safer-leads-to-cleaner).)
+A check does not work that way. It runs before every action it covers, checks the file's actual current state, and gives the same answer every time — no matter which AI is connected, how full its context is, or whether it ever read the rules. The AI can still ask to do the forbidden thing; it cannot make the tool carry it out.
 
-Reliable checks stop errors before they enter the file, and a file that receives fewer errors stays cleaner. That is the connection: Safer leads to Cleaner. Stated precisely: the checks do not make a file clean — the cleanliness comes from you and the AI doing good work — the checks stop that clean state from decaying.
+The value grows when the same check runs every time. Stopping one bad action prevents one mistake. Running the same check before every change keeps the rule true for the whole session, not just for one action. 
 
-This connection has been measured at scale. In 2019, memory-handling errors caused 76% of Android's security vulnerabilities. Google then required new code to be written in languages whose compilers refuse memory-unsafe code, and left the existing code in place. By the end of 2024 the share had fallen to 24%. Preventing new errors was enough to make the whole codebase cleaner, because old errors get found and fixed over time while new ones stop arriving. ([Quotes and sources](EVIDENCE.md#safer-leads-to-cleaner).)
+figma-edit-mcp works this way. Each of its checks enforces one such rule on every action — is the target inside the area you are working in, is it really the layer the AI named, does a new layer have somewhere to go, is the layer locked, does this variable still have things using it. Batch edits follow the same principle: the tool checks every item in a batch before changing anything, so a batch with a single bad item changes nothing.
+
+Measured evidence supports checking each action rather than instructing the AI, and its effect on the errors a file admits. In the closest guarded-edit analogue, the SWE-agent research team gave a coding agent an edit command that discards any edit introducing a syntax error and asks the agent to retry — the same pattern figma-edit-mcp uses — and the agent solved 18.0% of its benchmark tasks with the check versus 15.0% without it. A randomized trial covering 901,776 clinical ordering sessions found that requiring a clinician to re-enter the patient's identity cut wrong-patient orders by 41%, against 16% for a click-through confirmation alone. And in a controlled security benchmark for tool-calling agents, moving the same model behind a runtime check at the tool-call boundary cut successful attacks from 40% to 5% while the model kept attempting them — the check stopped the consequence, not the attempt. ([Methods, limitations, and sources](EVIDENCE.md#safer-leads-to-cleaner).)
+
+This is how Safer leads to Cleaner. Think of the errors in a file as a level that rises when new errors are added and falls when old ones are fixed. The checks do not erase the errors already there — they stop new ones from being added. If you and the AI keep fixing old errors while fewer new ones arrive, the level falls over time. So the checks do not clean the file; they hold a clean state in place and let ordinary work reduce what remains.
+
+This has been measured at scale. In 2019, memory-handling errors caused 76% of Android's security vulnerabilities. Google then required new code to be written in languages whose compilers refuse memory-unsafe code, and left the existing code in place; the annual count of these vulnerabilities fell from 223 in 2019 to 85 in 2022, on the way to a projected 24% share by 2024. Google did not rewrite the old code — it kept fixing old vulnerabilities and hardening the rest while new ones stopped arriving. The decline came from reduced inflow together with continued removal, not from prevention alone. ([Methods, limitations, and sources](EVIDENCE.md#safer-leads-to-cleaner).)
 
 Two caveats keep this connection honest:
 
-- **Checks cover only what a program can verify.** figma-edit-mcp can verify where an edit lands, which layer it targets, and what type of change it makes. figma-edit-mcp cannot verify whether the edit is the one you wanted. A wrong edit that follows all the rules will go through. [SAFETY.md](SAFETY.md) records this as residual risk R2.
-- **This project ships instructions too.** The `figma-edit` skill and the `figma-edit://guide/*` resources teach the AI the rules before it starts. Their purpose is efficiency, not safety: an AI that knows the rules wastes fewer calls on actions figma-edit-mcp would refuse. Safety never depends on the AI reading them.
+- **A check only guarantees the rule it tests.** figma-edit-mcp can verify where an edit lands, which layer it targets, and what type of change it makes. It cannot verify whether the edit is the one you wanted. A wrong edit that follows all the rules will go through, and a check keeps a clean state in place but does not repair a defect already present. [SAFETY.md](SAFETY.md) records this as residual risk R2.
+- **This project ships instructions too.** The `figma-edit` skill and the `figma-edit://guide/*` resources teach the AI the rules before it starts. They are a useful preventive layer — an AI that knows the rules wastes fewer calls on actions figma-edit-mcp would refuse — but the guarantees are stronger because they never depend on the AI reading or following them.
 
 ### Safer leads to Faster
 
@@ -80,7 +87,7 @@ Stated precisely: Cleaner leads to Faster as an expected lifecycle effect. The e
 
 ### Cleaner leads to Safer
 
-The first insight explains why a programmatic check is more reliable than an instruction once a condition can be evaluated. Cleaner leads back to Safer by determining which conditions are available to evaluate:
+The first insight turns on a check enforcing a rule more reliably than an instruction can, once the rule is something software can test. Cleaner leads back to Safer by determining which rules can be checked at all:
 **A safeguard can reliably enforce only the relationships the file makes observable.**
 
 Any design or engineering document can hold a decision in one of two forms. The decision can be recorded as structure that the software stores and can read back — a stated link from one thing to another. Or it can exist only as a convention: the author knows two things are meant to match, but nothing in the file says so. The two forms can produce the same visible result, but they are not the same to a checker. A check can read a recorded relationship and act on it, but it cannot read an intention that was never written down. 

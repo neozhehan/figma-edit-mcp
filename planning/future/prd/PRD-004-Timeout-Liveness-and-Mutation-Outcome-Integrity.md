@@ -27,6 +27,17 @@ The implementation baseline must contain the v2.3.3 page-coverage, batch-envelop
 
 The public `command_status` tool is additive. Progress notifications and receipt replay are additive. Structured timeout codes intentionally replace generic timeout prose. No rollback, transaction, or automatic mutation retry is introduced.
 
+### Downstream dependency
+
+[Initiative 05 — MCP Specification Update (2026-07-28)](<../initiative/05 - MCP Spec Update (2026-07-28)/initiative.md>) does not start until this release has shipped. That Initiative's Section 9 is a protocol-surface adapter over this contract: it re-points D3's progress forwarding at the modern result envelope, adds the `notifications/cancelled` trigger for D7's existing cooperative cancellation, and carries D4's policy through its request context. It defines no timeout constants of its own and does not re-answer D5.
+
+This release owes that ordering nothing in scope, but it does owe it two properties.
+
+- **D3 and D7 wire shapes stay adapter-friendly.** Progress forwarding and cancellation acknowledgement are implemented against the protocol in force when this release ships, and are kept separable from that protocol's envelope so the later migration re-points them rather than rewriting them.
+- **D4's policy is readable as data.** `CommandTimeoutPolicy` values are selected by execution class in one place, so a later transport can carry them without copying constants.
+
+Nothing here waits on Initiative 05. It is gated on an MCP TypeScript SDK that does not yet support protocol `2026-07-28`; this release is gated on nothing external.
+
 ## Historical provenance
 
 This standalone PRD consolidates the complete contract previously indexed as v2.3.5. The pre-split source now lives in Initiative 02, its original path is preserved by the commit permalink recorded in the [PRD catalog](README.md#historical-source-record), and the companion ledger remains unchanged.

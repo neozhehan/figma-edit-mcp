@@ -8,21 +8,21 @@ Two rules govern this document. First, every quotation was checked against its s
 
 ## Safer leads to Cleaner
 
-The first insight: a programmatic check is more reliable than instructing the AI, and it costs less. The entries below measure enforcement against instruction, and one large-scale result shows what sustained prevention does to the cleanliness of the whole environment.
+The first insight is: **a rule the tool checks before every change becomes a property the file is guaranteed to keep, not a behavior the AI has to remember.** The mechanism underneath it is: **a check that blocks a bad action is more reliable than an instruction telling the AI to avoid it.** Instructions influence what an AI proposes; a check runs before the change and decides whether it happens at all. The evidence below separates three propositions: whether runtime enforcement is more dependable than model compliance, whether checking before every change preserves a property across the whole session, and whether reducing the inflow of new defects can lower the total defect stock over time. (The formal "invariant" statement of this — a property preserved by construction under complete mediation — is the first entry below.)
 
-### Enforced output formats versus prompted output formats (OpenAI)
+### Enforced writes preserve checked invariants by construction
 
-**Supports:** the claim that instructing a model produces probable compliance, while enforcement produces a guarantee.
+**Supports:** the direct Safer → Cleaner mechanism — a rule applied to every relevant write can preserve a property across the whole tool-mediated edit history, by construction rather than by probability.
 
-In its August 2024 "Introducing Structured Outputs in the API" announcement, OpenAI reported the results of its internal evaluation of complex JSON-schema following:
+Let `I` be a property of the file. If `I` holds before an operation, every accepted operation preserves `I`, and every refused operation leaves the file unchanged, then `I` holds after that operation — and, repeating the argument, after any finite sequence of accepted and refused calls. This is stronger than probable model compliance. An instruction can lower how often the AI proposes a transition that violates `I`; the execution boundary decides whether such a transition can commit at all.
 
-> "On our evals of complex JSON schema following, our new model gpt-4o-2024-08-06 with Structured Outputs scores a perfect 100%. In comparison, gpt-4-0613 scores less than 40%."
+Relational databases are the mature deployed precedent. A PostgreSQL `CHECK` constraint rejects any write whose value violates its predicate, so no ordinary constrained write can move a table into a state the predicate forbids — a property of the reachable states, not a rule each client must remember. (PostgreSQL's referential-integrity and `ON DELETE RESTRICT` behaviour, the closest analogue to `variable_delete`, is covered under [Safer leads to Faster](#safer-leads-to-faster) and [Cleaner leads to Safer](#cleaner-leads-to-safer); the point here is the general one — enforcement at the write boundary defines which states are reachable at all.)
 
-The 100% condition constrains the model so that invalid output is impossible; the announcement's accompanying chart shows the sub-40% figure is the "Prompting Alone" condition.
+**Source:** [PostgreSQL documentation, "Constraints"](https://www.postgresql.org/docs/current/ddl-constraints.html)
 
-**Source:** [OpenAI: Introducing Structured Outputs in the API](https://openai.com/index/introducing-structured-outputs-in-the-api/) *(the page blocks automated retrieval; the quote was checked against the page in a browser in July 2026.)*
+**Caveats:** this is a logical mechanism plus documented system behaviour, not an empirical Figma outcome. The guarantee is only as strong as the predicate, its implementation, and complete mediation of the relevant writes — the same assumptions [SAFETY.md](SAFETY.md) records for the plugin.
 
-**Caveats:** this is a vendor-run evaluation, and the comparison spans two model generations — a newer model with enforcement against an older model with prompting — so part of the gap comes from model improvement. The direction is still unambiguous: prompting alone never approached the compliance that enforcement made automatic.
+**Relevance:** every plugin guard is one such predicate — scope, name/identity, explicit parent, lock, and variable-consumer checks each refuse the transitions that would violate their property. Applied to every write, they keep the corresponding covered defect out of the set of file states reachable through the plugin.
 
 ### A guardrail on an AI agent's edit command (SWE-agent, NeurIPS 2024)
 
@@ -54,46 +54,93 @@ The paper's behavioral analysis shows what the guardrail is stopping. Failed edi
 
 **Relevance:** the pattern is identical to this plugin's: a program validates the agent's write, discards the invalid write, and returns an error that tells the agent what to fix. The measured result is that the guarded agent completes more work, not less.
 
-### Runtime supervision reduces token waste (SupervisorAgent)
+### Runtime enforcement outperformed a prompt-only defense for an MCP agent
 
-**Supports:** the claim that catching agent mistakes with machinery is cheaper than letting the agent reason its way out of them.
+**Supports:** the claim that programmatic checks are more reliable than instructions when the goal is to stop a prohibited tool action from executing — corroboration from the MCP setting itself.
 
-The SupervisorAgent paper ("Stop Wasting Your Tokens") adds a lightweight, LLM-free supervisor that corrects errors and cleans problematic observations during an agent's run. From the abstract, the system:
+Wang, Zhu, and Li evaluated a policy-enforcement point that intercepts an MCP-style agent's calls at the tool-call boundary. Using one deepseek-v4-pro agent over a 30-task dataset (30 tasks × 5 repeats × 7 configurations = 1,050 runs), they reported attack-success rates of **40.0%** with no defense, **35.0%** with the strongest prompt-only defense (Spotlighting), and **5.0%** with full runtime enforcement. The model's attack-attempt rate under full enforcement stayed at **66.0%** — the agent kept issuing prohibited calls, and the boundary stopped them from executing rather than dissuading the model.
 
-> "reduces the token consumption of the Smolagent framework by an average of 29.68% without compromising its success rate"
+**Source:** [Wang, Zhu & Li, "Runtime Policy Enforcement for MCP-Based LLM Agents" (Electronics, 2026)](https://www.mdpi.com/2079-9292/15/13/2829)
 
-on the GAIA benchmark, with validation across five further benchmarks.
+**Caveats:** a single recent paper whose authors explicitly scope it as "mechanism-coverage evidence—not a deployability claim" and "a mechanism-coverage verification exercise, not an unbiased security audit," with a stated selection-bias threat because the five rules and the tasks share one threat model. Its tools are mostly mocks; the one real-MCP test is a preliminary single-server local run. The outcome is security attack-success under prompt injection, not accidental artifact corruption, and the prompt-only baseline is Spotlighting rather than a natural-language restatement of the five rules, so it is not a clean instruction-versus-check ablation. The benign set (10 tasks in the original design, expanded to 30) supports only a bounded false-positive claim.
 
-**Source:** [arXiv:2510.26585 — Stop Wasting Your Tokens](https://arxiv.org/abs/2510.26585)
+**Relevance:** in the setting closest to this project's architecture — a check at the tool-call boundary of an MCP agent — enforcement controlled execution while the model's proposals were largely unchanged. It corroborates the mechanism; it does not transfer a number to Figma.
 
-**Caveats:** a research prototype, measured on one agent framework and a specific benchmark family.
+### Enforced output formats versus prompted output formats (OpenAI) — secondary illustration
 
-### Prevention alone made a large codebase cleaner (Android memory safety)
+**Supports (secondary):** the same enforcement-versus-instruction direction, as an illustration rather than a clean ablation.
 
-**Supports:** the claim that Safer preserves Cleaner — and its strongest measurable form: preventing new errors lowers the rate at which errors accumulate, so the whole environment becomes cleaner over time, even without repairing old errors.
+In its August 2024 "Introducing Structured Outputs in the API" announcement, OpenAI reported its internal evaluation of complex JSON-schema following:
 
-In 2019, memory-handling errors caused 76% of Android's security vulnerabilities. Google then adopted "Safe Coding": new code is written in languages whose compilers refuse memory-unsafe code (such as Rust), while the existing C/C++ code is left in place. In September 2024, Google reported the result — memory safety vulnerabilities fell, as The Register quotes the report, "from 76 percent in 2019 to an expected 24 percent by the end of 2024."
+> "On our evals of complex JSON schema following, our new model gpt-4o-2024-08-06 with Structured Outputs scores a perfect 100%. In comparison, gpt-4-0613 scores less than 40%."
 
-Google's explanation of the mechanism:
+The 100% condition constrains the model so that invalid output is impossible; the accompanying chart shows the sub-40% figure is the "Prompting Alone" condition.
+
+**Source:** [OpenAI: Introducing Structured Outputs in the API](https://openai.com/index/introducing-structured-outputs-in-the-api/) *(the page blocks automated retrieval; the quote was checked against the page in a browser in July 2026.)*
+
+**Caveats:** a vendor-run evaluation whose comparison spans two model generations — a newer model with enforcement against an older model with prompting — so part of the gap is model improvement, and it measures schema conformance rather than executed actions or file cleanliness. It is kept only as an illustration; the SWE-agent and MCP entries above carry the enforcement-versus-instruction claim.
+
+### Required identity re-entry reduced wrong-target orders in a randomized trial
+
+**Supports:** the target-verification mechanism — enforced identity verification at the action boundary reduces wrong-target operations more than a weak confirmation prompt. This is the closest external analogue to the plugin's name verification.
+
+Adelman and colleagues randomized 4,028 clinicians across **901,776 ordering sessions**. Retract-and-reorder events — an order placed on one patient, retracted within minutes, then reordered on another — are a validated proxy for wrong-patient orders (positive predictive value 76.2%). The rate was **1.5 per 1,000** sessions with no intervention, **1.2 per 1,000** with a click-to-verify alert (a **16%** reduction, p = 0.03), and **0.9 per 1,000** when the system required the clinician to re-enter the patient's initials, sex, and age (a **41%** reduction; odds ratio 0.60, 95% CI 0.50–0.71, p < .001). Required re-entry added a mean 6.6 seconds per session.
+
+This is a distinct study from the newborn-naming trial cited under [Cleaner leads to Safer](#cleaner-leads-to-safer): that one made patient names more distinguishable, whereas this one adds an active verification step at the moment of action. Barcode verification at the point of medication administration points the same way in a study measuring actual, not proxy, errors: Poon and colleagues observed a **41.4%** relative reduction in non-timing administration errors (11.5% → 6.8%, p < .001) and the complete elimination of transcription errors (6.1% → 0) after a bar-code electronic medication-administration record was introduced.
+
+**Sources:**
+- [Adelman et al., "Understanding and preventing wrong-patient electronic orders: a randomized controlled trial" (JAMIA, 2013)](https://pmc.ncbi.nlm.nih.gov/articles/PMC3638184/)
+- [Poon et al., "Effect of Bar-Code Technology on the Safety of Medication Administration" (NEJM, 2010)](https://www.nejm.org/doi/full/10.1056/NEJMsa0907115)
+
+**Caveats:** both are healthcare studies with human clinicians, not AI agents editing Figma, and their endpoints are wrong-patient/administration errors, not final-file defects. Adelman's endpoint is a proxy (PPV 76.2%) and re-entry added time to every order; Poon's is a before-and-after quasi-experiment that bundled bar-code scanning with an electronic record, and its timing-related potential harm did not fall significantly. The effect sizes do not transfer to this project.
+
+**Relevance:** requiring independent target evidence at the action boundary — the plugin's name verification — admitted fewer wrong-target operations than presenting the information behind a simple confirmation. For figma-edit-mcp, a name is such evidence only insofar as it distinguishes the intended node from plausible alternatives.
+
+### Reducing new defect inflow accompanied a decline in Android memory-safety vulnerabilities
+
+**Supports:** the lifecycle argument — reducing the arrival of a defect class lets its remaining stock fall as old defects are repaired or retired. This is the "cleanliness ratchet" stated precisely.
+
+As Google moved new Android development toward memory-safe languages, the annual count of memory-safety vulnerabilities fell from **223 in 2019 to 85 in 2022**, and their share of all Android vulnerabilities fell from 76% (2019) toward a projected 24% (2024). Google's stated mechanism is that new vulnerabilities stop arriving faster than old ones persist:
 
 > "Once we turn off the tap of new vulnerabilities, they decrease exponentially, making all of our code safer."
 
-Old errors are found and fixed over time while new ones stop arriving. Google's data on code age supports this:
-
-> "5-year-old code has a 3.4x (using lifetimes from the study) to 7.4x (using lifetimes observed in Android and Chromium) lower vulnerability density than new code."
-
-And the old code did not need to be rewritten:
+Its code-age data supports this — "5-year-old code has a 3.4x … to 7.4x … lower vulnerability density than new code" — and the old code was not rewritten:
 
 > "Based on what we've learned, it's become clear that we do not need to throw away or rewrite all our existing memory-unsafe code."
 
+The relationship is stock-and-flow: the next defect stock equals the existing defects, plus newly admitted defects, minus removed defects. Memory-safe languages reduced the admitted term while Google kept fixing old vulnerabilities and hardening the remaining C/C++. The decline came from reduced inflow **plus** continued removal, not from prevention alone.
+
 **Sources:**
+- [Google Security Blog: Memory Safe Languages in Android 13 (December 2022)](https://security.googleblog.com/2022/12/memory-safe-languages-in-android-13.html)
 - [Google Security Blog: Eliminating Memory Safety Vulnerabilities at the Source (September 2024)](https://security.googleblog.com/2024/09/eliminating-memory-safety-vulnerabilities-Android.html)
-- [The Register: Google's Rust belts bugs out of Android in Safe Coding push](https://www.theregister.com/2024/09/25/google_rust_safe_code_android/)
-- [BleepingComputer: Google sees 68% drop in Android memory safety flaws over 5 years](https://www.bleepingcomputer.com/news/security/google-sees-68-percent-drop-in-android-memory-safety-flaws-over-5-years/)
 
-**Caveats:** this is Google's own data about its own operating system, and the 24% figure was a projection for the end of 2024 at publication time. The figures are shares of total vulnerabilities, so changes in other vulnerability categories also move the percentage. The mechanism claim rests on Google's cited code-age lifetime data.
+**Caveats:** Google's own data about its own operating system, not an independent or controlled study; the 24% figure was an end-of-2024 projection at publication. The figures are shares of total vulnerabilities, so shifts in other categories also move them, and language choice, code age, developer differences, and concurrent hardening all confound attribution.
 
-**Relevance:** this example supports two of the philosophy's claims at once. First, Safer → Cleaner in the positive direction: prevention applied only to new work reduced the defect share of the entire environment, with no cleanup of the old work required. Second, enforcement over instruction: style guides had instructed C/C++ developers to avoid these same errors for decades; the compiler that refuses the error succeeded where the instructions did not.
+**Relevance:** this supports a defect-inflow mechanism and the feasibility of improving a large existing system without a wholesale rewrite. It does not support the stronger claim an earlier revision of this document made — that prevention *alone* cleaned Android, or that the old code received no cleanup. Enforcement over instruction still holds too: style guides had told C/C++ developers to avoid these errors for decades; the compiler that refuses them succeeded where the instructions did not.
+
+### Counterevidence: hard enforcement can preserve the wrong predicate
+
+**Supports:** the design boundary — only mechanically decidable invalidity should become a hard invariant.
+
+Strom and colleagues randomized 1,981 clinicians (1,971 analyzed) to standard practice or a nearly hard-stop alert intended to block concurrent orders for warfarin and trimethoprim-sulfamethoxazole. The alert changed prescribing sharply: the desired response (not reordering the alerted drug within 10 minutes) occurred in **57.2%** of intervention alerts versus **13.5%** of controls. But the trial was **stopped early** after four clinically important treatment delays in the intervention group — two patients delayed from needed trimethoprim-sulfamethoxazole and two from needed warfarin — because in those cases the blocked combination was the clinically correct order.
+
+**Source:** [Strom et al., "Unintended Effects of a Computerized Physician Order Entry Nearly Hard-Stop Alert to Prevent a Drug Interaction" (Arch Intern Med, 2010)](https://pubmed.ncbi.nlm.nih.gov/20876410/)
+
+**Caveats:** a healthcare decision-support intervention, not an AI artifact-editing system. The alert was *nearly* rather than fully non-bypassable, and its predicate encoded a context-sensitive clinical risk rather than a mechanically invalid state.
+
+**Relevance:** enforcement faithfully applies whatever predicate it is given — a strength when the predicate describes objective invalidity, a danger when it is a proxy for intent. figma-edit-mcp uses hard refusal for scope, identity, referential integrity, type, and protection, all mechanically decidable, and deliberately leaves design intent as residual risk R2 rather than enforcing a heuristic for it.
+
+### What the evidence supports
+
+Taken together, the evidence supports a bounded set of claims:
+
+1. **Programmatic checks are more reliable than instructions for enforcement.** Instructions can reduce prohibited proposals; an unavoidable runtime check can prevent those proposals from executing even when the agent still attempts them.
+2. **Local checks compose into a longitudinal property.** If every relevant write is mediated, every accepted successor satisfies the predicate, and refusal does not mutate the file, the predicate is preserved across the tool-mediated history.
+3. **Reducing admitted errors yields a cleaner counterfactual artifact.** From the same starting state and attempted violating operation, the checked path contains no more — and sometimes fewer — covered defects than the unchecked path.
+4. **Reduced defect inflow can lower the long-run stock.** When existing defects continue to be repaired or retired, reducing new admissions makes the total stock decline.
+5. **The predicate determines the value of enforcement.** Hard checks are strongest for objective invalidity; enforcing a context-sensitive proxy can block correct work.
+
+The evidence does **not** establish that the plugin can enforce subjective design intent, that a predicate is correct merely because it is deterministic, that prevention repairs defects already present, that every refusal makes the final file cleaner once an adaptive agent replans, or that these external effect sizes transfer quantitatively to Figma.
 
 ---
 
@@ -200,6 +247,20 @@ A check helps only when its result is understood: a refusal whose wording sends 
 - [Google Research publication page](https://research.google/pubs/tricorder-building-a-program-analysis-ecosystem/)
 
 **Caveats:** Tricorder surfaces warnings during builds and code review rather than blocking design-file mutations; the thresholds are Google's operational policies, not universally optimal values; and developer clicks and annoyance are proxies for saved time. It measures the conditions for a check to be worth running, not a net speedup, and it measures humans rather than AI agents.
+
+### Lightweight supervision cut an agent's token waste without lowering success (SupervisorAgent)
+
+**Supports:** the insight from the AI-agent side — catching an agent's mistakes with cheap machinery costs less than letting the agent reason its way out of them.
+
+The SupervisorAgent paper ("Stop Wasting Your Tokens") adds a lightweight, LLM-free supervisor that corrects errors and cleans problematic observations during a run. From the abstract, the system:
+
+> "reduces the token consumption of the Smolagent framework by an average of 29.68% without compromising its success rate"
+
+on the GAIA benchmark, with validation across five further benchmarks.
+
+**Source:** [arXiv:2510.26585 — Stop Wasting Your Tokens](https://arxiv.org/abs/2510.26585)
+
+**Caveats:** a research prototype measured on one agent framework and a specific benchmark family; token consumption is a cost proxy, not end-to-end task time.
 
 ### Industrial TDD reduced defects but increased initial development time (Nagappan et al., 2008) — counterevidence on the time horizon
 

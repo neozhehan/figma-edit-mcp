@@ -6,6 +6,12 @@ The PRD catalog numbers identify documents, not order. This file supplies the or
 
 For the authoritative scope, dependency, and consolidation record, see [`future/prd/README.md`](future/prd/README.md). Where this file and a PRD disagree about scope, the PRD wins.
 
+## What this ranking does not cover
+
+[Initiative 05 — MCP Specification Update (2026-07-28)](<future/initiative/05 - MCP Spec Update (2026-07-28)/initiative.md>) is a future **major** release and is deliberately absent from the ranking below. It cannot be ranked against the twenty minors because it is gated on an external event: no published MCP TypeScript SDK yet supports protocol `2026-07-28`, and that Initiative blocks rather than works around a non-conforming runtime.
+
+Two things are settled about its position regardless of when the SDK lands. It does not start until PRD-004 has shipped, because its progress, cancellation, and timeout sections are an adapter over PRD-004's command protocol rather than a second design of it. And every PRD in the ranking below ships under the current protocol, so none of them waits on it.
+
 ## How the ranking was made
 
 Four criteria, applied in this order:
@@ -22,7 +28,7 @@ Effort is a T-shirt estimate from the scope of each PRD, not a measured figure.
 | # | PRD | Effort | Requires | Why here |
 | :- | :- | :- | :- | :- |
 | 1 | [PRD-005 — Scoped Match Discovery](future/prd/PRD-005-Scoped-Match-Discovery.md) | M | — | An agent cannot act on a node it cannot find. This gates PRD-006, 007, 008, 009, 014, and 015, and it is read-only, so shipping it first adds no mutation surface for PRD-004 to migrate later. |
-| 2 | [PRD-004 — Timeout, Liveness, and Mutation-Outcome Integrity](future/prd/PRD-004-Timeout-Liveness-and-Mutation-Outcome-Integrity.md) | XL | — | The only release that stops a timed-out write from being retried blind. Its migration inventory covers every tool, so its cost rises with every release shipped before it. Ship it before the write surface grows. |
+| 2 | [PRD-004 — Timeout, Liveness, and Mutation-Outcome Integrity](future/prd/PRD-004-Timeout-Liveness-and-Mutation-Outcome-Integrity.md) | XL | — | The only release that stops a timed-out write from being retried blind. Its migration inventory covers every tool, so its cost rises with every release shipped before it. Ship it before the write surface grows. It is also the stated precondition for Initiative 05. |
 | 3 | [PRD-013 — Appearance and Masking](future/prd/PRD-013-Appearance-and-Masking.md) | M | — | Visibility, opacity, blend mode, and masks are basic properties with no write path today. Independently schedulable. |
 | 4 | [PRD-012 — Layout System](future/prd/PRD-012-Layout-System.md) | L | — | Auto layout is how modern Figma files are built. The current tool covers a fraction of it. Independently schedulable. |
 | 5 | [PRD-006 — Typography and Font Discovery](future/prd/PRD-006-Typography-and-Font-Discovery.md) | M | 005 | Gates PRD-014 and PRD-016. Also fixes the case where an agent writes a font the editor session cannot load. |
@@ -69,6 +75,7 @@ These constraints hold regardless of the ranking above.
 | PRD-011 cannot close without live probes of native combine and ungroup behavior. | PRD-011 § Status |
 | PRD-013 cannot close without live mask-propagation evidence on the pinned host. | PRD-013 § Status |
 | PRD-001 cannot pass Phase 9 until Q1 is ratified. | PRD-001 § Status |
+| Initiative 05 cannot start until PRD-004 has shipped, and cannot start at all until a published MCP TypeScript SDK supports protocol `2026-07-28`. | Initiative 05 § Scheduling precondition and § SDK release gate |
 | Every PRD re-runs a Phase 0 baseline audit against the actual scheduled predecessor. No PRD assumes it follows any particular release. | All PRDs |
 
 ## Open items to resolve before scheduling
