@@ -1,540 +1,249 @@
 # Design Philosophy
 
-> **Corrected draft.** This is a proposed replacement for [DESIGN_PHILOSOPHY.md](../../DESIGN_PHILOSOPHY.md). It retains the rule-first structure introduced in [09 - Restructured Design Philosophy.md](./09%20-%20Restructured%20Design%20Philosophy.md) and incorporates the findings in [08 - Causal Structure Review.md](./08%20-%20Causal%20Structure%20Review.md). It changes the organization and precision of the philosophy; it does not change the guarantees defined in [SAFETY.md](../../SAFETY.md).
+The [README](../../README.md) explains what figma-edit-mcp does. This document explains the principles behind tools designed for AI agents. Project-specific guarantees belong in [SAFETY.md](../../SAFETY.md). Sources, methods, and limitations for the empirical claims are collected in [EVIDENCE.md](../../EVIDENCE.md).
 
-The [README](../../README.md) states what figma-edit-mcp does. This document explains the principles behind those choices. The precise enforcement contract lives in [SAFETY.md](../../SAFETY.md), and the studies, quotations, methods, and limitations behind the empirical claims are collected in [EVIDENCE.md](../../EVIDENCE.md).
+## Who this is built for
 
-## Purpose and scope
+An AI agent does not use a tool like a person using a graphical interface. It composes calls from the instructions, state, and results available in its context.
 
-This document concerns tools through which an AI model reads or discloses protected data, changes authoritative state, or triggers external effects. The examples come from design software, but the principles apply to any LLM tool that observes state, proposes effectful operations, and receives results.
+Four characteristics shape the design:
 
-The central problem is not whether the model is capable. It is how intent, authority, observability, enforcement, execution, and feedback should be divided when a capable model can still propose a wrong action.
+- **Instructions influence behavior but do not guarantee it.** The model can misunderstand, overlook, or fail to apply a rule.
+- **The model can reliably use only distinctions the environment and interface expose.** A consequential relationship that exists only in a person's head cannot guide a check or a tool call.
+- **Every model–tool round trip has a coordination cost.** A round trip is worthwhile when its result changes what the model should decide next.
+- **The model is capable and fallible.** It can produce a plausible request that is structurally valid and still wrong.
 
-The four principles below govern the model–tool interaction and the representations on which it depends. They are not a complete system architecture. Authentication, authorization, concurrency, retry semantics, recovery, and auditability remain necessary foundations and are stated separately below.
+Four principles follow:
 
-## Trust model
+1. **Put enforceable rules in the tool, not only in the prompt.**
+2. **Make consequential relationships explicit.**
+3. **Keep already-determined work inside one call; return control when new judgment is needed.**
+4. **Make each exchange decision-sufficient.**
 
-Four roles may participate in an operation. The same person or system can occupy more than one role, but the responsibilities remain distinct:
-
-1. **The principal owns the requested intent.** A person or organization states the desired outcome and the distinctions that matter. The principal may exercise and delegate only authority already granted by the resource owner and governing policy.
-2. **The authority owner and policy define what is permitted.** A resource owner, tenant administrator, organization, regulator, or policy system grants permissions, reserves approvals, and sets non-negotiable risk limits. This role may be the principal, but a tool must not assume that it is.
-3. **The model proposes and coordinates actions.** It interprets the principal's goal, observes the state available to it, composes requests, and interprets results. A well-formed request is still a proposal. It is not proof that the action is authorized, safe, or what the principal intended.
-4. **The authoritative execution boundary validates, executes, and commits effects.** This is the boundary—or coordinated set of boundaries—that jointly has the authoritative observations and control required for every operation covered by the guarantee. Depending on the system, it may involve a tool server, plugin, service, policy gateway, transaction coordinator, database, or several of them.
-
-For brevity, “authoritative boundary” below includes a coordinated set of boundaries when no single component has both the required policy context and control over every covered effect.
-
-The governing relationship is:
-
-> **The principal supplies intent. The authority owner sets the permitted scope. The model proposes. The authoritative boundary executes and commits.**
-
-The model is trusted to reason and propose work, but not to enforce policy against itself or certify facts it cannot observe. The execution boundary is trusted only for the rules it correctly evaluates over sufficiently authoritative, current state. Neither can mechanically prove subjective intent.
-
-Authority must remain bounded. A model request cannot enlarge it, and a principal cannot delegate authority the principal does not possess. When an action exceeds the permitted scope, depends on intent the system cannot observe, requires reserved approval, or creates unacceptable irreversible impact, the correct response is not to guess. The system should refuse the action, narrow it, stage it for review, offer admissible alternatives, or return control to the appropriate principal or authority owner.
-
-Returning control therefore does not always mean returning control to the model. It means returning control to whichever actor has the authority and information required for the next decision.
-
-Approval and override are not bypasses. They are separately authorized, mediated transitions. An approval must be bound to an authenticated authorizer, the exact resource and action, material parameters and aggregate impact, the state or version reviewed, an expiry and reuse policy, and an audit record. If no boundary or coordinated set can enforce that binding, the effect must not execute. If approval is enforceable for each effect but cross-resource atomicity is unavailable, the system may narrow only its atomicity guarantee and define partial-success or compensation semantics.
-
-### Operating assumptions
-
-Six durable assumptions motivate the design:
-
-- **Model compliance is probabilistic.** Instructions improve behavior, but an important guarantee should not depend solely on the model recalling, interpreting, and following them.
-- **Decisions are bounded by observable state.** The model and the safeguard can act reliably only on state exposed with sufficient accuracy, freshness, meaning, and provenance.
-- **Authoritative state is not authoritative instruction.** Authenticated metadata may establish resource facts, while free-form artifact content and tool output remain untrusted data. Their text cannot grant authority, override governing instructions, or turn itself into policy.
-- **Every exchange has both cost and value.** A model turn consumes time, tokens, and context, but it can also supply new evidence, isolate failure, verify an outcome, or obtain approval.
-- **Model-generated actions are fallible proposals.** They may be capable and well reasoned while still being confidently wrong.
-- **Effectful execution can be uncertain.** Calls can fail, be retried, race with other changes, complete only in part, or leave their outcome uncertain.
-
-### The reliable-execution substrate
-
-The four principles do not replace the foundations required by any production tool that reads protected data or changes external state:
-
-- authentication, authorization, and least privilege;
-- data classification, least disclosure, and isolation of untrusted content from instructions and authority;
-- complete mediation for every guarantee being claimed;
-- concurrency and stale-state handling;
-- atomicity where promised, or explicit partial-success semantics where it is not;
-- duplicate-call and retry behavior, including idempotency where required;
-- postcondition verification and truthful outcome reporting;
-- approvals and overrides bound to authenticated actors, reviewed state, exact scope, expiry, and audit;
-- auditability, provenance, recovery, and reversal where the risk requires them.
-
-A result must distinguish among **completed**—including what committed or was disclosed—**refused**, **partially completed**, and **outcome unknown**. Unknown must not be reported as success or treated as safe to retry blindly.
-
-These foundations take precedence over speed. A performance optimization is valid only inside the authority, integrity, and recovery boundaries the system is required to preserve.
+The first two principles primarily shape what states and actions the tool makes possible. The last two primarily shape how efficiently the model and tool work together.
 
 ## What we are trying to achieve
 
-The principles are intended to improve three outcomes.
+The principles serve three goals:
 
-- **Safer** — lower expected frequency and severity of harmful tool-mediated outcomes—including unauthorized or wrong mutations, disclosures, external actions, and availability or resource-exhaustion failures—within the surface the tool mediates, while still allowing legitimate work to complete. Attempts, refusals, false refusals, admitted harm, and consequence severity must not be collapsed into one count.
-- **Cleaner** — a family of artifact properties that must be evaluated separately:
-  - **Artifact integrity:** the stock of broken, inconsistent, or otherwise defective state.
-  - **Structural legibility:** whether important identities, dependencies, and shared decisions are accurately, currently, and explicitly represented enough to inspect and test.
-  - **Choice clarity:** whether legitimate alternatives are distinguishable and accidental duplicates or obsolete choices have been removed.
-- **Faster** — lower end-to-end elapsed time for correctly completed work over a stated finite horizon, without hiding failed attempts or reducing correct-completion probability. On-path validation, retries, reconciliation, and recovery belong in elapsed time. Turns, tokens, engineering labor, compute, and monetary cost are companion measures or causal mediators; they are not interchangeable with elapsed time.
+- **Safer** — fewer erroneous actions are allowed to take effect, and there are fewer plausible ways to make an error.
+- **Cleaner** — the artifact contains fewer broken, inconsistent, duplicated, or accidental states, and more consequential relationships are represented explicitly and coherently.
+- **Faster** — correct work takes less time, whether in the current task or in later work that reuses or changes the same artifact.
 
-Cleaner is deliberately not one scalar score. A file can contain no known defects while leaving important relationships implicit. It can be highly structured but encode the wrong declaration. It can become easier to inspect while temporarily surfacing more defects. The three dimensions should therefore be reported separately.
+Cleaner contains two related but distinct ideas:
 
-Cleaner applies where the environment contains durable state. A stateless read or action may have Safety and efficiency consequences without creating an artifact-cleanliness outcome.
+1. **State quality:** fewer defects and inconsistencies.
+2. **Structural clarity:** shared decisions, dependencies, and legitimate alternatives are represented clearly.
 
-Every Faster evaluation must state how unsuccessful or abandoned attempts are treated. At minimum, report both the probability of correct completion by horizon H and elapsed time conditional on completion. A useful companion measure is total elapsed attempt time—with every failed or abandoned attempt capped at H—divided by the number of correct completions. Failed attempts must not disappear from the denominator, and construction or maintenance labor must not be inserted into task latency unless it lies on that task's critical path.
+The distinction matters. A check can preserve state quality without making the artifact more explicit. Explicit structure can make a new check possible without removing any existing defect.
 
-**The outcomes are connected, but they are not separate accounts.** A single refused harmful proposal can avoid a committed consequence, keep a defect out of the artifact, and avoid later repair. That is one causal sequence viewed through three outcomes, not three benefits to add together.
+### The goals are connected, not additive
 
-This document uses four accounting terms:
+A single event can appear under all three goals. If a check prevents a broken reference, the action is safer, the artifact remains cleaner, and later repair time may be avoided. That is one causal chain, not three independent benefits.
 
-- A **direct effect** reaches an outcome without passing through another named outcome.
-- A **mediated effect** reaches an outcome through an intermediate state.
-- A **joint effect** requires two or more inputs, none sufficient alone.
-- A **total effect** already includes its direct and mediated paths.
+### Safer and Cleaner form a maintenance cycle
 
-A total effect must not be added to its components, and a joint effect must not be credited in full to every participant.
+Cleaner structure can make more safeguards possible. Safeguards can then preserve the clean state against covered regressions.
 
-## The four design principles
+The cycle is not self-starting. Explicit structure must first be created, a rule must be implemented, and existing defects must still be repaired. Enforcement preserves a covered condition; it does not create the initial clean state.
 
-1. **Put guarantees at the authoritative execution boundary.**
-2. **Make consequential relationships explicit, authoritative, and observable.**
-3. **Keep determined work together only while its authority, assumptions, and risk remain bounded.**
-4. **Make every exchange decision-sufficient and its outcome verifiable.**
+Faster is not assumed to lead back to Safer or Cleaner. Speed is an outcome of good tool design, not a substitute for correctness or artifact quality.
 
-## Principle 1 — Put guarantees at the authoritative execution boundary
+## Principle 1 — Put enforceable rules in the tool, not only in the prompt
 
-Stable, mechanically decidable constraints belong where operations are authoritatively validated and their effects committed or data disclosed. The model should be taught the rules, but it should not be asked to provide the guarantee itself.
+**Programmatic checks are more reliable than instructions to AI agents for enforcing mechanically checkable rules.**
 
-**Programmatic checks are more reliable than instructions for enforcing mechanically checkable rules.**
+An instruction asks the model to remember a rule, recognize when it applies, and follow it. Instructions are valuable because they improve the requests the model proposes. But they cannot guarantee that every proposal will comply.
 
-An instruction influences what the model proposes. Whether it is followed depends on the model retaining the rule, interpreting the situation correctly, and choosing to apply it. A programmatic check determines whether a covered proposal may execute, commit an effect, or disclose protected data. Its application does not depend on which model is connected or whether that model read or remembered the instruction.
+A programmatic check controls whether the proposal takes effect. It evaluates the relevant state at the point of change and refuses a request that violates the rule. The model may still propose the prohibited action; the tool does not have to carry it out.
 
-This does not make instructions unnecessary. Prompts, examples, and explanatory guidance teach policy and reduce invalid proposals. Formal request schemas have two different roles: they expose the request contract to the model, and executable validation can reject malformed inputs. The layers must not be credited for the same improvement twice:
+This creates a stronger property:
 
-- explanatory instructions reduce invalid proposals and wasted refusals;
-- schemas make the formal request space legible and may enforce syntactic or structural validity;
-- authoritative checks prevent covered prohibited effects.
+> **A rule enforced at every relevant change turns a desired behavior from something the AI should remember into a condition every accepted change must preserve.**
 
-### What enforcement can guarantee
+For a rule to provide that guarantee:
 
-Three kinds of rule should not be conflated:
+- the check must correctly evaluate a mechanically testable rule from state the tool can observe;
+- every change capable of violating it must pass through the check; and
+- a refused request must not make the prohibited change.
 
-1. **State invariant.** Every accepted successor state must satisfy a property. If the property already holds, every capable transition is mediated, the predicate is correct, and refusal is non-mutating, repeated enforcement preserves it.
-2. **Transition constraint.** A particular action is allowed only under stated conditions. This constrains accepted changes without necessarily becoming a property stored in the artifact.
-3. **Protocol guarantee.** A request or group of requests follows stated execution semantics, such as whole-request prevalidation or an explicit partial-success contract.
+If the condition holds initially, every accepted change preserves it. The guarantee is narrow but strong: it covers the rule being checked, not whether the model's overall plan matches the user's intent.
 
-A hard check provides its claimed guarantee only when:
+### How Safer leads to Cleaner
 
-- the rule is sufficiently objective and mechanically decidable;
-- the boundary observes the authoritative state required to evaluate it;
-- every covered operation capable of violating it passes through that boundary or coordinated set;
-- authorization and predicate validity remain current until every covered effect occurs—mutation commitment, disclosure, or external action—or intervening change is detected;
-- the predicate correctly represents the intended policy; and
-- a claimed refusal leaves the protected property unchanged.
-
-Detection without refusal is not prevention. If effects may already have occurred, the result must report partial completion or outcome-unknown rather than refusal. Truthful partial reporting is a protocol guarantee; it does not preserve an invariant or turn partial mutation into prevention. Prevalidation before any mutation is not the same as transactional rollback after execution begins. A system should claim only the stronger property it actually provides.
-
-When a condition depends on ambiguous intent, contextual judgment, or incomplete evidence, use a warning, constrained choice, confirmation, or human approval rather than pretending it is a hard invariant.
-
-### How enforcement changes artifact integrity
-
-Let:
-
-- D(t) be the stock of defects at time t;
-- A(t) be defects admitted during the period; and
-- R(t) be defects repaired or retired.
-
-Then:
+A check reduces the inflow of the defects it covers. It does not repair defects already present.
 
 ~~~text
-D(t+1) = D(t) + A(t) - R(t)
+next defect stock
+= current defect stock
++ admitted new defects
+- repaired defects
 ~~~
 
-Enforcement reduces the covered portion of A(t). It does not remove defects already in D(t), and it does not stop uncovered defects. The defect stock falls only when R(t) is greater than total residual A(t).
+The checked artifact may still become dirtier in absolute terms if uncovered defects arrive faster than defects are repaired. It is nevertheless cleaner than the otherwise-equivalent artifact in which the covered bad changes were allowed through.
 
-A guard can therefore leave the artifact cleaner than the unchecked counterfactual while the absolute defect stock still rises. From an already-valid state, it can preserve a covered invariant. From an invalid starting state, it can prevent covered regression but cannot make the invariant retroactively true.
+This is the precise Safer-to-Cleaner claim: safeguards preserve covered good states and admit fewer covered defects. Continued repair is what turns lower defect inflow into a declining defect stock.
 
-Legacy-invalid state requires an explicit migration policy. A system may grandfather bounded existing debt, permit transitions that monotonically reduce it, prohibit transitions that increase it, use scoped and expiring exceptions, or require a repair transaction. A strict successor-state rule that blocks every intermediate repair is not a workable migration strategy.
+### How Safer leads to Faster
 
-### Evidence
+A local refusal can replace the later work of discovering, diagnosing, untangling, and repairing a defect after other work depends on it. The speed effect is strongest for errors that are costly to discover late, spread to many dependents, or are difficult to reverse.
 
-The evidence plays several different roles. Runtime enforcement studies directly show harmful proposals being prevented from taking effect even when the agent continues to attempt them. The SWE-agent edit result is a joint system result involving rejection, feedback, retry, and task completion; it supports the guarded-edit pattern but does not isolate the check alone. Clinical identity checks provide a large randomized boundary-verification analogue. Android's memory-safety trend illustrates reduced defect inflow combined with continued repair; annual vulnerability counts are not a direct census of the remaining defect stock. See [Safer leads to Cleaner](../../EVIDENCE.md#safer-leads-to-cleaner).
+The claim is not that checking costs nothing. The check is faster overall when the downstream work it avoids exceeds the cost of checking and correcting refusals.
 
-### Decision test
+### Instructions and checks are complementary
 
-Before adding a hard check, ask:
-
-1. Can the rule be stated precisely and evaluated from trustworthy current state?
-2. Does this boundary or coordinated set authoritatively observe and control every operation covered by the claim?
-3. Is refusal the right response, or does uncertainty require warning or confirmation?
-4. Does the protected state already conform? If not, what migration or monotonic-improvement policy permits repair without allowing regression?
-5. What separately authorized, tightly scoped, expiring, and audited recovery or override exists if the predicate is wrong?
-6. Is the control mandatory? If it is discretionary, what common risk, utility, monetary, or time unit will be used to compare expected benefit with latency, construction, maintenance, retry, and false-refusal cost?
-
-## Principle 2 — Make consequential relationships explicit, authoritative, and observable
-
-A safeguard can reliably enforce only a formalized predicate over state it can observe. Important identities, dependencies, ownership, and shared decisions should therefore be represented explicitly when a system is expected to preserve them.
-
-The relevant state need not live in the artifact being changed. It may come from the request, resource owner, authorization service, registry, schema, configuration, policy system, or another authoritative source. What matters is whether its meaning, ownership, freshness, and completeness support the decision.
-
-Explicit representation expands what can be checked. It does not prove intent, implement a safeguard, or make the representation correct. A declared relationship may be wrong, stale, incomplete, or owned by the wrong source.
-
-A source can be authoritative for a fact without its free-form content becoming an instruction. Observable artifact text remains untrusted data; it cannot grant permission or redefine the policy under which it is being read.
-
-Match enforcement strength to observation quality:
-
-- **Explicit, authoritative, and current:** eligible for hard enforcement.
-- **Inferable but uncertain:** suitable for warnings, ranked alternatives, or confirmation.
-- **Unobservable or subjective:** unable to support a mechanical guarantee and may require the principal's judgment.
-
-### Three distinct ways structure helps
-
-These mechanisms are related, but they are not the same causal claim.
-
-1. **Explicit relationships expand the enforcement surface.** A declared dependency can be inspected and tested. A convention that exists nowhere in observable state cannot support the same guarantee. Actual Safety still requires a formal rule, an implemented guard, and complete mediation.
-2. **Canonical sources reduce independent divergence.** A genuinely shared decision stored once has fewer independently mutable copies. This can lower inconsistency without a checker, but it also concentrates the impact of a wrong change.
-3. **Choice clarity reduces selection risk directly.** Removing obsolete alternatives and distinguishing legitimate ones reduces the chance of selecting a valid-but-wrong target. This mechanism does not require a checker and should not be presented as evidence of enforceability.
-
-In Figma, an explicit variable binding, an attached component instance, a maintained authoritative style, and distinguishable names illustrate these mechanisms. They record declared structure, not ground-truth intent.
+Instructions teach rules and workflows, reducing invalid proposals, wasted calls, and avoidable refusals. The formal request contract exposes required parameters and valid distinctions. Checks prevent covered invalid proposals from becoming changes. Use instructions to teach the model how to succeed; use programmatic checks when a rule must hold even when the model does not follow the instruction.
 
 ### Evidence
 
-CAD dependency and database-integrity examples support the observability-to-enforceability mechanism. Copied-code research speaks primarily to duplication and missed updates. Distinct patient identifiers speak primarily to choice clarity, and counterevidence shows that merely displaying fewer choices need not reduce wrong selections. These sources therefore support different parts of the principle and should not be treated as measurements of one identical effect. See [Cleaner leads to Safer](../../EVIDENCE.md#cleaner-leads-to-safer).
+Guarded agent-edit interfaces, runtime enforcement studies, and error-prevention systems in other domains show the same mechanism: instructions can reduce bad attempts, while a check at the action boundary can stop covered attempts from taking effect. Long-running reductions in memory-safety defects also illustrate the stock-and-flow result: lowering new defect inflow contributes to a cleaner system when repair of existing defects continues. Inspection, automated-analysis, and mistake-proofing studies show settings in which avoided downstream work exceeded prevention overhead. See [Safer leads to Cleaner](../../EVIDENCE.md#safer-leads-to-cleaner) and [Safer leads to Faster](../../EVIDENCE.md#safer-leads-to-faster).
 
-### Decision test
+## Principle 2 — Make consequential relationships explicit
 
-Before making a relationship structural or authoritative, ask:
+A tool can check only a rule that can be expressed over information it can observe. If two elements are intended to share a decision but the artifact records only equal values, a tool can see the equality; it cannot infer the intended relationship with certainty.
 
-1. Is this genuinely one shared decision, or are similar values carrying different meanings?
-2. Which system owns the declaration, and who keeps it current?
-3. How will consumers remain linked and stale relationships be detected?
-4. Does centralization reduce divergence enough to justify its coupling and blast radius?
-5. What level of enforcement does the representation's confidence actually support?
+Explicit structure turns hidden convention into usable information. It improves Cleaner in three different ways:
 
-## Principle 3 — Keep determined work together only while its authority, assumptions, and risk remain bounded
+1. **Explicit relationships enable checks.** A recorded dependency lets the tool identify which changes would break it.
+2. **A canonical source reduces divergence.** When several uses genuinely express one decision, storing that decision once avoids independent copies drifting apart.
+3. **Clear choices reduce valid-but-wrong selections.** Removing accidental duplicates and distinguishing legitimate alternatives makes the correct target easier to choose even when every option would pass a structural check.
 
-A model turn is valuable when a decision-maker must interpret new information. It is wasteful when it merely relays operations whose targets, parameters, and controlling rule have already been determined.
+These mechanisms should not be collapsed into one claim. Explicit relationships create enforceability. Canonical sources create consistency and reuse. Choice clarity reduces ambiguity.
 
-Keep work inside one execution unit only while:
+### How Cleaner leads to Safer
 
-- the remaining actions, or the deterministic rule selecting them, can already be stated;
-- ordinary code can continue without semantic interpretation by the model;
-- the observations on which the plan depends remain current;
-- every required intermediate verification can be completed inside the execution unit without new semantic judgment or external approval;
-- every action fits the same authorization, approval, and budget scope;
-- the combined blast radius remains acceptable; and
-- interruption, partial failure, duplication, cancellation, and retry have defined behavior.
+Cleaner structure does not automatically make an artifact safer. It changes what safeguards and agents can reliably distinguish.
 
-Return control when the model must interpret a new observation, a principal or authority owner must approve a consequence, an assumption becomes stale, an impact threshold is crossed, or further execution would make failure harder to isolate or reverse.
+- A recorded dependency plus an implemented check can prevent a broken relationship.
+- A canonical source can prevent inconsistent copies, but a wrong change to that source can affect every consumer.
+- Clearer alternatives can reduce wrong selections, but combining genuinely different choices would create a new error.
 
-The right boundary is therefore neither one operation per call nor as many operations as possible. It is the largest execution unit that requires no new judgment and remains safe to validate, commit, observe, retry, and recover.
+The design principle is therefore not “deduplicate everything.” It is:
+
+> **Represent real relationships explicitly, share decisions that are genuinely shared, and preserve distinctions that matter.**
+
+### How Cleaner leads to Faster
+
+Disorder is paid for repeatedly by later work that encounters it.
+
+- Explicit relationships reduce the search needed to understand what depends on what.
+- Canonical sources avoid recreating the same decision and updating multiple copies.
+- Clear alternatives reduce disambiguation directly. When they prevent a wrong selection, the avoided correction belongs to that Safer-mediated path.
+- Fewer inherited defects reduce diagnosis and repair.
+
+Cleaner structure costs time to create and maintain, so its payoff is greatest where the artifact will be reused, changed, or handed off. The strategic insight is not that cleanup is free. It is that recurring work should not repeatedly pay for the same avoidable ambiguity and disorder.
+
+### Evidence
+
+Evidence from CAD dependencies and database integrity supports the enforceability mechanism. Research on duplicated code supports the divergence mechanism. Studies of identifier clarity and distinctive patient names support the choice-clarity mechanism. Design-system, maintainability, and technical-debt studies support the recurring-work mechanism. These sources test different links and should not be treated as repeated proof of one effect. See [Cleaner leads to Safer](../../EVIDENCE.md#cleaner-leads-to-safer) and [Cleaner leads to Faster](../../EVIDENCE.md#cleaner-leads-to-faster).
+
+## Principle 3 — Keep already-determined work inside one call; return control when new judgment is needed
+
+The useful boundary between tool calls is a decision boundary, not an operation boundary.
+
+Ask:
+
+> **Can the model state what should happen next, or the deterministic rule for choosing it, before seeing the result?**
+
+If yes, the work can remain inside the current call. Returning after every operation adds coordination without adding judgment.
+
+If the model must interpret a new result before deciding what follows, the result marks a real decision boundary and control should return.
+
+This principle covers:
+
+- a fixed group of changes the model has already selected;
+- a filter, loop, comparison, or branch whose rule the model can state in advance; and
+- higher-level tools that express one meaningful task instead of exposing every low-level operation as a separate conversation turn.
+
+It does not mean that the largest possible batch is best. A large execution unit amplifies a valid-but-wrong plan and can enlarge the work that must be retried. The right unit contains work that is already determined—not work the model is merely guessing will be correct.
 
 ### Grouping is not validation
 
-Two capabilities commonly called batching have different mechanisms:
-
-- **Invocation consolidation** places already-determined operations in one call and reduces model–tool coordination.
-- **Whole-request prevalidation** refuses detectably invalid input before mutation and protects state.
-
-Valid requests demonstrate consolidation's benefit. Detectably invalid requests demonstrate prevalidation's state-protection benefit, while the size of the consolidated unit and reject-the-whole-request semantics jointly determine retry scope. Runtime failure after mutation begins requires separate execution semantics; prevalidation alone does not provide transactional atomicity.
+Grouping predetermined work reduces model–tool round trips. Checking every item before starting prevents detectable invalid input from producing partial changes. A tool may provide either capability or both, but they solve different problems and their benefits should be counted separately.
 
 ### Evidence
 
-Programmatic tool-calling evidence supports this workload boundary rather than a blanket preference for fewer calls: composed, already-determined work can use fewer turns or tokens without sacrificing accuracy, while tasks requiring fresh model judgment may gain nothing or cost more. These studies generally measure turns, tokens, cost, and success rather than elapsed time, so they support the coordination mechanism and not every definition of Faster directly. See [Faster: designing tools around decisions](../../EVIDENCE.md#faster-designing-tools-around-decisions).
+Research on programmatic tool calling, higher-level agent actions, tool compilation, and MCP call fusion shows the same boundary: keeping composed, predetermined work inside one model turn can reduce calls, tokens, and sometimes measured time while preserving or improving task success. The benefit disappears or reverses when each step requires fresh model judgment. See [Faster: designing tools around decisions](../../EVIDENCE.md#faster-designing-tools-around-decisions).
 
-### Decision test
+## Principle 4 — Make each exchange decision-sufficient
 
-Before combining operations, ask:
+An efficient tool contract supplies the information needed to make a decision at the moment that decision is made.
 
-1. Can the continuation or selection rule be stated before execution?
-2. Can every intermediate result be verified or handled without changing the meaning of what follows or requiring new judgment?
-3. Do all actions share the same authority and approval boundary?
-4. If the plan is wrong, the call is duplicated, execution is interrupted, or one item fails, does aggregate harm remain inside the approved risk envelope and can the outcome be contained, observed, and recovered?
-5. Does consolidation save more coordination than it adds in verification, retry scope, and concentrated risk?
+Before execution, the interface should expose the distinctions and constraints needed to compose a valid request. Trial and error should not be required to discover facts the interface already knows.
 
-If any answer is no, return control or split the unit.
+After execution, the result should make the outcome and the next meaningful options clear:
 
-## Principle 4 — Make every exchange decision-sufficient and its outcome verifiable
+- what changed, or why nothing changed;
+- which condition failed;
+- the exact identifiers or values needed to continue; and
+- when useful, the alternatives the tool would accept.
 
-The model–tool contract has two jobs.
+The target is not the shortest possible response. It is the smallest response that lets the model make the next decision without reconstructing information the tool already had.
 
-Before execution, it must expose the operations, parameters, distinctions, constraints, authority requirements, and relevant state assumptions needed to express a valid request. Trial and error should discover facts about the environment, not facts the interface already knew but failed to communicate.
+### Why this is Faster
 
-After execution, it must provide enough for the next legitimate decision-maker—the model, principal, or authority owner—to determine:
+Good request contracts reduce schema discovery by failure. Good results reduce re-querying, interpretation, and correction turns. An actionable refusal turns a blocked request into a local correction instead of a later investigation.
 
-- whether the request completed, committed effects or disclosed data, was refused, partially completed, or was left outcome-unknown;
-- what actually changed and what did not;
-- which stable identifiers or state versions now refer to the result;
-- which condition failed and what value was observed;
-- whether an assumption changed during execution; and
-- what verification, recovery, retry, or approval is required next.
+That refusal benefit is produced jointly:
 
-Call such an exchange **decision-sufficient**. It need not include everything any future task might conceivably need. It should contain the smallest trustworthy account of the outcome and continuation state that avoids reconstructing information the tool already possessed.
+- Principle 1 creates the refusal instead of admitting the invalid change.
+- Principle 4 makes recovery from the refusal efficient.
 
-A refusal should identify the failed condition and, when safe, the admissible ways forward. A success should make the committed postcondition verifiable rather than merely assert that code ran. Partial success and unknown outcome must never be indistinguishable from complete success.
-
-Authoritative metadata and untrusted content must also remain distinguishable. A result should preserve provenance, label free-form resource content as data, and disclose no more protected information than the authorized decision requires. Text found in an artifact or returned by another tool cannot grant authority, override governing instructions, or become executable policy merely because it appears in a trusted response envelope.
-
-### Joint effects
-
-Refusal recovery is a joint Principle 1 × Principle 4 effect:
-
-- Principle 1 creates a refusal instead of a covered harmful commit.
-- Principle 4 reduces the information and coordination cost of recovering from that refusal.
-- The local correction remains a cost on the guarded path. The benefit is the difference between that guarded-path cost and the more expensive downstream failure path.
-
-Usable semantic information is a joint Principle 2 × Principle 4 effect:
-
-- the environment must contain an authoritative, meaningful distinction; and
-- the interface must expose it at the decision boundary.
-
-The same saved search must not be credited once to clean structure and again to the interface that merely transmitted it.
+The saved recovery work should be counted once, not credited independently to both principles.
 
 ### Evidence
 
-Evidence on filtered tool results, admissible refusal alternatives, and overly aggressive result trimming supports the information-sufficiency mechanism. It shows that both omission and excess have costs, but most measurements concern tokens, benchmark performance, repair success, or total cost rather than elapsed time. See [Faster: designing tools around decisions](../../EVIDENCE.md#faster-designing-tools-around-decisions).
+Studies of filtered tool results show that relevant information can improve task performance while reducing token use. Studies of actionable diagnostics show that accepted alternatives can materially improve repair success. Counterevidence from overly aggressive result trimming shows why compactness alone is not the goal. See [Faster: designing tools around decisions](../../EVIDENCE.md#faster-designing-tools-around-decisions).
 
-### Decision test
+## How the principles produce Safer, Cleaner, and Faster
 
-For the request side, ask:
+| Principle | Immediate effect | Contribution to the goals |
+| --- | --- | --- |
+| Put enforceable rules in the tool | Covered invalid changes are refused | Safer directly; Cleaner and Faster through defects that never enter the artifact |
+| Make consequential relationships explicit | Dependencies, shared decisions, and choices become clearer | Cleaner directly; Safer through enabled checks and clearer choices; Faster through less repeated work |
+| Keep determined work inside one call | Unnecessary model–tool handoffs fall | Faster when elapsed time falls without reducing correct completion |
+| Make exchanges decision-sufficient | Interface-driven discovery and reconstruction fall | Faster when saved reconstruction exceeds the cost of the additional information |
 
-1. Can the caller compose a valid request without trial and error over facts the interface already owns?
-2. Are authority, preconditions, consequences, and state-version assumptions visible?
+This table traces causality; it is not a scorecard.
 
-For the result side, ask:
+### Rules for avoiding double-counting
 
-1. Can the caller determine what committed and what did not?
-2. Can it make the next continuation, recovery, verification, or approval decision without re-querying information the tool already had?
-3. Can the claimed outcome be checked against authoritative state?
-4. Can the caller distinguish authoritative metadata from untrusted content?
-5. Is every returned field relevant enough to justify its context, disclosure, and interpretation cost?
+1. **Count a prevented defect and its avoided repair as one chain.** Do not add Safer-to-Faster and Safer-to-Cleaner-to-Faster as if they were independent savings.
+2. **Count explicit structure and its guard as a joint mechanism when both are required.** The representation makes the rule checkable; the guard performs the prevention.
+3. **Count refusal recovery once.** The guard causes the refusal; the diagnostic lowers the cost of responding to it.
+4. **Separate consolidation from validation.** Fewer calls and reject-before-change behavior are different capabilities.
+5. **Count usable information once.** When the artifact records a distinction and the interface exposes it, any saved search is a joint effect.
+6. **State the time horizon.** A cleaner artifact may cost more now and save time only in later reuse or maintenance.
 
-## How the principles combine
+## Choosing where to apply the principles
 
-Every pathway below is conditional on the reliable-execution substrate and the scope stated for the claimed guarantee. Rows identify immediate causal paths; they are not additive benefit columns.
+Use four questions:
 
-| Source and path | Effect type | Outcome | Accounting rule |
-| --- | --- | --- | --- |
-| Authoritative guard → prohibited mutation, disclosure, or external action refused | Direct | Safer | Count harmful effects prevented, not proposal attempts. |
-| Guard → admitted covered artifact defects fall → future counterfactual defect stock is lower | Mediated | Cleaner: integrity | The guard did not repair existing defects; count the later repair saving only through this path. |
-| Cleanup or repair → existing defect stock falls | Independent input | Cleaner: integrity | Do not credit removal to enforcement. |
-| Correct observable relationship × formal rule × implemented guard × coordinated complete mediation | Joint prerequisite | Enforcement coverage | This enables realized prevention; it is not another prevented event to count. |
-| Prompts, examples, and explanatory guidance—excluding formal schema information—→ invalid proposals fall → refusals and retries fall | Direct operational effect | Lower refusal load; Faster is conditional | Guidance supplies no committed-state guarantee; include its context and maintenance cost. |
-| Accidental valid-but-wrong alternatives fall | Direct but conditional | Safer and Cleaner: choice clarity | Account for legitimate distinctions that could be erased. |
-| Independently mutable copies of a genuinely shared decision fall | Direct but conditional | Cleaner: structural legibility; Safer is indeterminate | Divergence may fall while coupling and wrong-change blast radius rise; the net Safety effect is not predetermined. |
-| Lower defect stock → later diagnosis and repair fall | Mediated | Faster over a future horizon | Count only when later work encounters the affected state. |
-| Structural legibility × interface exposure → search and interpretation fall | Joint | Faster | Do not give both inputs full credit for the same saved search. |
-| Choice clarity × interface exposure → disambiguation search falls | Joint | Faster | Keep this separate from the wrong-selection-risk path, which can avoid an error even after search succeeds. |
-| Canonical reusable source × interface access → recreation and repeated update work fall | Joint | Faster over a reuse horizon | Count separately from search only when genuinely shared work was reused. |
-| Request contract exposes tool-owned constraints → schema trial and error falls | Direct | Faster on the current task | Distinguish interface-owned facts from genuine artifact discovery. |
-| Decision-sufficient success or partial-result report → outcome reconstruction and redundant re-query fall | Direct | Faster on the current task | Limit this to tool-owned outcome facts; do not duplicate semantic-search, retry, or refusal savings. |
-| Truthful completed, partial, refused, or unknown status × defined retry semantics → unsafe duplicate or blind retry falls | Joint | Safer directly; Faster is conditional | Safe reconciliation can take longer than a blind retry; evaluate elapsed time through the matched comparison. |
-| Refusal × decision-sufficient diagnostic → refusal recovery cost falls | Joint | Faster on the current task | Recovery remains a guarded-path cost; richer feedback reduces it. |
-| Consolidated predetermined work → coordination turns fall | Direct | Lower coordination; Faster is conditional | Establish elapsed-time savings after verification, retry, and wrong-plan amplification costs. |
-| Consolidated unit × reject-the-whole-request semantics → retry scope rises | Joint countereffect | Potentially Slower | Do not assign this cost to validation or consolidation alone. |
-| Checks → validation time rises | Direct countereffect | Potentially Slower | Include the cost on valid as well as invalid requests. |
-| False refusal → authorized work is delayed or denied | Direct countereffect | Slower and potentially less Safe | Measure retries, correct-completion probability, availability, and harm from denied time-sensitive work—not latency alone. |
-| Cleanup and explicit structure → upfront, maintenance, and structural-risk costs rise | Direct countereffect | Higher lifecycle resource cost; potentially Slower only on the critical path | Include stale declarations, erased distinctions, coupling, and concentrated impact over the stated horizon. |
+1. **What costly error can the tool identify mechanically before allowing it?** Put that rule in a check.
+2. **What consequential relationship, shared decision, or legitimate distinction is currently implicit?** Represent it clearly.
+3. **Which operations are already determined, and where is new model judgment actually required?** Draw the call boundary there.
+4. **What information would change the model's next decision?** Put that information in the request or result contract.
 
-The Safer/Cleaner relationship is a maintenance cycle:
+Apply the principles selectively:
 
-~~~text
-valid explicit structure
-    → greater checkability
-    → correctly implemented enforcement
-    → less covered regression
-~~~
+- Checks add execution cost and can refuse valid work when the predicate is wrong.
+- Explicit structure costs effort to create and can become stale.
+- Canonical sources reduce divergence but increase the impact of a wrong shared change.
+- Removing duplicates is harmful when the alternatives represent real distinctions.
+- Larger execution units reduce coordination but amplify wrong decisions.
+- More result detail can reduce follow-up work but consume attention and context.
 
-It is not self-starting. Cleanup or normalization must create valid explicit structure. Safeguard engineering must turn a formalizable rule into a working guard. Continued maintenance must keep both the representation and predicate correct.
+The goal is not to maximize checks, structure, batching, or output. It is to choose the smallest intervention that materially improves Safer, Cleaner, or Faster without causing a larger countereffect.
 
-Time-indexed:
+## Limits
 
-~~~text
-formalized observable rule at time t
-    × implemented guard
-    × authoritative coordinated mediation
-    → fewer harmful tool-mediated outcomes
+These principles do not make an AI tool infallible.
 
-for artifact-integrity rules only:
-    fewer admitted covered defects
-    → lower counterfactual defect stock at time t+1
-~~~
+- Checks guarantee only the mechanically stated rules they cover.
+- A structurally valid request can still be the wrong request.
+- Explicit relationships can be incomplete or incorrect.
+- Cleaner structure does not remove existing defects by itself.
+- Fewer calls or faster successful runs do not count as Faster if they reduce correct completion; failed and abandoned work must remain in the comparison.
+- Tokens, turns, success rate, error rate, and elapsed time are related measurements, not interchangeable ones.
 
-Faster does not lead back automatically. Some speed optimizations increase blast radius, reduce verification, or enlarge retry scope. Safer and Cleaner also retain value when no future task produces a time saving.
-
-## Why this can pay
-
-Two economic principles explain when the design is worthwhile.
-
-### Cheap, precise boundary checks beat expensive downstream reconstruction
-
-A refused harmful proposal can be corrected before it becomes entangled with later valid work. That is not a universal claim that every possible check is faster.
-
-For a stated horizon H, a matched counterfactual, and the cohort of consequences covered by the safeguard, the time comparison is:
-
-~~~text
-total downstream consequence and recovery elapsed time avoided
-for true-positive covered proposals within H
-- on-path validation and incremental verification time
-- true-positive boundary correction and retry time
-- false-positive refusal and retry time
-- outcome-unknown reconciliation time
-= expected net task elapsed-time benefit within H
-~~~
-
-If no covered harmful proposal would otherwise commit, the gross avoided-repair benefit is zero while validation overhead remains. The net time effect is neutral only if that overhead is negligible; otherwise it is negative.
-
-The true-positive, false-positive, and outcome-unknown terms are disjoint attempt cohorts. Safeguard design, implementation, testing, rollout, maintenance, compute, and operator labor must be reported separately from task elapsed time unless they are on the task's critical path. A total investment or risk comparison may include them only after converting every term to an explicit common unit. Non-time harm likewise requires a separate risk, utility, or monetary evaluation; milliseconds and severe consequences cannot be compared without such a valuation model.
-
-For discretionary checks, the case is strongest when the failure is sufficiently likely, latent, severe, high-fan-out, or difficult to reverse, and the predicate is cheap and precise. Mandatory authorization, compliance, or integrity controls may still be required independently of their speed payoff.
-
-Industrial inspection and automated-analysis studies report cases where quality-mediated savings exceeded control overhead. These are total or net effects that include the downstream rework pathway; they must not be added to that same pathway again. See [Safer leads to Faster](../../EVIDENCE.md#safer-leads-to-faster).
-
-### Disorder is paid for again by work that encounters it
-
-Broken state, unclear roles, accidental alternatives, and lost reuse create search, interpretation, recreation, diagnosis, and repair costs for later tasks that touch them.
-
-For pre-existing disorder and structural investments not already credited to the prevention calculation, the Cleaner-to-Faster effect is:
-
-~~~text
-future task elapsed time avoided through search, interpretation,
-recreation, and repair within H
-= gross Cleaner-to-Faster elapsed-time benefit over H
-~~~
-
-Whether cleanup is a worthwhile investment is a separate resource calculation:
-
-~~~text
-value of future task time, labor, and recovery avoided within H
-- cleanup and migration labor or cost
-- structural maintenance labor or cost
-- expected cost of stale declarations, erased distinctions,
-  coupling, and concentrated wrong changes
-= net lifecycle resource value over H
-~~~
-
-Only the first calculation measures Faster. The second may be expressed in labor hours, money, or another declared common unit. Cleaner structure pays most when it is frequently reused or changed, and it may never repay its upfront investment in disposable or rarely touched state. Evidence from design systems, identifier quality, CAD modification, and software maintainability supports the direction of this lifecycle effect, while differing in outcome and method. See [Cleaner leads to Faster](../../EVIDENCE.md#cleaner-leads-to-faster).
-
-The prevention and cleanup calculations must not both contain the same avoided repair. If cleanup makes a guard possible, or a guard preserves the cleaned state, evaluate the combined strategy against one matched baseline instead of adding the two partial estimates. Because unsuccessful work has no ordinary completion time, compare:
-
-~~~text
-baseline versus strategy over the same finite horizon H:
-1. probability of correct completion by H
-2. elapsed time conditional on correct completion by H
-3. total capped elapsed attempt time divided by correct completions
-~~~
-
-Every failed or abandoned attempt is capped at the same H for the third measure. A total-cost or ROI comparison should be reported separately in its own common unit.
-
-### Faster has more than one cost component
-
-Expected time to correct completion is affected by:
-
-- execution work;
-- model–tool handoffs;
-- information acquisition and interpretation;
-- safeguards, verification, and approval;
-- refusal, retry, reconciliation, diagnosis, and recovery; and
-- cleanup or maintenance performed on the task's critical path.
-
-These are causal drivers, not additive wall-clock buckets. A retry may contain coordination, validation, execution, and diagnosis; the elapsed interval must be assigned once in any measurement. Off-path cleanup and maintenance remain companion labor, cost, or lifecycle-investment measures rather than task latency. Principle 3 acts primarily on avoidable handoffs. Principle 4 acts on interface-driven reconstruction, outcome certainty, and recovery. Cleaner structure acts on artifact-driven search, reuse, and inherited disorder. Principle 1 changes admitted risk and, for integrity rules, the future artifact state.
-
-## One example, end to end
-
-Consider deleting a shared variable that still has consumers.
-
-- The environment's explicit consumer bindings make the dependency observable. That is Principle 2.
-- A formal rule and commit-time check can refuse deletion while consumers remain. That is Principle 1.
-- A result that states that nothing committed, identifies the failed condition, and lists safely disclosable consumers makes recovery cheaper. That is Principle 4.
-
-This example does not require Principle 3 merely because the check runs inside the deletion call. Principle 3 would become relevant if the model had already determined a larger cleanup sequence that could safely continue without new judgment, verification, or approval.
-
-The final benefit is one causal path: an observable relationship enables a guard; the guard prevents the covered broken references from entering the artifact; the diagnostic reduces the cost of deciding what to do next. The prevented defect and its avoided downstream repair are counted once.
-
-The project-specific evidence and limitations for this example are collected under [Deleting an in-use variable in Figma](../../EVIDENCE.md#deleting-an-in-use-variable-in-figma).
-
-## Selection rules and tradeoffs
-
-Use the principles selectively:
-
-- **Enforce** when the rule is mechanically decidable, the state is authoritative enough, the mediated surface supports the claim, and either policy requires it or expected harm avoided justifies the cost.
-- **Represent explicitly** when a relationship is consequential, genuinely shared, owned, and maintainable.
-- **Canonicalize** only when similar values really express one decision; preserve legitimate distinctions.
-- **Consolidate** only work that is genuinely predetermined and remains inside acceptable authority, verification, recovery, and blast-radius boundaries.
-- **Return information** when it can change the next legitimate decision, verification, or recovery step; preserve provenance, apply least disclosure, and omit it when it cannot.
-- **Escalate** ambiguous, high-impact, or unobservable intent to the principal rather than converting uncertainty into a confident mutation.
-
-Every principle has a counter-cost:
-
-- checks add latency, maintenance, and false refusals;
-- cleanup is paid before future reuse produces a return;
-- authoritative shared sources concentrate impact;
-- deduplication can erase real distinctions;
-- larger execution units amplify valid-but-wrong decisions;
-- whole-request rejection enlarges retry scope;
-- explicit relationships can become stale and then make the wrong policy easier to enforce;
-- additional output consumes context, attention, and disclosure budget.
-
-The correct architecture does not maximize enforcement, structure, batching, or output independently. It chooses the least complexity consistent with required risk reduction, defense in depth, authority, integrity, resilience, operability, and recovery, then minimizes expected total cost within those constraints.
-
-## Limits and non-goals
-
-These principles do not make an LLM tool infallible.
-
-- An authoritative boundary or coordinated set governs only the operations it actually mediates.
-- Formal validity does not establish correctness of intent.
-- Explicit structure can be wrong, stale, or incomplete.
-- A valid-but-wrong proposal can pass every hard check.
-- A check can faithfully enforce the wrong predicate.
-- Authenticated artifact content can still contain adversarial instructions, and must remain data rather than acquire authority over the model.
-- Read and result surfaces can cause harm through excessive disclosure even when no mutation commits.
-- A shared source can reduce divergence frequency while increasing consequence severity.
-- A system with ambiguous partial failure, unsafe retry, or unverifiable outcomes remains unreliable even if its prompts and schemas are excellent.
-- Tokens, turns, task success, error rate, monetary cost, and elapsed time remain different measurements.
-
-This philosophy covers the model–tool interaction, the representation it depends on, and the causal reasoning behind the expected benefits. It does not replace a product-specific safety contract, threat model, permission system, transaction design, or operational recovery plan.
-
-For figma-edit-mcp, those concrete guarantees, conditions, and residual risks are defined in [SAFETY.md](../../SAFETY.md).
-
----
-
-These principles produce a clear division of responsibility: the principal supplies intent; the authority owner defines the permitted scope; the model proposes and coordinates; the authoritative boundary validates, executes, and commits effects; the environment records the result; and the next decision-maker receives enough trustworthy information to continue.
-
----
-
-## Notes on this corrected draft
-
-### What changed from the previous restructure
-
-- Replaced “the AI is the primary user” with a principal–authority–proposer–committer trust model.
-- Replaced absolute claims about memory and visibility with durable assumptions about probabilistic compliance and bounded observation.
-- Scoped the four principles to the model–tool interaction and added the reliable-execution substrate they depend on.
-- Distinguished requested intent from governing authority and treated free-form environment content as untrusted data rather than instruction.
-- Replaced “put the rule in the tool, not in the prompt” with authoritative-boundary enforcement while retaining the explicit argument that programmatic checks are more reliable than instructions.
-- Replaced “you can only enforce what the file records” with formalized predicates over trustworthy observable state.
-- Separated observability, canonicalization, and choice clarity into distinct mechanisms.
-- Added authority, approval, verification, stale-state, retry, fault-isolation, and blast-radius conditions to the execution-unit principle.
-- Replaced “decision-complete result” with a decision-sufficient request-and-result contract.
-- Defined Safer using committed harm and severity, split Cleaner into three separately measured dimensions, and bounded Faster to an explicit horizon.
-- Added explicit direct, mediated, joint, and total-effect accounting.
-- Corrected the stock-and-flow inequality and distinguished counterfactual improvement from absolute cleanup.
-- Replaced the universal prevention-cost claim with a net expected-value calculation that includes validation and false-refusal costs.
-- Treated boundary correction as a guarded-path cost whose reduction is jointly produced by enforcement and diagnostic quality.
-- Separated artifact search from interface reconstruction and counted their interaction once.
-- Preserved the distinction between invocation consolidation and whole-request prevalidation.
-- Removed Principle 3 from the variable-deletion example unless a distinct coordination boundary is actually eliminated.
-- Added selection rules, precedence, tradeoffs, and explicit non-goals.
-
-### Follow-up this draft would create
-
-[EVIDENCE.md](../../EVIDENCE.md) is still organized by the older goal-arrow structure. The links above resolve to those existing sections, but the mapping is no longer one-to-one. If this philosophy is adopted, the evidence document should be reorganized around:
-
-1. authoritative-boundary enforcement;
-2. observable structure, canonicalization, and choice clarity;
-3. safe execution-unit design;
-4. decision-sufficient exchanges;
-5. net prevention economics;
-6. lifecycle cleanliness economics; and
-7. counterevidence, boundary conditions, and proxy outcomes.
-
-The evidence should label each study as supporting a direct, mediated, joint, or total effect and should keep elapsed time, tokens, turns, task success, error rates, and monetary cost distinct.
-
-Nothing in this draft changes [SAFETY.md](../../SAFETY.md), the README, or the current root philosophy.
+Those limits define the claims made here; they do not turn this philosophy into an implementation specification.
