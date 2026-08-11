@@ -1,0 +1,357 @@
+# Design Philosophy
+
+The [README](../../README.md) explains what figma-edit-mcp does. This document explains the principles behind designing tools for AI agents, and why figma-edit-mcp is built the way it is. The exact enforcement guarantees and their conditions live in [SAFETY.md](../../SAFETY.md). Sources, methods, and limitations for every empirical claim here are collected in [EVIDENCE.md](../../EVIDENCE.md).
+
+## The boundary we are designing
+
+An AI tool joins two different kinds of capability.
+
+The model supplies judgment. It interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new evidence changes what the task means. Instructions can improve that judgment. They cannot guarantee that the model will apply a rule correctly every time.
+
+Software supplies checks and execution. It can apply a stated rule to the state it observes, refuse a prohibited change, and carry out work whose choices have already been made. Its advantage is repeatability: a check does not depend on the model remembering anything.
+
+Neither side should be asked to do the other's job. A model should not be the only thing standing between a prohibited action and the file. Software should not be asked to settle a question of meaning that nobody has formalized.
+
+> **Designing a tool for an AI agent is boundary design. Put judgment where ambiguity has to be resolved. Put guarantees where a rule can be stated. Keep already-decided work in software, and cross the boundary when new information changes what should happen next.**
+
+"Deterministic" here describes the check, not the whole tool or the environment. A check applies its predicate consistently, which is not the same as applying the right one — a wrong predicate fails reliably, every time. The distinction that matters is between an outcome that depends on the model complying and one that does not.
+
+Four questions follow. Three of them place the boundary; representation determines how far it can reach.
+
+| Boundary dimension | Design question | Principle |
+| --- | --- | --- |
+| **Enforcement** | What must software refuse, rather than ask the model to remember? | Put enforceable rules in the tool, not only in the prompt. |
+| **Representation** | How much of the intent does the artifact actually record? | Make consequential relationships explicit. |
+| **Control** | When can software continue, and when is new judgment needed? | Keep already-determined work inside one call; return control when new judgment is needed. |
+| **Information** | What has to cross for the next decision to be possible? | Make each exchange decision-complete. |
+
+Representation is not another line between the model and software. It is what sets the reach of the other three: software can only refuse, execute, or report what the artifact records. A relationship that exists only as a convention in someone's head is invisible to every check you might write and to every result you might return.
+
+The four fit together as one loop:
+
+1. The model interprets the goal and decides what it wants.
+2. The request expresses that decision using the distinctions the interface exposes.
+3. Software checks the request against explicit state, and executes the work already determined.
+4. The result returns the outcome and the facts the next decision needs.
+
+A well-placed boundary gives each side the work it is better at. A badly placed one leaves preventable errors to chance, asks the model to coordinate operations that need no judgment, or asks software to settle a question whose meaning was never written down.
+
+## What a well-designed boundary produces
+
+Three outcomes measure whether the boundary is in the right place:
+
+- **Safer** — fewer erroneous actions are allowed to take effect, and there are fewer plausible ways to make an error.
+- **Cleaner** — the artifact contains fewer broken, inconsistent, duplicated, or accidental states, and consequential relationships are recorded explicitly and accurately.
+- **Faster** — correct work takes less time, in the current task or in later work that reuses or changes the same artifact.
+
+Each one asks a different question about the boundary:
+
+- Safer asks whether errors software could have caught are still left to the model to avoid.
+- Cleaner asks whether important relationships are explicit, and whether accepted changes preserve the good states already reached.
+- Faster asks whether each piece of work sits on the cheaper competent side, and whether every necessary crossing carries what the next decision needs.
+
+Cleaner contains two related but distinct ideas:
+
+1. **State quality** — fewer defects and inconsistencies.
+2. **Structural clarity** — shared decisions, dependencies, and legitimate alternatives are recorded clearly.
+
+A check can preserve state quality without making the artifact more explicit. Explicit structure can make a new check possible without removing any existing defect.
+
+### The goals are connected, not additive
+
+A single event can appear under all three goals. If a check prevents a broken reference, the action is safer, the artifact stays cleaner, and later repair time is avoided. That is one causal chain seen from three sides, not three independent benefits.
+
+The same holds across the four principles. An explicit relationship and a check are one prevention mechanism, not two. A refusal and an actionable result are one recovery mechanism. Each part is worth describing; the benefit is worth counting once.
+
+### Safer and Cleaner form a maintenance cycle
+
+Making a relationship explicit moves it from the side where the model has to infer it to the side where software can inspect it. A check written over that structure then holds it in place against the regressions it covers.
+
+The cycle is not self-starting. The structure has to be created, a rule has to be written over it, and existing defects still have to be repaired by ordinary work. Enforcement preserves a condition; it does not create one.
+
+Faster does not lead back to the other two on its own. Removing turns saves time, but returning control too late hides evidence the model needed and lets a mistaken plan run further. Safer and Cleaner also have value independent of any time saved.
+
+### Placement is a tradeoff in both directions
+
+Leave too much on the model's side and preventable failures stay a matter of chance. Move too much to software's side and the tool turns rigid, refusing valid work and settling questions that should have stayed open to judgment.
+
+The objective is not maximum enforcement, maximum structure, or minimum model involvement. It is to put judgment where it adds value and mechanism where it adds reliability.
+
+## Principle 1 — Put enforceable rules in the tool, not only in the prompt
+
+The enforcement boundary separates what the model proposes from what the tool lets take effect.
+
+**Programmatic checks are more reliable than instructions for enforcing mechanically checkable rules.**
+
+An instruction asks the model to remember a rule, recognize when it applies, and follow it. Instructions are valuable, because they improve the requests the model makes. But they cannot guarantee that every request will comply.
+
+A check controls whether a request takes effect. It applies its predicate to the state it observes at the point of change, and gives the same answer every time — whichever model is connected, however full its context is, whether or not it ever read the rules. The model can still ask to do the prohibited thing; the tool does not have to carry it out.
+
+That produces a stronger property than an instruction can:
+
+> **A rule enforced at every relevant change becomes a condition of every accepted change, not a behavior the model is expected to remember. When the rule describes the artifact's state and already holds, repeated enforcement keeps it true.**
+
+The guarantee holds when three things are true:
+
+- the check evaluates a mechanically testable rule using state the tool can observe;
+- every change capable of violating the rule passes through the check; and
+- a refused request leaves the artifact unchanged.
+
+Two kinds of rule behave differently here. A **state invariant** — no layer refers to a variable that no longer exists — becomes a property the artifact keeps, provided it held to begin with. A **transition constraint** — only layers inside the working area may be modified — governs which changes are accepted without ever being stored in the file. Both make the tool safer; only the first also preserves the artifact's state.
+
+The guarantee stays narrow and strong: it covers the rule being checked, not whether the model's plan matches what the user wanted. Rules that turn on meaning stay on the judgment side. Software can confirm that a value is valid and that a dependency would survive; it cannot confirm that the value is the one the user had in mind.
+
+**In figma-edit-mcp.** Every action the model requests is checked inside Figma before it runs, and a failing action is refused with an error naming what was wrong. Each check enforces one rule on every action: is the target inside the area you are working in, is it really the layer the model named, does a new layer have somewhere to go, is the layer locked, does this variable still have things using it. The model decides what edit serves the task; the plugin decides whether that edit is allowed to happen.
+
+### How enforcement produces Safer
+
+A covered invalid request does not become a change. Safety is measured by what takes effect, not by whether the model ever attempted the action.
+
+This is why instructions and checks are complementary rather than competing. Instructions work on the model's side, improving the requests it makes. Checks work at the boundary, controlling which requests can take effect. Use instructions to teach the model how to succeed; use checks for rules that must hold even when the model does not follow the instruction.
+
+This project ships both. The `figma-edit` skill and the `figma-edit://guide/*` resources teach the model the rules before it starts, which means fewer wasted calls on actions the plugin would refuse. The guarantees are stronger because they never depend on the model reading or following anything.
+
+### How enforcement leads to Cleaner
+
+For rules about the artifact's integrity, a check reduces the inflow of the defects it covers. It does not repair defects already there. A transition constraint that does not protect artifact state makes the tool safer without producing this effect at all.
+
+Think of the errors in a file as a level that rises when new errors are admitted and falls when old ones are repaired. Checks do not lower the level; they slow what raises it. If ordinary work keeps repairing old errors while fewer new ones arrive, the level falls over time.
+
+The level can still rise while the checks are helping, if the defects nobody is checking for arrive faster than repair removes them. Even then, the file is cleaner than the otherwise-identical file in which the covered bad changes were allowed through. Enforcement preserves good states and admits fewer defects; ordinary cleanup is what turns lower inflow into a file that is absolutely cleaner than it was.
+
+### How enforcement leads to Faster
+
+A refusal at the point of change replaces the later work of finding, diagnosing, untangling, and repairing a defect after other work has come to depend on it. The saving is largest for errors that are costly to discover late, spread to many dependents, or are hard to reverse.
+
+Checking is not free. When no covered bad action would have happened anyway, there is nothing to avoid and the cost of checking remains. Enforcement is faster overall only when the downstream work it avoids exceeds the cost of running the checks and correcting the refusals they produce.
+
+That saving arrives along one path, not two:
+
+```text
+covered change refused
+→ defect does not enter the artifact
+→ downstream repair is avoided
+```
+
+The prevented defect and the avoided repair are the same event described at two points in time.
+
+### Evidence
+
+**Guarded editing and recovery.** In the closest agent-edit analogue, SWE-agent discarded edits that introduced syntax errors and asked the agent to retry. The agent solved 18.0% of benchmark tasks with the guarded interface versus 15.0% without it. Because the intervention combined rejection, feedback, and retry, it supports the guarded loop as a whole rather than isolating the check.
+
+**Blocking at the tool boundary.** In a controlled benchmark for tool-calling agents, moving the same model behind a runtime check cut successful attacks from 40% to 5% while the model kept attempting them. The attempts stayed unreliable; the check stopped the consequence.
+
+**A check compared against a prompt.** A randomized trial covering 901,776 clinical ordering sessions found that requiring a clinician to re-enter the patient's identity cut wrong-patient orders by 41%, against 16% for a click-through confirmation alone.
+
+**Inflow and repair over years.** In 2019, memory-handling errors caused 76% of Android's security vulnerabilities. Google then required new code to be written in languages whose compilers refuse memory-unsafe code, and left the existing code in place, continuing to repair it. The annual count fell from 223 in 2019 to 85 in 2022. The decline came from lower inflow together with continued removal; prevention did not repair the old defects.
+
+**Prevention measured against repair, including the cost of checking.** IBM's original inspection study reported 23% higher coding-operation productivity after counting inspection and rework effort, together with 38% fewer errors during later equivalent testing. A field study of 30 industrial software products modeled both the overhead of process controls and the reduction in rework, and found lower cycle time and effort at the sample average. An observational study of 35 industrial projects found that automated static analysis identified unique defects at comparatively low find-and-fix effort.
+
+See [Safer leads to Cleaner](../../EVIDENCE.md#safer-leads-to-cleaner) and [Safer leads to Faster](../../EVIDENCE.md#safer-leads-to-faster).
+
+A check can only apply a rule stated over observable state. What is observable is the subject of Principle 2.
+
+## Principle 2 — Make consequential relationships explicit
+
+This principle is different in kind from the other three. They decide where the boundary goes; this one decides how far it can extend. Software can refuse, execute, or report only what the artifact records, so the amount of intent written down sets the size of the region the other three principles can act on.
+
+Any design or engineering artifact can hold a decision in one of two forms. It can be recorded as structure the software stores and can read back — a stated link from one thing to another. Or it can exist only as a convention: the author knows two things are meant to match, but nothing says so. The two forms can look identical on screen. They are not the same to a checker. If two elements are meant to share a decision but the file records only equal values, software can see the equality; it cannot know the intent.
+
+> **Recording a relationship moves it from something the model must infer every time into something software can inspect, reuse, and possibly enforce.**
+
+What gets recorded is a declared relationship, not the truth about intent. A wrong or stale declaration makes the wrong rule easier to enforce. Writing something down does not remove the judgment; it fixes the judgment in place so that software can preserve it.
+
+Explicit structure helps through three mechanisms that should not be collapsed into one:
+
+1. **Recorded relationships make checks possible.** A stated dependency lets software work out which changes would break it.
+2. **A canonical source removes the chance to diverge.** When several uses genuinely express one decision, storing it once and linking to it means there are no independent copies to drift apart.
+3. **Clear alternatives make the right target easier to pick.** Removing accidental near-duplicates and distinguishing legitimate ones helps the model choose correctly even when every option would pass a structural check. This mechanism needs no checker at all.
+
+Recorded relationships create checkability. Canonical sources create consistency. Clear alternatives improve the model's judgment.
+
+**In figma-edit-mcp.** The choice shows up in concrete pairs. A layer can be explicitly bound to a variable, or it can just happen to contain the same value. A reusable element can stay an instance of a component, or it can be a detached copy that people still expect to behave like the component. A colour or spacing value in current use can be the only one of its kind, or it can sit next to leftover near-duplicates from earlier work. In each pair the design can look identical, but only the first form records what was intended, so only the first can be checked. The plugin can list everything that uses a variable and refuse to delete it while it is in use; it can do nothing for a layer that merely holds an equal value.
+
+### How explicit structure leads to Safer
+
+Recording more intent does not by itself make an artifact safer. It changes what software and the model can tell apart, and each mechanism carries a countereffect.
+
+- A recorded dependency plus a check can prevent a broken relationship. Recording it alone makes a check possible; it does not perform one.
+- A canonical source prevents inconsistent copies, but a wrong change to that source reaches every consumer.
+- Clearer alternatives reduce wrong selections, but merging two things that only looked alike creates a new class of error.
+
+The principle is therefore not "deduplicate everything." It is:
+
+> **Represent real relationships explicitly, share decisions that are genuinely shared, and preserve distinctions that matter.**
+
+Each kind of certainty ends up on the side that can supply it. Software preserves what has been declared. The model still judges what is worth declaring.
+
+### How explicit structure leads to Faster
+
+Disorder is paid for again by every later task that has to work out, reuse, or change what the artifact never expressed.
+
+- Recorded relationships save later tasks from working out what depends on what.
+- Canonical sources save recreating the same decision and updating several copies of it.
+- Clear alternatives reduce disambiguation directly. Where they also prevent a wrong selection, the avoided correction belongs to the safety path above, not to this one.
+- Fewer inherited defects mean less diagnosis and repair.
+
+Recorded structure only reaches the model if the interface exposes it, so some of this saving is produced jointly with Principle 4:
+
+```text
+recorded distinction
++ interface exposes it
+→ the model can use it
+→ less repeated work
+```
+
+Structure costs time to create and maintain, so it pays off most where the artifact will be reused, changed, or handed off. The claim is not that cleanup is free. It is that recurring work should not keep paying for the same avoidable ambiguity.
+
+### Evidence
+
+**Checkability.** Engineering CAD software can record how the pieces of a model depend on one another. In a study comparing modelling styles, the models that recorded those dependencies showed an error pointing straight at the piece that broke when a designer changed something it relied on; a style that left the dependencies out produced broken geometry that still looked finished. Databases show the same mechanism: once a relationship is declared, the database can refuse a deletion that would break it.
+
+**Divergence.** When programmers duplicate a block of code instead of sharing one copy, a bug in the original is carried into every duplicate, and a later fix often reaches only some of them.
+
+**Clear alternatives.** Units caring for newborns that gave babies near-identical temporary names, such as "Babyboy Smith," had staff place orders on the wrong baby; giving each newborn a more distinctive name reduced those wrong-patient orders. In a controlled experiment with 72 professional developers, meaningful word identifiers made finding semantic defects 19% faster than abbreviations or single letters.
+
+**Recurring work.** In a counterbalanced Figma experiment, designers completed matched tasks 34% faster when they had a current, task-relevant design system instead of old design files to search. Studies of CAD models, production codebases, and structural antipatterns point the same way: structure that communicates intent lowers the cost of later modification, and combinations of structural problems raise it. Figma's own guidance for its MCP server makes the point from the other direction — structured files with real components, semantic layer names, and variables [produce the best model output](https://developers.figma.com/docs/figma-mcp-server/structure-figma-file/).
+
+These sources test different links in the chain and should not be read as repeated proof of one effect. See [Cleaner leads to Safer](../../EVIDENCE.md#cleaner-leads-to-safer) and [Cleaner leads to Faster](../../EVIDENCE.md#cleaner-leads-to-faster).
+
+Explicit structure can also turn a decision into control logic that ordinary software can run. How long execution should stay on that side is the subject of Principle 3.
+
+## Principle 3 — Keep already-determined work inside one call; return control when new judgment is needed
+
+The useful boundary between tool calls is a decision boundary, not an operation boundary. A model turn is one reasoning cycle: the model reads the last result, thinks, and composes its next call. The number of low-level operations does not decide whether another turn is worth taking.
+
+The test is:
+
+> **Can the model state what should happen next, or the deterministic rule for choosing it, before seeing the result?**
+
+If yes, software can continue inside the current call; returning after every operation spends a turn without gaining any judgment. If the model has to interpret a new result before deciding what follows, the result marks a real decision and control should return.
+
+"Already determined" covers more than a fixed list:
+
+- a group of changes the model has already chosen;
+- a filter, loop, comparison, or branch whose rule the model can state in advance; and
+- a higher-level tool that expresses one meaningful task instead of exposing every low-level operation as its own turn.
+
+It does not follow that the largest possible call is best. Returning too early wastes turns. Returning too late hides evidence the model needed and lets a valid-but-wrong plan run further. The right unit holds work whose choices are already made, not work the model is guessing will be correct.
+
+### Grouping is not validation
+
+Two capabilities often arrive in the same batch tool and solve different problems. Grouping work the model has already decided removes turns, which is this principle. Checking every item before starting stops detectably invalid input from leaving the file half-changed, which is Principle 1. A tool can offer either or both, and any repair avoided by validation belongs to Principle 1 rather than here.
+
+**In figma-edit-mcp.** Batch tools implement the simplest case: the model supplies a list of changes it has already chosen, and the plugin runs them. What disappears is the trip back to the model between operations that need no new judgment — which is why the speed of a batch does not depend on Figma executing anything faster. The same principle extends to higher-level tools whose filter or branch rule the model can state in advance.
+
+### Evidence
+
+Anthropic's programmatic tool calling — letting a model run many tool calls inside one turn — cut billed input tokens by roughly 38% with no change in accuracy on a multi-tool benchmark. On tasks where every call depended on fresh model judgment, it left scores unchanged and cost roughly 8% more. Work on higher-level agent actions, tool compilation, and call fusion finds the same boundary: composed work benefits when no judgment is needed between operations, and adaptive work does not.
+
+Fewer calls and fewer tokens are evidence about coordination, not proof of less elapsed time. Faster is established only when correct completion takes less time once the consequences of the larger call are included.
+
+See [Faster: designing tools around decisions](../../EVIDENCE.md#faster-designing-tools-around-decisions).
+
+Principle 3 decides when control crosses. Principle 4 decides what crosses with it.
+
+## Principle 4 — Make each exchange decision-complete
+
+This principle closes the loop. It governs both directions: the request has to express the model's decision unambiguously, and the result has to carry back what the next decision needs.
+
+Before execution, the interface should expose the parameters, distinctions, and constraints needed to compose a valid request. A required read discovers facts about the artifact. Trial and error caused by an ambiguous interface only discovers facts the tool already knew.
+
+After execution, the result should make the outcome and the next options clear:
+
+- what changed, or why nothing changed;
+- which condition failed;
+- the exact identifiers or values needed to continue; and
+- when it can be done safely, the alternatives the tool would have accepted.
+
+We call such an exchange decision-complete: it carries what the relevant decision needs, and as little else as possible. It is complete relative to a decision, not exhaustive.
+
+Decision-complete does not mean short. Irrelevant output consumes context, but removing an exact identifier, an edit anchor, or an accepted value can create more work than the shorter result saves. The target is the smallest exchange that lets the model decide without reconstructing what the tool already had.
+
+### How this works with the other three
+
+Enforcement creates a refusal; a decision-complete refusal turns that into a local correction, made while the target, parameters, and intended operation are all still current, rather than an investigation later. Neither principle produces that saving alone.
+
+Explicit structure only reaches the model if the interface exposes the distinction, so a recorded relationship nobody surfaces cannot guide anything.
+
+Principle 3 removes the turns that carry no new judgment. Principle 4 makes sure the turns that remain carry what they need. A refusal without a useful diagnostic is safe but expensive to recover from; a diagnostic without a check cannot prevent anything.
+
+### Why this produces Faster
+
+An interface that states its constraints saves the model from discovering them by triggering errors. A result that carries the next decision's facts saves re-querying, re-interpreting, and correcting.
+
+More information is not automatically better. The interface should carry something because it changes a decision, not because it exists.
+
+### Evidence
+
+Filtering results down to what the next decision needs improved benchmark performance by 11% while using 24% fewer input tokens. Refusals that named the accepted alternatives raised repair success by roughly 40 percentage points over raw diagnostics. A study that trimmed tool results too aggressively cut tokens but raised total cost and failures, which is why brevity alone is not the target.
+
+Most of this evidence measures tokens, steps, repair success, and benchmark performance rather than elapsed time. See [Faster: designing tools around decisions](../../EVIDENCE.md#faster-designing-tools-around-decisions).
+
+## The four principles as one boundary
+
+| Boundary dimension | The model contributes | Software and explicit state contribute | Primary effect |
+| --- | --- | --- | --- |
+| **Enforcement** | Interprets intent and proposes actions | Applies stated rules before a change is accepted | Safer directly; for state rules, Cleaner and Faster through defects that never enter the artifact |
+| **Representation** | Judges which relationships and distinctions are real | Records them so they can be inspected, reused, and checked | Cleaner directly; sets how far the other three can reach |
+| **Control** | Interprets new evidence and decides what follows | Executes operations and logic already determined | Fewer turns; Faster when correct completion takes less time |
+| **Information** | Expresses the current decision and reads the result | Exposes the valid request space and the facts the next decision needs | Less reconstruction; with enforcement, cheaper recovery from refusals |
+
+This table describes one loop, not four accounts. Each contribution is real, and the benefits are not additive: a prevented defect and the repair it avoids are one chain, and everything here has a time horizon — explicit structure usually costs time now and returns it during later reuse.
+
+## One example, end to end
+
+Figma lets you delete a variable that layers still use, leaving broken references that are hard to find and repair. Users on Figma's own forum describe the result: one found [1,548 orphaned variable references](https://forum.figma.com/suggest-a-feature-11/make-it-easier-to-fix-broken-variable-references-33999) after reorganizing their variables, and the available cleanup action [fixes only some of them](https://forum.figma.com/ask-the-community-7/locate-and-delete-lingering-used-variables-16794).
+
+The four principles meet in this one case, in order:
+
+- Figma records which layers are bound to the variable, which puts the dependency in inspectable state instead of leaving it as a convention (Principle 2). A layer that merely holds an equal value stays invisible.
+- The plugin applies a consumer check before accepting the deletion, which moves the rule out of the model's memory and into the tool (Principle 1).
+- If consumers remain, the refusal names them, so the model can act instead of asking again (Principle 4).
+- Principle 3 applies when several deletions or cleanup steps have already been decided and can stay inside one call. A refusal is the opposite case: it creates a new decision, so control should return.
+
+This is not four copies of one benefit. The recorded relationship makes the check possible, the check prevents the broken reference, and the refusal makes correcting it cheap. Consolidating already-decided work is a separate effect on coordination.
+
+Project-specific sources and limitations are collected under [Deleting an in-use variable in Figma](../../EVIDENCE.md#deleting-an-in-use-variable-in-figma).
+
+## How to draw the boundary
+
+Ask these in order:
+
+1. **Does this choice require interpreting intent, ambiguity, or meaning?** Keep it on the judgment side.
+2. **Can a required condition be stated precisely over observable state?** Put its enforcement in software.
+3. **Is a consequential relationship still implicit?** Record it, when it is real, stable, and worth preserving.
+4. **Has the remaining work already been decided?** Keep it in software until new evidence calls for new judgment.
+5. **What information would change the current or next decision?** Put it in the request or the result.
+
+The placement errors follow directly, and they run in both directions:
+
+- Too little enforcement leaves preventable errors dependent on the model complying.
+- Too much enforcement turns matters of judgment into rigid refusals of valid work.
+- When structure stays implicit, every later task works the relationship out again, and no check can protect it.
+- Merging things that only looked alike erases real distinctions and concentrates the damage a wrong change can do.
+- Returning control too early spends turns without gaining judgment.
+- Returning control too late lets a wrong plan run further and hides evidence the model needed.
+- Too little information makes the model reconstruct what the tool already knew.
+- Too much fills its context without improving a decision.
+
+The goal is not to maximize the work on either side. It is the smallest change to the boundary that materially improves Safer, Cleaner, or Faster without causing a larger countereffect.
+
+## Limits
+
+A well-placed boundary does not make either side infallible.
+
+- A check can apply the wrong predicate perfectly.
+- Checks guarantee only the rules they cover.
+- A structurally valid request can still be the wrong request. The model can bind the wrong variable, pick the wrong but valid component, or make a wrong edit to the right target. [SAFETY.md](../../SAFETY.md) records this as residual risk R2.
+- Recorded relationships can be incomplete, wrong, or stale.
+- Explicit structure does not remove existing defects by itself.
+- A larger call can carry out the wrong plan faster.
+- Fewer calls or quicker successful runs do not count as Faster if correct completion falls. Failed and abandoned work stays in the comparison.
+- Tokens, turns, success rate, error rate, and elapsed time are related measurements, not interchangeable ones. Each claim above should be read against the one it was measured on.
+
+These limits do not weaken the thesis; they state it precisely. Put judgment where ambiguity has to be resolved, put guarantees where rules can be stated, record what both sides need to see, keep determined work in software, and make every necessary crossing carry what the next decision needs.
+
+The full list of checks, and the conditions under which each one holds, is in [SAFETY.md](../../SAFETY.md).
