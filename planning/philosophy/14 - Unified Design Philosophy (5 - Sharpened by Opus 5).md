@@ -2,7 +2,7 @@
 
 The [README](../../README.md) explains what figma-edit-mcp does. This document explains the principles behind designing tools for AI agents, and why figma-edit-mcp is built the way it is. The exact enforcement guarantees and their conditions live in [SAFETY.md](../../SAFETY.md). Sources, methods, and limitations for every empirical claim here are collected in [EVIDENCE.md](../../EVIDENCE.md).
 
-Most published guidance on designing tools for agents assumes a tool that reads: search, retrieval, lookup. The questions change when the tool changes something. A bad read wastes a turn; a bad write damages the thing you were working on, and the damage outlives the conversation. This document is about the second case.
+Much of the published guidance on designing tools for agents assumes a tool that reads: search, retrieval, lookup. The questions change when the tool changes something. A bad read wastes a turn; a bad write damages the thing you were working on, and the damage outlives the conversation. This document is about the second case.
 
 ## The boundary we are designing
 
@@ -247,9 +247,11 @@ It does not follow that the largest possible call is best. Returning too early w
 
 Two capabilities often arrive in the same batch tool and solve different problems. Grouping work the model has already decided removes turns, which is this principle. Checking every item before starting stops detectably invalid input from leaving the file half-changed, which is Principle 1. A tool can offer either or both, and any repair avoided by validation belongs to Principle 1 rather than here.
 
-Validating up front only covers what the tool can detect before it starts. A call can pass every check and still stop at the seventh change of ten, because a font failed to load, or a teammate locked a layer a moment ago, or the host application refused something the tool could not have anticipated. The artifact is then in a state nobody asked for. Decide in advance what your tool does in that case — undo the whole call, or keep the work that succeeded — and say which one happened in the result. The answer that causes the most damage is to leave the model guessing how far it got, because its next call will be composed against a file it believes is in a different state.
+Validating up front only covers what the tool can detect before it starts. A call can pass every check and still stop at the seventh change of ten, because a font failed to load, or a teammate locked a layer a moment ago, or the host application refused something the tool could not have anticipated. The artifact is then in a state nobody asked for. Decide in advance what your tool does in that case — undo the whole call, keep the work that succeeded, or attempt recovery and report what it could confirm — and say which one happened in the result. The answer that causes the most damage is to leave the model guessing how far it got, because its next call will be composed against a file it believes is in a different state.
 
 **In figma-edit-mcp.** Batch tools implement the simplest case: the model supplies a list of changes it has already chosen, and the plugin runs them. What disappears is the trip back to the model between operations that need no new judgment — which is why the speed of a batch does not depend on Figma executing anything faster. The same principle extends to higher-level tools whose filter or branch rule the model can state in advance.
+
+This project answers the question above by keeping what succeeded and reporting it exactly. A batch containing one detectably invalid member mutates nothing. Once mutation begins, execution runs in input order, stops at the first failure, and returns one row per requested item, distinguishing success, partial success, failure, and skipped work — with no general transaction layer promised. Where recovery cannot confirm that it restored the prior state, the initiating error carries partial-mutation evidence rather than a claim of rollback. [SAFETY.md](../../SAFETY.md) states this as guarantee G4 and assumption A5.
 
 ### Evidence
 
