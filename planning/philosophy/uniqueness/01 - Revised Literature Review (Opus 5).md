@@ -27,15 +27,16 @@ What survives is narrower than the prior document claimed, and different in kind
 
 ## Method, and what it does not cover
 
-**What was done.** Fifteen sources from the prior document were carried forward. Five of them (OpenAI, LangChain, Bockeler, Joshi, Setter) were fetched and read in full on 10 August 2026; quotations from those five are verbatim, with punctuation normalised to ASCII. Their outbound citations were followed one hop, which surfaced six additional agent-era sources the prior pass missed. The philosophy's own evidence base was then screened for sources that function as prior art rather than as supporting measurement. Finally, the philosophy's eight rubric elements were traced back to their nearest antecedents in the pre-LLM literature.
+**What was done.** Fifteen sources from the prior document were carried forward and **all fifteen have now been fetched and read**, in two passes on 10 and 11 August 2026. Quotations are verbatim, with punctuation normalised to ASCII. Outbound citations were followed one hop, which surfaced additional agent-era sources the prior pass missed. The philosophy's own evidence base was screened for sources that function as prior art rather than as supporting measurement. The eight rubric elements were traced back to their nearest antecedents in the pre-LLM literature. A bibliographic search of computer-science venues was then run against DBLP.
+
+**Priority dates: settled, and they close the question.** Draft 09 of the philosophy was written on 9 August 2026, and drafts 10 and later after that. Every source in this corpus predates it, the most recent by under a month (Joshi, 14 July 2026). **No priority claim of any kind is available to the philosophy against any source reviewed here.** The hedged framing this document already used - *says more*, never *was first* - is therefore the only defensible one, and every remaining "adds" should be read strictly as scope or precision, never as precedence. What remains undetermined is when the underlying design decisions were made in the project itself; the shipped constraints in `planning/completed/` predate the write-up, but the write-up is what is being compared.
 
 **What was not done, and matters.**
 
-- **Ten of the fifteen carried-forward sources were not re-fetched in this pass.** Their characterisations are inherited from the prior document or from prior knowledge and are marked accordingly. Any "not covered" claim against them is weaker than one against the five verified sources.
-- **No systematic search of academic venues.** No arXiv, ACL, ICML, NeurIPS, CHI, or ICSE sweep was performed. Named academic sources below were recalled, not discovered by search. This is a material gap: the corpus is skewed to English-language practitioner blogging from the last eighteen months, which is exactly the population most likely to converge and least likely to contain the deepest precedent.
-- **No priority dates.** It is not recorded when the philosophy or its predecessors in this folder were drafted relative to the February to July 2026 sources. Without that, every "the philosophy adds" statement is ambiguous between *was first* and *says more*. This document uses *says more* throughout and makes no priority claim.
+- **The academic search is partial, and blocked rather than skipped.** The arXiv export API and the Semantic Scholar graph API both returned HTTP 429 (rate limited) on every attempt, and the arXiv HTML search UI could not be parsed. DBLP answered, but it indexes **titles, authors, and venues only, not abstracts**, and applies AND semantics, so queries of four or more terms returned near-zero hits. Recall is therefore low for compound concepts and for relevant work whose title does not contain the search phrase. What follows is a keyword probe, not a sweep.
+- **Horvitz (1999) was confirmed by reference, not fetched.** Its content is described here from the Amershi et al. page, which presents the 2019 guidelines as a twentieth-anniversary follow-on to it. The prior characterisation stands but rests on a secondary source.
 - **No source-quality weighting was applied by the prior document, and this one states it instead of correcting it.** One source it ranked as the "closest rhetorical match" is a knowledge-base page on a solo consultancy site; several peer-reviewed sources with closer content were absent.
-- **The reviewed sources are not independent observations.** OpenAI cites King and Krenzel. Bockeler cites OpenAI and LangChain. Joshi builds on Evans and Fowler. Sources 1 to 7 and 12 to 13 of the prior document form one citation cluster. Fifteen entries overstate the breadth of the search.
+- **The reviewed sources are not independent observations.** OpenAI cites King and Krenzel. Bockeler cites OpenAI and LangChain. Joshi builds on Evans and Fowler. Horthy cites Anthropic and Metz. Anthropic's code-execution post cites Cloudflare. Sources 1 to 7 and 12 to 15 of the prior document form one citation cluster. Fifteen entries overstate the breadth of the search.
 
 ## The rubric
 
@@ -54,29 +55,30 @@ These are the eight elements the philosophy contributes. This is the instrument 
 
 ## Coverage matrix
 
-Legend: **F** = expressly formulated. **P** = present in substance, not formulated as such. **-** = absent or immaterial. **v** after a source name = fetched and read in this pass; otherwise inherited or recalled and not re-verified.
+Legend: **F** = expressly formulated. **P** = present in substance, not formulated as such. **-** = absent or immaterial. **v** = fetched and read in this review; **r** = confirmed by reference only; unmarked = recalled, not verified.
 
 ### Contemporary sources (2024-2026)
 
 | Source | E1 | E2 | E3 | E4 | E5 | E6 | E7 | E8 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Horthy, 12-Factor Agents (2025) | P | P | P | P | F | - | - | - |
-| Anthropic, Writing effective tools for agents (2025) | P | P | P | P | F | - | - | - |
-| Anthropic, Building effective agents (2024) | P | P | - | P | P | - | - | - |
-| Anthropic, Code execution with MCP (2025) | - | - | P | F | F | - | - | - |
+| Horthy, 12-Factor Agents (2025) **v** | P | P | P | P | F | - | - | - |
+| Anthropic, Writing effective tools for agents (2025) **v** | P | P | P | P | F | - | - | - |
+| Anthropic, Building effective agents (2024) **v** | P | P | - | P | P | - | - | - |
+| Anthropic, Code execution with MCP (2025) **v** | - | P | P | F | F | - | - | - |
 | Anthropic, Effective context engineering (2025) | - | - | - | P | F | - | - | - |
 | OpenAI, Harness engineering (2026) **v** | P | F | F | P | F | P | F | - |
-| OpenAI, Practical guide to building agents (2025) | P | P | - | P | P | - | - | - |
+| OpenAI, Practical guide to building agents (2025) **v** | P | P | - | P | P | - | - | - |
 | LangChain, Anatomy of an Agent Harness (2026) **v** | P | P | P | P | F | - | - | - |
 | Bockeler, Harness engineering for coding agent users (2026) **v** | F | P | F | P | F | P | P | - |
 | Joshi, DSLs Enable Reliable Use of LLMs (2026) **v** | P | F | F | P | F | - | P | - |
 | Setter, Probabilistic Core / Deterministic Shell (2026) **v** | P | F | P | P | P | - | - | - |
-| Krenzel, AI Is Forcing Us To Write Good Code (2025) | P | F | F | P | P | P | P | - |
-| Cloudflare, Code Mode (2025) | - | - | P | F | P | - | - | - |
+| Krenzel, AI Is Forcing Us To Write Good Code (2025) **v** | P | F | F | P | P | P | P | - |
+| Cloudflare, Code Mode (2025) **v** | - | P | P | F | P | - | - | - |
 | Yang et al., SWE-agent ACI (NeurIPS 2024) | P | F | - | P | F | - | - | - |
-| Kambhampati et al., LLM-Modulo (ICML 2024) | P | F | P | P | P | - | - | - |
-| Debenedetti et al., CaMeL (2025) | F | F | F | F | P | - | - | - |
+| Kambhampati et al., LLM-Modulo (ICML 2024) **v** | P | F | P | P | P | - | - | - |
+| Debenedetti et al., CaMeL (2025) **v** | F | F | F | F | P | - | - | - |
 | Cognition, Don't Build Multi-Agents (2025) | - | - | P | F | F | - | - | - |
+| Wang, Li and Chen, LLM-friendly OS interfaces (EuroSys 2026) | - | - | P | F | F | - | - | - |
 
 ### Pre-LLM canon
 
@@ -88,15 +90,15 @@ Legend: **F** = expressly formulated. **P** = present in substance, not formulat
 | Norman, forcing functions and knowledge in the world (1988) | P | F | F | - | P | - | - | - |
 | Evans, DDD (2003); Naur (1985) | - | - | F | - | - | P | F | - |
 | Hunt and Thomas, DRY (1999); Metz (2016) | - | - | F | - | - | P | P | - |
-| King, Parse don't validate (2019) | - | P | F | - | - | - | - | - |
+| King, Parse don't validate (2019) **v** | - | P | F | - | - | - | - | P |
 | Howard, Information Value Theory (1966) | - | - | - | F | F | - | - | - |
 | Gat (1998); Sutton, Precup and Singh (1999) | P | - | - | F | - | - | - | - |
 | Fowler, Remote Facade (2002); GraphQL (2015) | - | - | - | P | F | - | - | - |
 | Grice, Logic and Conversation (1975) | - | - | - | - | F | - | - | - |
-| Horvitz, Mixed-Initiative (CHI 1999) | P | - | - | F | P | - | - | - |
-| Amershi et al., Guidelines for Human-AI Interaction (CHI 2019) | P | - | - | P | F | - | - | - |
+| Horvitz, Mixed-Initiative (CHI 1999) **r** | P | - | - | F | P | - | - | - |
+| Amershi et al., Guidelines for Human-AI Interaction (CHI 2019) **v** | P | - | - | P | F | - | - | - |
 
-**What the matrix shows.** Every element except E8 is expressly formulated by at least one source, and most by several. E6 and E7 are formulated only in adjacent literatures (quality engineering, technical debt) rather than in the agent-tool literature. E8 is the only element no reviewed source states. E1 is covered as a taxonomy by Bockeler and as an architecture by CaMeL, but not with the philosophy's specific carving.
+**What the matrix shows.** Every element is expressly formulated by at least one source, and most by several. E6 and E7 are formulated only in adjacent literatures (quality engineering, technical debt) rather than in the agent-tool literature. E1 is covered as a taxonomy by Bockeler and as an architecture by CaMeL, but not with the philosophy's specific carving. **E8 is no longer empty:** verification showed that King (2019) states the substance of its fifth rule. Only the benefit-accounting rules 1 to 4 remain unattested.
 
 ## Part A: the pre-LLM canon the prior document omitted
 
@@ -120,7 +122,13 @@ The distinction the philosophy treats as its sharpest - *influencing a proposal*
 
 The canonical-source mechanism is **DRY** (Hunt and Thomas, 1999), stated originally about *knowledge*, not text. Critically, the philosophy's caution against **false canonicalization** - which the prior document claims as an addition against five sources - is also long-established: DRY's own formulation excludes coincidental duplication, and Metz's **"duplication is far cheaper than the wrong abstraction"** (2016), the Rule of Three, and AHA programming are the standard counterweights. This should be cited, not claimed.
 
-King (2019) remains correctly placed, with one addition the prior document missed: parsing proves *structure*, never *intent*, which is the same gap the philosophy names when it says a declaration is not ground truth.
+King (2019) is more of a precursor than the prior document allowed, and verification changed two cells in the matrix.
+
+First, the addition the prior document did identify holds: parsing proves *structure*, never *intent*, which is the same gap the philosophy names when it says a declaration is not ground truth.
+
+Second, and larger: King states the **partial-effects** argument that the philosophy treats as its own, quoting the 2016 LangSec taxonomy on shotgun parsing - *"Late-discovered errors in an input stream will result in some portion of invalid input having been processed, with the consequence that program state is difficult to accurately predict"* - and adding that such a program *"runs the risk of acting upon a valid portion of the input, discovering a different portion is invalid, and suddenly needing to roll back whatever modifications it already executed in order to maintain consistency. Sometimes this is possible - such as rolling back a transaction in an RDBMS - but in general it may not be."* That is the substance of the philosophy's fifth accounting rule (grouping and validation are different capabilities) and of its treatment of calls that stop partway, stated in 2019.
+
+Third, King states the canonical-source mechanism **with its qualification**: *"Avoid denormalized representations of data, especially if it's mutable. Duplicating the same data in multiple places introduces a trivially representable illegal state: the places getting out of sync. Strive for a single source of truth,"* immediately followed by *"Keep denormalized representations of data behind abstraction boundaries."*
 
 *What genuinely refines the canon:* separating the three mechanisms - dependency, canonical source, choice clarity - and assigning each a distinct failure mode (uncheckable relationship, concentrated blast radius, collapsed distinction). The canon contains all three ideas but tends to bundle them under "good structure."
 
@@ -169,9 +177,21 @@ What the philosophy adds against her is narrow and real: she does not state an e
 
 **Joshi, *DSLs Enable Reliable Use of LLMs* (14 July 2026).** The prior characterisation holds and understates two things. Joshi explicitly grounds the argument in Domain-Driven Design and Ubiquitous Language, which is where the philosophy's Principle 2 heading comes from. And he states the representation-cost tradeoff the prior document claims as an addition: *"There is also a real upfront cost in designing and maintaining the language and its semantic model. The payoff is therefore concentrated in well-factored, genuinely constrained DSLs backed by a validator."* His domain-level error messages - *"you cannot select an action before choosing a client"* rather than a stack trace - are decision-complete refusals.
 
-### Sources carried forward without re-verification
+### Sources verified in the second pass
 
-Horthy's 12-Factor Agents, Anthropic's tool-writing and agent-building articles, Anthropic's code-execution article, OpenAI's practical guide, Krenzel, Cloudflare's Code Mode, King, Horvitz, and Amershi et al. retain the prior document's characterisations, with one global correction: every bullet in those sections that claims the E2 formalisation, the E4 decision test, or the E5 completeness criterion as an addition is superseded by Part A. The remaining differences are matters of scope and vocabulary.
+The remaining nine were fetched on 11 August 2026. The prior characterisations survive, with one global correction and four specific findings.
+
+**Global correction.** Every bullet in the prior document that claims the E2 formalisation, the E4 decision test, or the E5 completeness criterion as an addition is superseded by Part A. The remaining differences are matters of scope and vocabulary.
+
+**Anthropic, *Building effective agents* (19 December 2024) - the mistake-proofing claim must be withdrawn.** Appendix 2 says, in a bulleted list of tool-design advice: *"Poka-yoke your tools. Change the arguments so that it is harder to make mistakes,"* with a link to the Wikipedia article. It also names the concept the philosophy uses without naming: *"think about how much effort goes into human-computer interfaces (HCI), and plan to invest just as much effort in creating good agent-computer interfaces (ACI)."* Mistake-proofing and the ACI framing were therefore both in the agent-tool literature in December 2024, eighteen months before the philosophy was drafted. The programmatic "gate" in prompt chaining is confirmed, as is *"agents can then pause for human feedback at checkpoints or when encountering blockers."* The page now carries a currency notice: *"Much of the tooling landscape described in this post has changed since December 2024."*
+
+**OpenAI, *A practical guide to building agents* (2025) - a sharper contrast than the prior document drew.** The guardrail taxonomy is confirmed (relevance classifier, safety classifier, PII filter, moderation, tool safeguards, rules-based protections, output validation), as are tool risk ratings scored on *"read-only vs. write access, reversibility, required account permissions, and financial impact"* and the two human-intervention triggers. But the execution model is stated explicitly and it is the opposite of complete mediation: *"The Agents SDK treats guardrails as first-class concepts, relying on optimistic execution by default. Under this approach, the primary agent proactively generates outputs while guardrails run concurrently, triggering exceptions if constraints are breached."* Concurrent checking against in-flight output is not a pre-effect guard. The philosophy's third condition - a refused request leaves the artifact unchanged - is a genuinely stronger requirement, and this is now evidenced rather than asserted.
+
+**Krenzel, *AI Is Forcing Us To Write Good Code* (29 December 2025) - closer to Principles 1 and 2 than credited.** He applies database constraints as write-time guards on an agent: *"we use Postgres' type system as best as we can, and add checks and triggers for invariants that don't fit into simple column types... If an agent tries to write invalid data, our database will usually complain clearly and loudly."* And he states make-illegal-states-unrepresentable in agent terms: *"Entire categories of illegal states and transitions can be eliminated. And types shrink the search space of possible actions the model can take."* This is the representation-to-enforcement chain for a mutating agent, in December 2025. It is a six-person team's field report with no measurements.
+
+**Anthropic, *Code execution with MCP* (4 November 2025) and Cloudflare, *Code Mode* (26 September 2025) - both understate their own enforcement content.** Anthropic reports 150,000 tokens down to 2,000 (98.7%), states the cost honestly (*"code execution introduces its own complexity... should be weighed against these implementation costs"*), and describes PII tokenisation that lets data flow between tools without entering model context, adding: *"You can also use this to define deterministic security rules, choosing where data can flow to and from."* Cloudflare's bindings are a capability mechanism, not merely a sandbox: the generated code has no network access at all and reaches MCP servers only through injected bindings, which also means *"the AI cannot possibly write code that leaks any keys."* Both belong at E2=P rather than E2=absent, and both are closer to CaMeL's data-flow control than the prior document allowed.
+
+**Horthy, *12-Factor Agents*** and **Amershi et al. (2019)** are confirmed as characterised: the twelve factor titles, the three-step loop, and the eighteen guidelines in four phases all match. Two details worth recording. Horthy's Related Resources link to Metz's *The Wrong Abstraction*, so the false-canonicalization counterweight is already inside this corpus's citation network. Amershi et al. state a scope limit the philosophy's use of them should respect: *"The guidelines were developed and tested on products with graphical user interfaces."*
 
 ### Agent-era sources the prior pass missed
 
@@ -182,10 +202,22 @@ Six were one hop from sources already reviewed; three are peer-reviewed or secur
 - **Debenedetti et al., CaMeL: Defeating Prompt Injections by Design (2025).** A privileged planner model emits a program, a quarantined model handles untrusted data, and a deterministic interpreter enforces capability policies over an explicit data-flow graph. This is enforcement, representation, and control in one architecture, with a threat model the philosophy does not have. The nearest thing in the literature to the philosophy's four boundaries realised as a system.
 - **Anthropic, Effective harnesses for long-running agents (2026).** Linked from Bockeler.
 - **Stripe, minions (2026).** Linked from Bockeler. Pre-push hooks selected by heuristic, "shift feedback left," blueprints wiring sensors into agent workflows.
-- **Chroma, Context Rot (2025).** Referenced by LangChain. Empirical support for, and a precursor to, the philosophy's claim that too much information degrades the decision rather than merely costing tokens.
+- **Chroma, *Context Rot: How Increasing Input Tokens Impacts LLM Performance* (14 July 2025).** Fetched and read. Eighteen models, published codebase, an LLM judge aligned above 0.99 to human labels, and - the property that makes it usable - task difficulty held constant while only input length varies. Two results bear directly on the philosophy: on LongMemEval, every model scored significantly higher on focused prompts (about 300 tokens) than on full prompts (about 113,000 tokens) containing the same answer plus irrelevant context; and *"even a single distractor reduces performance relative to the baseline, and adding four distractors compounds this degradation,"* with distractors defined as topically related but not answering the question. The first is the philosophy's over-stuffing claim measured; the second is its choice-clarity mechanism measured on the model rather than on humans. It is a vendor technical report from a company selling retrieval infrastructure, and not peer-reviewed.
 - **Anthropic, Effective context engineering for AI agents (2025).** "Smallest set of high-signal tokens" is E5 under another name.
 - **Cognition, Don't Build Multi-Agents (2025).** Actions carry implicit decisions; conflicts arise when parallel actors cannot see the decisions others made. A control-and-information boundary argument.
 - **matklad, ARCHITECTURE.md (2021); agents.md; llms.txt.** Legibility and progressive-disclosure precursors, all linked from OpenAI's post.
+
+### The bibliographic probe
+
+Run against DBLP on 11 August 2026, after arXiv and Semantic Scholar rate-limited every request. DBLP matches titles only, so this is a keyword probe with low recall, not a survey. Three findings.
+
+**The gap the philosophy scopes out is a mature field, not a frontier.** The title phrase "prompt injection defense" alone returns 63 records, including at least four 2026 systematic reviews (IEEE Access; *Information*; two on arXiv), a critical evaluation of defenses at SACMAT 2026, and *Architecting Secure AI Agents: Perspectives on System-Level Defenses Against Indirect Prompt Injection Attacks* (Xiang, Zagieboylo, Ghosh, Kariyappa, Greshake, Xiao, Suh et al., 2026). Two are close enough to bear on the philosophy directly: *Defense Against Indirect Prompt Injection via Tool Result Parsing* (Yu, Cheng and Liu, 2026), which is the peer-reviewable counterpart of "results are data, not instructions," and *Agent Privilege Separation... A Structural Defense Against Prompt Injection* (2026). The philosophy is right to scope this out and right to name it, but it should point at this literature rather than describe it as unaddressed.
+
+**One peer-reviewed systems paper is a direct precursor to Principles 3 and 4.** Wang, Li and Chen, *From Imperative to Declarative: Towards LLM-friendly OS Interfaces for Boosted Computer-Use Agents*, EuroSys 2026 (earlier as arXiv:2510.04607, 2025), argues for redesigning the interface itself so an agent expresses an outcome once instead of driving a sequence of primitive operations. That is the philosophy's decision-boundary argument at the systems level, in a top venue, before the philosophy was drafted.
+
+**Principle 3 has continuing empirical work.** Lin, Liew, Savarese and Li, *W&D: Scaling Parallel Tool Calling for Efficient Deep Research Agents* (2026).
+
+What the probe could not do: search abstracts, cover venues DBLP indexes thinly, or return anything for compound queries such as "agent action verification safety LLM," which matched zero titles. Absence of hits here is not evidence of absence in the field.
 
 ## Part C: prior art inside the project's own evidence base
 
@@ -239,27 +271,28 @@ Each claim stated once. Verdicts: **Superseded** (prior art states it with equal
 | E3 declaration is not intent | King (parsing proves structure, not intent); DRY-as-knowledge | **Refinement.** |
 | E3 false canonicalization | Metz (2016); Rule of Three; DRY's own scope limit | **Superseded.** Cite, do not claim. |
 | E4 pre-observation decision test | Howard (1966); Gat (1998); Sutton et al. (1999); workflow deciders | **Restatement**, with an unstated falsifiability problem. |
-| E4 grouping is not validation | Standard in transaction processing and API design; not stated in the agent literature | **Refinement.** Uncommon in genre. |
+| E4 grouping is not validation | King (2019) quoting LangSec on shotgun parsing; standard in transaction processing and API design; not stated in the agent literature | **Restatement.** Uncommon in the agent genre, established elsewhere. |
 | E5 decision-completeness | Grice (1975); sufficient statistic; GraphQL; Fowler's Remote Facade; SWE-agent ACI; Anthropic high-signal responses | **Restatement.** |
 | E5 bidirectionality | Request-side coverage is thinner in the agent literature than result-side | **Refinement.** |
 | E6 Safer / Cleaner / Faster split | Internal versus external quality; defect stock versus inflow in technical-debt literature | **Refinement.** Uncommon in the agent-tool literature specifically. |
 | E7 maintenance cycle | Cunningham's debt metaphor; OpenAI's garbage collection; Fagan-era prevention economics | **Restatement**, with clearer conditions. |
-| E8 non-additive accounting | Standard in cost-benefit analysis and causal mediation; absent from every reviewed source | **Uncommon.** The strongest claim in the ledger. |
+| E8 non-additive accounting | Standard in cost-benefit analysis and causal mediation; rule 5 is stated in substance by King (2019); rules 1 to 4 absent from every reviewed source | **Refinement.** Rules 1 to 4 remain the strongest claim in the ledger; rule 5 must be attributed. |
 | Published Limits section | Absent from every reviewed source except as scattered caveats | **Uncommon.** Not claimed by the prior document. |
 | Evidence base carrying counterevidence and rejected evidence | No reviewed source does this | **Uncommon.** The strongest and least contested contribution. Not claimed by the prior document. |
 
 ## Calibrated closing claim
 
-> The thesis - probabilistic judgment inside deterministic containment - is a 2025-2026 consensus, reached independently by OpenAI, Thoughtworks, LangChain, Anthropic, and others, and it rests on much older foundations: the reference monitor and complete mediation (1972-1975), design by contract, mistake-proofing, domain-driven design, value of information, and Grice's maxims. This document does not originate the enforcement boundary, explicit structure, decision-based control, or context-economical interfaces, and several of its per-crossing tests are restatements of established criteria in unfamiliar vocabulary.
+> The thesis - probabilistic judgment inside deterministic containment - is a 2025-2026 consensus, reached independently by OpenAI, Thoughtworks, LangChain, Anthropic, and others, and it rests on much older foundations: the reference monitor and complete mediation (1972-1975), design by contract, mistake-proofing, domain-driven design, value of information, and Grice's maxims. Every source reviewed here predates the philosophy, so no claim of precedence is available against any of them. This document does not originate the enforcement boundary, explicit structure, decision-based control, or context-economical interfaces, and several of its per-crossing tests are restatements of established criteria in unfamiliar vocabulary. Mistake-proofing had already been named in the agent-tool literature in December 2024; the partial-effects argument had been made in 2019.
 >
 > What is comparatively rare is the packaging: four placement questions applied as a single checklist to one model-tool loop; the decomposition of Cleaner into state quality and structural clarity; explicit accounting rules that forbid counting one causal chain three times; a published limits section; and an evidence base that records counterevidence and the evidence that was considered and rejected. The last two are the strongest and least contested contributions.
 
 ## Open items
 
-1. **Establish drafting dates** for the philosophy and its predecessors in this folder, so that "adds" can be separated from "was first" where it matters.
-2. **Re-verify the ten inherited sources** and replace inherited characterisations with quoted, anchored ones.
-3. **Run an academic search** (arXiv, ACL Anthology, ICML, NeurIPS, CHI, ICSE) for agent-tool interface design, verifier-in-the-loop generation, and tool-call consolidation. The current corpus is practitioner-biased.
-4. **Add the omitted citations to the philosophy itself**, not just to this review: Saltzer and Schroeder for the enforcement conditions, Shingo or Norman for control-versus-warning, Evans and Naur for representation, Metz for false canonicalization, Howard for the control test, Grice for decision-completeness.
+1. ~~**Establish drafting dates.**~~ **Closed, 11 August 2026.** Draft 09 was written 9 August 2026; later drafts after that. Every source predates the philosophy, so no priority claim is available and none is made. Still worth recording separately: when the shipped constraints themselves were designed, which the completed-work folders would answer.
+2. ~~**Re-verify the inherited sources.**~~ **Closed, 11 August 2026.** All fifteen carried-forward sources have now been fetched and read, except Horvitz (1999), confirmed by reference only and marked **r**. Four characterisations changed; see Part B.
+3. **Run a full academic search.** **Advanced, not closed.** A DBLP title probe was run; arXiv and Semantic Scholar rate-limited every attempt and remain unsearched, as do ACL Anthology, ICML, NeurIPS, CHI and ICSE proceedings directly. An abstract-level search is still needed and is the largest remaining hole.
+4. **Add the omitted citations to the philosophy itself**, not just to this review: Saltzer and Schroeder for the enforcement conditions, Shingo or Norman for control-versus-warning, Evans and Naur for representation, Metz for false canonicalization, Howard for the control test, Grice for decision-completeness, and King for the partial-effects argument.
 5. **Add the falsifiability limitation of E4** to the philosophy's Limits section.
-6. **Decide whether to adopt requisite variety and harnessability**, which are the two ideas in this corpus with no counterpart in the philosophy.
-7. **Recheck cadence.** The contemporary cluster is moving fast enough that this assessment has a useful life measured in months.
+6. **Point the injection paragraph at the literature.** The philosophy currently says the problem "deserves separate treatment" without saying where that treatment is. It exists in volume; name a survey and CaMeL.
+7. **Decide whether to adopt requisite variety and harnessability**, which are the two ideas in this corpus with no counterpart in the philosophy.
+8. **Recheck cadence.** The contemporary cluster is moving fast enough that this assessment has a useful life measured in months.
