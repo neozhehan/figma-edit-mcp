@@ -143,13 +143,13 @@ The prevented defect and the avoided repair are the same event described at two 
 
 ### Evidence
 
-**Guarded editing and recovery.** In the closest agent-edit analogue, SWE-agent discarded edits that introduced syntax errors and asked the agent to retry. The agent solved 18.0% of benchmark tasks with the guarded interface versus 15.0% without it. Because the intervention combined rejection, feedback, and retry, it supports the guarded loop as a whole rather than isolating the check.
+**Guarded editing and recovery.** In the closest agent-edit analogue, SWE-agent discarded edits that introduced syntax errors and asked the agent to retry — the same pattern figma-edit-mcp uses. The agent solved 18.0% of benchmark tasks with the guarded interface versus 15.0% without it. Because the intervention combined rejection, feedback, and retry, it supports the guarded loop as a whole rather than isolating the check.
 
 **Blocking at the tool boundary.** In a controlled benchmark for tool-calling agents, moving the same model behind a runtime check cut successful attacks from 40% to 5% while the model kept attempting them. The attempts stayed unreliable; the check stopped the consequence.
 
 **A check compared against a prompt.** A randomized trial covering 901,776 clinical ordering sessions found that requiring a clinician to re-enter the patient's identity cut wrong-patient orders by 41%, against 16% for a click-through confirmation alone.
 
-**Inflow and repair over years.** In 2019, memory-handling errors caused 76% of Android's security vulnerabilities. Google then required new code to be written in languages whose compilers refuse memory-unsafe code, and left the existing code in place, continuing to repair it. The annual count fell from 223 in 2019 to 85 in 2022. The decline came from lower inflow together with continued removal; prevention did not repair the old defects.
+**Inflow and repair over years.** In 2019, memory-handling errors caused 76% of Android's security vulnerabilities. Google then required new code to be written in languages whose compilers refuse memory-unsafe code, and left the existing code in place, continuing to repair it. The annual count fell from 223 in 2019 to 85 in 2022, on the way to a projected 24% share by 2024. The decline came from lower inflow together with continued removal; prevention did not repair the old defects.
 
 **Prevention measured against repair, including the cost of checking.** IBM's original inspection study reported 23% higher coding-operation productivity after counting inspection and rework effort, together with 38% fewer errors during later equivalent testing. A field study of 30 industrial software products modeled both the overhead of process controls and the reduction in rework, and found lower cycle time and effort at the sample average. An observational study of 35 industrial projects found that automated static analysis identified unique defects at comparatively low find-and-fix effort.
 
@@ -335,7 +335,7 @@ Everything here also has a time horizon: explicit structure usually costs time n
 
 ## One example, end to end
 
-Figma lets you delete a variable that layers still use, leaving broken references that are hard to find and repair. Users on Figma's own forum describe the result: one found [1,548 orphaned variable references](https://forum.figma.com/suggest-a-feature-11/make-it-easier-to-fix-broken-variable-references-33999) after reorganizing their variables, and the available cleanup action [fixes only some of them](https://forum.figma.com/ask-the-community-7/locate-and-delete-lingering-used-variables-16794).
+Figma lets you delete a variable that layers still use, leaving broken references that are hard to find and repair. Users on Figma's own forum describe the result: one found [1,548 orphaned variable references](https://forum.figma.com/suggest-a-feature-11/make-it-easier-to-fix-broken-variable-references-33999) after reorganizing their variables, and the "Detach deleted variables" quick action [fixes only some of them](https://forum.figma.com/ask-the-community-7/locate-and-delete-lingering-used-variables-16794).
 
 The four principles meet in this one case, in order:
 
@@ -345,6 +345,8 @@ The four principles meet in this one case, in order:
 - Principle 3 applies when several deletions or cleanup steps have already been decided and can stay inside one call. A refusal is the opposite case: it creates a new decision, so control should return.
 
 This is not four copies of one benefit. The recorded relationship makes the check possible, the check prevents the broken reference, and the refusal makes correcting it cheap. Consolidating already-decided work is a separate effect on coordination.
+
+The forum reports are not a measurement. They do not quantify the average speedup of the check. What they identify is an error class for which containing the mistake at the point of change is predictably cheaper than reconstructing the affected state afterwards.
 
 Project-specific sources and limitations are collected under [Deleting an in-use variable in Figma](../../EVIDENCE.md#deleting-an-in-use-variable-in-figma).
 
