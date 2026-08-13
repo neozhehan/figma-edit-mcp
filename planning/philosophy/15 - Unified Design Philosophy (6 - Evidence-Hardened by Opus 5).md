@@ -2,13 +2,44 @@
 
 The [README](../../README.md) explains what figma-edit-mcp does. This document explains the principles behind designing tools for AI agents, and why figma-edit-mcp is built the way it is. The exact enforcement guarantees and their conditions live in [SAFETY.md](../../SAFETY.md). Sources, methods, and limitations for every empirical claim here are collected in [EVIDENCE.md](../../EVIDENCE.md).
 
-Much of the published guidance on designing tools for agents assumes a tool that reads: search, retrieval, lookup. The questions change when the tool changes something. A bad read wastes a turn; a bad write damages the thing you were working on, and the damage outlives the conversation. This document is about the second case.
+Much of the published guidance on designing tools for AI models assumes a tool that reads: search, retrieval, lookup. The considerations & stakes change when the tool is capable of making changes. A bad read wastes a turn; a bad write damages the thing you were working on, and the damage outlives the session. This document is about avoiding bad writes & bad changes.
+
+## Contents
+
+- [The boundary we are designing](#the-boundary-we-are-designing)
+- [What a well-designed boundary produces](#what-a-well-designed-boundary-produces)
+  - [The goals are connected, not additive](#the-goals-are-connected-not-additive)
+  - [Safer and Cleaner form a maintenance cycle](#safer-and-cleaner-form-a-maintenance-cycle)
+  - [Placement is a tradeoff in both directions](#placement-is-a-tradeoff-in-both-directions)
+- [Principle 1 — Put enforceable rules in the tool, not only in the prompt](#principle-1--put-enforceable-rules-in-the-tool-not-only-in-the-prompt)
+  - [How enforcement produces Safer](#how-enforcement-produces-safer)
+  - [How enforcement leads to Cleaner](#how-enforcement-leads-to-cleaner)
+  - [How enforcement leads to Faster](#how-enforcement-leads-to-faster)
+  - [Evidence for enforcement](#evidence-for-enforcement)
+- [Principle 2 — Make consequential relationships explicit](#principle-2--make-consequential-relationships-explicit)
+  - [How explicit structure leads to Safer](#how-explicit-structure-leads-to-safer)
+  - [How explicit structure leads to Faster](#how-explicit-structure-leads-to-faster)
+  - [Evidence for explicit structure](#evidence-for-explicit-structure)
+- [Principle 3 — Keep already-determined work inside one call; return control when new judgment is needed](#principle-3--keep-already-determined-work-inside-one-call-return-control-when-new-judgment-is-needed)
+  - [Grouping is not validation](#grouping-is-not-validation)
+  - [Evidence for consolidating determined work](#evidence-for-consolidating-determined-work)
+- [Principle 4 — Make each exchange decision-complete](#principle-4--make-each-exchange-decision-complete)
+  - [Results are data, not instructions](#results-are-data-not-instructions)
+  - [How this works with the other three](#how-this-works-with-the-other-three)
+  - [Why this produces Faster](#why-this-produces-faster)
+  - [Evidence for decision-complete exchanges](#evidence-for-decision-complete-exchanges)
+- [The four principles as one boundary](#the-four-principles-as-one-boundary)
+  - [Counting the benefits once](#counting-the-benefits-once)
+- [One example, end to end](#one-example-end-to-end)
+- [How to draw the boundary](#how-to-draw-the-boundary)
+- [How to tell whether the boundary is in the right place](#how-to-tell-whether-the-boundary-is-in-the-right-place)
+- [Limits](#limits)
 
 ## The boundary we are designing
 
 An AI tool joins two different kinds of capability.
 
-The model supplies judgment. It interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new evidence changes what the task means. Instructions can improve that judgment. They cannot guarantee that the model will apply a rule correctly every time.
+The first is judgement, which is carried out by the AI model that is using the tool. The AI model interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task it was assigned means. Instructions can improve that judgment, but they cannot guarantee that the AI model will follow the instructions correctly every time.
 
 Software supplies checks and execution. It can apply a stated rule to the state it observes, refuse a prohibited change, and carry out work whose choices have already been made. Its advantage is repeatability: a check does not depend on the model remembering anything.
 
@@ -87,7 +118,7 @@ The enforcement boundary separates what the model proposes from what the tool le
 
 An instruction asks the model to remember a rule, recognize when it applies, and follow it. Instructions are valuable, because they improve the requests the model makes. But they cannot guarantee that every request will comply.
 
-A review step by the same model does not close that gap either. Asked to reconsider its own output with no external signal, the model has to judge its own correctness — and that judgment is the thing in question. The verdict has to come from somewhere the model is not.
+A review step by the same model does not close that gap either. Asked to reconsider its own output with no external signal, the model has to judge its own correctness — and that judgment is the thing in question. The verdict has to come from outside the model.
 
 A check controls whether a request takes effect. It applies its predicate to the state it observes at the point of change, and gives the same answer every time — whichever model is connected, however full its context is, whether or not it ever read the rules. The model can still ask to do the prohibited thing; the tool does not have to carry it out.
 
@@ -143,13 +174,13 @@ covered change refused
 
 The prevented defect and the avoided repair are the same event described at two points in time.
 
-### Evidence
+### Evidence for enforcement
 
 **The checker cannot be the model.** Across several models and benchmarks, asking a model to review and revise its own answer with no external feedback made accuracy worse — in the largest case, from 75.8% to 38.1%. Supplying an external verdict on whether the answer was already correct reversed the direction, raising the same model from 75.9% to 84.3% on another benchmark. The authors' explanation is the design argument in one line: models cannot reliably judge the correctness of their own reasoning. The finding is scoped to reasoning, and self-correction still works where the model genuinely can judge its own output, such as tone or refusal.
 
 **Guarded editing and recovery.** In the closest agent-edit analogue, SWE-agent discarded edits that introduced syntax errors and asked the agent to retry — the same pattern figma-edit-mcp uses. The agent solved 18.0% of benchmark tasks with the guarded interface versus 15.0% without it. Because the intervention combined rejection, feedback, and retry, it supports the guarded loop as a whole rather than isolating the check.
 
-**Blocking at the tool boundary.** In a controlled benchmark for tool-calling agents, an undefended agent executed 40.0% of attempted attacks. The strongest prompt-only defence brought that to 35.0%. Moving the same model behind a runtime check brought it to 5.0%, while the agent went on attempting the attacks at the same rate. The instruction moved the number by five points; the check moved it by thirty-five. The same study reports a 30.0% task-level false-positive rate, dominated by least-privilege denials the policy was written to produce — which is exactly the over-enforcement cost this document keeps insisting should be counted.
+**Blocking at the tool boundary.** In a controlled benchmark for tool-calling agents, 40.0% of adversarial tasks succeeded against an undefended agent. The strongest prompt-only defence brought that to 35.0%. Moving the same model behind a runtime check brought it to 5.0%, while the agent went on attempting the attacks at the same rate. The same study reports a 30.0% task-level false-positive rate, dominated by least-privilege denials the policy was written to produce — the over-enforcement cost this document argues should be counted.
 
 **A check compared against a prompt.** A randomized trial covering 901,776 clinical ordering sessions found that requiring a clinician to re-enter the patient's identity cut wrong-patient orders by 41%, against 16% for a click-through confirmation alone.
 
@@ -215,13 +246,13 @@ recorded distinction
 
 Structure costs time to create and maintain, so it pays off most where the artifact will be reused, changed, or handed off. The claim is not that cleanup is free. It is that recurring work should not keep paying for the same avoidable ambiguity.
 
-### Evidence
+### Evidence for explicit structure
 
 **Checkability.** Engineering CAD software can record how the pieces of a model depend on one another. In a study comparing modelling styles, the models that recorded those dependencies showed an error pointing straight at the piece that broke when a designer changed something it relied on; a style that left the dependencies out produced broken geometry that still looked finished. Databases show the same mechanism: once a relationship is declared, the database can refuse a deletion that would break it.
 
 **Divergence.** When programmers duplicate a block of code instead of sharing one copy, a bug in the original is carried into every duplicate, and a later fix often reaches only some of them.
 
-**Clear alternatives.** Units caring for newborns that gave babies near-identical temporary names, such as "Babyboy Smith," had staff place orders on the wrong baby; giving each newborn a more distinctive name reduced those wrong-patient orders. In a controlled experiment with 72 professional developers, meaningful word identifiers made finding semantic defects 19% faster than abbreviations or single letters. The same effect has now been measured on the model rather than the operator: adding a single topically related distractor to an otherwise identical retrieval task lowers accuracy, and adding four compounds it.
+**Clear alternatives.** Units caring for newborns that gave babies near-identical temporary names, such as "Babyboy Smith," had staff place orders on the wrong baby; giving each newborn a more distinctive name reduced those wrong-patient orders. In a controlled experiment with 72 professional developers, meaningful word identifiers made finding semantic defects 19% faster than abbreviations or single letters. A related effect has been measured on the model rather than the operator: adding a single topically related distractor to an otherwise identical retrieval task lowers accuracy, and adding four compounds it.
 
 **Recurring work.** In a counterbalanced Figma experiment, designers completed matched tasks 34% faster when they had a current, task-relevant design system instead of old design files to search. Studies of CAD models, production codebases, and structural antipatterns point the same way: structure that communicates intent lowers the cost of later modification, and combinations of structural problems raise it. Figma's own guidance for its MCP server makes the point from the other direction — structured files with real components, semantic layer names, and variables [produce the best model output](https://developers.figma.com/docs/figma-mcp-server/structure-figma-file/).
 
@@ -259,11 +290,11 @@ Validating up front only covers what the tool can detect before it starts. A cal
 
 This project answers the question above by keeping what succeeded and reporting it exactly. A batch containing one detectably invalid member mutates nothing. Once mutation begins, execution runs in input order, stops at the first failure, and returns one row per requested item, distinguishing success, partial success, failure, and skipped work — with no general transaction layer promised. Where recovery cannot confirm that it restored the prior state, the initiating error carries partial-mutation evidence rather than a claim of rollback. [SAFETY.md](../../SAFETY.md) states this as guarantee G4 and assumption A5.
 
-### Evidence
+### Evidence for consolidating determined work
 
-The measurement this principle needs is not fewer tokens or fewer turns. It is whether correct completion takes less time. Three systems in a neighbouring domain — agents driving desktop and mobile applications — now report success and elapsed time together.
+The measurement this principle needs is not fewer tokens or fewer turns. It is whether correct completion takes less time. Three systems in a neighbouring domain — agents driving desktop and mobile applications — report success and elapsed time together.
 
-**The strongest case, with the confound removed.** DMI replaced imperative GUI navigation with declarative primitives, so the model states an outcome and deterministic code performs the navigation. Across 27 office-application tasks, success rose from 44.4% to 74.1%, model steps fell from 8.16 to 4.61, and wall-clock time fell from 392s to 239s.
+**The strongest case, with the confound removed.** A declarative operating-system interface (DMI) replaced imperative GUI navigation with declarative primitives, so the model states an outcome and deterministic code performs the navigation. Across 27 office-application tasks, success rose from 44.4% to 74.1%, model steps fell from 8.16 to 4.61, and wall-clock time fell from 392s to 239s.
 
 Its ablation is the part worth keeping. Giving the baseline agent that same navigation knowledge *as context in the prompt*, with the declarative interface switched off, produced 42.0% success in 8.41 steps — no improvement at all. Telling the model more changed nothing; moving the execution changed everything. The character of the remaining failures moved too: mechanism-level failures fell from 53.3% of failures to 19.0%, leaving mostly ambiguity about what the task meant. That is the judgment side, which is where failures should end up.
 
@@ -292,13 +323,13 @@ After execution, the result should make the outcome and the next options clear:
 
 We call such an exchange decision-complete: it carries what the relevant decision needs, and as little else as possible. It is complete relative to a decision, not exhaustive.
 
-Decision-complete does not mean short. Irrelevant output consumes context, but removing an exact identifier, an edit anchor, or an accepted value can create more work than the shorter result saves. The target is the smallest exchange that lets the model decide without reconstructing what the tool already had. Both ends of that dial have now been measured, and both lose.
+Decision-complete does not mean short. Irrelevant output consumes context, but removing an exact identifier, an edit anchor, or an accepted value can create more work than the shorter result saves. The target is the smallest exchange that lets the model decide without reconstructing what the tool already had. Both ends of that dial have been measured, and both lose.
 
 Successes and refusals are not equally compressible. A successful result can usually be trimmed hard: the model asked for something, it happened, and the details rarely change what comes next. A refusal is the opposite case. It is the exchange where the model has to decide something new, and the identifiers, values, and failed conditions that a concise format strips out are precisely the ones it needs to decide. Trim successes; do not trim refusals.
 
 Shape is a separate variable from size. A result that is technically complete but forces the model through it one item at a time can be worse than having no such tool at all. An operation that succeeds silently invites the model to spend a turn confirming that it worked. Say that it worked.
 
-A result that leaves things out has to say so, at the point where it left them out. Filtering, pagination, and truncation are all reasonable, and a shortened list is often the right answer. But absence is the thing models are measurably worst at noticing: they detect content that was added far more reliably than content that was removed from the same document, and inserting a marker where the removed content would have been recovers much of that gap. A model that receives a quietly shortened list reads absence as evidence of absence, and then acts on a conclusion the tool never supported. A line naming what was omitted, and how to ask for the rest, costs almost nothing and prevents a confident wrong answer.
+A result that leaves things out has to say so, at the point where it left them out. Filtering, pagination, and truncation are all reasonable, and a shortened list is often the right answer. But absence is much harder for a model to notice than addition: models detect content that was added to a document far more reliably than content that was removed from it, and inserting a marker where the removed content would have been recovers much of that gap. A model that receives a quietly shortened list reads absence as evidence of absence, and then acts on a conclusion the tool never supported. Naming what was omitted, and how to ask for the rest, costs a line and prevents a confident wrong answer.
 
 ### Results are data, not instructions
 
@@ -320,7 +351,7 @@ An interface that states its constraints saves the model from discovering them b
 
 More information is not automatically better. The interface should carry something because it changes a decision, not because it exists.
 
-### Evidence
+### Evidence for decision-complete exchanges
 
 **What to include.** Filtering results down to what the next decision needs improved benchmark performance by 11% while using 24% fewer input tokens. Refusals that named the alternatives the validator would have accepted raised repair success by roughly 40 percentage points over raw diagnostics — and the study's ablation places most of that gain in the alternatives themselves, not in the formatting.
 
@@ -332,7 +363,7 @@ More information is not automatically better. The interface should carry somethi
 
 **Mark the gap.** Across 14 models, the best average score for identifying what had been removed from a document was 71.2% F1, and only 40.0% on code diffs — against 86% to 99% for the same models identifying inserted content in the same documents. Inserting an explicit placeholder where content had been removed raised scores by roughly 36% to 42% on average. This is the evidence behind marking an omission at the point it occurred rather than letting a list simply end.
 
-See [Faster: designing tools around decisions](../../EVIDENCE.md#faster-designing-tools-around-decisions).
+All of this measures tokens, steps, cost, repair success, and benchmark performance rather than elapsed time. See [Faster: designing tools around decisions](../../EVIDENCE.md#faster-designing-tools-around-decisions).
 
 ## The four principles as one boundary
 
@@ -376,7 +407,7 @@ Project-specific sources and limitations are collected under [Deleting an in-use
 
 ## How to draw the boundary
 
-Ask these in order:
+Ask these in order. Some of them answer more readily in review than at design time, which is recorded under [Limits](#limits) — ask them again once real cases have arrived.
 
 1. **Does this choice require interpreting intent, ambiguity, or meaning?** Keep it on the judgment side.
 2. **Can a required condition be stated precisely over observable state?** Put its enforcement in software.
@@ -425,7 +456,6 @@ A well-placed boundary does not make either side infallible.
 - Tokens, turns, success rate, error rate, and elapsed time are related measurements, not interchangeable ones. Each claim above should be read against the one it was measured on.
 - **Principles 1 and 4 can conflict.** Where the material a refusal would have to describe is itself untrusted, explaining the refusal can reopen the channel the check exists to close. Published prompt-injection defences accept exactly this cost: one documented failure mode is that the quarantined model cannot tell the planning model which data is missing, because saying so would carry the injection. This project does not face that tension today, because its refusals describe facts about the user's own file. A tool that returns third-party content does.
 - **Several of the tests here resolve only in hindsight.** "Could the model have stated the rule in advance?" and "was this the right predicate?" are much easier to answer after the case they were meant to cover has occurred. Treat them as review questions, not as design-time filters.
-- Nothing here defends against hostile content inside the artifact. That is a separate problem and needs separate work.
 
 These limits do not weaken the thesis; they state it precisely. Put judgment where ambiguity has to be resolved, put guarantees where rules can be stated, record what both sides need to see, keep determined work in software, and make every necessary crossing carry what the next decision needs.
 
