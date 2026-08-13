@@ -24,6 +24,27 @@ Relational databases are the mature deployed precedent. A PostgreSQL `CHECK` con
 
 **Relevance:** every plugin guard is one such predicate — scope, name/identity, explicit parent, lock, and variable-consumer checks each refuse the transitions that would violate their property. Applied to every write, they keep the corresponding covered defect out of the set of file states reachable through the plugin.
 
+### Intrinsic self-correction degraded reasoning; an external verdict improved it
+
+**Supports:** the premise beneath the enforcement boundary — that the model cannot reliably act as its own checker.
+
+Huang and colleagues separate *intrinsic* self-correction, where a model revises its answer using only its own judgement, from correction guided by external feedback. Without external feedback, accuracy fell across every model and benchmark tested (paper's Tables 3 and 4):
+
+| Model | Benchmark | Standard | Round 1 | Round 2 |
+|---|---|---:|---:|---:|
+| GPT-3.5 | GSM8K | 75.9 | 75.1 | 74.7 |
+| GPT-3.5 | CommonSenseQA | 75.8 | 38.1 | 41.8 |
+| GPT-4 | GSM8K | 95.5 | 91.5 | 89.0 |
+| Llama-2 | GSM8K | 62.0 | 43.5 | 36.5 |
+
+Supplying oracle labels — an external signal of whether the answer was already correct — reversed the direction: GPT-3.5 rose from 75.9 to **84.3** on GSM8K, GPT-4 from 95.5 to **97.5**. The authors state the mechanism directly: "The fundamental issue is that LLMs cannot properly judge the correctness of their reasoning." They also report that multi-agent debate underperformed plain self-consistency at an equal response budget (83.0 versus 88.2 at nine responses).
+
+**Source:** [Huang et al., "Large Language Models Cannot Self-Correct Reasoning Yet" (ICLR 2024, arXiv:2310.01798)](https://arxiv.org/abs/2310.01798)
+
+**Caveats:** the domain is reasoning benchmarks, not artifact mutation, and the models predate current frontier systems. The authors scope the finding explicitly: self-correction can still help where the model *can* judge its own output, such as adjusting style or refusing unsafe content. The oracle condition is not a deployable check — it presumes the answer is already known — so it demonstrates the value of an external verdict, not of any particular checker.
+
+**Relevance:** it isolates why enforcement belongs in software rather than in a review step. Asking the model to reconsider its own proposal made results worse; supplying an external verdict made them better. The plugin's checks are that external verdict, evaluated over state the model does not have to judge.
+
 ### A guardrail on an AI agent's edit command (SWE-agent, NeurIPS 2024)
 
 **Supports:** the claim that a programmatic check on an AI agent's write operations improves the agent's results. This is the closest published analog to this project's design.
@@ -130,15 +151,31 @@ Strom and colleagues randomized 1,981 clinicians (1,971 analyzed) to standard pr
 
 **Relevance:** enforcement faithfully applies whatever predicate it is given — a strength when the predicate describes objective invalidity, a danger when it is a proxy for intent. figma-edit-mcp uses hard refusal for scope, identity, referential integrity, type, and protection, all mechanically decidable, and deliberately leaves design intent as residual risk R2 rather than enforcing a heuristic for it.
 
+### Counterevidence: enforcement can force a less informative refusal (CaMeL)
+
+**Supports:** a limit on the claim that a check and an actionable result always reinforce each other.
+
+CaMeL defends against prompt injection by running a planning model over the trusted query while routing untrusted data through a quarantined model, with a custom interpreter enforcing capability policies at every tool call. Its authors report solving 77% of AgentDojo tasks with provable security against 84% for an undefended system.
+
+The failure analysis matters more here than the headline. One categorised failure mode is "not enough context for the Q-LLM", and the authors explain why a better error message cannot fix it: "the Q-LLM cannot communicate to the P-LLM which data is missing, as this could introduce a prompt injection vector." The refusal is deliberately made less informative in order to preserve the guarantee. A second, structural mode — "data requires action" — occurs when the plan itself depends on data the planner is not permitted to read.
+
+**Source:** [Debenedetti et al., "Defeating Prompt Injections by Design" (arXiv:2503.18813)](https://arxiv.org/abs/2503.18813)
+
+**Caveats:** the 77%-versus-84% gap should not be read as the price of the guarantee. The authors report that CaMeL "does not significantly degrade utility" outside one suite, that it occasionally improves success, and that much of the remaining gap came from undocumented tool output formats which newer models handled with no change to CaMeL — Claude Sonnet's travel-suite utility rose from 25% (3.5) to 55% (3.7) to 75% (4). The released implementation is a research artifact its authors warn "likely contains bugs" and "might not be fully secure." The threat model is prompt injection, not accidental artifact corruption.
+
+**Relevance:** the philosophy treats a refusal plus an actionable result as one recovery mechanism. This is a documented case where the two conflict: making the refusal decision-complete would have opened the channel the check exists to close. figma-edit-mcp does not face this tension today, because its refusals report facts about the user's own file rather than about untrusted third-party content — but the tension is real wherever returned content may be adversarial.
+
 ### What the evidence supports
 
 Taken together, the evidence supports a bounded set of claims:
 
 1. **Programmatic checks are more reliable than instructions for enforcement.** Instructions can reduce prohibited proposals; an unavoidable runtime check can prevent those proposals from executing even when the agent still attempts them.
-2. **Local checks compose into a longitudinal property.** If every relevant write is mediated, every accepted successor satisfies the predicate, and refusal does not mutate the file, the predicate is preserved across the tool-mediated history.
-3. **Reducing admitted errors yields a cleaner counterfactual artifact.** From the same starting state and attempted violating operation, the checked path contains no more — and sometimes fewer — covered defects than the unchecked path.
-4. **Reduced defect inflow can lower the long-run stock.** When existing defects continue to be repaired or retired, reducing new admissions makes the total stock decline.
-5. **The predicate determines the value of enforcement.** Hard checks are strongest for objective invalidity; enforcing a context-sensitive proxy can block correct work.
+2. **The checker has to be external to the model.** Asking a model to reconsider its own output without an external signal degraded accuracy; supplying an external verdict improved it. A check is worth building in software precisely because the model cannot reliably supply it.
+3. **Local checks compose into a longitudinal property.** If every relevant write is mediated, every accepted successor satisfies the predicate, and refusal does not mutate the file, the predicate is preserved across the tool-mediated history.
+4. **Reducing admitted errors yields a cleaner counterfactual artifact.** From the same starting state and attempted violating operation, the checked path contains no more — and sometimes fewer — covered defects than the unchecked path.
+5. **Reduced defect inflow can lower the long-run stock.** When existing defects continue to be repaired or retired, reducing new admissions makes the total stock decline.
+6. **The predicate determines the value of enforcement.** Hard checks are strongest for objective invalidity; enforcing a context-sensitive proxy can block correct work.
+7. **Enforcement and informative refusal can conflict.** Where the material a refusal would have to describe is itself untrusted, explaining the refusal can reopen the channel the check was built to close.
 
 The evidence does **not** establish that the plugin can enforce subjective design intent, that a predicate is correct merely because it is deterministic, that prevention repairs defects already present, that every refusal makes the final file cleaner once an adaptive agent replans, or that these external effect sizes transfer quantitatively to Figma.
 
@@ -679,6 +716,56 @@ The engineering happens before the task rather than during it:
 
 **Relevance:** moving already-engineered low-level work behind a task-level tool reduced model-visible steps without trading away task success.
 
+### A declarative interface raised success and cut wall-clock time, and the gain was not the added context (DMI)
+
+**Supports:** the decision-boundary claim on its strongest terms — success and elapsed time measured together, with an ablation that separates moving the boundary from telling the model more.
+
+DMI replaces imperative GUI navigation with declarative primitives, so the model states a desired outcome and deterministic code performs the navigation and interaction. The authors describe the split in the philosophy's own terms:
+
+> "while LLMs struggle with fine-grained mechanisms, a substantial fraction of the interaction logic with GUI is deterministic and can be executed independently of the LLM."
+
+On OSWorld-W (27 single-app Word, Excel and PowerPoint tasks, three runs averaged, GPT-5 at medium reasoning, capped at 30 steps):
+
+| Interface | Success | Steps | Time |
+|---|---:|---:|---:|
+| GUI-only baseline (UFO2-as) | 44.4% | 8.16 | 392s |
+| GUI-only, navigation topology supplied in the prompt | 42.0% | 8.41 | 353s |
+| GUI + DMI | **74.1%** | **4.61** | **239s** |
+
+The middle row is the paper's ablation and the most important line for this project. Giving the baseline the same navigation knowledge *as information in the prompt*, with the declarative interface disabled, changed nothing. The gain came from moving the execution, not from enlarging the context. The pattern replicated at minimal reasoning (23.5% to 40.7%, 251s to 140s) and with GPT-5-mini (17.3% to 43.2%). Failures shifted in kind as well as in number: mechanism-level failures fell from 53.3% of failures to 19.0%, leaving 81.0% policy-level — ambiguous task descriptions and misread control semantics.
+
+The executor refuses rather than half-completing: "If any controls do not support the required pattern, the executor returns an error and does not partially execute."
+
+**Source:** [Wang, Li & Chen, "From Imperative to Declarative: Towards LLM-friendly OS Interfaces for Boosted Computer-Use Agents" (EuroSys 2026, arXiv:2510.04607)](https://arxiv.org/abs/2510.04607)
+
+**Caveats:** 27 tasks, one application suite, one model family. Times are computed over successful runs only, and with GPT-5-mini elapsed time was effectively flat (171s versus 167s). The structure is not free: under three hours of automated modelling plus roughly 1.5 person-days of manual configuration per application, and the model is version-specific. The supplied topology adds 15–30K tokens per call; total per-task tokens still fall because rounds fall.
+
+**Relevance:** the closest external test of the Faster claim as this document states it — correct completion took less time, not merely fewer tokens — and the only result here that separates "moved the boundary" from "supplied more context."
+
+### Emitting one script instead of step-wise actions raised completion and cut latency (AutoDroid-V2)
+
+**Supports:** independent corroboration in a third domain.
+
+AutoDroid-V2 has an on-device Android GUI agent generate a whole-task script from app documentation instead of choosing one UI action per model call. Against step-wise baselines it reports 10.5–51.7 percentage points higher task completion and 5.7–13.4x lower runtime input and output latency; on DroidTask its average accuracy was 54.4% against baselines ranging from 10.5% to 43.9%.
+
+**Source:** [Wen et al., "AutoDroid-V2: Boosting SLM-based GUI Agents via Code Generation" (MobiSys 2025, arXiv:2412.18116)](https://arxiv.org/abs/2412.18116)
+
+**Caveats:** mobile GUI automation with small on-device models. Script generation also changes what the model is asked to produce, not only how often it is consulted, and it depends on pre-built app documentation that is offline cost not charged to the task.
+
+**Relevance:** consolidating already-determined work behind one model turn raised completion while lowering latency, in a domain and model class unlike the others here.
+
+### Preferring API calls over UI actions halved agent task time (AXIS)
+
+**Supports:** the same direction by a different mechanism.
+
+AXIS gives an agent application APIs in preference to UI interaction, and explores the application to discover more of them. On 50 Microsoft Word tasks with GPT-4o, AXIS averaged 29.9 seconds per task against 59.5 seconds for the UFO UI agent, with higher success, fewer steps and lower cost. Its action mix moved from 103 UI and 9 API actions to 48 and 39 — an API usage rate of 55.7% against 8.1%.
+
+**Source:** [Lu et al., "AXIS: Efficient Human-Agent-Computer Interaction with API-First LLM-Based Agents" (ACL 2025, arXiv:2409.17140)](https://arxiv.org/abs/2409.17140)
+
+**Caveats:** 50 tasks, one application, one model. The paper's widely quoted percentages (65–70% less completion time, 97–98% accuracy) come from a separate human user study; only the agent-versus-agent comparison is used here.
+
+**Relevance:** a third measurement of the same direction on the same application family as DMI but through API preference rather than declarative primitives, which makes the result harder to attribute to one team's implementation.
+
 ### Direct MCP evidence found the same workload boundary (CE-MCP)
 
 **Supports:** MCP-specific corroboration of the crossover.
@@ -756,6 +843,50 @@ And in a separate 40-task experiment, "on SWE-bench-derived Go tasks, compressio
 
 **Relevance:** the necessary negative case for result design — a result should omit irrelevant material, not information the next action depends on.
 
+### Both too little and too much context lowered agent success (SWE-agent interface ablations)
+
+**Supports:** decision-completeness as an interior optimum rather than a direction.
+
+The SWE-agent paper varied one dial — how many lines of a file the agent's viewer shows — holding the rest of the system constant (SWE-bench Lite, GPT-4 Turbo):
+
+| File viewer window | 30 lines | 100 lines | 400 lines | Whole file |
+|---|---:|---:|---:|---:|
+| % Resolved | 14.3 | **18.0** | 17.0 | 12.7 |
+
+Result *shape* mattered as much as volume. Summarised search results scored 18.0%; an iterative interface showing matches one at a time scored 12.0% — below the 15.7% of having no search tool at all, because agents exhaustively paged through every match. The authors cap search output at 50 results and, above that, return none and tell the agent to narrow its query rather than truncating silently. They also record the cost of silence: "commands that succeed silently confuses LMs. We observe that LMs will often expend extra actions to verify that a file was removed or an edit was applied if no automatic confirmation is given."
+
+**Source:** [Yang et al., "SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering" (NeurIPS 2024, arXiv:2405.15793)](https://arxiv.org/abs/2405.15793)
+
+**Caveats:** the same 300-instance SWE-bench Lite subset and single model as the linting ablation earlier in this document. Window size is confounded with how much of the file the agent can edit in one action.
+
+**Relevance:** the cleanest published demonstration that "decision-complete" is not "as short as possible." On one dial, in one system, both ends lost several points against an interior optimum — and a badly shaped result was worse than no tool at all.
+
+### Models detect omissions poorly unless the omission is marked (AbsenceBench)
+
+**Supports:** the stronger form of the rule that a result which leaves something out must say so.
+
+AbsenceBench gives a model an original document and an edited one and asks which pieces were removed. Across 14 models and 4,302 instances at an average context of 5K tokens, the best scores were 71.2% F1 (Gemini 2.5 Flash, thinking) and 69.6% (Claude 3.7 Sonnet, thinking). The GitHub pull-request diff domain — the closest analogue to an artifact change list — was worst, topping out at 40.0%.
+
+The task is not intrinsically hard. The same models on an *insertion* version of the identical documents scored 86.2–99.5% F1, an average gap of 56.9 points. The authors attribute the difference to attention having no position to attend to at a gap, and test that directly: inserting an explicit `<missing line>` placeholder where content was removed raised scores by 35.7–41.9% on average (Claude 3.7 Sonnet 66.9 to 83.3, GPT-4.1-mini 35.5 to 52.1, Llama-4-Maverick 40.2 to 62.1).
+
+**Source:** [Fu et al., "AbsenceBench: Language Models Can't Tell What's Missing" (arXiv:2506.11440)](https://arxiv.org/abs/2506.11440)
+
+**Caveats:** surface-form deletion only, with both documents supplied side by side — the authors note this probably *overestimates* real-world performance. Three domains, medium contexts, and no error bars or significance testing, which the authors attribute to API cost.
+
+**Relevance:** it sharpens "say what was omitted" into "mark the omission where it occurred." A truncated list that simply ends is the condition these models are measurably worst at detecting, and a placeholder is a tested remedy.
+
+### Performance degraded with input length even at constant task difficulty (Context Rot)
+
+**Supports:** the other side of the tradeoff — that irrelevant context is not free.
+
+Chroma evaluated 18 models on tasks constructed so that only input length varied while difficulty was held fixed. On LongMemEval, every model scored significantly higher on focused prompts averaging about 300 tokens than on full prompts averaging about 113,000 tokens that contained the same answer plus irrelevant conversation. On an extended needle-in-a-haystack task with distractors defined as topically related content that does not answer the question, "even a single distractor reduces performance relative to the baseline, and adding four distractors compounds this degradation."
+
+**Source:** [Hong, Troynikov & Huber, "Context Rot: How Increasing Input Tokens Impacts LLM Performance" (Chroma, July 2025)](https://www.trychroma.com/research/context-rot)
+
+**Caveats:** a vendor technical report from a company selling retrieval infrastructure, not peer-reviewed, on mid-2025 models. Methodology and code are published and the automated judge is reported as above 0.99 agreement with human labels.
+
+**Relevance:** it bounds the counterevidence above. Over-trimming raised cost and broke edits; over-stuffing lowered success even when nothing relevant had been removed. The distractor result also bears on choice design — near-miss alternatives degraded selection, measured on the model rather than on human operators.
+
 ### Production deployment: Cloudflare returns decision-oriented error contracts
 
 **Supports:** a real deployment of compact, actionable refusal information.
@@ -812,9 +943,12 @@ The following evidence remains useful but no longer leads the section:
 The evidence supports the following mechanism:
 
 - An action interface can reduce model-visible coordination when it lets the model express composed operations or deterministic decision logic in one turn.
+- Three independent systems in a fourth domain — desktop and mobile GUI automation — report the effect on **wall-clock time and task success together**, not only on tokens or turns.
+- One of them ablates the confound directly: supplying the same navigation knowledge as prompt context, without moving execution, produced no improvement. The gain came from relocating the boundary, not from enlarging the context.
 - The benefit has a boundary: when an intermediate observation requires fresh semantic judgment, hiding that observation from the model may not help and can add cost.
 - At a necessary model boundary, selecting decision-relevant information can improve both efficiency and correct completion.
-- "Decision-relevant" is not synonymous with "short." Removing action-critical facts can increase total cost and failure.
+- "Decision-relevant" is not synonymous with "short." Removing action-critical facts can increase total cost and failure, and one controlled dial shows losses at **both** ends against an interior optimum.
+- The *shape* of a result is a separate variable from its size: a badly shaped result performed worse than no tool at all, silent success provoked wasted verification actions, and unmarked omissions are the condition models detect worst.
 
 The evidence does **not** establish:
 
@@ -823,7 +957,8 @@ The evidence does **not** establish:
 - A percentage speedup for Figma editing.
 - That every decision-complete error produces a successful next attempt.
 - That arbitrary model-generated code execution — or collapsing per-operation safety and approval boundaries — is appropriate for figma-edit-mcp.
-- That results from search, read/compute, browser, or synthetic tasks transfer unchanged to safety-constrained, side-effecting Figma mutations.
+- That results from search, read/compute, browser, GUI-automation, or synthetic tasks transfer unchanged to safety-constrained, side-effecting Figma mutations.
+- That the interface gains come free. Every system reporting them paid a substantial offline modelling or documentation cost, and at least one is version-specific.
 
 The strongest defensible external conclusion is:
 
