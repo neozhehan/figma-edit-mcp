@@ -39,7 +39,7 @@ Much of the published guidance on designing tools for AI models assumes a tool t
 
 An AI tool joins two different kinds of capability.
 
-The first is judgement, which is carried out by the AI model that is using the tool. The AI model interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task it was assigned means. Instructions can improve that judgment, but they cannot guarantee that the AI model will follow the instructions correctly every time.
+The first is judgement, supplied by the AI model using the tool. The AI model interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task it was assigned means. Instructions can improve that judgment, but they cannot guarantee that the AI model will follow the instructions correctly every time.
 
 Software supplies checks and execution. It can apply a stated rule to the state it observes, refuse a prohibited change, and carry out work whose choices have already been made. Its advantage is repeatability: a check does not depend on the model remembering anything.
 
@@ -329,7 +329,7 @@ Successes and refusals are not equally compressible. A successful result can usu
 
 Shape is a separate variable from size. A result that is technically complete but forces the model through it one item at a time can be worse than having no such tool at all. An operation that succeeds silently invites the model to spend a turn confirming that it worked. Say that it worked.
 
-A result that leaves things out has to say so, at the point where it left them out. Filtering, pagination, and truncation are all reasonable, and a shortened list is often the right answer. But absence is much harder for a model to notice than addition: in paired document-difference tasks, models identify content that was added far more reliably than content that was removed, and inserting a marker where the removed content would have been recovers much of that gap. That was measured with both versions supplied side by side; a truncated tool result gives the model no such reference, so a quietly shortened list is the harder case, not the easier one. Naming what was omitted, and how to ask for the rest, costs a line.
+A result that leaves things out has to say so, at the point where it leaves them out. Filtering, pagination, and truncation are all reasonable, and a shortened list is often the right answer. But absence is much harder for a model to notice than addition: in paired document-difference tasks, models identify content that was added far more reliably than content that was removed, and inserting a marker where the removed content would have been recovers much of that gap. That was measured with both versions supplied side by side; a truncated tool result gives the model no such reference, so a quietly shortened list is the harder case, not the easier one. Naming what was omitted, and how to ask for the rest, costs a line.
 
 ### Results are data, not instructions
 
