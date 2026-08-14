@@ -171,7 +171,7 @@ The failure analysis matters more here than the headline. One categorised failur
 
 **Caveats:** the 77%-versus-84% gap should not be read as the price of the guarantee. The authors report that CaMeL "does not significantly degrade utility" outside one suite, that it occasionally improves success, and that much of the remaining gap came from undocumented tool output formats which newer models handled with no change to CaMeL — Claude Sonnet's travel-suite utility rose from 25% (3.5) to 55% (3.7) to 75% (4). The released implementation is a research artifact its authors warn "likely contains bugs" and "might not be fully secure." The threat model is prompt injection, not accidental artifact corruption.
 
-**Relevance:** the philosophy treats a refusal plus an actionable result as one recovery mechanism. This is a documented case where the two conflict: making the refusal decision-complete would have opened the channel the check exists to close. figma-edit-mcp does not face this tension today, because its refusals report facts about the user's own file rather than about untrusted third-party content — but the tension is real wherever returned content may be adversarial.
+**Relevance:** the philosophy treats a refusal plus an actionable result as one recovery mechanism. This is a documented case where the two conflict: making the refusal decision-complete would have opened the channel the check exists to close. figma-edit-mcp implements no equivalent trust separation, so the tension sits outside its threat model rather than being absent: ownership is not a trust boundary, a shared or imported file can hold collaborator-authored layer names, text, and descriptions, and the plugin returns them in both results and refusal messages.
 
 ### What the evidence supports
 
@@ -726,7 +726,7 @@ The engineering happens before the task rather than during it:
 
 ### A declarative interface raised success and cut wall-clock time, and the gain was not the added context (DMI)
 
-**Supports:** the decision-boundary claim on its strongest terms — success and elapsed time measured together, with an ablation that separates moving the boundary from telling the model more.
+**Supports:** the decision-boundary claim on its strongest terms — success and task time measured together, with an ablation that separates moving the boundary from telling the model more.
 
 DMI replaces imperative GUI navigation with declarative primitives, so the model states a desired outcome and deterministic code performs the navigation and interaction. The authors describe the split in the philosophy's own terms:
 
@@ -740,13 +740,13 @@ On OSWorld-W (27 single-app Word, Excel and PowerPoint tasks, three runs average
 | GUI-only, navigation topology supplied in the prompt | 42.0% | 8.41 | 353s |
 | GUI + DMI | **74.1%** | **4.61** | **239s** |
 
-The middle row is the paper's ablation and the most important line for this project. Giving the baseline the same navigation knowledge *as information in the prompt*, with the declarative interface disabled, changed nothing. The gain came from moving the execution, not from enlarging the context. The pattern replicated at minimal reasoning (23.5% to 40.7%, 251s to 140s) and with GPT-5-mini (17.3% to 43.2%). Failures shifted in kind as well as in number: mechanism-level failures fell from 53.3% of failures to 19.0%, leaving 81.0% policy-level — ambiguous task descriptions and misread control semantics.
+The middle row is the paper's ablation and the most important line for this project. Giving the baseline the same navigation knowledge *as information in the prompt*, with the declarative interface disabled, changed nothing. The gain came from moving the execution, not from enlarging the context — though the ablation rules out that one explanation rather than every alternative. The pattern replicated at minimal reasoning (23.5% to 40.7%, 251s to 140s) and with GPT-5-mini (17.3% to 43.2%). Failures shifted in kind as well as in number: mechanism-level failures fell from 53.3% of failures to 19.0%, leaving 81.0% policy-level. The policy-level breakdown is ambiguous task descriptions (42.9%), misinterpretation of control semantics (28.6%), weak visual-semantic understanding (14.3%), misunderstanding of subtle task semantics (9.5%), and topology/modelling inaccuracies (4.8%) — so the residue is mostly, but not only, ambiguity about task meaning, and the last category is the deterministic layer's own model being wrong.
 
 The executor refuses rather than half-completing: "If any controls do not support the required pattern, the executor returns an error and does not partially execute."
 
 **Source:** [Wang, Li & Chen, "From Imperative to Declarative: Towards LLM-friendly OS Interfaces for Boosted Computer-Use Agents" (EuroSys 2026, arXiv:2510.04607)](https://arxiv.org/abs/2510.04607)
 
-**Caveats:** 27 tasks, one application suite, one model family. Times are computed over successful runs only, and with GPT-5-mini elapsed time was effectively flat (171s versus 167s). The structure is not free: under three hours of automated modelling plus roughly 1.5 person-days of manual configuration per application, and the model is version-specific. The supplied topology adds 15–30K tokens per call; total per-task tokens still fall because rounds fall.
+**Caveats:** 27 tasks, one application suite, one model family. Times are computed over successful runs only, and the authors state the selection effect this creates: with GPT-5-mini elapsed time was effectively flat (171s versus 167s) "because we report only successful runs, and GUI-only primarily succeeds on shorter/easier cases." The structure is not free: under three hours of automated modelling plus roughly 1.5 person-days of manual configuration per application, and the model is version-specific. The supplied topology adds 15–30K tokens per call; total per-task tokens still fall because rounds fall.
 
 **Relevance:** the closest external test of the Faster claim as this document states it — correct completion took less time, not merely fewer tokens — and the only result here that separates "moved the boundary" from "supplied more context."
 
@@ -754,13 +754,15 @@ The executor refuses rather than half-completing: "If any controls do not suppor
 
 **Supports:** independent corroboration in a third domain.
 
-AutoDroid-V2 has an on-device Android GUI agent generate a whole-task script from app documentation instead of choosing one UI action per model call. Against step-wise baselines it reports 10.5–51.7 percentage points higher task completion and 5.7–13.4x lower runtime input and output latency; on DroidTask its average accuracy was 54.4% against baselines ranging from 10.5% to 43.9%.
+AutoDroid-V2 has an on-device Android GUI agent generate a whole-task script from app documentation instead of choosing one UI action per model call. Against step-wise baselines it reports 10.5–51.7 percentage points higher task completion and 5.7–13.4x lower latency; on DroidTask its average accuracy was 54.4% against baselines ranging from 10.5% to 43.9%.
+
+The latency measure is not end-to-end task time. The paper defines it explicitly — "We primarily measure the latency of LLM inference, which accounts for most of the system latency in on-device agents. Inference latency begins when the prompt is received by the LLM and ends when the final token of the output is generated" — so this entry corroborates the direction on a different clock from DMI and AXIS.
 
 **Source:** [Wen et al., "AutoDroid-V2: Boosting SLM-based GUI Agents via Code Generation" (MobiSys 2025, arXiv:2412.18116)](https://arxiv.org/abs/2412.18116)
 
-**Caveats:** mobile GUI automation with small on-device models. Script generation also changes what the model is asked to produce, not only how often it is consulted, and it depends on pre-built app documentation that is offline cost not charged to the task.
+**Caveats:** mobile GUI automation with small on-device models, and the reported latency is model-inference time rather than task elapsed time. Script generation also changes what the model is asked to produce, not only how often it is consulted, and it depends on pre-built app documentation that is offline cost not charged to the task.
 
-**Relevance:** consolidating already-determined work behind one model turn raised completion while lowering latency, in a domain and model class unlike the others here.
+**Relevance:** consolidating already-determined work behind one model turn raised completion while lowering inference latency, in a domain and model class unlike the others here.
 
 ### Preferring API calls over UI actions halved agent task time (AXIS)
 
@@ -951,12 +953,12 @@ The following evidence remains useful but no longer leads the section:
 The evidence supports the following mechanism:
 
 - An action interface can reduce model-visible coordination when it lets the model express composed operations or deterministic decision logic in one turn.
-- Three independent systems in a fourth domain — desktop and mobile GUI automation — report the effect on **wall-clock time and task success together**, not only on tokens or turns.
-- One of them ablates the confound directly: supplying the same navigation knowledge as prompt context, without moving execution, produced no improvement. The gain came from relocating the boundary, not from enlarging the context.
+- Three independent systems in a fourth domain — desktop and mobile GUI automation — report the effect on **task success together with a time measure**, not only on tokens or turns. Two report task time (DMI on successful runs only, AXIS end to end); the third reports model-inference latency. They corroborate one mechanism on different clocks; they are not replications of one experiment.
+- One of them ablates the leading rival explanation directly: supplying the same navigation knowledge as prompt context, without moving execution, produced no improvement. The gain came from relocating the boundary, not from enlarging the context. That rules out the added-context account, not every alternative.
 - The benefit has a boundary: when an intermediate observation requires fresh semantic judgment, hiding that observation from the model may not help and can add cost.
 - At a necessary model boundary, selecting decision-relevant information can improve both efficiency and correct completion.
 - "Decision-relevant" is not synonymous with "short." Removing action-critical facts can increase total cost and failure, and one controlled dial shows losses at **both** ends against an interior optimum.
-- The *shape* of a result is a separate variable from its size: a badly shaped result performed worse than no tool at all, silent success provoked wasted verification actions, and unmarked omissions are the condition models detect worst.
+- The *shape* of a result is a separate variable from its size: a badly shaped result performed worse than no tool at all, silent success provoked wasted verification actions, and — measured on paired documents rather than on tool results — unmarked removals are what models identify worst.
 
 The evidence does **not** establish:
 
@@ -966,7 +968,7 @@ The evidence does **not** establish:
 - That every decision-complete error produces a successful next attempt.
 - That arbitrary model-generated code execution — or collapsing per-operation safety and approval boundaries — is appropriate for figma-edit-mcp.
 - That results from search, read/compute, browser, GUI-automation, or synthetic tasks transfer unchanged to safety-constrained, side-effecting Figma mutations.
-- That the interface gains come free. Every system reporting them paid a substantial offline modelling or documentation cost, and at least one is version-specific.
+- That the interface gains come free. Every system here that built a higher-level interface paid a substantial offline modelling or documentation cost, and at least one is version-specific.
 
 The strongest defensible external conclusion is:
 
