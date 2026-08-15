@@ -129,7 +129,7 @@ This is a distinct study from the newborn-naming trial cited under [Cleaner lead
 
 **Supports:** the lifecycle argument — reducing the arrival of a defect class lets its remaining stock fall as old defects are repaired or retired. This is the "cleanliness ratchet" stated precisely.
 
-As Google moved new Android development toward memory-safe languages, the annual count of memory-safety vulnerabilities fell from **223 in 2019 to 85 in 2022**, and their share of all Android vulnerabilities fell from 76% (2019) toward a projected 24% (2024). Google's stated mechanism is that new vulnerabilities stop arriving faster than old ones persist:
+As Google moved new Android development toward memory-safe languages, the annual count of memory-safety vulnerabilities fell from **223 in 2019 to 85 in 2022**. Google's September 25, 2024 post reported an extrapolated full-year share of 24%, based on partial-year data: 27 memory-safety vulnerabilities through the September security bulletin were represented as 36 for the full year. On November 13, 2025, Google reported that the share had fallen "below 20% of total vulnerabilities for the first time." Its 2025 data covers first-party and third-party open-source code changes to the Android platform across C, C++, Java, Kotlin, and Rust. Google's stated mechanism is that new vulnerabilities stop arriving faster than old ones persist:
 
 > "Once we turn off the tap of new vulnerabilities, they decrease exponentially, making all of our code safer."
 
@@ -139,13 +139,16 @@ Its code-age data supports this — "5-year-old code has a 3.4x … to 7.4x … 
 
 The relationship is stock-and-flow: the next defect stock equals the existing defects, plus newly admitted defects, minus removed defects. Memory-safe languages reduced the admitted term while Google kept fixing old vulnerabilities and hardening the remaining C/C++. The decline came from reduced inflow **plus** continued removal, not from prevention alone.
 
+The 2025 post separately reports vulnerability density, not share of total vulnerabilities. Across roughly 5 million lines of Rust in Android, Google found one potential memory-safety vulnerability and fixed it before release, yielding an estimate of 0.2 vulnerability per million lines of code (MLOC), versus historical C/C++ closer to 1,000 per MLOC. Google describes this as more than a 1000x reduction. That is a one-event, pre-release estimate for Rust code, not an Android-wide causal estimate.
+
 **Sources:**
 - [Google Security Blog: Memory Safe Languages in Android 13 (December 2022)](https://security.googleblog.com/2022/12/memory-safe-languages-in-android-13.html)
 - [Google Security Blog: Eliminating Memory Safety Vulnerabilities at the Source (September 2024)](https://security.googleblog.com/2024/09/eliminating-memory-safety-vulnerabilities-Android.html)
+- [Google Security Blog: Rust in Android: move fast and fix things (November 13, 2025)](https://security.googleblog.com/2025/11/rust-in-android-move-fast-fix-things.html)
 
-**Caveats:** Google's own data about its own operating system, not an independent or controlled study; the 24% figure was an end-of-2024 projection at publication. The figures are shares of total vulnerabilities, so shifts in other categories also move them, and language choice, code age, developer differences, and concurrent hardening all confound attribution.
+**Caveats:** Google reports its own system, and the sequence is observational rather than a controlled attribution. The 2024 24% share is an extrapolated full-year figure from partial-year data, not a final tally. The November 13, 2025 below-20% share was published before year-end; Google says Android's 90-day patch window makes it "very likely close to final." Vulnerability share also changes when other categories change, and language choice, code age, developer differences, continued repair, and concurrent hardening confound attribution. The Rust density comparison is a separate per-MLOC estimate from roughly 5 million lines and one potential issue fixed pre-release, so its small numerator does not establish an Android-wide causal effect.
 
-**Relevance:** this supports a defect-inflow mechanism and the feasibility of improving a large existing system without a wholesale rewrite. It does not support the stronger claim an earlier revision of this document made — that prevention *alone* cleaned Android, or that the old code received no cleanup. Enforcement over instruction still holds too: style guides had told C/C++ developers to avoid these errors for decades; the compiler that refuses them succeeded where the instructions did not.
+**Relevance:** the 2019–2025 series strengthens longitudinal support for the defect-inflow mechanism and for improving a large existing system without a wholesale rewrite. It does not show that the language/compiler change alone caused the decline: continued repair and hardening also contributed. It still illustrates enforcement over instruction — style guides asked C/C++ developers to avoid these errors, whereas memory-safe language guarantees reject whole classes of them — but does not isolate an effect size for that mechanism.
 
 ### Counterevidence: hard enforcement can preserve the wrong predicate
 
