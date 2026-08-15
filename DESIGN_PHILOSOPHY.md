@@ -41,9 +41,9 @@ Here, **artifact** means the document, design, codebase, database, or other work
 
 An AI tool joins two different kinds of capability.
 
-The first is judgment, supplied by the AI model using the tool. The AI model interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task means. Instructions can improve that judgment, but they cannot guarantee the model follows them every time.
+The first is judgment, supplied by the AI model using the tool. The model interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task means. Instructions can improve that judgment, but they cannot guarantee the model follows them every time.
 
-Software supplies checks and execution. It can apply a stated rule to the state it observes, refuse a prohibited change, and carry out work whose choices have already been made. Its advantage is repeatability: a check does not depend on the model remembering anything.
+The second is repeatability, supplied by software. It can apply a stated rule to the state it observes, refuse a prohibited change, and carry out work whose choices have already been made. None of that depends on the model remembering anything.
 
 Neither side should be asked to do the other's job. A model should not be the only thing standing between a prohibited action and the artifact. Software should not be asked to settle a question of meaning that nobody has formalized.
 
