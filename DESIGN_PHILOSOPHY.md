@@ -35,23 +35,23 @@
 
 ## Purpose & Scope
 
-The [README](README.md) explains what figma-edit-mcp does. This document explains the principles behind designing tools for AI models, and why **figma-edit-mcp** is built the way it is. The exact enforcement guarantees and their conditions live in [SAFETY.md](SAFETY.md). Sources, methods, and limitations for every empirical claim here are collected in [EVIDENCE.md](EVIDENCE.md).
+The [README](README.md) explains what **figma-edit-mcp** does. This document explains the principles behind designing tools for AI models, and why **figma-edit-mcp** is built the way it is. The exact enforcement guarantees and their conditions live in [SAFETY.md](SAFETY.md). Sources, methods, and limitations for every empirical claim here are collected in [EVIDENCE.md](EVIDENCE.md).
 
 ## Introduction
 
-An AI tool is a tool developed specifically for use by an AI model to help it read or make changes to an artifact. Here, an artifact can be a document, design, codebase, database, or any other container for data.
+An AI tool is software built specifically for an AI model to read or change an artifact. Here, an artifact can be a document, design, codebase, database, or any other container for data.
 
-Much of the published guidance on designing tools for AI models assumes a tool that reads: search, retrieval, lookup. The stakes change when the tool can make changes. A bad read wastes a turn; a bad change damages the artifact, and the damage outlives the session. This document is about avoiding bad changes.
+Much of the published guidance on designing tools for AI models assumes a tool that reads: search, retrieval, lookup. The stakes are higher when the tool can make changes. A bad read can be retried; a bad change persists, and often compounds, until someone repairs it. This document is about avoiding bad changes.
 
 ## The Design Boundary
 
-When an AI model uses an AI tool to make a change to an artifact, it runs on judgment exercised at two different times: its developer's when it was built, and the AI model's when it runs.
+When an AI model uses an AI tool to make a change to an artifact, the outcome rests on judgment exercised at two different times: its developer's when it was built, and the AI model's when it runs.
 
-The developer's judgment is fixed in code. Every rule the tool enforces, every threshold it applies, every default it falls back on was decided in advance. That judgment holds every time it runs, and it covers only the questions the developer answered.
+The developer's judgment is fixed in code. Every rule the tool enforces, every threshold it applies, every default it falls back on was decided in advance. That judgment holds every time the tool runs, and it covers only the questions the developer answered.
 
 The AI model's judgment happens at run time, when it is given a specific task on a specific artifact. The AI model interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task means. No instruction guarantees what it decides.
 
-The judgments an AI tool's design can place are exercised at one of those two times. Assigning them is boundary design.
+The judgments an AI tool's design can place are exercised at one of those two times. Placing them is boundary design.
 
 > **Designing a tool for an AI agent is boundary design. Put judgment where ambiguity has to be resolved. Put guarantees where a rule can be stated. Keep already-decided work in software, and cross the boundary when new information changes what should happen next.**
 
