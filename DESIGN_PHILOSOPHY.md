@@ -45,7 +45,7 @@ Much of the published guidance on designing tools for AI models assumes a tool t
 
 ## The Design Boundary
 
-When an AI model uses an AI tool to make a change to an artifact, the outcome rests on judgment exercised at two different times: its developer's when it was built, and the AI model's when it runs.
+When an AI model uses an AI tool to make a change to an artifact, the outcome rests on judgment exercised at two different times: the developer's when the tool was built, and the model's when the model runs.
 
 The developer's judgment is fixed in code. Every rule the tool enforces, every threshold it applies, every default it falls back on was decided in advance. That judgment holds every time the tool runs, and it covers only the questions the developer answered.
 
