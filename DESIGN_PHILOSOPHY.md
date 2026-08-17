@@ -1,13 +1,9 @@
 # Design Philosophy
 
-The [README](../../README.md) explains what figma-edit-mcp does. This document explains the principles behind designing tools for AI agents, and why figma-edit-mcp is built the way it is. The exact enforcement guarantees and their conditions live in [SAFETY.md](../../SAFETY.md). Sources, methods, and limitations for every empirical claim here are collected in [EVIDENCE.md](../../EVIDENCE.md).
-
-Much of the published guidance on designing tools for AI models assumes a tool that reads: search, retrieval, lookup. The stakes change when the tool can write. A bad read wastes a turn; a bad write damages the artifact, and the damage outlives the session. This document is about avoiding bad writes.
-
-Here, **artifact** means the document, design, codebase, database, or other work being changed.
-
 ## Contents
 
+- [Purpose and Scope](#purpose-and-scope)
+- [Introduction](#introduction)
 - [The design boundary](#the-design-boundary)
 - [What a well-designed boundary produces](#what-a-well-designed-boundary-produces)
   - [The goals are connected, not additive](#the-goals-are-connected-not-additive)
@@ -37,15 +33,25 @@ Here, **artifact** means the document, design, codebase, database, or other work
 - [How to tell whether the boundary is in the right place](#how-to-tell-whether-the-boundary-is-in-the-right-place)
 - [Limits of a well-placed boundary](#limits-of-a-well-placed-boundary)
 
+## Purpose and Scope
+
+The [README](README.md) explains what figma-edit-mcp does. This document explains the principles behind designing tools for AI models, and why **figma-edit-mcp** is built the way it is. The exact enforcement guarantees and their conditions live in [SAFETY.md](SAFETY.md). Sources, methods, and limitations for every empirical claim here are collected in [EVIDENCE.md](EVIDENCE.md).
+
+## Introduction
+
+An AI tool is a tool developed specifically for use by an AI model to help it read or make changes to an artifact. Here, an artifact can be a document, design, codebase, database, or any other container for data.
+
+Much of the published guidance on designing tools for AI models assumes a tool that reads: search, retrieval, lookup. The stakes change when the tool can make changes. A bad read wastes a turn; a bad change damages the artifact, and the damage outlives the session. This document is about avoiding bad changes.
+
 ## The design boundary
 
-An AI tool joins two different kinds of capability.
+When an AI model uses an AI tool to make a change to an artifact, it runs on judgment exercised at two different times: its developer's when it was built, and the AI model's when it runs.
 
-The first is judgment, supplied by the AI model using the tool. The model interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task means. Instructions can improve that judgment, but they cannot guarantee the model follows them every time.
+The developer's judgment is fixed in code. Every rule the tool enforces, every threshold it applies, every default it falls back on was decided in advance. That judgment holds every time it runs, and it covers only the questions the developer answered.
 
-The second is repeatability, supplied by software. It can apply a stated rule to the state it observes, refuse a prohibited change, and carry out work whose choices have already been made. None of that depends on the model remembering anything.
+The AI model's judgment happens at run time, when it is given a specific task on a specific artifact. The AI model interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task means. No instruction guarantees what it decides.
 
-Neither side should be asked to do the other's job. A model should not be the only thing standing between a prohibited action and the artifact. Software should not be asked to settle a question of meaning that nobody has formalized.
+The judgments an AI tool's design can place are exercised at one of those two times. Assigning them is boundary design.
 
 > **Designing a tool for an AI agent is boundary design. Put judgment where ambiguity has to be resolved. Put guarantees where a rule can be stated. Keep already-decided work in software, and cross the boundary when new information changes what should happen next.**
 
