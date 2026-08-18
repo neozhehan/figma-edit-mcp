@@ -45,17 +45,41 @@ Much of the published guidance on designing tools for AI models assumes a tool t
 
 ## The Design Boundary
 
-When an AI model uses an AI tool to make a change to an artifact, the outcome rests on judgment exercised at two different times: the developer's when the tool was built, and the model's when the model runs.
+When an AI model uses an AI tool to change an artifact, the outcome rests on two kinds of judgment, enforced differently:
+- **The AI model's judgment** — probabilistic, formed at run time against the specific task and the specific artifact.
+- **The AI tool's judgment** — deterministic, formed once by its developer and applied unchanged whatever the task or artifact.
 
-The developer's judgment is fixed in code. Every rule the tool enforces, every threshold it applies, every default it falls back on was decided in advance. That judgment holds every time the tool runs, and it covers only the questions the developer answered.
+The AI model interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task means. The same task can produce a different decision, and what it decided before does not establish what it will decide next. So anything the model is told is something it weighs, but not something that binds it.
 
-The AI model's judgment happens at run time, when it is given a specific task on a specific artifact. The AI model interprets intent, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task means. No instruction guarantees what it decides.
+The AI tool makes no new judgment at run time. It applies one its developer already made: every rule it enforces, every threshold it applies, every default it falls back on was decided before the task existed. It gives the same verdict on every call it receives. That verdict does not depend on which AI model sent the call, how full that model's context was, or whether the model ever read the rules. But a judgment made that early cannot cover everything a task turns out to require.
 
-The judgments an AI tool's design can place are exercised at one of those two times. Placing them is boundary design.
+At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can answer the same way every time. Between them lies a large class of judgments either side could make — a rule can be enforced by the tool or left to the model to follow; work the model has already decided can run inside the tool or come back to the model at every step. Where that division falls is the design boundary.
+
+Moving a judgment to the AI tool buys certainty and gives up reach; moving it to the AI model buys reach and gives up certainty.
+
+Wherever the judgments are placed, work crosses between the two sides in the same loop:
+
+1. The AI model interprets the task against the artifact and decides what change to make.
+2. The AI model composes a request that expresses that change in the terms the AI tool accepts.
+3. The AI tool checks the request against what the artifact records, and carries out the work the model already decided.
+4. The result returns the outcome and what the next decision needs.
+
+
+
+
+"Deterministic" describes the check, not the whole tool or the environment. A check applies its predicate consistently, which is not the same as applying the right one — a wrong predicate fails reliably, every time. The distinction that matters is between an outcome that depends on the model complying and one that does not.
+
+Between the two lies a large class of judgments that either mechanism could enforce — a rule can be enforced by the tool or left to the model to follow; work the model has already decided can run inside the tool or return to the model at every step. Deciding which side enforces which judgment is the design boundary.
+
+Each side fails differently:
+
+- **The model** — the only side that can resolve what a task means, but no instruction guarantees what it decides.
+- **The tool** — the only side that can guarantee anything, but it cannot tell whether a valid change is the right one.
+
+Moving a judgment from one side to the other trades one of those failures for the other.
+
 
 > **Designing a tool for an AI agent is boundary design. Put judgment where ambiguity has to be resolved. Put guarantees where a rule can be stated. Keep already-decided work in software, and cross the boundary when new information changes what should happen next.**
-
-"Deterministic" here describes the check, not the whole tool or the environment. A check applies its predicate consistently, which is not the same as applying the right one — a wrong predicate fails reliably, every time. The distinction that matters is between an outcome that depends on the model complying and one that does not.
 
 Four questions follow. Three of them place the boundary; representation determines how far it can reach.
 
@@ -119,6 +143,10 @@ Leave too much on the model's side and preventable failures stay a matter of cha
 The objective is not maximum enforcement, maximum structure, or minimum model involvement. It is to put judgment where it adds value and mechanism where it adds reliability.
 
 ## Principle 1 — Put Enforceable Rules in the Tool, Not Only in the Prompt
+
+(From "The Design Boundary" Section)
+"Deterministic" here describes the check, not the whole tool or the environment. A check applies its predicate consistently, which is not the same as applying the right one — a wrong predicate fails reliably, every time. The distinction that matters is between an outcome that depends on the model complying and one that does not.
+
 
 The enforcement boundary separates what the model proposes from what the tool lets take effect.
 
