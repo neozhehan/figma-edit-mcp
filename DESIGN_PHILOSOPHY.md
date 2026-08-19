@@ -53,23 +53,40 @@ The AI model interprets intent, resolves ambiguity, chooses among valid alternat
 
 The AI tool makes no new judgment at run time. It applies one its developer already made: every rule it enforces, every threshold it applies, every default it falls back on was decided before the task existed. It gives the same verdict on every call it receives. That verdict does not depend on which AI model sent the call, how full that model's context was, or whether the model ever read the rules. But a judgment made that early cannot cover everything a task turns out to require.
 
-At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can answer the same way every time. Between them lies a large class of judgments either side could make — a rule can be enforced by the tool or left to the model to follow; work the model has already decided can run inside the tool or come back to the model at every step. Where that division falls is the design boundary.
+At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can answer the same way every time. Between them lies a large class of judgments either side could make — a rule can be enforced by the tool or left to the model to follow; changes the model has already decided can all run in a single call to the tool, or the model can send one tool call per change. Where that division falls is the design boundary.
 
 Moving a judgment to the AI tool buys certainty and gives up reach; moving it to the AI model buys reach and gives up certainty.
 
-Wherever the judgments are placed, work crosses between the two sides in the same loop:
+Neither side can change the artifact alone: the AI model can change the artifact only by calling the AI tool, and the AI tool does nothing until called upon by the AI model. So wherever that division falls, the same four steps follow:
 
 1. The AI model interprets the task against the artifact and decides what change to make.
 2. The AI model composes a request that expresses that change in the terms the AI tool accepts.
-3. The AI tool checks the request against what the artifact records, and carries out the work the model already decided.
-4. The result returns the outcome and what the next decision needs.
+3. The AI tool checks the request against what the artifact records, and gives its verdict: the AI tool carries out what it accepts, and refuses the rest.
+4. The AI tool returns what changed, or why nothing did, and whatever the AI model needs for its next judgment.
+
+Steps 2 and 4 are the only contact between the two sides: the AI tool sees nothing of the AI model's judgment except the request, and the AI model sees nothing of the artifact except what the AI tool returns.
+
+
+
+
+
+
+
+
+The AI tool's judgment is made of four decisions: one at each contact, and two in between. All four are its developer's, made before the task existed.
+
+- What it accepts — the AI model can change the artifact only by calling, so this is the only thing that binds what the AI model may ask, rather than merely being weighed.
+- What it refuses — the AI model's judgment is probabilistic, so this is the only thing that can stop a change every time.
+- How much it carries out before returning — every return to step 1 begins a fresh judgment that nothing binds, so this decides how many of those a task takes.
+- What it returns — the AI model sees nothing of the artifact otherwise, so this is the only thing that can improve the AI model's next judgment.
+
+One thing is not part of that judgment, and not the developer's to decide. The AI tool checks against what the artifact records and nothing else, so how much of the intent the artifact records limits all four.
 
 
 
 
 "Deterministic" describes the check, not the whole tool or the environment. A check applies its predicate consistently, which is not the same as applying the right one — a wrong predicate fails reliably, every time. The distinction that matters is between an outcome that depends on the model complying and one that does not.
 
-Between the two lies a large class of judgments that either mechanism could enforce — a rule can be enforced by the tool or left to the model to follow; work the model has already decided can run inside the tool or return to the model at every step. Deciding which side enforces which judgment is the design boundary.
 
 Each side fails differently:
 
