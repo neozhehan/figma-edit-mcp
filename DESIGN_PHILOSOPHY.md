@@ -5,7 +5,7 @@
 - [Purpose & Scope](#purpose--scope)
 - [Introduction](#introduction)
 - [The Design Boundary](#the-design-boundary)
-- [What a Well-Designed Boundary Produces](#what-a-well-designed-boundary-produces)
+- [The Benefits of a Well-Designed Boundary](#the-benefits-of-a-well-designed-boundary)
   - [The Goals Are Connected, Not Additive](#the-goals-are-connected-not-additive)
   - [Safer and Cleaner Form a Maintenance Cycle](#safer-and-cleaner-form-a-maintenance-cycle)
   - [Placement Is a Tradeoff in Both Directions](#placement-is-a-tradeoff-in-both-directions)
@@ -41,7 +41,7 @@ The [README](README.md) explains what **figma-edit-mcp** does. This document exp
 
 ## Introduction
 
-An AI tool is software built specifically for an AI model to read or change an artifact. Here, an artifact can be a document, design, codebase, database, or any other container for data.
+An AI tool is software through which an AI model reads or changes an artifact. It may expose one callable function or a group of functions, as an MCP server does. Here, an artifact can be a document, design, codebase, database, or any other container for data.
 
 Much of the published guidance on designing tools for AI models assumes a tool that reads: search, retrieval, lookup. The stakes are higher when the tool can make changes. A bad read can be retried; a bad change persists, and often compounds, until someone repairs it. 
 
@@ -58,7 +58,9 @@ The AI model interprets the intent behind the task, resolves ambiguity, chooses 
 
 The AI tool makes no new judgment at run time. It applies the same rule on every call it receives. Which verdict that rule produces depends on the state the AI tool can observe at the moment of the call, but not on which AI model sent it, how full that model's context was, or whether the model ever read the rules. Deterministic describes the rule, not its correctness: a rule that states the wrong condition is enforced just as reliably as one that states the right condition. And a judgment made that early cannot cover every case a task turns out to present.
 
-At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can answer the same way every time. Between them lies a large class of judgments either side could make — a rule can be enforced by the tool or left to the model to follow; changes the model has already decided can all run in a single call to the tool, or the model can send one tool call per change. Where that division falls is the design boundary.
+At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can answer the same way every time. Between them lies a large class of judgments either side could make — a rule can be enforced by the tool or left to the model to follow; changes the model has already decided can all run in a single call to the tool, or the model can send one tool call per change. 
+
+**An AI tool's design boundary is the complete set of divisions between model judgment and tool judgment across the kinds of change the tool can make.**
 
 Neither side can change the artifact alone: the AI model can change the artifact only by calling the AI tool, and the AI tool does nothing until called upon by the AI model. So wherever that division falls, the same **four-step cycle** follows:
 
@@ -92,9 +94,9 @@ That is the fifth decision the developer can rely on. The other four are what th
 Observation is not another line between the model and software. It sets how much of the artifact's current state can inform the other three dimensions.
 <br>
 
-## What a Well-Designed Boundary Produces
+## The Benefits of a Well-Designed Boundary
 
-Three outcomes measure whether the boundary is in the right place:
+For each kind of change an AI tool can make, its developer decides which judgments remain with the model and which the tool applies. Together, those decisions form the tool’s design boundary. A well-designed boundary produces three benefits:
 
 - **Safer** — fewer erroneous actions are allowed to take effect, and there are fewer plausible ways to make an error.
 - **Cleaner** — the artifact contains fewer broken, inconsistent, duplicated, or accidental states, and consequential relationships are recorded explicitly and accurately.
