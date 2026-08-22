@@ -56,7 +56,7 @@ When an AI model uses an AI tool to change an artifact, the outcome rests on two
 
 The AI model interprets the intent behind the task, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task means. The same task can produce a different decision, and what it decided before does not establish what it will decide next. So anything the model is told is something it weighs, but not something that binds it.
 
-The AI tool makes no new judgment at run time. It applies the same rule on every call it receives. Which verdict that rule produces depends on what the artifact records at the moment of the call, but not on which AI model sent it, how full that model's context was, or whether the model ever read the rules. Deterministic describes the rule, not its correctness: a rule that states the wrong condition is enforced just as reliably as one that states the right condition. And a judgment made that early cannot cover every case a task turns out to present.
+The AI tool makes no new judgment at run time. It applies the same rule on every call it receives. Which verdict that rule produces depends on the state the AI tool can observe at the moment of the call, but not on which AI model sent it, how full that model's context was, or whether the model ever read the rules. Deterministic describes the rule, not its correctness: a rule that states the wrong condition is enforced just as reliably as one that states the right condition. And a judgment made that early cannot cover every case a task turns out to present.
 
 At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can answer the same way every time. Between them lies a large class of judgments either side could make — a rule can be enforced by the tool or left to the model to follow; changes the model has already decided can all run in a single call to the tool, or the model can send one tool call per change. Where that division falls is the design boundary.
 
@@ -64,7 +64,7 @@ Neither side can change the artifact alone: the AI model can change the artifact
 
 1. The AI model interprets the task against the artifact and decides what change to make.
 2. The AI model composes a request that expresses that change in the terms the AI tool accepts.
-3. The AI tool checks the request against what is recorded in the artifact, and gives its verdict: the AI tool carries out what passes, and refuses the rest.
+3. The AI tool checks the request against the state it can observe in the artifact, and gives its verdict: the AI tool carries out what passes, and refuses the rest.
 4. The AI tool returns what changed, or why nothing did, and whatever the AI model needs for its next judgment.
 
 Steps 2 and 4 are the only contact between the two sides: the AI tool sees nothing of the AI model's judgment except the request, and the AI model sees nothing of the artifact except what the AI tool returns.
@@ -76,20 +76,20 @@ The cycle's outcome rests on both judgments. Nothing binds the AI model's judgme
 - Every return to step 1 begins a fresh judgment that nothing binds, and every return withheld is evidence the AI model does not get, so **how much the AI tool carries out before returning** governs how many of those judgments a task takes and what each one has to go on.
 - The AI model sees nothing of the artifact otherwise, so **what the AI tool returns** is the only thing that can improve the AI model's next judgment.
 
-The AI tool checks against what is recorded in the artifact. If the artifact's author intended for two items to be linked, but did not record this link in the artifact, the AI tool cannot observe or preserve the link.
+The AI tool can check only the state it can observe at the moment of the call. If the artifact's author intended for two items to be linked, but that link is not explicit in the artifact at that moment, the AI tool cannot observe or preserve it.
 
-The developer does not decide what is recorded in the artifact, but does decide how much of that record the AI tool uses in what it lets a request express, what it refuses, and what it returns.
+The developer does not decide which relationships are explicit in the artifact. The developer decides which of those explicit relationships the AI tool can observe.
 
-Those five decisions are everything the developer can rely on, so the rest of this document is about making them well. What a request can express and what the AI tool returns are two decisions, but the same test applies to both: does what crosses carry what the other side needs? So the five decisions can be covered by four principles, each addressing one dimension of the design boundary:
+That is the fifth decision the developer can rely on. The other four are what the AI tool lets a request express, what it refuses, how much it carries out before returning, and what it returns. What a request can express and what the AI tool returns are two decisions, but the same test applies to both: does what crosses carry what the other side needs? So the five decisions can be covered by four principles, each addressing one dimension of the design boundary:
 
 | Boundary dimension | What the developer decides | Principle |
 | --- | --- | --- |
-| **Representation** | How much of the artifact's record the AI tool uses | Make consequential relationships explicit. |
+| **Observation** | Which explicit relationships the AI tool uses | Make consequential relationships observable to the AI tool when they are explicit in the artifact. |
 | **Enforcement** | What the AI tool refuses | Put enforceable rules in the tool, not only in the prompt. |
 | **Control** | How much the AI tool carries out before returning | Keep already-determined work inside one call; return control when new judgment is needed. |
 | **Information** | What a request can express, and what the AI tool returns | Make each exchange decision-complete. |
 
-Representation is not another line between the model and software. It is what sets the reach of the other three.
+Observation is not another line between the model and software. It sets how much of the artifact's current state can inform the other three dimensions.
 <br>
 
 ## What a Well-Designed Boundary Produces
