@@ -43,7 +43,7 @@ The [README](README.md) explains what **figma-edit-mcp** does. This document exp
 
 An AI tool is software through which an AI model reads or changes an artifact. It may expose one callable function or a group of functions, as an MCP server does. Here, an artifact can be a document, design, codebase, database, or any other container for data.
 
-Much of the published guidance on designing tools for AI models assumes a tool that reads: search, retrieval, lookup. The stakes are higher when the tool can make changes. A bad read can be retried; a bad change persists, and often compounds, until someone repairs it. 
+Much of the published guidance on designing tools for AI models assumes a tool that reads: search, retrieval, lookup. The stakes are higher when the tool can make changes. A bad read does not itself change the artifact; a bad change persists, and often compounds, until someone repairs it.
 
 This document is about designing the AI tool so that fewer bad changes take effect: which judgments the tool should enforce itself, which belong to the AI model, and how a developer decides between them.
 <br>
@@ -52,51 +52,55 @@ This document is about designing the AI tool so that fewer bad changes take effe
 
 When an AI model uses an AI tool to change an artifact, the outcome rests on two kinds of judgment:
 - **The AI model's judgment** — probabilistic, formed at run time against the specific task and the specific artifact.
-- **The AI tool's judgment** — deterministic, formed once by its developer and applied unchanged whatever the task or artifact.
+- **The AI tool's judgment** — deterministic, formed by its developer before run time and applied unchanged whatever the task or artifact.
 
 The AI model interprets the intent behind the task, resolves ambiguity, chooses among valid alternatives, and adapts when new information changes what the task means. The same task can produce a different decision, and what it decided before does not establish what it will decide next. So anything the model is told is something it weighs, but not something that binds it.
 
 The AI tool makes no new judgment at run time. It applies the same rule on every call it receives. Which verdict that rule produces depends on the state the AI tool can observe at the moment of the call, but not on which AI model sent it, how full that model's context was, or whether the model ever read the rules. Deterministic describes the rule, not its correctness: a rule that states the wrong condition is enforced just as reliably as one that states the right condition. And a judgment made that early cannot cover every case a task turns out to present.
 
-At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can answer the same way every time. Between them lies a large class of judgments either side could make — a rule can be enforced by the tool or left to the model to follow; changes the model has already decided can all run in a single call to the tool, or the model can send one tool call per change. 
+At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can apply the same rule on every call. Between them lies a large class of judgments either side could make — a rule can be enforced by the tool or left to the model to follow; changes the model has already decided can all run in a single call to the tool, or the model can send one tool call per change. 
 
-**An AI tool's design boundary is the complete set of divisions between model judgment and tool judgment across the kinds of change the tool can make.**
+**An AI tool's design boundary is the complete set of decisions its developer makes about how model judgment and tool judgment combine across the kinds of change the tool can make.**
+
+The AI model may first use the AI tool to read the artifact. These discovery reads return the state the AI model needs to decide what change to make, but do not themselves change the artifact. 
 
 Neither side can change the artifact alone: the AI model can change the artifact only by calling the AI tool, and the AI tool does nothing until called upon by the AI model. So wherever that division falls, the same **four-step cycle** follows:
 
-1. The AI model interprets the task against the artifact and decides what change to make.
+1. The AI model interprets the task against what the AI tool has returned about the artifact and decides what change to make.
 2. The AI model composes a request that expresses that change in the terms the AI tool accepts.
 3. The AI tool checks the request against the state it can observe in the artifact, and gives its verdict: the AI tool carries out what passes, and refuses the rest.
 4. The AI tool returns what changed, or why nothing did, and whatever the AI model needs for its next judgment.
 
-Steps 2 and 4 are the only contact between the two sides: the AI tool sees nothing of the AI model's judgment except the request, and the AI model sees nothing of the artifact except what the AI tool returns.
+Requests and returns are the only contact between the two sides, whether the request reads or changes the artifact: the AI tool sees nothing of the AI model's judgment except the request, and the AI model sees nothing of the artifact except what the AI tool returns.
 
-The cycle's outcome rests on both judgments. Nothing binds the AI model's judgment, not what it learned in pre-training or fine-tuning, and not any tool description, instruction, or skill written by the AI tool's developer. Everything the AI tool does in the cycle comes from judgment its developer made before the task existed, and it holds on every call. So the AI tool's judgment is the only one the developer can rely on:
+The cycle's outcome rests on both judgments. Nothing binds the AI model's judgment, not what it learned in pre-training or fine-tuning, and not any tool description, instruction, or skill written by the AI tool's developer. Everything the AI tool does in the cycle comes from judgment its developer made before the task existed, and it holds on every call. So the AI tool's judgment is the only one the developer can rely on being applied for every call:
 
-- The AI model reaches the artifact only through a request, so **what the AI tool lets a request express** is the only thing that limits what the AI model can ask for.
+- The AI model reaches the artifact only through a request, so **what the AI tool lets a request express** is the only limit on the changes the AI model can ask the AI tool to make.
 - The AI model's judgment is probabilistic, so **what the AI tool refuses** is the only thing that stops a change every time.
-- Every return to step 1 begins a fresh judgment that nothing binds, and every return withheld is evidence the AI model does not get, so **how much the AI tool carries out before returning** governs how many of those judgments a task takes and what each one has to go on.
-- The AI model sees nothing of the artifact otherwise, so **what the AI tool returns** is the only thing that can improve the AI model's next judgment.
+- Every return to step 1 begins a fresh judgment, and every return withheld is evidence the AI model does not get, so **how much the AI tool carries out before returning** governs how many of those judgments a task takes and what each one has to go on.
+- The AI model sees nothing of the artifact otherwise, so **what the AI tool returns** is the only new information about the artifact that can improve the AI model's next judgment.
 
 The AI tool can check only the state it can observe at the moment of the call. If the artifact's author intended for two items to be linked, but that link is not explicit in the artifact at that moment, the AI tool cannot observe or preserve it.
 
 The developer decides which kinds of explicit relationship the AI tool can read, create, and preserve. The AI model decides which available relationship expresses the intent of a particular task, and composes a request that tells the AI tool to record it. Once recorded, that relationship becomes state the AI tool can use when deciding what to carry out, what to refuse, and what to return.
 
-That is the fifth decision the developer can rely on. The other four are what the AI tool lets a request express, what it refuses, how much it carries out before returning, and what it returns. What a request can express and what the AI tool returns are two decisions, but the same test applies to both: does what crosses carry what the other side needs? So the five decisions can be covered by four principles, each addressing one dimension of the design boundary:
+That is the fifth decision the developer can rely on. The other four are what the AI tool lets a request express, what it refuses, how much it carries out before returning, and what it returns. What a request can express and what the AI tool returns are two decisions, but the same test applies to both: does what crosses carry what the other side needs? 
+
+So the five decisions can be covered by four principles, each addressing one dimension of the design boundary:
 
 | Boundary dimension | What the developer decides | Principle |
 | --- | --- | --- |
 | **Representation** | 	Which explicit relationships the AI tool can read, create, and preserve | Make consequential relationships explicit. |
 | **Enforcement** | What the AI tool refuses | Put enforceable rules in the tool, not only in the prompt. |
 | **Control** | How much the AI tool carries out before returning | Keep already-determined work inside one call; return control when new judgment is needed. |
-| **Information** | What a request can express, and what the AI tool returns | Make each exchange decision-complete. |
+| **Information** | What the AI tool lets a request express, and what the AI tool returns | Make each exchange decision-complete. |
 
 Representation determines which relationships the AI tool can record in the artifact and which recorded relationships can inform enforcement, control, and information.
 <br>
 
 ## The Benefits of a Well-Designed Boundary
 
-For each kind of change an AI tool can make, its developer decides which judgments remain with the model and which the tool applies. Together, those decisions form the tool’s design boundary. A well-designed boundary produces three benefits:
+For each kind of change an AI tool can make, its developer makes decisions across the four dimensions described above. Together, those decisions form the AI tool's design boundary. A well-designed boundary produces three benefits:
 
 - **Safer** — fewer erroneous actions are allowed to take effect, and there are fewer plausible ways to make an error.
 - **Cleaner** — the artifact has:
