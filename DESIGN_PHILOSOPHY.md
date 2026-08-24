@@ -80,18 +80,18 @@ The cycle's outcome rests on both judgments. Nothing binds the AI model's judgme
 
 The AI tool can check only the state it can observe at the moment of the call. If the artifact's author intended for two items to be linked, but that link is not explicit in the artifact at that moment, the AI tool cannot observe or preserve it.
 
-The developer does not decide which relationships are explicit in the artifact. The developer decides which of those explicit relationships the AI tool can observe.
+The developer decides which kinds of explicit relationship the AI tool can read, create, and preserve. The AI model decides which available relationship expresses the intent of a particular task, and composes a request that tells the AI tool to record it. Once recorded, that relationship becomes state the AI tool can use when deciding what to carry out, what to refuse, and what to return.
 
 That is the fifth decision the developer can rely on. The other four are what the AI tool lets a request express, what it refuses, how much it carries out before returning, and what it returns. What a request can express and what the AI tool returns are two decisions, but the same test applies to both: does what crosses carry what the other side needs? So the five decisions can be covered by four principles, each addressing one dimension of the design boundary:
 
 | Boundary dimension | What the developer decides | Principle |
 | --- | --- | --- |
-| **Observation** | Which explicit relationships the AI tool uses | Make consequential relationships observable to the AI tool when they are explicit in the artifact. |
+| **Representation** | 	Which explicit relationships the AI tool can read, create, and preserve | Make consequential relationships explicit. |
 | **Enforcement** | What the AI tool refuses | Put enforceable rules in the tool, not only in the prompt. |
 | **Control** | How much the AI tool carries out before returning | Keep already-determined work inside one call; return control when new judgment is needed. |
 | **Information** | What a request can express, and what the AI tool returns | Make each exchange decision-complete. |
 
-Observation is not another line between the model and software. It sets how much of the artifact's current state can inform the other three dimensions.
+Representation determines which relationships the AI tool can record in the artifact and which recorded relationships can inform enforcement, control, and information.
 <br>
 
 ## The Benefits of a Well-Designed Boundary
@@ -99,21 +99,19 @@ Observation is not another line between the model and software. It sets how much
 For each kind of change an AI tool can make, its developer decides which judgments remain with the model and which the tool applies. Together, those decisions form the tool’s design boundary. A well-designed boundary produces three benefits:
 
 - **Safer** — fewer erroneous actions are allowed to take effect, and there are fewer plausible ways to make an error.
-- **Cleaner** — the artifact contains fewer broken, inconsistent, duplicated, or accidental states, and consequential relationships are recorded explicitly and accurately.
+- **Cleaner** — the artifact has:
+  - **Higher state quality** — fewer defects and inconsistencies.
+  - **Greater structural clarity** — shared decisions and dependencies are recorded explicitly and accurately, accidental duplicates are reduced, and legitimate alternatives are clearly distinguished.
 - **Faster** — correct work takes less time, in the current task or in later work that reuses or changes the same artifact.
 
-Each one asks a different question about the boundary:
+The two parts of Cleaner are distinct. The AI tool can preserve the artifact's existing state quality by refusing a change that would introduce a defect, even when no additional relationship is recorded. Recording a consequential relationship can improve structural clarity and make such a refusal possible, even when doing so removes no existing defect.
 
-- Safer asks whether errors software could have caught are still left to the model to avoid.
-- Cleaner asks whether important relationships are explicit, and whether accepted changes preserve the good states already reached.
-- Faster asks whether each piece of work sits on the cheaper competent side, and whether every necessary crossing carries what the next decision needs.
+The four dimensions describe what the developer decides about the boundary. Safer, Cleaner, and Faster describe the benefits those decisions should produce. The relationship is not one-to-one: each decision can affect several benefits, and each benefit can depend on decisions across several dimensions.
 
-Cleaner contains two related but distinct ideas:
-
-1. **State quality** — fewer defects and inconsistencies.
-2. **Structural clarity** — shared decisions, dependencies, and legitimate alternatives are recorded clearly.
-
-A check can preserve state quality without making the artifact more explicit. Explicit structure can make a new check possible without removing any existing defect.
+The developer evaluates the combined effects of those decisions in three ways:
+- Safer — whether errors the AI tool could have caught are still left to the model to avoid.
+- Cleaner — are consequential relationships explicit, and do accepted changes preserve the artifact's existing state quality?
+- Faster — is each piece of work on the side that can perform it competently in less time, and does every necessary crossing carry what the next decision needs?
 
 ### The Goals Are Connected, Not Additive
 
