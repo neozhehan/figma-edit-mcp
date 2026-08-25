@@ -119,9 +119,9 @@ The developer evaluates the combined effects of those decisions in three ways:
 
 ### The Goals Are Connected, Not Additive
 
-A single event can appear under all three goals. If a check prevents a broken reference, the action is safer, the artifact stays cleaner, and later repair time is avoided. That is one causal chain seen from three sides, not three independent benefits.
+One refusal can contribute to all three benefits. If a check refuses a change that would introduce a defect, that change does not take effect, the artifact stays cleaner than it otherwise would, and later repair work may be avoided. That is one causal chain seen from three sides, not three independent benefits.
 
-The same holds across the four principles. An explicit relationship and a check are one prevention mechanism, not two. A refusal and an actionable result are one recovery mechanism. Each part is worth describing; the benefit is worth counting once.
+This distinction matters when evaluating a boundary. Several principles may be necessary for one effect, and one principle may contribute to several effects. Tracing each effect to its cause shows which parts are necessary, where the effect could fail, and which costs and countereffects belong in the same evaluation.
 
 ### Safer and Cleaner Form a Maintenance Cycle
 
