@@ -6,7 +6,7 @@
 - [Introduction](#introduction)
 - [The Design Boundary](#the-design-boundary)
 - [The Benefits of a Well-Designed Boundary](#the-benefits-of-a-well-designed-boundary)
-  - [The Goals Are Connected, Not Additive](#the-goals-are-connected-not-additive)
+  - [The Benefits Are Connected](#the-benefits-are-connected)
   - [Safer and Cleaner Form a Maintenance Cycle](#safer-and-cleaner-form-a-maintenance-cycle)
   - [Placement Is a Tradeoff in Both Directions](#placement-is-a-tradeoff-in-both-directions)
 - [Principle 1 — Put Enforceable Rules in the Tool, Not Only in the Prompt](#principle-1--put-enforceable-rules-in-the-tool-not-only-in-the-prompt)
@@ -58,7 +58,7 @@ The AI model interprets the intent behind the task, resolves ambiguity, chooses 
 
 The AI tool makes no new judgment at run time. It applies the same rule on every call it receives. Which verdict that rule produces depends on the state the AI tool can observe at the moment of the call, but not on which AI model sent it, how full that model's context was, or whether the model ever read the rules. Deterministic describes the rule, not its correctness: a rule that states the wrong condition is enforced just as reliably as one that states the right condition. And a judgment made that early cannot cover every case a task turns out to present.
 
-At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can apply the same rule on every call. Between them lies a large class of judgments either side could make — a rule can be enforced by the tool or left to the model to follow; changes the model has already decided can all run in a single call to the tool, or the model can send one tool call per change. 
+At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can apply the same rule on every call. Between them lies a large class of judgments either side could make.
 
 **An AI tool's design boundary is the complete set of decisions its developer makes about how model judgment and tool judgment combine across the kinds of change the tool can make.**
 
@@ -75,8 +75,8 @@ Requests and returns are the only contact between the two sides, whether the req
 
 The cycle's outcome rests on both judgments. Nothing binds the AI model's judgment, not what it learned in pre-training or fine-tuning, and not any tool description, instruction, or skill written by the AI tool's developer. Everything the AI tool does in the cycle comes from judgment its developer made before the task existed, and it holds on every call. So the AI tool's judgment is the only one the developer can rely on being applied for every call:
 
-- The AI model reaches the artifact only through a request, so **what the AI tool lets a request express** is the only limit on the changes the AI model can ask the AI tool to make.
-- The AI model's judgment is probabilistic, so **what the AI tool refuses** is the only thing that stops a change every time.
+- The AI model reaches the artifact only through the operations and parameters in the AI tool's request interface, so **what operations and parameters the AI tool makes available to the AI model** determines which kinds of change are available to the model.
+- The AI model's judgment is probabilistic, so, among the changes that interface makes available, **what the AI tool refuses** determines which requested changes are stopped every time.
 - Every return to step 1 begins a fresh judgment, and every return withheld is evidence the AI model does not get, so **how much the AI tool carries out before returning** governs how many of those judgments a task takes and what each one has to go on.
 - The AI model sees nothing of the artifact otherwise, so **what the AI tool returns** is the only new information about the artifact that can improve the AI model's next judgment.
 
@@ -91,9 +91,9 @@ So the five decisions can be covered by four principles, each addressing one dim
 | Boundary dimension | What the developer decides | Principle |
 | --- | --- | --- |
 | **Representation** | 	Which explicit relationships the AI tool can read, create, and preserve | Make consequential relationships explicit. |
-| **Enforcement** | What the AI tool refuses | Put enforceable rules in the tool, not only in the prompt. |
+| **Enforcement** | Which requested changes the AI tool prevents from taking effect | Put enforceable rules in the tool, not only in the prompt. |
 | **Control** | How much the AI tool carries out before returning | Keep already-determined work inside one call; return control when new judgment is needed. |
-| **Information** | What the AI tool lets a request express, and what the AI tool returns | Make each exchange decision-complete. |
+| **Information** | Which operations and parameters the request interface exposes, and which facts the AI tool returns | Make each exchange decision-complete. |
 
 Representation determines which relationships the AI tool can record in the artifact and which recorded relationships can inform enforcement, control, and information.
 <br>
@@ -117,9 +117,9 @@ The developer evaluates the combined effects of those decisions in three ways:
 - Cleaner — are consequential relationships explicit, and do accepted changes preserve the artifact's existing state quality?
 - Faster — is each piece of work on the side that can perform it competently in less time, and does every necessary crossing carry what the next decision needs?
 
-### The Goals Are Connected, Not Additive
+### The Benefits Are Connected
 
-One refusal can contribute to all three benefits. If a check refuses a change that would introduce a defect, that change does not take effect, the artifact stays cleaner than it otherwise would, and later repair work may be avoided. That is one causal chain seen from three sides, not three independent benefits.
+One refusal can contribute to all three benefits. If a check refuses a change that would introduce a defect, that change does not take effect, the artifact stays cleaner than it otherwise would, and later repair work may be avoided.
 
 This distinction matters when evaluating a boundary. Several principles may be necessary for one effect, and one principle may contribute to several effects. Tracing each effect to its cause shows which parts are necessary, where the effect could fail, and which costs and countereffects belong in the same evaluation.
 
