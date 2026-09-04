@@ -5,10 +5,11 @@
 - [Purpose & Scope](#purpose--scope)
 - [Introduction](#introduction)
 - [The Design Boundary](#the-design-boundary)
+  - [AI Model Judgment and AI Tool Judgment](#ai-model-judgment-and-ai-tool-judgment)
+  - [The Four-Step Change Cycle](#the-four-step-change-cycle)
+  - [The Four Boundary Dimensions](#the-four-boundary-dimensions)
 - [The Benefits of a Well-Designed Boundary](#the-benefits-of-a-well-designed-boundary)
   - [The Benefits Are Connected](#the-benefits-are-connected)
-  - [Safer and Cleaner Form a Maintenance Cycle](#safer-and-cleaner-form-a-maintenance-cycle)
-  - [Placement Is a Tradeoff in Both Directions](#placement-is-a-tradeoff-in-both-directions)
 - [Principle 1 — Put Enforceable Rules in the Tool, Not Only in the Prompt](#principle-1--put-enforceable-rules-in-the-tool-not-only-in-the-prompt)
   - [How Enforcement Leads to Safer](#how-enforcement-leads-to-safer)
   - [How Enforcement Leads to Cleaner](#how-enforcement-leads-to-cleaner)
@@ -50,6 +51,8 @@ This document is about designing the AI tool so that fewer bad changes take effe
 
 ## The Design Boundary
 
+### AI Model Judgment and AI Tool Judgment
+
 When an AI model uses an AI tool to change an artifact, the outcome rests on two kinds of judgment:
 - **The AI model's judgment** — probabilistic, formed at run time against the specific task and the specific artifact.
 - **The AI tool's judgment** — deterministic, formed by its developer before run time and applied unchanged whatever the task or artifact.
@@ -62,9 +65,11 @@ At the extremes there is no choice. Only the AI model can resolve what a task me
 
 **An AI tool's design boundary is the complete set of decisions its developer makes about how model judgment and tool judgment combine across the kinds of change the tool can make.**
 
+### The Four-Step Change Cycle
+
 The AI model may first use the AI tool to read the artifact. These discovery reads return the state the AI model needs to decide what change to make, but do not themselves change the artifact. 
 
-Neither side can change the artifact alone: the AI model can change the artifact only by calling the AI tool, and the AI tool does nothing until called upon by the AI model. So wherever that division falls, the same **four-step cycle** follows:
+Neither side can change the artifact alone: the AI model can change the artifact only by calling the AI tool, and the AI tool does nothing until called upon by the AI model. So wherever that division falls, the same **four-step change cycle** follows:
 
 1. The AI model interprets the task against what the AI tool has returned about the artifact and decides what change to make.
 2. The AI model composes a request that expresses that change in the terms the AI tool accepts.
@@ -72,6 +77,8 @@ Neither side can change the artifact alone: the AI model can change the artifact
 4. The AI tool returns what changed, or why nothing did, and whatever the AI model needs for its next judgment.
 
 Requests and returns are the only contact between the two sides, whether the request reads or changes the artifact: the AI tool sees nothing of the AI model's judgment except the request, and the AI model sees nothing of the artifact except what the AI tool returns.
+
+### The Four Boundary Dimensions
 
 The cycle's outcome rests on both judgments. Nothing binds the AI model's judgment, not what it learned in pre-training or fine-tuning, and not any tool description, instruction, or skill written by the AI tool's developer. Everything the AI tool does in the cycle comes from judgment its developer made before the task existed, and it holds on every call. So the AI tool's judgment is the only one the developer can rely on being applied for every call:
 
@@ -122,20 +129,6 @@ The developer evaluates the combined effects of those decisions in three ways:
 One refusal can contribute to all three benefits. If a check refuses a change that would introduce a defect, that change does not take effect, the artifact stays cleaner than it otherwise would, and later repair work may be avoided.
 
 This distinction matters when evaluating a boundary. Several principles may be necessary for one effect, and one principle may contribute to several effects. Tracing each effect to its cause shows which parts are necessary, where the effect could fail, and which costs and countereffects belong in the same evaluation.
-
-### Safer and Cleaner Form a Maintenance Cycle
-
-Making a relationship explicit moves it from the side where the model has to infer it to the side where software can inspect it. A check written over that structure then holds it in place against the regressions it covers.
-
-The cycle is not self-starting. The structure has to be created, a rule has to be written over it, and existing defects still have to be repaired by ordinary work. Enforcement preserves a condition; it does not create one.
-
-Faster does not lead back to the other two on its own. Removing turns saves time, but returning control too late hides evidence the model needed and lets a mistaken plan run further. Safer and Cleaner also have value independent of any time saved.
-
-### Placement Is a Tradeoff in Both Directions
-
-Leave too much on the model's side and preventable failures stay a matter of chance. Move too much to software's side and the tool turns rigid, refusing valid work and settling questions that should have stayed open to judgment.
-
-The objective is not maximum enforcement, maximum structure, or minimum model involvement. It is to put judgment where it adds value and mechanism where it adds reliability.
 
 ## Principle 1 — Put Enforceable Rules in the Tool, Not Only in the Prompt
 
