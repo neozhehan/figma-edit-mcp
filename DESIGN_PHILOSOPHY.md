@@ -10,15 +10,15 @@
   - [The Four Boundary Dimensions](#the-four-boundary-dimensions)
 - [The Benefits of a Well-Designed Boundary](#the-benefits-of-a-well-designed-boundary)
   - [The Benefits Are Connected](#the-benefits-are-connected)
-- [Principle 1 — Put Enforceable Rules in the Tool, Not Only in the Prompt](#principle-1--put-enforceable-rules-in-the-tool-not-only-in-the-prompt)
+- [Principle 1 — Representation: Make Consequential Relationships Explicit](#principle-1-representation:-make-consequential-relationships-explicit)
+  - [How Explicit Structure Produces Cleaner and Leads to Safer](#how-explicit-structure-produces-cleaner-and-leads-to-safer)
+  - [How Explicit Structure Leads to Faster](#how-explicit-structure-leads-to-faster)
+  - [Evidence for Explicit Structure](#evidence-for-explicit-structure)
+- [Principle 2 — Put Enforceable Rules in the Tool, Not Only in the Prompt](#principle-2--put-enforceable-rules-in-the-tool-not-only-in-the-prompt)
   - [How Enforcement Leads to Safer](#how-enforcement-leads-to-safer)
   - [How Enforcement Leads to Cleaner](#how-enforcement-leads-to-cleaner)
   - [How Enforcement Leads to Faster](#how-enforcement-leads-to-faster)
   - [Evidence for Enforcement](#evidence-for-enforcement)
-- [Principle 2 — Make Consequential Relationships Explicit](#principle-2--make-consequential-relationships-explicit)
-  - [How Explicit Structure Produces Cleaner and Leads to Safer](#how-explicit-structure-produces-cleaner-and-leads-to-safer)
-  - [How Explicit Structure Leads to Faster](#how-explicit-structure-leads-to-faster)
-  - [Evidence for Explicit Structure](#evidence-for-explicit-structure)
 - [Principle 3 — Keep Already-Determined Work Inside One Call; Return Control When New Judgment Is Needed](#principle-3--keep-already-determined-work-inside-one-call-return-control-when-new-judgment-is-needed)
   - [Grouping Is Not Validation](#grouping-is-not-validation)
   - [Evidence for Consolidating Determined Work](#evidence-for-consolidating-determined-work)
@@ -35,12 +35,12 @@
 - [Limits of a Well-Placed Boundary](#limits-of-a-well-placed-boundary)
 <br>
 
-## Purpose & Scope
+## 1. Purpose & Scope
 
 The [README](README.md) explains what **figma-edit-mcp** does. This document explains the principles behind designing tools for AI models, and why **figma-edit-mcp** is built the way it is. The exact enforcement guarantees and their conditions live in [SAFETY.md](SAFETY.md). Sources, methods, and limitations for every empirical claim here are collected in [EVIDENCE.md](EVIDENCE.md).
 <br>
 
-## Introduction
+## 2. Introduction
 
 An AI tool is software through which an AI model reads or changes an artifact. It may expose one callable function or a group of functions, as an MCP server does. Here, an artifact can be a document, design, codebase, database, or any other container for data.
 
@@ -49,9 +49,9 @@ Much of the published guidance on designing tools for AI models assumes a tool t
 This document is about designing the AI tool so that fewer bad changes take effect: which judgments the tool should enforce itself, which belong to the AI model, and how a developer decides between them.
 <br>
 
-## The Design Boundary
+## 3. The Design Boundary
 
-### AI Model Judgment and AI Tool Judgment
+### 3.1 AI Model Judgment and AI Tool Judgment
 
 When an AI model uses an AI tool to change an artifact, the outcome rests on two kinds of judgment:
 - **The AI model's judgment** — probabilistic, formed at run time against the specific task and the specific artifact.
@@ -63,9 +63,10 @@ The AI tool makes no new judgment at run time. It applies the same rule on every
 
 At the extremes there is no choice. Only the AI model can resolve what a task means; only the AI tool can apply the same rule on every call. Between them lies a large class of judgments either side could make.
 
-**An AI tool's design boundary is the complete set of decisions its developer makes about how model judgment and tool judgment combine across the kinds of change the tool can make.**
+> **An AI tool's design boundary is the complete set of decisions its developer makes about how model judgment and tool judgment combine across the kinds of change the tool can make.**
+<br>
 
-### The Four-Step Change Cycle
+### 3.2 The Four-Step Change Cycle
 
 The AI model may first use the AI tool to read the artifact. These discovery reads return the state the AI model needs to decide what change to make, but do not themselves change the artifact. 
 
@@ -77,8 +78,9 @@ Neither side can change the artifact alone: the AI model can change the artifact
 4. The AI tool returns what changed, or why nothing did, and whatever the AI model needs for its next judgment.
 
 Requests and returns are the only contact between the two sides, whether the request reads or changes the artifact: the AI tool sees nothing of the AI model's judgment except the request, and the AI model sees nothing of the artifact except what the AI tool returns.
+<br>
 
-### The Four Boundary Dimensions
+### 3.3 The Four Boundary Dimensions
 
 The cycle's outcome rests on both judgments. Nothing binds the AI model's judgment, not what it learned in pre-training or fine-tuning, and not any tool description, instruction, or skill written by the AI tool's developer. Everything the AI tool does in the cycle comes from judgment its developer made before the task existed, and it holds on every call. So the AI tool's judgment is the only one the developer can rely on being applied for every call:
 
@@ -105,7 +107,7 @@ So the five decisions can be covered by four principles, each addressing one dim
 Representation determines which relationships the AI tool can record in the artifact and which recorded relationships can inform enforcement, control, and information.
 <br>
 
-## The Benefits of a Well-Designed Boundary
+## 4. The Benefits of a Well-Designed Boundary
 
 For each kind of change an AI tool can make, its developer makes decisions across the four dimensions described above. Together, those decisions form the AI tool's design boundary. A well-designed boundary produces three benefits:
 
@@ -120,17 +122,126 @@ The two parts of Cleaner are distinct. The AI tool can preserve the artifact's e
 The four dimensions describe what the developer decides about the boundary. Safer, Cleaner, and Faster describe the benefits those decisions should produce. The relationship is not one-to-one: each decision can affect several benefits, and each benefit can depend on decisions across several dimensions.
 
 The developer evaluates the combined effects of those decisions in three ways:
-- Safer — whether errors the AI tool could have caught are still left to the model to avoid.
-- Cleaner — are consequential relationships explicit, and do accepted changes preserve the artifact's existing state quality?
-- Faster — is each piece of work on the side that can perform it competently in less time, and does every necessary crossing carry what the next decision needs?
+- **Safer** — whether errors the AI tool could have caught are still left to the model to avoid.
+- **Cleaner** — are consequential relationships explicit, and do accepted changes preserve the artifact's existing state quality?
+- **Faster** — is each piece of work on the side that can perform it competently in less time, and does every necessary crossing carry what the next decision needs?
 
-### The Benefits Are Connected
+### 4.1 The Benefits Are Connected
 
 One refusal can contribute to all three benefits. If a check refuses a change that would introduce a defect, that change does not take effect, the artifact stays cleaner than it otherwise would, and later repair work may be avoided.
 
 This distinction matters when evaluating a boundary. Several principles may be necessary for one effect, and one principle may contribute to several effects. Tracing each effect to its cause shows which parts are necessary, where the effect could fail, and which costs and countereffects belong in the same evaluation.
+<br>
 
-## Principle 1 — Put Enforceable Rules in the Tool, Not Only in the Prompt
+## 5. Principle 1 — Representation: Make Consequential Relationships Explicit
+
+### 5.1 What is Representation
+
+Representation is different in kind from the other three dimensions. Enforcement, control, and information can each operate without an explicit relationship. But a relationship can inform what the AI tool refuses, carries out, or returns only when the artifact records it in a form the AI tool can read. Representation therefore determines which relationships can become state the other three dimensions use.
+
+An artifact communicates a relationship to an AI tool only when it records that relationship in a form the AI tool can read. 
+
+Consider two button definitions in a codebase. If `primaryButton.color` and `checkoutButton.color` each contain the literal `"#0066cc"`, the AI tool can observe that their values are equal. It cannot determine from that equality alone whether the two colors are meant to remain the same. If both properties instead refer to `productColor`, the code records that both depend on the same source. The two versions may produce the same visible result, but only the second communicates the dependency to the AI tool.
+
+A shared source is only one kind of relationship an artifact can record. Other kinds include:
+
+- Dependency: one part relies on another, such as a module importing a function from another module.
+- Membership: an item belongs to a defined collection, such as a source file belonging to a package.
+- Instantiation: an object is an instance of a defined type or component.
+- Reference: one record points to another, such as a database row containing a foreign key.
+
+These relationships differ, but each states how one part of an artifact relates to another. A relationship is consequential when later work needs to inspect, reuse, or preserve it. If the artifact does not record that relationship, the AI model must infer it and the AI tool cannot act on it directly.
+
+> **When an artifact records a relationship in a form the AI tool can read, the tool can return that relationship directly to the AI model. When it does, the model does not have to infer the relationship from other facts about the artifact. The recorded relationship can also provide the observable state the AI tool needs to identify and refuse changes that would break it.**
+
+What gets recorded is a declared relationship, not the truth about intent. A wrong or stale declaration makes the wrong rule easier to enforce. Writing something down does not remove the judgment; it fixes the judgment in place so that software can preserve it.
+
+A recorded relationship is a declaration, not proof of the author’s intent. The declaration may be wrong or stale. Recording a relationship therefore does not remove the need for judgment: the AI model must still decide whether the relationship expresses the intent of the task, while the AI tool can act only on what the artifact records.
+
+Different kinds of relationship support different kinds of later work. A shared-source relationship allows one value to be changed in one place while its consumers remain linked. A classification relationship can distinguish objects by role, type, or category. These effects belong to those particular relationships; they are not effects of every relationship the artifact can record.
+
+What all recorded relationships have in common is narrower: they give the AI tool a stated connection it can observe. What the tool can do with that connection depends on the other dimensions of the design boundary. Information determines whether the tool returns it to the AI model. Control determines whether the tool follows it while carrying out work. Enforcement determines whether the tool checks proposed changes against it. Representation makes those uses possible; it does not perform them.
+
+What all recorded relationships have in common is that they give the AI tool a stated connection it can observe. What that relationship enables depends on the kind of relationship and on how the other dimensions of the design boundary use it.
+<br>
+
+### 5.2 How Representation Works with the Other Three Principles
+
+Representation makes a recorded relationship available to the other dimensions. It does not determine what they do with it. Each dimension governs a different use:
+
+- **Information** determines whether the request interface lets the AI model create or identify the relationship, and whether the AI tool returns the relationship to the model.
+- **Control** determines whether the AI tool uses the relationship while carrying out work before returning control to the model.
+- **Enforcement** determines whether the AI tool checks a proposed change against the relationship and refuses the change when it would break a required condition.
+
+**PostgreSQL provides a real-world example of Representation working with Enforcement.** 
+A foreign key records that one database entry refers to another. PostgreSQL can use that recorded relationship to reject an entry whose target does not exist or to refuse the deletion of a target that another entry still refers to. When PostgreSQL has not recorded the relationship, it cannot protect it in the same way. Representation makes the relationship observable; Enforcement uses it to refuse a change that would break the relationship.
+
+A recorded relationship can support one dimension without supporting all three. The PostgreSQL example shows a relationship used by Enforcement, but the same relationship need not be returned to an AI model or used to carry out several operations before control returns. Representation supplies the observable relationship; each of the other dimensions determines whether and how the AI tool uses it.
+
+This distinction is why Representation comes first. The other dimensions can operate without a recorded relationship, but they cannot use a relationship the AI tool cannot observe. Recording the relationship extends what the design boundary can express, return, carry out, or enforce; it does not decide which of those uses the AI tool should implement.
+<br>
+
+### 5.3 How Representation Leads to Cleaner
+
+Cleaner includes both state quality and structural clarity. Representation contributes directly to structural clarity. When an artifact accurately records a real relationship, it states how the relevant parts relate instead of leaving that relationship to be reconstructed from equal values, similar appearances, names, or knowledge held outside the artifact. Each recorded relationship removes ambiguity about the connection it states, and no more.
+
+Some kinds of relationship can also prevent particular inconsistencies. When several uses refer to one shared source, they no longer contain independent copies that can change separately. When an object remains an instance of a component, the artifact retains its connection to that component instead of preserving only a visual resemblance. These are effects of those particular relationships, not effects shared by every relationship an artifact can record.
+
+Recording a relationship does not necessarily repair an existing defect. A relationship may accurately describe an artifact that already contains errors. A relationship may also be wrong or stale, in which case it adds misleading structure rather than clarity. A shared source can keep its consumers consistent with one another while giving all of them the same wrong value.
+
+> **The principle is therefore not to record as many relationships as possible or to combine everything that looks alike. It is to record relationships that are real and consequential, link uses that should remain linked, and preserve distinctions between alternatives that should remain separate.**
+> 
+> **When these relationships are recorded accurately, Representation makes the artifact clearer about how its parts relate, but it does not establish that the parts themselves are correct.**
+<br>
+
+### 5.4 How Representation Contributes to Safer
+
+Representation does not make an artifact safer by itself. It contributes to Safer by making relationships observable to the AI tool. Once the artifact records a dependency, Enforcement can check a proposed change against that dependency and refuse the change if it would break a required condition. Representation supplies the state needed for the check; Enforcement performs the refusal.
+
+In **figma-edit-mcp**, a variable binding records that a layer depends on a variable. Because the plugin can read that binding, it can identify the variable’s consumers before allowing the variable to be deleted. A layer that merely contains the same value does not record that dependency, so the plugin has no basis for treating the layer as a consumer.
+
+Recorded distinctions can also help the AI model choose among valid alternatives. If the artifact clearly distinguishes objects by their roles, types, or relationships, and the AI tool returns those distinctions, the model has more information on which to base its choice. This can reduce wrong selections by the model that would pass every programmatic check made by the tool.
+
+These effects depend on the recorded relationships being accurate. A wrong or stale relationship can cause the AI tool to protect the wrong condition or give the AI model misleading information. Representation extends what can be checked and understood, but it does not establish that the recorded relationship is correct.
+<br>
+
+### 5.5 How Representation Contributes to Faster
+
+A recorded relationship can reduce the work required by later tasks. When the AI tool returns the relationship to the AI model, the model can use what the artifact states instead of reconstructing the relationship from values, appearance, names, or earlier results. Representation supplies the recorded state, while Information determines whether that state reaches the model.
+
+The saving depends on the kind of relationship. A shared source can allow one change to reach all of its consumers instead of requiring the same change to be made separately in several places. A recorded dependency can identify which parts may be affected by a change. A recorded distinction can reduce the work required to choose among alternatives that might otherwise appear interchangeable. These are different effects produced by different relationships.
+
+Representation can also contribute to Faster through Enforcement. When a recorded relationship lets the AI tool refuse a change that would break it, later diagnosis and repair may be avoided. That is the same prevention mechanism described under Safer, not an additional benefit to count separately.
+
+Recorded relationships take time to create and maintain. They save time only when later work uses them, and a wrong or stale relationship can create additional work instead. Representation is therefore most likely to make work faster when the relationship is accurate, consequential, available through the AI tool, and likely to be reused or changed.
+<br>
+
+### 5.6 Evidence for Representation
+
+The evidence supports separate effects of recorded dependencies, shared sources, and clearly distinguished alternatives. It does not show that every possible relationship should be recorded or that recording relationships always makes an artifact Cleaner, Safer, or Faster. A recorded relationship improves structural clarity only when it accurately represents a consequential connection. Its contributions to Safer and Faster also depend on how the other dimensions use it.
+
+#### 5.6.1 CAD Experiments: Recorded Structure Supported Safer and Faster Changes
+
+In 2016, Jorge D. Camba, Manuel Contero, and Pedro Company reported three experiments in which engineering students modified digital models of mechanical parts. The researchers compared models built using three approaches that recorded and organized relationships between elements differently.
+
+- **Safer**
+In the second and third experiments, the design application displayed errors when models with recorded dependencies could not update dependent elements correctly. The errors directed participants to the elements that needed attention. Models that omitted most direct dependencies produced no equivalent warning, even when changes removed reinforcing ribs, made required features disappear, or created surfaces that interfered with the rest of the part. **The recorded dependencies did not prevent these defects, but they made the defects visible to participants who might otherwise have continued working as though the changes had succeeded.**
+
+- **Faster**
+The same experiments found large differences in the time participants needed to complete the changes. The fastest approach combined recorded dependencies with rules about which elements should depend on which others, while the slowest approach omitted most direct dependencies. In the second experiment, the average was 3 min 45 sec with the fastest approach and 10 min 38 sec with the slowest approach. In the third experiment, the corresponding averages were 4 min 5 sec and 14 min 59 sec. The average time with the fastest approach was about 65% lower in the second experiment and 73% lower in the third. Both differences were statistically significant at `p < .001`.
+
+The study does not show that recorded dependencies alone caused the difference. The approaches also differed in how they ordered, named, and grouped the model’s elements, and participants received the approaches in the same order. The results therefore support the broader claim that how an artifact records and organizes relationships can affect the time required for later changes.
+
+
+**Clear alternatives.** Units caring for newborns that gave babies near-identical temporary names, such as "Babyboy Smith," had staff place orders on the wrong baby; giving each newborn a more distinctive name reduced those wrong-patient orders. In a controlled experiment with 72 professional developers, meaningful word identifiers made finding semantic defects 19% faster than abbreviations or single letters. A related effect has been measured on the model rather than the operator: adding a single topically related distractor to an otherwise identical retrieval task lowers accuracy, and adding four compounds it.
+
+**Recurring work.** In a counterbalanced Figma experiment, designers completed matched tasks 34% faster when they had a current, task-relevant design system instead of old Figma design files to search. Studies of CAD models, production codebases, and structural antipatterns point the same way: structure that communicates intent lowers the cost of later modification, and combinations of structural problems raise it. Figma's own guidance for its MCP server makes the point from the other direction — structured Figma design files with real components, semantic layer names, and variables [produce the best model output](https://developers.figma.com/docs/figma-mcp-server/structure-figma-file/).
+
+These sources test different links in the chain and should not be read as repeated proof of one effect. See [Cleaner leads to Safer](../../EVIDENCE.md#cleaner-leads-to-safer) and [Cleaner leads to Faster](../../EVIDENCE.md#cleaner-leads-to-faster).
+
+Explicit structure can also turn a decision into control logic that ordinary software can run. How long execution should stay on that side is the subject of Principle 3.
+
+## Principle 2 — Put Enforceable Rules in the Tool, Not Only in the Prompt
 
 (From "The Design Boundary" Section)
 "Deterministic" here describes the check, not the whole tool or the environment. A check applies its predicate consistently, which is not the same as applying the right one — a wrong predicate fails reliably, every time. The distinction that matters is between an outcome that depends on the model complying and one that does not.
@@ -215,74 +326,6 @@ The prevented defect and the avoided repair are the same event described at two 
 See [Safer leads to Cleaner](../../EVIDENCE.md#safer-leads-to-cleaner) and [Safer leads to Faster](../../EVIDENCE.md#safer-leads-to-faster).
 
 A check can only apply a rule stated over observable state. What is observable is the subject of Principle 2.
-
-## Principle 2 — Make Consequential Relationships Explicit
-
-This principle is different in kind from the other three. They decide where the boundary goes; this one decides how far it can extend. Software can refuse, execute, or report only what the artifact records, so the amount of intent written down sets the size of the region the other three principles can act on.
-
-Any design or engineering artifact can hold a decision in one of two forms. It can be recorded as structure the software stores and can read back — a stated link from one thing to another. Or it can exist only as a convention: the author knows two things are meant to match, but nothing says so. The two forms can look identical on screen. They are not the same to a checker. If two elements are meant to share a decision but the artifact records only equal values, software can see the equality; it cannot know the intent.
-
-> **Recording a relationship moves it from something the model must infer every time into something software can inspect, reuse, and possibly enforce.**
-
-What gets recorded is a declared relationship, not the truth about intent. A wrong or stale declaration makes the wrong rule easier to enforce. Writing something down does not remove the judgment; it fixes the judgment in place so that software can preserve it.
-
-Explicit structure helps through three mechanisms that should not be collapsed into one:
-
-1. **Recorded relationships make checks possible.** A stated dependency lets software work out which changes would break it.
-2. **A canonical source removes the chance to diverge.** When several uses genuinely express one decision, storing it once and linking to it means there are no independent copies to drift apart.
-3. **Clear alternatives make the right target easier to pick.** Removing accidental near-duplicates and distinguishing legitimate ones helps the model choose correctly even when every option would pass a structural check. This mechanism needs no checker at all.
-
-Recorded relationships create checkability. Canonical sources create consistency. Clear alternatives improve the model's judgment.
-
-**In figma-edit-mcp.** The choice shows up in concrete pairs. A layer can be explicitly bound to a variable, or it can just happen to contain the same value. A reusable element can stay an instance of a component, or it can be a detached copy that people still expect to behave like the component. A color or spacing value in current use can be the only one of its kind, or it can sit next to leftover near-duplicates from earlier work. In each pair the design can look identical, but only the first form records what was intended, so only the first can be checked. The plugin can list everything that uses a variable and refuse to delete it while it is in use; it can do nothing for a layer that merely holds an equal value.
-
-### How Explicit Structure Produces Cleaner and Leads to Safer
-
-Recording more intent does not by itself make an artifact safer. It changes what software and the model can tell apart, and each mechanism carries a countereffect.
-
-- A recorded dependency plus a check can prevent a broken relationship. Recording it alone makes a check possible; it does not perform one.
-- A canonical source prevents inconsistent copies, but a wrong change to that source reaches every consumer.
-- Clearer alternatives reduce wrong selections, but merging two things that only looked alike creates a new class of error.
-
-The principle is therefore not "deduplicate everything." It is:
-
-> **Represent real relationships explicitly, share decisions that are genuinely shared, and preserve distinctions that matter.**
-
-Each kind of certainty ends up on the side that can supply it. Software preserves what has been declared. The model still judges what is worth declaring.
-
-### How Explicit Structure Leads to Faster
-
-Disorder is paid for again by every later task that has to work out, reuse, or change what the artifact never expressed.
-
-- Recorded relationships save later tasks from working out what depends on what.
-- Canonical sources save recreating the same decision and updating several copies of it.
-- Clear alternatives reduce disambiguation directly. Where they also prevent a wrong selection, the avoided correction belongs to the safety path above, not to this one.
-- Fewer inherited defects mean less diagnosis and repair.
-
-Recorded structure only reaches the model if the interface exposes it, so some of this saving is produced jointly with Principle 4:
-
-```text
-recorded distinction
-+ interface exposes it
-→ the model can use it
-→ less repeated work
-```
-
-Structure costs time to create and maintain, so it pays off most where the artifact will be reused, changed, or handed off. The claim is not that cleanup is free. It is that recurring work should not keep paying for the same avoidable ambiguity.
-
-### Evidence for Explicit Structure
-
-**Checkability.** Engineering CAD software can record how the pieces of a model depend on one another. In a study comparing modeling styles, the models that recorded those dependencies showed an error pointing straight at the piece that broke when a designer changed something it relied on; a style that left the dependencies out produced broken geometry that still looked finished. Databases show the same mechanism: once a relationship is declared, the database can refuse a deletion that would break it.
-
-**Divergence.** When programmers duplicate a block of code instead of sharing one copy, a bug in the original is carried into every duplicate, and a later fix often reaches only some of them.
-
-**Clear alternatives.** Units caring for newborns that gave babies near-identical temporary names, such as "Babyboy Smith," had staff place orders on the wrong baby; giving each newborn a more distinctive name reduced those wrong-patient orders. In a controlled experiment with 72 professional developers, meaningful word identifiers made finding semantic defects 19% faster than abbreviations or single letters. A related effect has been measured on the model rather than the operator: adding a single topically related distractor to an otherwise identical retrieval task lowers accuracy, and adding four compounds it.
-
-**Recurring work.** In a counterbalanced Figma experiment, designers completed matched tasks 34% faster when they had a current, task-relevant design system instead of old Figma design files to search. Studies of CAD models, production codebases, and structural antipatterns point the same way: structure that communicates intent lowers the cost of later modification, and combinations of structural problems raise it. Figma's own guidance for its MCP server makes the point from the other direction — structured Figma design files with real components, semantic layer names, and variables [produce the best model output](https://developers.figma.com/docs/figma-mcp-server/structure-figma-file/).
-
-These sources test different links in the chain and should not be read as repeated proof of one effect. See [Cleaner leads to Safer](../../EVIDENCE.md#cleaner-leads-to-safer) and [Cleaner leads to Faster](../../EVIDENCE.md#cleaner-leads-to-faster).
-
-Explicit structure can also turn a decision into control logic that ordinary software can run. How long execution should stay on that side is the subject of Principle 3.
 
 ## Principle 3 — Keep Already-Determined Work Inside One Call; Return Control When New Judgment Is Needed
 
