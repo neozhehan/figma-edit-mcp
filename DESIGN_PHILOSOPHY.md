@@ -2,18 +2,22 @@
 
 ## Contents
 
-- [Purpose & Scope](#purpose--scope)
-- [Introduction](#introduction)
-- [The Design Boundary](#the-design-boundary)
-  - [AI Model Judgment and AI Tool Judgment](#ai-model-judgment-and-ai-tool-judgment)
-  - [The Four-Step Change Cycle](#the-four-step-change-cycle)
-  - [The Four Boundary Dimensions](#the-four-boundary-dimensions)
-- [The Benefits of a Well-Designed Boundary](#the-benefits-of-a-well-designed-boundary)
-  - [The Benefits Are Connected](#the-benefits-are-connected)
-- [Principle 1 — Representation: Make Consequential Relationships Explicit](#principle-1-representation:-make-consequential-relationships-explicit)
-  - [How Explicit Structure Produces Cleaner and Leads to Safer](#how-explicit-structure-produces-cleaner-and-leads-to-safer)
-  - [How Explicit Structure Leads to Faster](#how-explicit-structure-leads-to-faster)
-  - [Evidence for Explicit Structure](#evidence-for-explicit-structure)
+- [1. Purpose & Scope](#1-purpose--scope)
+- [2. Introduction](#2-introduction)
+- [3. The Design Boundary](#3-the-design-boundary)
+  - [3.1 AI Model Judgment and AI Tool Judgment](#31-ai-model-judgment-and-ai-tool-judgment)
+  - [3.2 The Four-Step Change Cycle](#32-the-four-step-change-cycle)
+  - [3.3 The Four Boundary Dimensions](#33-the-four-boundary-dimensions)
+- [4. The Benefits of a Well-Designed Boundary](#4-the-benefits-of-a-well-designed-boundary)
+  - [4.1 The Benefits Are Connected](#41-the-benefits-are-connected)
+- [5. Principle 1 — Representation: Make Consequential Structure Explicit](#5-principle-1--representation-make-consequential-structure-explicit)
+  - [5.1 What Representation Covers](#51-what-representation-covers)
+  - [5.2 How Representation Works with the Other Three Principles](#52-how-representation-works-with-the-other-three-principles)
+  - [5.3 How Representation Leads to Cleaner](#53-how-representation-leads-to-cleaner)
+  - [5.4 How Representation Contributes to Safer](#54-how-representation-contributes-to-safer)
+  - [5.5 How Representation Contributes to Faster](#55-how-representation-contributes-to-faster)
+  - [5.6 Evidence for Representation](#56-evidence-for-representation)
+    - [5.6.1 CAD Experiments: Recorded Dependencies Made Failures Visible and Model Structures Had Different Change Times](#561-cad-experiments-recorded-dependencies-made-failures-visible-and-model-structures-had-different-change-times)
 - [Principle 2 — Put Enforceable Rules in the Tool, Not Only in the Prompt](#principle-2--put-enforceable-rules-in-the-tool-not-only-in-the-prompt)
   - [How Enforcement Leads to Safer](#how-enforcement-leads-to-safer)
   - [How Enforcement Leads to Cleaner](#how-enforcement-leads-to-cleaner)
@@ -46,7 +50,7 @@ An AI tool is software through which an AI model reads or changes an artifact. I
 
 Much of the published guidance on designing tools for AI models assumes a tool that reads: search, retrieval, lookup. The stakes are higher when the tool can make changes. A bad read does not itself change the artifact; a bad change persists, and often compounds, until someone repairs it.
 
-This document is about designing the AI tool so that fewer bad changes take effect: which judgments the tool should enforce itself, which belong to the AI model, and how a developer decides between them.
+This document is about how a developer draws the design boundary between an AI model and an AI tool that changes an artifact. It explains which judgments belong to the model and which the developer can form in advance and apply through the tool.
 <br>
 
 ## 3. The Design Boundary
@@ -77,34 +81,36 @@ Neither side can change the artifact alone: the AI model can change the artifact
 3. The AI tool checks the request against the state it can observe in the artifact, and gives its verdict: the AI tool carries out what passes, and refuses the rest.
 4. The AI tool returns what changed, or why nothing did, and whatever the AI model needs for its next judgment.
 
-Requests and returns are the only contact between the two sides, whether the request reads or changes the artifact: the AI tool sees nothing of the AI model's judgment except the request, and the AI model sees nothing of the artifact except what the AI tool returns.
+Within this cycle, requests and returns are the only contact between the AI model and this AI tool: the tool sees nothing of the model's judgment except the request, and any artifact state the model learns through this tool comes from what the tool returns.
 <br>
 
 ### 3.3 The Four Boundary Dimensions
 
 The cycle's outcome rests on both judgments. Nothing binds the AI model's judgment, not what it learned in pre-training or fine-tuning, and not any tool description, instruction, or skill written by the AI tool's developer. Everything the AI tool does in the cycle comes from judgment its developer made before the task existed, and it holds on every call. So the AI tool's judgment is the only one the developer can rely on being applied for every call:
 
-- The AI model reaches the artifact only through the operations and parameters in the AI tool's request interface, so **what operations and parameters the AI tool makes available to the AI model** determines which kinds of change are available to the model.
+- The AI model can change the artifact through this AI tool only through the operations and parameters in the tool's request interface, so **what operations and parameters the AI tool makes available to the AI model** determines which kinds of change are available through the tool.
 - The AI model's judgment is probabilistic, so, among the changes that interface makes available, **what the AI tool refuses** determines which requested changes are stopped every time.
 - Every return to step 1 begins a fresh judgment, and every return withheld is evidence the AI model does not get, so **how much the AI tool carries out before returning** governs how many of those judgments a task takes and what each one has to go on.
-- The AI model sees nothing of the artifact otherwise, so **what the AI tool returns** is the only new information about the artifact that can improve the AI model's next judgment.
+- The return is the only new information about the artifact that this exchange provides, so **what the AI tool returns** determines which new facts can improve the AI model's next judgment.
 
-The AI tool can check only the state it can observe at the moment of the call. If the artifact's author intended for two items to be linked, but that link is not explicit in the artifact at that moment, the AI tool cannot observe or preserve it.
+The AI tool can use only the state it can observe at the moment of the call. If the artifact's author intended two items to be linked, or intended similar items to serve different roles, but the artifact records neither the relationship nor the distinction, the AI tool cannot observe or preserve that intent.
 
 The developer decides which kinds of explicit relationship the AI tool can read, create, and preserve. The AI model decides which available relationship expresses the intent of a particular task, and composes a request that tells the AI tool to record it. Once recorded, that relationship becomes state the AI tool can use when deciding what to carry out, what to refuse, and what to return.
 
-That is the fifth decision the developer can rely on. The other four are what the AI tool lets a request express, what it refuses, how much it carries out before returning, and what it returns. What a request can express and what the AI tool returns are two decisions, but the same test applies to both: does what crosses carry what the other side needs? 
+The developer decides which kinds of relationship and distinction the AI tool can read, create, and preserve. For a particular task, the AI model decides which available structure matters and whether the requested change should create, use, or preserve it. Once recorded, that structure becomes state the AI tool can use when deciding what to carry out, what to refuse, and what to return.
+
+The fifth decision is which relationships and distinctions the AI tool can read, create, and preserve as explicit artifact state. The other four are what the request can express, what the AI tool refuses, how much it carries out before returning, and what it returns. What a request can express and what the AI tool returns are two decisions, but the same test applies to both: does what crosses carry what the other side needs?
 
 So the five decisions can be covered by four principles, each addressing one dimension of the design boundary:
 
 | Boundary dimension | What the developer decides | Principle |
 | --- | --- | --- |
-| **Representation** | 	Which explicit relationships the AI tool can read, create, and preserve | Make consequential relationships explicit. |
+| **Representation** | Which relationships and distinctions the AI tool can read, create, and preserve | Make consequential structure explicit. |
 | **Enforcement** | Which requested changes the AI tool prevents from taking effect | Put enforceable rules in the tool, not only in the prompt. |
 | **Control** | How much the AI tool carries out before returning | Keep already-determined work inside one call; return control when new judgment is needed. |
 | **Information** | Which operations and parameters the request interface exposes, and which facts the AI tool returns | Make each exchange decision-complete. |
 
-Representation determines which relationships the AI tool can record in the artifact and which recorded relationships can inform enforcement, control, and information.
+Representation determines which relationships and distinctions the AI tool can record in the artifact and which recorded structure can inform Enforcement, Control, and Information.
 <br>
 
 ## 4. The Benefits of a Well-Designed Boundary
@@ -114,16 +120,16 @@ For each kind of change an AI tool can make, its developer makes decisions acros
 - **Safer** — fewer erroneous actions are allowed to take effect, and there are fewer plausible ways to make an error.
 - **Cleaner** — the artifact has:
   - **Higher state quality** — fewer defects and inconsistencies.
-  - **Greater structural clarity** — shared decisions and dependencies are recorded explicitly and accurately, accidental duplicates are reduced, and legitimate alternatives are clearly distinguished.
+  - **Greater structural clarity** — consequential relationships and distinctions are recorded explicitly and accurately, accidental duplicates are reduced, and legitimate alternatives remain distinguishable.
 - **Faster** — correct work takes less time, in the current task or in later work that reuses or changes the same artifact.
 
-The two parts of Cleaner are distinct. The AI tool can preserve the artifact's existing state quality by refusing a change that would introduce a defect, even when no additional relationship is recorded. Recording a consequential relationship can improve structural clarity and make such a refusal possible, even when doing so removes no existing defect.
+The two parts of Cleaner are distinct. The AI tool can preserve the artifact's existing state quality by refusing a change that would introduce a defect, even when no additional structure is recorded. Recording an accurate consequential relationship or distinction can improve structural clarity without removing an existing defect. When that recorded structure supplies a check with observable state, it can also make a refusal possible.
 
 The four dimensions describe what the developer decides about the boundary. Safer, Cleaner, and Faster describe the benefits those decisions should produce. The relationship is not one-to-one: each decision can affect several benefits, and each benefit can depend on decisions across several dimensions.
 
 The developer evaluates the combined effects of those decisions in three ways:
 - **Safer** — whether errors the AI tool could have caught are still left to the model to avoid.
-- **Cleaner** — are consequential relationships explicit, and do accepted changes preserve the artifact's existing state quality?
+- **Cleaner** — are consequential relationships and distinctions explicit and accurate, and do accepted changes preserve the artifact's existing state quality?
 - **Faster** — is each piece of work on the side that can perform it competently in less time, and does every necessary crossing carry what the next decision needs?
 
 ### 4.1 The Benefits Are Connected
@@ -133,104 +139,102 @@ One refusal can contribute to all three benefits. If a check refuses a change th
 This distinction matters when evaluating a boundary. Several principles may be necessary for one effect, and one principle may contribute to several effects. Tracing each effect to its cause shows which parts are necessary, where the effect could fail, and which costs and countereffects belong in the same evaluation.
 <br>
 
-## 5. Principle 1 — Representation: Make Consequential Relationships Explicit
+## 5. Principle 1 — Representation: Make Consequential Structure Explicit
 
-### 5.1 What is Representation
+### 5.1 What Representation Covers
 
-Representation is different in kind from the other three dimensions. Enforcement, control, and information can each operate without an explicit relationship. But a relationship can inform what the AI tool refuses, carries out, or returns only when the artifact records it in a form the AI tool can read. Representation therefore determines which relationships can become state the other three dimensions use.
+Representation is different in kind from the other three dimensions. It governs which relationships and distinctions the AI tool can read, create, and preserve as explicit state in the artifact. A relationship states how parts are connected. A distinction states how parts that might otherwise appear interchangeable differ in identity, role, type, or purpose.
 
-An artifact communicates a relationship to an AI tool only when it records that relationship in a form the AI tool can read. 
+Consider two button definitions in a codebase to see the difference between equal values and a recorded shared-source relationship. If `primaryButton.color` and `checkoutButton.color` each contain the literal `"#0066cc"`, the AI tool can observe that their values are equal. It cannot determine from that equality alone whether the two colors are intended to remain the same. If both properties instead refer to `productColor`, the code records that both depend on the same source. The two versions may produce the same visible result, but only the second makes the dependency observable to the AI tool.
 
-Consider two button definitions in a codebase. If `primaryButton.color` and `checkoutButton.color` each contain the literal `"#0066cc"`, the AI tool can observe that their values are equal. It cannot determine from that equality alone whether the two colors are meant to remain the same. If both properties instead refer to `productColor`, the code records that both depend on the same source. The two versions may produce the same visible result, but only the second communicates the dependency to the AI tool.
-
-A shared source is only one kind of relationship an artifact can record. Other kinds include:
+A shared source is only one kind of relationship an artifact can record. Other common kinds include:
 
 - Dependency: one part relies on another, such as a module importing a function from another module.
 - Membership: an item belongs to a defined collection, such as a source file belonging to a package.
 - Instantiation: an object is an instance of a defined type or component.
 - Reference: one record points to another, such as a database row containing a foreign key.
 
-These relationships differ, but each states how one part of an artifact relates to another. A relationship is consequential when later work needs to inspect, reuse, or preserve it. If the artifact does not record that relationship, the AI model must infer it and the AI tool cannot act on it directly.
+Recorded distinctions do different work. Suppose a codebase represents both user IDs and invoice IDs as plain strings. The type system does not distinguish them, so either value can be passed where the other is expected. If the code instead defines separate `UserId` and `InvoiceId` types, it records that the values have different roles even if both contain text. An AI tool that can read those types can preserve that distinction rather than infer it from names or surrounding code.
 
-> **When an artifact records a relationship in a form the AI tool can read, the tool can return that relationship directly to the AI model. When it does, the model does not have to infer the relationship from other facts about the artifact. The recorded relationship can also provide the observable state the AI tool needs to identify and refuse changes that would break it.**
+Not every relationship or distinction is consequential. It is consequential when later work needs to use or preserve the connection or difference it states. Deciding whether that condition holds requires judgment, because a connection or difference that matters in one artifact may be irrelevant in another. If the artifact does not record it, the AI tool cannot know it from the artifact alone, and the AI model must infer it from other facts or receive it from elsewhere.
 
-What gets recorded is a declared relationship, not the truth about intent. A wrong or stale declaration makes the wrong rule easier to enforce. Writing something down does not remove the judgment; it fixes the judgment in place so that software can preserve it.
-
-A recorded relationship is a declaration, not proof of the author’s intent. The declaration may be wrong or stale. Recording a relationship therefore does not remove the need for judgment: the AI model must still decide whether the relationship expresses the intent of the task, while the AI tool can act only on what the artifact records.
-
-Different kinds of relationship support different kinds of later work. A shared-source relationship allows one value to be changed in one place while its consumers remain linked. A classification relationship can distinguish objects by role, type, or category. These effects belong to those particular relationships; they are not effects of every relationship the artifact can record.
-
-What all recorded relationships have in common is narrower: they give the AI tool a stated connection it can observe. What the tool can do with that connection depends on the other dimensions of the design boundary. Information determines whether the tool returns it to the AI model. Control determines whether the tool follows it while carrying out work. Enforcement determines whether the tool checks proposed changes against it. Representation makes those uses possible; it does not perform them.
-
-What all recorded relationships have in common is that they give the AI tool a stated connection it can observe. What that relationship enables depends on the kind of relationship and on how the other dimensions of the design boundary use it.
+A recorded relationship or distinction is a declaration, not proof of intent. It may be wrong when recorded or become stale as the artifact changes. The AI model must still judge whether it expresses the intent of the current task. The AI tool can inspect and preserve the declaration, but it cannot determine whether the declaration is correct.
 <br>
 
 ### 5.2 How Representation Works with the Other Three Principles
 
-Representation makes a recorded relationship available to the other dimensions. It does not determine what they do with it. Each dimension governs a different use:
+Representation makes recorded relationships and distinctions available as observable state. The other three dimensions govern how the AI tool uses or communicates that state:
 
-- **Information** determines whether the request interface lets the AI model create or identify the relationship, and whether the AI tool returns the relationship to the model.
-- **Control** determines whether the AI tool uses the relationship while carrying out work before returning control to the model.
-- **Enforcement** determines whether the AI tool checks a proposed change against the relationship and refuses the change when it would break a required condition.
+- **Information** determines whether the request interface lets the AI model create or identify the recorded structure and whether the AI tool returns it to the model.
+- **Control** determines whether the AI tool uses the recorded structure while carrying out work before returning control to the model.
+- **Enforcement** determines whether the AI tool checks a proposed change against the recorded structure and refuses the change when it would break a required condition.
 
 **PostgreSQL provides a real-world example of Representation working with Enforcement.** 
-A foreign key records that one database entry refers to another. PostgreSQL can use that recorded relationship to reject an entry whose target does not exist or to refuse the deletion of a target that another entry still refers to. When PostgreSQL has not recorded the relationship, it cannot protect it in the same way. Representation makes the relationship observable; Enforcement uses it to refuse a change that would break the relationship.
+A foreign key records that one database entry refers to another. PostgreSQL can then reject an entry whose target does not exist and, when deletion is restricted, refuse to delete a target that another entry still refers to. If the relationship is not recorded as a foreign key, PostgreSQL cannot enforce those conditions from matching values alone. Representation makes the relationship observable. Enforcement uses it to reject a change that would break the relationship.
 
-A recorded relationship can support one dimension without supporting all three. The PostgreSQL example shows a relationship used by Enforcement, but the same relationship need not be returned to an AI model or used to carry out several operations before control returns. Representation supplies the observable relationship; each of the other dimensions determines whether and how the AI tool uses it.
+Recording structure does not determine how the AI tool will use it. The tool may return a recorded relationship or distinction to the AI model through Information, use it while carrying out work before returning through Control, or check a proposed change against it through Enforcement. Representation makes the structure observable; the other three dimensions determine whether and how the AI tool uses it.
 
-This distinction is why Representation comes first. The other dimensions can operate without a recorded relationship, but they cannot use a relationship the AI tool cannot observe. Recording the relationship extends what the design boundary can express, return, carry out, or enforce; it does not decide which of those uses the AI tool should implement.
+Enforcement, Control, and Information can operate without recorded structure, but they cannot use a relationship or distinction the AI tool cannot observe. Representation determines which relationships and distinctions are available to them. Each of the other dimensions determines whether and how the AI tool uses that state.
 <br>
 
 ### 5.3 How Representation Leads to Cleaner
 
-Cleaner includes both state quality and structural clarity. Representation contributes directly to structural clarity. When an artifact accurately records a real relationship, it states how the relevant parts relate instead of leaving that relationship to be reconstructed from equal values, similar appearances, names, or knowledge held outside the artifact. Each recorded relationship removes ambiguity about the connection it states, and no more.
+Cleaner includes both state quality and structural clarity. Representation contributes directly to structural clarity. An accurately recorded relationship states how parts are connected, while an accurately recorded distinction states which differences between parts matter. Later work can use those facts instead of reconstructing them from equal values, similar appearances, names, or knowledge held outside the artifact.
 
-Some kinds of relationship can also prevent particular inconsistencies. When several uses refer to one shared source, they no longer contain independent copies that can change separately. When an object remains an instance of a component, the artifact retains its connection to that component instead of preserving only a visual resemblance. These are effects of those particular relationships, not effects shared by every relationship an artifact can record.
+Some forms of recorded structure can also prevent particular inconsistencies. When several uses derive a value from the same source, they do not contain independent copies of that value that can change separately. When an object remains linked to the component from which it was created, the artifact records that connection instead of preserving only a visual resemblance. Recorded distinctions serve a different purpose: they prevent alternatives with different identities, roles, types, or purposes from being treated as interchangeable.
 
-Recording a relationship does not necessarily repair an existing defect. A relationship may accurately describe an artifact that already contains errors. A relationship may also be wrong or stale, in which case it adds misleading structure rather than clarity. A shared source can keep its consumers consistent with one another while giving all of them the same wrong value.
+Representation does not necessarily repair existing defects or improve state quality. A relationship or distinction may accurately describe an artifact that already contains errors. It may also be wrong or stale, in which case it adds misleading structure rather than clarity. A shared source can give every consumer the same wrong value, while a false distinction can separate parts that should be treated alike.
 
-> **The principle is therefore not to record as many relationships as possible or to combine everything that looks alike. It is to record relationships that are real and consequential, link uses that should remain linked, and preserve distinctions between alternatives that should remain separate.**
-> 
-> **When these relationships are recorded accurately, Representation makes the artifact clearer about how its parts relate, but it does not establish that the parts themselves are correct.**
+> **Record relationships and distinctions that are real and consequential. Link parts that should remain linked, and preserve differences that later work must continue to recognize. Accurate Representation makes the artifact clearer about how its parts relate and differ, but it does not establish that the parts themselves are correct.**
 <br>
 
 ### 5.4 How Representation Contributes to Safer
 
-Representation does not make an artifact safer by itself. It contributes to Safer by making relationships observable to the AI tool. Once the artifact records a dependency, Enforcement can check a proposed change against that dependency and refuse the change if it would break a required condition. Representation supplies the state needed for the check; Enforcement performs the refusal.
+Representation does not make an artifact safer by itself. It contributes to Safer when a recorded relationship or distinction supplies state that can help identify an error. 
 
-In **figma-edit-mcp**, a variable binding records that a layer depends on a variable. Because the plugin can read that binding, it can identify the variable’s consumers before allowing the variable to be deleted. A layer that merely contains the same value does not record that dependency, so the plugin has no basis for treating the layer as a consumer.
+Different relationships support different safeguards: a dependency can reveal which consumers a change would affect, a reference can reveal whether a deletion would leave a broken link, and a containment relationship can reveal whether a target lies outside an allowed area. Representation makes that state observable. Enforcement can use it to refuse a mechanically invalid change, while Information can return it to help the AI model avoid a wrong choice.
 
-Recorded distinctions can also help the AI model choose among valid alternatives. If the artifact clearly distinguishes objects by their roles, types, or relationships, and the AI tool returns those distinctions, the model has more information on which to base its choice. This can reduce wrong selections by the model that would pass every programmatic check made by the tool.
+In **figma-edit-mcp** plugin, the variable-consumer check shows how a recorded dependency can support Enforcement. A variable binding records that a layer depends on a variable. Because the plugin can read that binding, it can identify the variable’s consumers before allowing the variable to be deleted. A layer that merely contains the same value does not record that dependency, so the plugin has no basis for treating the layer as a consumer. The binding makes the dependency observable. The check uses it to prevent the deletion.
 
-These effects depend on the recorded relationships being accurate. A wrong or stale relationship can cause the AI tool to protect the wrong condition or give the AI model misleading information. Representation extends what can be checked and understood, but it does not establish that the recorded relationship is correct.
+Recorded distinctions contribute through a different path. If the artifact distinguishes objects by identity, role, type, or purpose and the AI tool returns those distinctions, the AI model has more information for choosing among valid alternatives. Representation supplies the distinction, while Information makes it available to the model. This can reduce wrong selections, but it cannot guarantee that the model chooses correctly.
+
+Both effects depend on the recorded structure being accurate. A wrong or stale relationship can cause the AI tool to protect the wrong condition. A wrong or misleading distinction can steer the AI model toward the wrong alternative. Representation extends what the tool can check and what the model can distinguish, but it does not establish that the recorded structure is correct.
 <br>
 
 ### 5.5 How Representation Contributes to Faster
 
-A recorded relationship can reduce the work required by later tasks. When the AI tool returns the relationship to the AI model, the model can use what the artifact states instead of reconstructing the relationship from values, appearance, names, or earlier results. Representation supplies the recorded state, while Information determines whether that state reaches the model.
+Representation contributes to Faster when later work can use recorded structure instead of reconstructing it. If the AI tool returns a relationship or distinction to the AI model, the model does not have to infer the same fact from values, appearances, names, or earlier results. Representation records the fact, while Information makes it available to the model.
 
-The saving depends on the kind of relationship. A shared source can allow one change to reach all of its consumers instead of requiring the same change to be made separately in several places. A recorded dependency can identify which parts may be affected by a change. A recorded distinction can reduce the work required to choose among alternatives that might otherwise appear interchangeable. These are different effects produced by different relationships.
+The work saved depends on the structure recorded. A shared source allows one change to reach its linked consumers without changing each consumer separately. A dependency can identify which parts a change may affect. A membership or containment relationship can identify which parts belong within the scope of an operation. A recorded distinction can reduce the work required to choose among alternatives that might otherwise appear interchangeable. These are different effects of different kinds of recorded structure.
 
-Representation can also contribute to Faster through Enforcement. When a recorded relationship lets the AI tool refuse a change that would break it, later diagnosis and repair may be avoided. That is the same prevention mechanism described under Safer, not an additional benefit to count separately.
+Recorded structure can also contribute to Faster through Control and Enforcement. Control can use a recorded relationship to carry out work whose next steps are already determined. Enforcement can use recorded structure to determine that a proposed change would violate a required rule and refuse the change before it takes effect. When that refusal prevents a defect, it may also avoid time that would otherwise be spent diagnosing and repairing the defect later. The Faster effect is therefore a consequence of the same refusal that contributes to Safer.
 
-Recorded relationships take time to create and maintain. They save time only when later work uses them, and a wrong or stale relationship can create additional work instead. Representation is therefore most likely to make work faster when the relationship is accurate, consequential, available through the AI tool, and likely to be reused or changed.
+They save time only when later work uses them, and a wrong or stale relationship can create additional work instead. Representation is therefore most likely to make work faster when the relationship is accurate, consequential, available through the AI tool, and likely to be reused or changed.
+
+Representation contributes to Faster by making consequential structure reusable. When later work needs the same relationship or distinction, the AI model or AI tool can use what the artifact already records instead of reconstructing it. The evidence below shows that recorded structure can reduce the time required for later changes. The size of that saving depends on the structure and the work being performed, so the principle does not claim the same speedup for every artifact or task.
 <br>
 
 ### 5.6 Evidence for Representation
 
-The evidence supports separate effects of recorded dependencies, shared sources, and clearly distinguished alternatives. It does not show that every possible relationship should be recorded or that recording relationships always makes an artifact Cleaner, Safer, or Faster. A recorded relationship improves structural clarity only when it accurately represents a consequential connection. Its contributions to Safer and Faster also depend on how the other dimensions use it.
+The evidence below tests particular effects of recorded structure rather than Representation as a whole. Each study concerns a specific kind of relationship or distinction and measures a particular outcome. Its findings therefore support only the mechanism and benefit identified for that study, not the claim that every form of recorded structure makes every artifact Cleaner, Safer, or Faster.
 
-#### 5.6.1 CAD Experiments: Recorded Structure Supported Safer and Faster Changes
+#### 5.6.1 CAD Experiments: Recorded Dependencies Exposed Failures and Supported Faster Changes
 
-In 2016, Jorge D. Camba, Manuel Contero, and Pedro Company reported three experiments in which engineering students modified digital models of mechanical parts. The researchers compared models built using three approaches that recorded and organized relationships between elements differently.
+In 2016, Jorge D. Camba, Manuel Contero, and Pedro Company reported three experiments in which engineering students modified digital models of mechanical parts. The findings below come from the second and third experiments. Each experiment involved a different group of 32 senior engineering students with previous CAD experience. Every participant modified three versions of a model. The versions recorded and organized dependencies differently, and participants always received them in the same order.
 
-- **Safer**
-In the second and third experiments, the design application displayed errors when models with recorded dependencies could not update dependent elements correctly. The errors directed participants to the elements that needed attention. Models that omitted most direct dependencies produced no equivalent warning, even when changes removed reinforcing ribs, made required features disappear, or created surfaces that interfered with the rest of the part. **The recorded dependencies did not prevent these defects, but they made the defects visible to participants who might otherwise have continued working as though the changes had succeeded.**
+- **Recorded dependencies made defects visible** 
+In both experiments, the design application displayed errors when the two versions that retained direct dependencies could not update related elements correctly. These errors showed participants that the requested change had produced an unintended result and identified the elements that needed attention. By contrast, the version that omitted most direct dependencies produced no equivalent warning when a change left the model different from the intended design. While the recorded dependencies did not prevent these defects, they gave participants an opportunity to correct failures that could otherwise go unnoticed.
 
-- **Faster**
-The same experiments found large differences in the time participants needed to complete the changes. The fastest approach combined recorded dependencies with rules about which elements should depend on which others, while the slowest approach omitted most direct dependencies. In the second experiment, the average was 3 min 45 sec with the fastest approach and 10 min 38 sec with the slowest approach. In the third experiment, the corresponding averages were 4 min 5 sec and 14 min 59 sec. The average time with the fastest approach was about 65% lower in the second experiment and 73% lower in the third. Both differences were statistically significant at `p < .001`.
+- **Making consequential structure explicit enabled faster changes**
+In the second experiment, participants completed the changes in an average of 3 min 45 sec with the approach that explicitly recorded and organized relationships between elements, compared with 10 min 38 sec with the approach that omitted most direct dependencies. In the third experiment, the corresponding averages were 4 min 5 sec and 14 min 59 sec. This represents reductions of about 65% and 73%. The experiments show that an approach built around explicit consequential structure can substantially reduce the time required for later changes.
 
-The study does not show that recorded dependencies alone caused the difference. The approaches also differed in how they ordered, named, and grouped the model’s elements, and participants received the approaches in the same order. The results therefore support the broader claim that how an artifact records and organizes relationships can affect the time required for later changes.
+
+#### 5.6.2 Static Types Made an Estimated 15% of JavaScript Bugs Detectable
+
+#### 5.6.3 Meaningful Identifiers Made Semantic Defects 19% Faster to Find
+
+#### 5.6.4 A Current Figma Design System Reduced Task Time by 34%
+
 
 
 **Clear alternatives.** Units caring for newborns that gave babies near-identical temporary names, such as "Babyboy Smith," had staff place orders on the wrong baby; giving each newborn a more distinctive name reduced those wrong-patient orders. In a controlled experiment with 72 professional developers, meaningful word identifiers made finding semantic defects 19% faster than abbreviations or single letters. A related effect has been measured on the model rather than the operator: adding a single topically related distractor to an otherwise identical retrieval task lowers accuracy, and adding four compounds it.
@@ -421,6 +425,10 @@ An interface that states its constraints saves the model from discovering them b
 More information is not automatically better. The interface should carry something because it changes a decision, not because it exists.
 
 ### Evidence for Decision-Complete Exchanges
+
+#### Distinct Identifiers Reduced Wrong-Patient Orders
+
+In 2015, Adelman and colleagues studied a hospital that replaced generic newborn names such as Babyboy Smith with names that included the mother’s first name, such as Wendysboy Smith. This made newborns with the same surname easier to distinguish. Likely wrong-patient orders fell by 36.3% after the change. The study shows that recording clearer distinctions between otherwise similar alternatives can reduce wrong-patient errors.
 
 **Decision-relevant content.** Filtering results down to what the next decision needs improved benchmark performance by 11% while using 24% fewer input tokens. Refusals that named the alternatives the validator would have accepted raised repair success by roughly 40 percentage points over raw diagnostics — and the study's ablation places most of that gain in the alternatives themselves, not in the formatting.
 
