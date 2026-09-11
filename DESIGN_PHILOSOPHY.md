@@ -228,8 +228,11 @@ In both experiments, the design application displayed errors when the two versio
 - **Making consequential structure explicit enabled faster changes**
 In the second experiment, participants completed the changes in an average of 3 min 45 sec with the approach that explicitly recorded and organized relationships between elements, compared with 10 min 38 sec with the approach that omitted most direct dependencies. In the third experiment, the corresponding averages were 4 min 5 sec and 14 min 59 sec. This represents reductions of about 65% and 73%. The experiments show that an approach built around explicit consequential structure can substantially reduce the time required for later changes.
 
-
 #### 5.6.2 Static Types Made an Estimated 15% of JavaScript Bugs Detectable
+
+In 2017, Gao, Bird, and Barr sampled 400 fixed bugs from 398 public JavaScript projects on GitHub. For each bug, they reconstructed the code before the fix, added type annotations to the affected code, and ran Flow and TypeScript. They counted a bug as detectable only when annotations consistent with the corrected code caused the checker to report an error on a line changed by the fix. Flow and TypeScript each detected 60 of the 400 bugs, or 15%.
+
+The result supports Representation’s contribution to Cleaner and Safer. Type annotations made implicit distinctions explicit, improving structural clarity. They also gave Flow and TypeScript enough observable state to detect 15% of the sampled bugs. Representation recorded the distinctions, Enforcement detected violations, and correcting those violations would prevent the defects from remaining in the codebase.
 
 #### 5.6.3 Meaningful Identifiers Made Semantic Defects 19% Faster to Find
 
