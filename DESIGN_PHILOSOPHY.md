@@ -236,17 +236,22 @@ The result supports Representation’s contribution to Cleaner and Safer. Type a
 
 #### 5.6.3 Meaningful Identifiers Made Semantic Defects 19% Faster to Find
 
+In 2017, Hofmeister, Siegmund, and Holt asked 72 professional C# developers to find defects in short code snippets. Each snippet used full-word identifiers, abbreviations, or single letters. Participants found semantic defects 19% faster when identifiers were full words (0.78 defects found per minute) compared to non-words (0.655 defects found per minute). Naming style did not affect how quickly they found syntax errors, showing that the advantage came from the meaning carried by the identifiers.
+
+The result supports Representation’s contribution to Faster. Meaningful identifiers record the roles of code elements in the artifact. Developers can use that structure directly instead of reconstructing what each identifier represents.
+
 #### 5.6.4 A Current Figma Design System Reduced Task Time by 34%
 
+In 2019, Figma asked designers to complete two matched tasks in a bank-account app. Each designer completed one task using a current, relevant design system and the other using old design files as references. Figma alternated which task participants completed first and reported that access to the design system reduced task-completion time by 34%.
 
+The result supports Representation’s contribution to Faster. The design system made reusable assets and existing design choices available in structured form, reducing the need to recreate assets, search old files, and repeat decisions about text, placement, and color.
 
-**Clear alternatives.** Units caring for newborns that gave babies near-identical temporary names, such as "Babyboy Smith," had staff place orders on the wrong baby; giving each newborn a more distinctive name reduced those wrong-patient orders. In a controlled experiment with 72 professional developers, meaningful word identifiers made finding semantic defects 19% faster than abbreviations or single letters. A related effect has been measured on the model rather than the operator: adding a single topically related distractor to an otherwise identical retrieval task lowers accuracy, and adding four compounds it.
+Figma published only the 34% point estimate. The article did not provide the participant count, underlying task times, confidence interval, or significance test.
 
-**Recurring work.** In a counterbalanced Figma experiment, designers completed matched tasks 34% faster when they had a current, task-relevant design system instead of old Figma design files to search. Studies of CAD models, production codebases, and structural antipatterns point the same way: structure that communicates intent lowers the cost of later modification, and combinations of structural problems raise it. Figma's own guidance for its MCP server makes the point from the other direction — structured Figma design files with real components, semantic layer names, and variables [produce the best model output](https://developers.figma.com/docs/figma-mcp-server/structure-figma-file/).
-
-These sources test different links in the chain and should not be read as repeated proof of one effect. See [Cleaner leads to Safer](../../EVIDENCE.md#cleaner-leads-to-safer) and [Cleaner leads to Faster](../../EVIDENCE.md#cleaner-leads-to-faster).
-
-Explicit structure can also turn a decision into control logic that ordinary software can run. How long execution should stay on that side is the subject of Principle 3.
+#### 5.6.5 Evidence Summary
+ 
+Across these studies, explicit structure made failed changes visible, made defects detectable, reduced comprehension time, and reduced the time required for later work. Representation made the relevant relationships and distinctions observable. The next principle concerns one use of that state: deciding which requested changes may take effect.
+<br>
 
 ## Principle 2 — Put Enforceable Rules in the Tool, Not Only in the Prompt
 
