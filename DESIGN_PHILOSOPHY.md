@@ -253,79 +253,82 @@ Figma published only the 34% point estimate. The article did not provide the par
 Across these studies, explicit structure made failed changes visible, made defects detectable, reduced comprehension time, and reduced the time required for later work. Representation made the relevant relationships and distinctions observable. The next principle concerns one use of that state: deciding which requested changes may take effect.
 <br>
 
-## Principle 2 — Put Enforceable Rules in the Tool, Not Only in the Prompt
+## 6. Principle 2 — Enforcement: Refuse Changes That Violate Required, Mechanically Checkable Conditions
 
-(From "The Design Boundary" Section)
-"Deterministic" here describes the check, not the whole tool or the environment. A check applies its predicate consistently, which is not the same as applying the right one — a wrong predicate fails reliably, every time. The distinction that matters is between an outcome that depends on the model complying and one that does not.
+### 6.1 What Enforcement Covers
 
+Enforcement governs which changes proposed by the AI model the AI tool permits to take effect. A request expresses what the model has decided should happen, but it does not by itself authorize the artifact to be changed.
 
-The enforcement boundary separates what the model proposes from what the tool lets take effect.
+When a condition must govern every relevant change and can be evaluated from state the AI tool observes, the developer should encode a check for that condition in the AI tool. The tool applies the check on every relevant mutation path and refuses any proposed change that fails it. The condition may concern the request, the artifact’s current state, or the relationship between them.
 
-**Programmatic checks are more reliable than instructions for enforcing mechanically checkable rules.**
+A condition is mechanically checkable when the AI tool can determine from the request and observable state whether the condition is satisfied, without interpreting the task’s meaning. That does not mean every condition expressible in code should be enforced. A heuristic may be computable while still being an unreliable substitute for judgment. Whether a proposed layout is appropriate, whether a color is aesthetically correct, or whether a valid edit is what the user meant generally requires model judgment. Hard enforcement is appropriate when failure of the check is sufficient grounds to refuse the change, not merely evidence that the change might be wrong.
 
-An instruction asks the model to remember a rule, recognize when it applies, and follow it. Instructions are valuable, because they improve the requests the model makes. But they cannot guarantee that every request will comply.
+Enforcement can apply two kinds of rule:
+- A **state invariant** describes a property that accepted changes must preserve. For example, a tool may refuse to delete an object while other objects still contain recorded references to it. Enforcement can prevent tool-mediated changes from violating such a property, but it cannot repair an artifact in which the property is already violated.
+- A **transition constraint** restricts which changes the tool will perform rather than requiring the artifact to retain a particular state. For example, allowing edits only within a granted working area limits the tool’s authority; it does not require the artifact itself to preserve that working area as part of its state.
 
-A review step by the same model does not close that gap either. Asked to reconsider its own output with no external signal, the model has to judge its own correctness — and that judgment is the thing in question. A same-model review without independent evidence cannot supply this enforcement guarantee.
+The strength of Enforcement depends on the condition, the check, and its coverage. The condition must accurately state what the developer intends to require. The check must correctly evaluate that condition from state the AI tool can observe, and every mutation capable of violating it must pass through the check. 
 
-A check controls whether a request takes effect. It applies its predicate to the state it observes at the point of change, and gives the same answer every time — whichever model is connected, however full its context is, whether or not it ever read the rules. The model can still ask to do the prohibited thing; the tool does not have to carry it out.
+Deterministic enforcement means the tool applies the same check without depending on whether the model remembers or follows the condition; it does not establish that the condition or its implementation is correct. An overbroad check will consistently refuse valid work, while an underbroad check will consistently admit some changes the developer intended to prevent.
 
-That produces a stronger property than an instruction can:
+Instructions to an AI model remain useful, but they perform a different function. They help the model understand the conditions and compose requests that are more likely to pass. Enforcement determines what happens when a request does not comply. The model may still propose a prohibited change; the enforced condition prevents that proposal from taking effect.
 
-> **A rule enforced at every relevant change becomes a condition of every accepted change, not a behavior the model is expected to remember. When the rule describes the artifact's state and already holds, repeated enforcement keeps it true.**
+Passing the enforcement checks authorizes an operation to begin; it does not guarantee that execution will succeed. A later execution failure is distinct from an enforcement refusal and may leave completed, partial, or uncertain effects. Enforcement determines which proposed changes may begin; Information determines how the AI tool communicates what ultimately happened.
+<br>
 
-The guarantee holds when three things are true:
+### 6.2 How Enforcement Leads to Safer
 
-- the check evaluates a mechanically testable rule using state the tool can observe;
-- every change capable of violating the rule passes through the check; and
-- a refused request leaves the artifact unchanged.
+Enforcement leads to Safer by preventing covered prohibited changes from taking effect. The AI model may still propose such a change, but the artifact is not altered by that proposal when the enforced check refuses it. Safety is therefore measured by which proposed changes the AI tool permits to take effect, not by whether the model avoids making invalid requests.
 
-Two kinds of rule behave differently here. A **state invariant** — no layer refers to a variable that no longer exists — becomes a property the artifact keeps, provided it held to begin with. A **transition constraint** — only layers inside the working area may be modified — governs which changes are accepted without ever being stored in the artifact. Both make the tool safer; only the first also preserves the artifact's state.
+State invariants and transition constraints produce this benefit in different ways. Enforcing a state invariant prevents an accepted change from introducing the defect described by that invariant. Enforcing a transition constraint limits the tool’s authority, reducing the set of changes it can make even when the artifact would otherwise permit them.
 
-The guarantee stays narrow and strong: it covers the rule being checked, not whether the model's plan matches what the user wanted. Rules that turn on meaning stay on the judgment side. Software can confirm that a value is valid and that a dependency would survive; it cannot confirm that the value is the one the user had in mind.
+For example, a constraint that confines edits to a granted working area does not make the model more likely to choose the correct edit. It prevents the model from changing anything outside that area. The check therefore limits the possible impact of an incorrect decision without determining whether an accepted decision is correct.
 
-**In figma-edit-mcp.** Every action the model requests is checked inside Figma before it runs, and a failing action is refused with an error naming what was wrong. Each check enforces one rule on every action: is the target inside the working area; is it really the layer the model named; does a new layer have somewhere to go; is the layer locked; does this variable still have consumers. The model decides what edit serves the task; the plugin decides whether that edit is allowed to happen.
+A refusal is a safe outcome for the condition being enforced even if the model repeatedly attempts the prohibited change. Attempt frequency may reveal that the instructions or interface are unclear, but it does not weaken a check that continues to prevent every covered attempt from taking effect. Conversely, a low attempt rate does not replace Enforcement: a prohibited change remains possible if nothing prevents the request from executing when the model eventually makes it.
 
-### How Enforcement Leads to Safer
+The safety benefit remains limited to the enforced condition. A change can satisfy every check and still be the wrong change for the task. Enforcement leads to Safer by excluding defined classes of change from tool-mediated execution; it does not establish that every remaining change is correct.
+<br>
 
-A covered invalid request does not become a change. Safety is measured by what takes effect, not by whether the model ever attempted the action.
+### 6.3 How Enforcement Contributes to Cleaner
 
-This is why instructions and checks are complementary rather than competing. Instructions work on the model's side, improving the requests it makes. Checks work at the boundary, controlling which requests can take effect. Use instructions to teach the model how to succeed; use checks for rules that must hold even when the model does not follow the instruction.
+Cleaner includes both state quality and structural clarity. Enforcement contributes to Cleaner when it refuses a change that would damage either quality. This prevents covered deterioration; it does not guarantee that the artifact becomes cleaner overall.
 
-Keep the two statements of a rule in sync. If the documentation says edits are confined to the current selection and the check actually tests something subtly different, the model builds an accurate picture of a tool that does not exist, and then meets a refusal it had no way to anticipate. When the two drift, the check wins and the model is surprised. Write the instruction from the predicate, not from memory.
+For example, if the artifact records that one object refers to another, a check can refuse a deletion that would leave the reference unresolved. Representation makes the relationship observable; Enforcement prevents the proposed change from breaking it. The check does not determine whether the recorded relationship was correct in the first place.
 
-figma-edit-mcp ships both. The `figma-edit` skill and the `figma-edit://guide/*` resources teach the model the rules before it starts, which means fewer wasted calls on actions the plugin would refuse. The guarantees are stronger because they never depend on the model reading or following anything.
+Not every enforced condition contributes to Cleaner. A transition constraint that limits the tool’s authority may make its operation safer without preserving the artifact’s quality or structure. Its benefit is containment rather than cleanliness.
+<br>
 
-The same split governs how you improve the tool. Letting a model read transcripts and rewrite descriptions, parameter names, and response shapes works well, because all of those change the requests it makes. Do not let it tune the checks against a task-success metric. A refusal is indistinguishable from a failure to that metric, so the optimization pressure runs toward loosening exactly the constraints that exist for the cases the metric does not contain. Descriptions are tuned against evidence; checks are derived from a rule you decided to hold.
+### 6.4 How Enforcement Contributes to Faster
 
-### How Enforcement Leads to Cleaner
+Enforcement can reduce the time required to complete work correctly by stopping a covered defect before it becomes part of the artifact. Once a defect takes effect, later work may be required to discover it, determine what it affected, undo dependent changes, and restore the intended state. A refusal can prevent that recovery work from becoming necessary.
 
-For rules about the artifact's integrity, a check reduces the inflow of the defects it covers. It does not repair defects already there. A transition constraint that does not protect artifact state makes the tool safer without producing this effect at all.
+This saving is conditional because Enforcement also has costs. Every check takes time to run, and every refusal requires the model or user to reconsider the proposed change. If no covered invalid change would otherwise occur, there is no avoided repair work to offset those costs. An incorrect or unnecessarily restrictive check can make work slower by refusing changes that should have been accepted.
 
-Think of the errors in an artifact as a level that rises when new errors are admitted and falls when old ones are repaired. Checks do not lower the level; they slow what raises it. If ordinary work keeps repairing old errors while fewer new ones arrive, the level falls over time.
+The potential saving is greatest for defects that are difficult to notice, expensive to reverse, or likely to affect later work. It is smaller for defects that are immediately visible and easy to correct. Enforcement contributes to Faster only when the work avoided by preventing covered defects exceeds the cost of applying the checks and responding to their refusals.
 
-The level can still rise while the checks are helping, if the defects nobody is checking for arrive faster than repair removes them. Even then, the artifact is cleaner than the otherwise-identical version in which the covered bad changes were allowed through. Enforcement preserves good states and admits fewer defects; ordinary cleanup is what makes the artifact absolutely cleaner than it was.
+Enforcement does not determine how efficiently the model recovers from a refusal. Information contributes by explaining which condition failed and providing the facts needed for the next decision. An unexplained refusal may prevent a defect while still making the task expensive to complete.
 
-### How Enforcement Leads to Faster
+The prevented defect and the avoided repair are one causal chain. Enforcement contributes directly by refusing the change; the resulting absence of diagnosis and repair work is the downstream time benefit of that same refusal.
+<br>
 
-A refusal at the point of change replaces the later work of finding, diagnosing, untangling, and repairing a defect after other work has come to depend on it. The saving is largest for errors that are costly to discover late, spread to many dependents, or are hard to reverse.
+### 6.5 Evidence for Enforcement
 
-Checking is not free. When no covered bad action would have happened anyway, there is nothing to avoid and the cost of checking remains. Enforcement is faster overall only when the downstream work it avoids exceeds the cost of running the checks and correcting the refusals they produce.
+#### 6.5.1 A Guarded Edit Command Improved an AI Agent’s Task Completion
+In 2024, Yang and colleagues evaluated SWE-agent, an AI agent that changes code through an editing interface. The interface runs a linter on each proposed edit. When the linter detects a selected class of error, the edit is discarded and the agent receives a diagnostic with relevant code context before trying again.
 
-That saving arrives along one path, not two:
+The authors tested the contribution of this check on the 300-task SWE-bench Lite benchmark. With linting enabled, the agent resolved 18.0% of the tasks. Using the same edit command without linting, it resolved 15.0%. The check therefore improved task completion by three percentage points in this experiment.
 
-```text
-covered change refused
-→ defect does not enter the artifact
-→ downstream repair is avoided
-```
+This result supports Enforcement in a setting where an AI model changes an artifact. The model decided what edit to make, while the editing interface independently determined whether the proposed change satisfied a mechanically checkable condition. An edit that failed the check was not retained, regardless of whether the model recognized the error before submitting it.
 
-The prevented defect and the avoided repair are the same event described at two points in time.
+The comparison evaluates the guarded loop as a whole: rejected edits also received diagnostic feedback and an opportunity to retry, so it does not isolate the refusal alone. Because the experiment tested lint-detectable code errors and measured task completion, its effect size should not be transferred to other tools or conditions.
 
-### Evidence for Enforcement
+<br>
+<br>
+<br>
+<br>
 
 **Limits of model self-checking.** Across several models and benchmarks, asking a model to review and revise its own answer with no external feedback made accuracy worse — in the largest case, from 75.8% to 38.1%. Supplying an external verdict on whether the answer was already correct reversed the direction, raising the same model from 75.9% to 84.3% on another benchmark. The authors' explanation is the design argument in one line: models cannot reliably judge the correctness of their own reasoning. The finding is scoped to reasoning, and self-correction still works where the model genuinely can judge its own output, such as tone or refusal.
 
-**Guarded editing and recovery.** In the closest agent-edit analogue, SWE-agent discarded edits that introduced syntax errors and asked the agent to retry — the same pattern figma-edit-mcp uses. The agent solved 18.0% of benchmark tasks with the guarded interface versus 15.0% without it. Because the intervention combined rejection, feedback, and retry, it supports the guarded loop as a whole rather than isolating the check.
 
 **Blocking at the tool boundary.** On a controlled benchmark built alongside its own policy rules, 40.0% of adversarial tasks succeeded against an undefended tool-calling agent. The strongest prompt-only defense brought that to 35.0%. Moving the same model behind a runtime check cut it to 5.0%, while the agent went on attempting the attacks at the same rate. Its 30.0% task-level intervention rate is operational friction largely produced by intended least-privilege denials rather than a measured rate of wrong predicates. That is the over-enforcement cost this document argues should be counted, whatever its cause. The bound matters as much as the result. On the paper's one externally designed benchmark, the ordering reversed; its authors attribute that to a mechanism orthogonal to enforcement rather than to a better check.
 
