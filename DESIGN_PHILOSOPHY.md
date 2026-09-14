@@ -214,45 +214,6 @@ They save time only when later work uses them, and a wrong or stale relationship
 Representation contributes to Faster by making consequential structure reusable. When later work needs the same relationship or distinction, the AI model or AI tool can use what the artifact already records instead of reconstructing it. The evidence below shows that recorded structure can reduce the time required for later changes. The size of that saving depends on the structure and the work being performed, so the principle does not claim the same speedup for every artifact or task.
 <br>
 
-### 5.6 Evidence for Representation
-
-The evidence below tests particular effects of recorded structure rather than Representation as a whole. Each study concerns a specific kind of relationship or distinction and measures a particular outcome. Its findings therefore support only the mechanism and benefit identified for that study, not the claim that every form of recorded structure makes every artifact Cleaner, Safer, or Faster.
-
-#### 5.6.1 CAD Experiments: Recorded Dependencies Exposed Failures and Supported Faster Changes
-
-In 2016, Jorge D. Camba, Manuel Contero, and Pedro Company reported three experiments in which engineering students modified digital models of mechanical parts. The findings below come from the second and third experiments. Each experiment involved a different group of 32 senior engineering students with previous CAD experience. Every participant modified three versions of a model. The versions recorded and organized dependencies differently, and participants always received them in the same order.
-
-- **Recorded dependencies made defects visible** 
-In both experiments, the design application displayed errors when the two versions that retained direct dependencies could not update related elements correctly. These errors showed participants that the requested change had produced an unintended result and identified the elements that needed attention. By contrast, the version that omitted most direct dependencies produced no equivalent warning when a change left the model different from the intended design. While the recorded dependencies did not prevent these defects, they gave participants an opportunity to correct failures that could otherwise go unnoticed.
-
-- **Making consequential structure explicit enabled faster changes**
-In the second experiment, participants completed the changes in an average of 3 min 45 sec with the approach that explicitly recorded and organized relationships between elements, compared with 10 min 38 sec with the approach that omitted most direct dependencies. In the third experiment, the corresponding averages were 4 min 5 sec and 14 min 59 sec. This represents reductions of about 65% and 73%. The experiments show that an approach built around explicit consequential structure can substantially reduce the time required for later changes.
-
-#### 5.6.2 Static Types Made an Estimated 15% of JavaScript Bugs Detectable
-
-In 2017, Gao, Bird, and Barr sampled 400 fixed bugs from 398 public JavaScript projects on GitHub. For each bug, they reconstructed the code before the fix, added type annotations to the affected code, and ran Flow and TypeScript. They counted a bug as detectable only when annotations consistent with the corrected code caused the checker to report an error on a line changed by the fix. Flow and TypeScript each detected 60 of the 400 bugs, or 15%.
-
-The result supports Representation’s contribution to Cleaner and Safer. Type annotations made implicit distinctions explicit, improving structural clarity. They also gave Flow and TypeScript enough observable state to detect 15% of the sampled bugs. Representation recorded the distinctions, Enforcement detected violations, and correcting those violations would prevent the defects from remaining in the codebase.
-
-#### 5.6.3 Meaningful Identifiers Made Semantic Defects 19% Faster to Find
-
-In 2017, Hofmeister, Siegmund, and Holt asked 72 professional C# developers to find defects in short code snippets. Each snippet used full-word identifiers, abbreviations, or single letters. Participants found semantic defects 19% faster when identifiers were full words (0.78 defects found per minute) compared to non-words (0.655 defects found per minute). Naming style did not affect how quickly they found syntax errors, showing that the advantage came from the meaning carried by the identifiers.
-
-The result supports Representation’s contribution to Faster. Meaningful identifiers record the roles of code elements in the artifact. Developers can use that structure directly instead of reconstructing what each identifier represents.
-
-#### 5.6.4 A Current Figma Design System Reduced Task Time by 34%
-
-In 2019, Figma asked designers to complete two matched tasks in a bank-account app. Each designer completed one task using a current, relevant design system and the other using old design files as references. Figma alternated which task participants completed first and reported that access to the design system reduced task-completion time by 34%.
-
-The result supports Representation’s contribution to Faster. The design system made reusable assets and existing design choices available in structured form, reducing the need to recreate assets, search old files, and repeat decisions about text, placement, and color.
-
-Figma published only the 34% point estimate. The article did not provide the participant count, underlying task times, confidence interval, or significance test.
-
-#### 5.6.5 Evidence Summary
- 
-Across these studies, explicit structure made failed changes visible, made defects detectable, reduced comprehension time, and reduced the time required for later work. Representation made the relevant relationships and distinctions observable. The next principle concerns one use of that state: deciding which requested changes may take effect.
-<br>
-
 ## 6. Principle 2 — Enforcement: Refuse Changes That Violate Required, Mechanically Checkable Conditions
 
 ### 6.1 What Enforcement Covers
@@ -310,8 +271,50 @@ Enforcement does not determine how efficiently the model recovers from a refusal
 
 The prevented defect and the avoided repair are one causal chain. Enforcement contributes directly by refusing the change; the resulting absence of diagnosis and repair work is the downstream time benefit of that same refusal.
 <br>
+<br>
+<br>
+<br>
 
-### 6.5 Evidence for Enforcement
+
+### [LEGACY] 5.6 Evidence for Representation
+
+The evidence below tests particular effects of recorded structure rather than Representation as a whole. Each study concerns a specific kind of relationship or distinction and measures a particular outcome. Its findings therefore support only the mechanism and benefit identified for that study, not the claim that every form of recorded structure makes every artifact Cleaner, Safer, or Faster.
+
+#### 5.6.1 CAD Experiments: Recorded Dependencies Exposed Failures and Supported Faster Changes
+
+In 2016, Jorge D. Camba, Manuel Contero, and Pedro Company reported three experiments in which engineering students modified digital models of mechanical parts. The findings below come from the second and third experiments. Each experiment involved a different group of 32 senior engineering students with previous CAD experience. Every participant modified three versions of a model. The versions recorded and organized dependencies differently, and participants always received them in the same order.
+
+- **Recorded dependencies made defects visible** 
+In both experiments, the design application displayed errors when the two versions that retained direct dependencies could not update related elements correctly. These errors showed participants that the requested change had produced an unintended result and identified the elements that needed attention. By contrast, the version that omitted most direct dependencies produced no equivalent warning when a change left the model different from the intended design. While the recorded dependencies did not prevent these defects, they gave participants an opportunity to correct failures that could otherwise go unnoticed.
+
+- **Making consequential structure explicit enabled faster changes**
+In the second experiment, participants completed the changes in an average of 3 min 45 sec with the approach that explicitly recorded and organized relationships between elements, compared with 10 min 38 sec with the approach that omitted most direct dependencies. In the third experiment, the corresponding averages were 4 min 5 sec and 14 min 59 sec. This represents reductions of about 65% and 73%. The experiments show that an approach built around explicit consequential structure can substantially reduce the time required for later changes.
+
+#### 5.6.2 Static Types Made an Estimated 15% of JavaScript Bugs Detectable
+
+In 2017, Gao, Bird, and Barr sampled 400 fixed bugs from 398 public JavaScript projects on GitHub. For each bug, they reconstructed the code before the fix, added type annotations to the affected code, and ran Flow and TypeScript. They counted a bug as detectable only when annotations consistent with the corrected code caused the checker to report an error on a line changed by the fix. Flow and TypeScript each detected 60 of the 400 bugs, or 15%.
+
+The result supports Representation’s contribution to Cleaner and Safer. Type annotations made implicit distinctions explicit, improving structural clarity. They also gave Flow and TypeScript enough observable state to detect 15% of the sampled bugs. Representation recorded the distinctions, Enforcement detected violations, and correcting those violations would prevent the defects from remaining in the codebase.
+
+#### 5.6.3 Meaningful Identifiers Made Semantic Defects 19% Faster to Find
+
+In 2017, Hofmeister, Siegmund, and Holt asked 72 professional C# developers to find defects in short code snippets. Each snippet used full-word identifiers, abbreviations, or single letters. Participants found semantic defects 19% faster when identifiers were full words (0.78 defects found per minute) compared to non-words (0.655 defects found per minute). Naming style did not affect how quickly they found syntax errors, showing that the advantage came from the meaning carried by the identifiers.
+
+The result supports Representation’s contribution to Faster. Meaningful identifiers record the roles of code elements in the artifact. Developers can use that structure directly instead of reconstructing what each identifier represents.
+
+#### 5.6.4 A Current Figma Design System Reduced Task Time by 34%
+
+In 2019, Figma asked designers to complete two matched tasks in a bank-account app. Each designer completed one task using a current, relevant design system and the other using old design files as references. Figma alternated which task participants completed first and reported that access to the design system reduced task-completion time by 34%.
+
+The result supports Representation’s contribution to Faster. The design system made reusable assets and existing design choices available in structured form, reducing the need to recreate assets, search old files, and repeat decisions about text, placement, and color.
+
+Figma published only the 34% point estimate. The article did not provide the participant count, underlying task times, confidence interval, or significance test.
+
+#### 5.6.5 Evidence Summary
+ 
+Across these studies, explicit structure made failed changes visible, made defects detectable, reduced comprehension time, and reduced the time required for later work. Representation made the relevant relationships and distinctions observable. The next principle concerns one use of that state: deciding which requested changes may take effect.
+
+### [LEGACY] Evidence for Enforcement
 
 #### 6.5.1 A Guarded Edit Command Improved an AI Agent’s Task Completion
 In 2024, Yang and colleagues evaluated SWE-agent, an AI agent that changes code through an editing interface. The interface runs a linter on each proposed edit. When the linter detects a selected class of error, the edit is discarded and the agent receives a diagnostic with relevant code context before trying again.
@@ -322,10 +325,7 @@ This result supports Enforcement in a setting where an AI model changes an artif
 
 The comparison evaluates the guarded loop as a whole: rejected edits also received diagnostic feedback and an opportunity to retry, so it does not isolate the refusal alone. Because the experiment tested lint-detectable code errors and measured task completion, its effect size should not be transferred to other tools or conditions.
 
-<br>
-<br>
-<br>
-<br>
+#### Evidence for Enforcement
 
 **Limits of model self-checking.** Across several models and benchmarks, asking a model to review and revise its own answer with no external feedback made accuracy worse — in the largest case, from 75.8% to 38.1%. Supplying an external verdict on whether the answer was already correct reversed the direction, raising the same model from 75.9% to 84.3% on another benchmark. The authors' explanation is the design argument in one line: models cannot reliably judge the correctness of their own reasoning. The finding is scoped to reasoning, and self-correction still works where the model genuinely can judge its own output, such as tone or refusal.
 
@@ -342,7 +342,9 @@ See [Safer leads to Cleaner](../../EVIDENCE.md#safer-leads-to-cleaner) and [Safe
 
 A check can only apply a rule stated over observable state. What is observable is the subject of Principle 2.
 
-## Principle 3 — Keep Already-Determined Work Inside One Call; Return Control When New Judgment Is Needed
+<br>
+
+## [LEGACY] Principle 3 — Keep Already-Determined Work Inside One Call; Return Control When New Judgment Is Needed
 
 The useful boundary between tool calls is a decision boundary, not an operation boundary. A model turn is one reasoning cycle: the model reads the last result, thinks, and composes its next call. The number of low-level operations does not decide whether another turn is worth taking.
 
@@ -390,7 +392,7 @@ See [Faster: designing tools around decisions](../../EVIDENCE.md#faster-designin
 
 Principle 3 decides when control crosses. Principle 4 decides what crosses with it.
 
-## Principle 4 — Make Each Exchange Decision-Complete
+## [LEGACY] Principle 4 — Make Each Exchange Decision-Complete
 
 This principle closes the loop. It governs both directions: the request has to express the model's decision unambiguously, and the result has to carry back what the next decision needs.
 
@@ -453,7 +455,7 @@ In 2015, Adelman and colleagues studied a hospital that replaced generic newborn
 
 All of this measures tokens, steps, cost, repair success, and benchmark performance rather than elapsed time. See [Faster: designing tools around decisions](../../EVIDENCE.md#faster-designing-tools-around-decisions).
 
-## The Four Principles as One Boundary
+## [LEGACY] The Four Principles as One Boundary
 
 | Boundary dimension | The model contributes | Software and explicit state contribute | Primary effect |
 | --- | --- | --- | --- |
@@ -476,7 +478,7 @@ Each of these has already appeared where it mattered. They are collected here as
 
 Everything here also has a time horizon: explicit structure usually costs time now and returns it during later reuse.
 
-## One Example, End to End
+## [LEGACY] One Example, End to End
 
 In Figma, a variable that layers still use can be deleted, leaving broken references that are hard to find and repair. Users on Figma's own forum describe the result: one found [1,548 orphaned variable references](https://forum.figma.com/suggest-a-feature-11/make-it-easier-to-fix-broken-variable-references-33999) after reorganizing their variables, and the "Detach deleted variables" quick action [fixes only some of them](https://forum.figma.com/ask-the-community-7/locate-and-delete-lingering-used-variables-16794).
 
@@ -493,7 +495,7 @@ The forum reports are not a measurement. They do not quantify the average speedu
 
 Project-specific sources and limitations are collected under [Deleting an in-use variable in Figma](../../EVIDENCE.md#deleting-an-in-use-variable-in-figma).
 
-## How to Draw the Boundary
+## [LEGACY] How to Draw the Boundary
 
 Treat each proposed boundary as a hypothesis. Validate control boundaries against transcripts for unnecessary or missing model turns, and validate predicates against observed valid and invalid requests.
 
@@ -516,7 +518,7 @@ The placement errors follow directly, and they run in both directions:
 
 The goal is not to maximize the work on either side. It is the smallest change to the boundary that materially improves Safer, Cleaner, or Faster without causing a larger countereffect.
 
-## How to Tell Whether the Boundary Is in the Right Place
+## [LEGACY] How to Tell Whether the Boundary Is in the Right Place
 
 The evidence in this document supports the general claims. It says nothing about your tool. Four counts do, one per principle, and none of them appear in a standard accuracy-and-tokens evaluation.
 
@@ -530,7 +532,7 @@ The evidence in this document supports the general claims. It says nothing about
 
 A tool can score well on task success and be wrong on all four. Success rates measure the cases you thought of; the checks exist for the ones you did not.
 
-## Limits of a Well-Placed Boundary
+## [LEGACY] Limits of a Well-Placed Boundary
 
 A well-placed boundary does not make either side infallible.
 
