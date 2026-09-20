@@ -211,7 +211,7 @@ Recorded structure can also contribute to Faster through Control and Enforcement
 
 They save time only when later work uses them, and a wrong or stale relationship can create additional work instead. Representation is therefore most likely to make work faster when the relationship is accurate, consequential, available through the AI tool, and likely to be reused or changed.
 
-Representation contributes to Faster by making consequential structure reusable. When later work needs the same relationship or distinction, the AI model or AI tool can use what the artifact already records instead of reconstructing it. The evidence below shows that recorded structure can reduce the time required for later changes. The size of that saving depends on the structure and the work being performed, so the principle does not claim the same speedup for every artifact or task.
+Representation makes consequential structure observable to the AI tool. When that structure allows the tool to detect a violation of a required, mechanically checkable condition, Enforcement can prevent the proposed change from taking effect.
 <br>
 
 ## 6. Principle 2 — Enforcement: Refuse Changes That Violate Required, Mechanically Checkable Conditions
@@ -261,20 +261,34 @@ Not every enforced condition contributes to Cleaner. A transition constraint tha
 
 ### 6.4 How Enforcement Contributes to Faster
 
-Enforcement can reduce the time required to complete work correctly by stopping a covered defect before it becomes part of the artifact. Once a defect takes effect, later work may be required to discover it, determine what it affected, undo dependent changes, and restore the intended state. A refusal can prevent that recovery work from becoming necessary.
+Enforcement contributes to Faster when refusing a covered defect avoids work that would have been required after the defect entered the artifact. That work may include discovering the defect, determining what it affected, undoing dependent changes, and restoring the intended state. The avoided recovery is the downstream time effect of the same refusal that contributes to Safer.
 
-This saving is conditional because Enforcement also has costs. Every check takes time to run, and every refusal requires the model or user to reconsider the proposed change. If no covered invalid change would otherwise occur, there is no avoided repair work to offset those costs. An incorrect or unnecessarily restrictive check can make work slower by refusing changes that should have been accepted.
+This contribution is conditional. Checks take time to run, and responding to a refusal may require additional model or user judgment. If no covered invalid change would otherwise have taken effect, there is no repair work to avoid. An incorrect or unnecessarily restrictive check can make work slower by refusing changes that should have been accepted.
 
 The potential saving is greatest for defects that are difficult to notice, expensive to reverse, or likely to affect later work. It is smaller for defects that are immediately visible and easy to correct. Enforcement contributes to Faster only when the work avoided by preventing covered defects exceeds the cost of applying the checks and responding to their refusals.
 
 Enforcement does not determine how efficiently the model recovers from a refusal. Information contributes by explaining which condition failed and providing the facts needed for the next decision. An unexplained refusal may prevent a defect while still making the task expensive to complete.
-
-The prevented defect and the avoided repair are one causal chain. Enforcement contributes directly by refusing the change; the resulting absence of diagnosis and repair work is the downstream time benefit of that same refusal.
-<br>
-<br>
-<br>
 <br>
 
+## 7. Principle 3 — Control: Keep Already-Determined Work Inside One Call; Return Control When New Judgment Is Needed
+
+### 7.1 What Control Covers
+Control governs how much work the AI tool carries out within one call before returning a result to the AI model. A return gives the model an opportunity to interpret new evidence and decide what should happen next. Until the tool returns, execution can use only choices already expressed in the request or determined by rules defined by the developer before run time.
+
+A call does not have to correspond to one low-level operation. It may perform one operation, a sequence of operations, or deterministic logic over multiple items. The number of operations does not determine whether the work belongs in one call. What matters is whether continuing requires new task-specific judgment from the AI model. Combining operations does not allow the tool to resolve ambiguity, revise the task’s intent, or choose among alternatives for reasons that neither the request nor its implementation supplies.
+
+Control concerns the placement of this return boundary. It does not determine whether the proposed work is permitted; that is Enforcement. It also does not determine which facts the result contains; that is Information. The Control question is how far the tool should proceed before the model needs another opportunity to judge.
+<br>
+
+### 7.2 Where Control Should Return
+Control should return when continuing the call would require a task-specific decision that the model has not already expressed. The developer can locate that boundary by asking:
+
+> **After the AI tool completes an operation within a call, is carrying out the next operation part of the decision already expressed by the model’s request, or must the model first make another decision?**
+
+<br>
+<br>
+<br>
+<br>
 
 ### [LEGACY] 5.6 Evidence for Representation
 
