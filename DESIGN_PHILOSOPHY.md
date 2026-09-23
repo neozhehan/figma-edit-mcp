@@ -283,9 +283,55 @@ Control concerns the placement of this return boundary. It does not determine wh
 ### 7.2 Where Control Should Return
 Control should return when continuing the call would require a task-specific decision that the model has not already expressed. The developer can locate that boundary by asking:
 
-> **After the AI tool completes an operation within a call, is carrying out the next operation part of the decision already expressed by the model’s request, or must the model first make another decision?**
+> **After the AI tool completes an operation within a call, is carrying out the next operation part of the decision already expressed by the AI model’s request, or must the model first make another decision?**
 
+A request expresses a decision through the operation and parameters the model selects. It does not need to enumerate every internal step. If the request identifies a group of changes, asks for the same change across a set of items, or selects a higher-level operation that requires several steps, the tool can perform that work without returning after each operation. If the request says to skip locked items, for example, encountering a locked item does not require another decision; skipping it is already part of the requested behavior.
+
+The fact that the tool has predefined behavior for an outcome does not establish that it should continue. Everything the tool does is predefined by its developer, including stopping and returning. The relevant distinction is whether that behavior carries out the decision expressed by the request or substitutes a developer-defined choice for a task-specific decision the model has not made.
+
+Control should return when an operation reveals a choice that the request has not resolved. For example, attempting to delete an object may reveal that other objects depend on it. The tool should not choose among retaining the object, deleting its dependents, detaching them, or replacing their references unless the request has already selected that outcome. It should return what it found so the model can make the additional decision.
+
+Returning too early divides one decision across unnecessary exchanges. Returning too late allows predefined behavior to resolve choices that require task-specific judgment. The objective is not to place as much work as possible inside one call. It is to keep carrying out the expressed decision until another decision is required.
 <br>
+
+### 7.3 Consolidation Is Not Enforcement
+Consolidating work means allowing the AI tool to carry out several already-determined operations before returning to the model. This changes where the Control boundary falls. It does not determine whether any of those operations should be permitted to take effect.
+
+Enforcement performs that separate function. A tool may check every operation before beginning and refuse the entire request when one operation violates an enforced condition. It may instead check each operation immediately before carrying it out. These checks can be applied whether the request contains one operation or many. Conversely, several operations can be consolidated into one call without being checked against any enforced condition.
+
+A tool may provide consolidation and Enforcement together, but their effects remain distinct. If a batch is refused because one requested change violates a condition, Enforcement caused the refusal. If a valid batch completes without returning to the model between its operations, Control removed those intermediate exchanges. The refusal is not a benefit of consolidation, and the eliminated exchanges are not a benefit of Enforcement.
+
+Checking every operation before execution also does not make the call atomic. Prevalidation can detect only the conditions the tool can evaluate before mutation begins. After execution starts, an operation may still fail because the artifact changed, an external dependency failed, or the host application rejected the operation. Earlier operations may already have taken effect unless the tool provides a separate transaction or rollback guarantee.
+
+The tool must define what happens after such a failure: whether it stops, continues, or attempts recovery. It must then report which operations took effect and what state it could confirm. The failure behavior concerns where Control returns, while communicating the resulting state belongs to Information. Neither consolidation nor prevalidation alone guarantees that all requested changes take effect or that none do.
+<br>
+
+### 7.4 How Control Contributes to Faster
+
+Control contributes to Faster by removing exchanges that require no new judgment from the AI model. Each time the AI tool returns, the AI model must read the result, reason about what follows, and compose another request. When the next operation is already part of the decision expressed by the original request, that additional model cycle repeats a decision that has already been made.
+
+Keeping such work inside one call does not necessarily make the individual operations execute faster. It removes the time spent transferring intermediate results to the model and waiting for the model to request the remaining work. It may also allow the tool to perform independent operations concurrently when their order does not matter.
+
+Fewer calls, model turns, or tokens do not by themselves establish Faster. The relevant outcome is whether correct work takes less time to complete. A consolidated call that saves turns but produces more failures, requires more correction, or takes longer to execute has not made the work faster.
+
+Consolidation also has costs. A larger request may take more time to compose, validate, transfer, and execute. If it fails partway through, determining what happened and completing the remaining work may cost more than handling smaller calls. Returning too late can also withhold evidence the model needed, causing the tool to continue with work that must later be reversed.
+
+Control therefore contributes to Faster only when the time saved by removing unnecessary exchanges exceeds the additional cost and risk of carrying more work inside the call. The useful unit is not the largest call the tool can support. It is the largest unit of already-determined work that the tool can carry out without withholding a decision the model still needs to make.
+<br>
+
+### 7.5 How Control Contributes to Safer
+
+Control contributes to Safer by limiting execution to work covered by the decision expressed in the model’s request. When an operation reveals a task-specific choice that the request has not resolved, returning prevents the tool from committing the artifact to one of those alternatives without another model decision.
+
+This is a form of containment, not validation. Control does not determine that a proposed change is invalid. It determines that the tool should not perform additional changes beyond those the model has already selected. Enforcement separately decides whether a selected change violates a mechanically checkable condition.
+
+Returning control does not guarantee that the next decision will be correct. The model may misunderstand the result or choose the wrong alternative. The safety contribution is narrower: changes that depend on the unresolved choice do not take effect before the model has an opportunity to make that choice.
+
+A larger call is therefore not inherently less safe. If every operation carries out the decision expressed by the request, keeping those operations together does not expand the tool’s authority. A smaller call is not inherently safer either; dividing the same decision across more requests may only require the model to express it repeatedly. The safety concern arises when the tool continues beyond the decision the request actually contains.
+
+Returning control is useful only if the result communicates what happened and what decision is now required. Control determines when the model receives another opportunity to judge. Information determines whether the return gives the model the facts needed to use that opportunity.
+<br>
+
 <br>
 <br>
 <br>
