@@ -400,6 +400,42 @@ Returning more artifact content increases the amount of untrusted text entering 
 Structural separation does not guarantee that the model will ignore instructions embedded in artifact content. It makes the content’s role explicit and reduces avoidable ambiguity. Preventing harmful actions that such content might induce still requires appropriate limits and Enforcement at the tool boundary.
 <br>
 
+### 8.5 How Information Contributes to Faster
+Information contributes to Faster when decision-relevant information available at the boundary eliminates work the AI model would otherwise need before it could continue. It does not make the underlying artifact operation execute faster. Its contribution comes from avoiding unnecessary exchanges and from preventing the model from having to reconstruct information needed to compose a request or respond to a result.
+
+On the request side, a call that fails only because the interface did not disclose one of its requirements adds time without revealing anything about the artifact. On the result side, returned information can eliminate a separate verification, retrieval, or diagnostic step. In both cases, the time benefit is the follow-up work the information avoids.
+
+Supplying information also has a cost. Too little can force the model to retrieve or reconstruct what is missing. Too much takes time to transfer and interpret, consumes model context, and can obscure the facts that matter. The appropriate amount is the smallest amount that leaves the relevant decision fully informed.
+
+Fewer tokens, shorter results, or fewer calls do not by themselves establish Faster. The relevant outcome is whether correct work takes less time to complete after accounting for failed requests, follow-up reads, interpretation, and correction.
+
+The Information contribution is limited to work avoided because the boundary communicated what the relevant decision required. Time saved by carrying out more work within one call belongs to Control. Repair avoided because a prohibited change never took effect belongs to Enforcement.
+<br>
+
+### 8.6 How Information Contributes to Safer
+Information contributes to Safer when it improves the facts on which the model bases its decisions. Clearer information can reduce the likelihood that the model requests an erroneous action or continues from an incorrect understanding of the artifact. This effect remains probabilistic because the model may still interpret accurate information incorrectly.
+
+On the request side, an interface that clearly distinguishes targets, operations, and materially different options gives the model fewer plausible ways to express the wrong change accidentally. Stating relevant constraints before the request can also help the model avoid proposing a change the tool will refuse. Neither effect establishes that a well-formed request is correct for the task.
+
+On the result side, an accurate account of the outcome can prevent later actions from being based on a false assumption. If the model knows that a change failed, only partly succeeded, or left an uncertain state, it can account for that condition before requesting another mutation. The safety contribution comes from informing the subsequent judgment, not from the result changing the artifact itself.
+
+This contribution depends on the information being accurate, relevant, and clearly attributed. Incorrect or stale values can direct the model toward the wrong action. Unmarked omissions can make absent information appear to be evidence that nothing exists. Excessive or poorly structured content can obscure important facts, while artifact text presented without clear provenance can be mistaken for instructions.
+
+Information does not prevent an erroneous request from taking effect. Enforcement performs that function for covered conditions. Information can help the model avoid making the request or respond appropriately after a refusal, but the safety of the refusal itself comes from the enforced check.
+<br>
+
+## 9. Evidence Across the Boundary
+The evidence in this section is organized around specific claims connecting design decisions to outcomes. Each entry identifies what was examined, which principles were involved, what the findings support, and what remains untested.
+
+The section begins with mechanisms and guarantees: arguments showing how a design produces an effect under stated assumptions, supported where appropriate by documented system behavior. The following three subsections examine empirical evidence for Safer, Cleaner, and Faster. A study involving several principles can support a measured benefit without establishing how much each principle contributed.
+
+The final subsection considers integrated designs whose benefits and costs need to be assessed together, along with studies that measure other outcomes. Higher task completion, fewer tokens, and fewer model turns can provide useful evidence, but none alone establishes fewer erroneous actions taking effect, a cleaner artifact, or less time to correct completion. Each result is described in terms of what was actually measured.
+
+Each study has one primary location. Where its findings bear on another claim, that connection is cross-referenced rather than presented as independent evidence. Conclusions remain limited to the mechanism, conditions, and outcomes the source supports; applying them to other tools or artifacts is a design inference.
+<br>
+
+
+
 <br>
 <br>
 <br>
